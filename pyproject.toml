@@ -52,6 +52,7 @@ members = [
     "libs/inference",
     "libs/model-training",
     "libs/shared",
+    "libs/adapter-registry",
 ]
 
 [tool.mypy]
@@ -94,6 +95,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
+    "adapter_registry",
+    "adapter_registry.*",
     "data_pipeline",
     "data_pipeline.load_data",
     "rune_agent",
@@ -143,6 +146,7 @@ filterwarnings = [
 pythonpath = [
     "services/api-service/src",
     "services/rune-agent/src",
+    "libs/adapter-registry/src",
     "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",
@@ -158,6 +162,7 @@ addopts = "-n auto"
 source = [
     "services/api-service/src",
     "services/rune-agent/src",
+    "libs/adapter-registry/src",
     "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",
