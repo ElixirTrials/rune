@@ -39,8 +39,8 @@ Requirements for milestone v2.0 — Repo Restructuring & Scaffold.
 
 - [x] **CLN-01**: Template placeholder service `agent-b-service` is removed from the workspace (directory deleted, all references in root pyproject.toml removed, uv lock/sync passes)
 - [x] **CLN-02**: Template placeholder service `agent-a-service` is renamed to `rune-agent` with all four name locations updated (directory, src/ module, pyproject.toml name, hatch wheel packages)
-- [ ] **CLN-03**: Root pyproject.toml dev dependencies are cleaned of unused template packages (google-cloud-aiplatform, vertexai, google-genai, sentence-transformers) and GPU packages are moved out of root scope
-- [ ] **CLN-04**: Makefile typecheck target uses glob pattern (`services/*/src libs/*/src`) instead of hardcoded component list
+- [x] **CLN-03**: Root pyproject.toml dev dependencies are cleaned of unused template packages (google-cloud-aiplatform, vertexai, google-genai, sentence-transformers) and GPU packages are moved out of root scope
+- [x] **CLN-04**: Makefile typecheck target uses glob pattern (`services/*/src libs/*/src`) instead of hardcoded component list
 
 ### Scaffold — Libraries
 
@@ -123,8 +123,8 @@ Which phases cover which requirements.
 |-------------|-------|--------|
 | CLN-01 | Phase 4 | Complete |
 | CLN-02 | Phase 4 | Complete |
-| CLN-03 | Phase 4 | Pending |
-| CLN-04 | Phase 4 | Pending |
+| CLN-03 | Phase 4 | Complete |
+| CLN-04 | Phase 4 | Complete |
 | LIB-01 | Phase 5 | Pending |
 | LIB-02 | Phase 5 | Pending |
 | LIB-03 | Phase 5 | Pending |
