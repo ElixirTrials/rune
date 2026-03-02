@@ -65,7 +65,8 @@ else
     run_check "Ruff (format check)" "uv run ruff format . --check"
 fi
 
-run_check "Mypy (type check)" "uv run mypy libs/shared/src services/api-service/src libs/inference/src services/agent-a-service/src services/agent-b-service/src libs/data-pipeline/src libs/evaluation/src libs/events-py/src libs/model-training/src"
+PY_DIRS=$(for d in services/*/src libs/*/src; do find "$d" -name '*.py' -print -quit 2>/dev/null | grep -q . && echo "$d"; done)
+run_check "Mypy (type check)" "uv run mypy $PY_DIRS"
 
 run_check "Pytest" "uv run pytest services/api-service/tests libs/events-py/tests -q"
 
