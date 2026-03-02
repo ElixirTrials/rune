@@ -94,7 +94,6 @@ These existing monorepo services are not modified by Rune and continue operating
 
 | Service / Library | Role | Rune Relationship |
 |------------------|------|-------------------|
-| `agent-a-service` | Existing agent service | Rune-agent runs alongside; no direct integration |
 | `libs/events-ts` | TypeScript event library | Not used by Rune (Python-only) |
 | `libs/shared-ts` | TypeScript shared utilities | Not used by Rune (Python-only) |
 | `libs/shared` | Shared utilities | May consume for common config patterns |
@@ -109,8 +108,7 @@ These existing monorepo services are not modified by Rune and continue operating
 rune/
   services/
     api-service/          # Extended: +adapter and session routes
-    agent-a-service/      # Unchanged
-    rune-agent/           # New: recursive code generation loop
+    rune-agent/           # Rune coding agent: recursive code generation loop
     lora-server/          # New: vLLM serving with dynamic LoRA
     training-svc/         # New: hypernetwork + fine-tuning jobs
     evolution-svc/        # New: adapter lifecycle management

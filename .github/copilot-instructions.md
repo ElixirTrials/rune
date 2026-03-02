@@ -4,7 +4,7 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
 
 ## 1) Big picture (one-liner)
 - Monorepo of small Python services (FastAPI), LangGraph agent packages, an inference layer, data pipelines, evaluation code and a React/Vite HITL UI. Docs are generated with MkDocs (monorepo plugin + mkdocstrings).
-- Key dirs: `services/{api-service,agent-*}`; `libs/{inference,data-pipeline,model-training,shared,events-py,events-ts,shared-ts}`; `apps/hitl-ui`.
+- Key dirs: `services/{api-service,rune-agent}`; `libs/{inference,data-pipeline,model-training,shared,events-py,events-ts,shared-ts}`; `apps/hitl-ui`.
 
 ## 2) Quick start — concrete commands (exact)
 - Full stack (recommended for end-to-end work):
@@ -27,7 +27,7 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
 
 ## 3) Architecture & integration (what to know)
 - API Service (`services/api-service`): FastAPI orchestrator, DB (Postgres), MLFlow; exposes REST used by HITL UI and other components.
-- Agent packages (`services/agent-*/`): LangGraph StateGraphs — graph in `graph.py`, nodes in `nodes.py`, typed state in `state.py`. Prefer invoking via graph factories (e.g. `create_graph()`), not by importing internal runtime elsewhere.
+- Agent packages (`services/rune-agent/`): LangGraph StateGraphs — graph in `graph.py`, nodes in `nodes.py`, typed state in `state.py`. Prefer invoking via graph factories (e.g. `create_graph()`), not by importing internal runtime elsewhere.
 - Inference layer: central model-loading / call interface — agents call it rather than calling models directly.
 - Docs: each component has its own `mkdocs.yml` and is included into the root `mkdocs.yml` via `!include` (see `scripts/update_root_navigation.py`).
 
@@ -46,7 +46,7 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
 
 ## 6) Where to look (highest signal files)
 - Run & wiring: `services/api-service/src/api_service/main.py` (health/readiness, lifespan)
-- Agent canonical example: `services/agent-a-service/{graph.py,nodes.py,state.py,notebooks/playground.ipynb}`
+- Agent canonical example: `services/rune-agent/{graph.py,nodes.py,state.py,notebooks/playground.ipynb}`
 - CI / commands: `.github/workflows/ci.yml` (shows `uv` usage, JS workflow)
 - Dev compose: `infra/docker-compose.yml` (run from root with `-f infra/docker-compose.yml`; service envs: Postgres, MLflow, VITE_API_BASE_URL)
 - Docs/nav automation: `scripts/update_root_navigation.py`, `scripts/generate_components_overview.py`

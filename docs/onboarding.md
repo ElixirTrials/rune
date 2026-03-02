@@ -41,7 +41,7 @@ Set `VITE_API_BASE_URL` if the API is not at the default. See `apps/hitl-ui/READ
 
 ## 4. Run agents
 
-Agent services and LangGraph usage are documented in the [Components Overview](components-overview.md) and per-service READMEs under `services/agent-a-service`.
+Agent services and LangGraph usage are documented in the [Components Overview](components-overview.md) and per-service READMEs under `services/rune-agent`.
 
 ## 5. Run tests
 

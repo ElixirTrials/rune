@@ -54,7 +54,7 @@ dev = [
 [tool.uv.workspace]
 members = [
     "services/api-service",
-    "services/agent-a-service",
+    "services/rune-agent",
     "libs/data-pipeline",
     "libs/evaluation",
     "libs/events-py",
@@ -105,8 +105,8 @@ ignore_missing_imports = true
 module = [
     "data_pipeline",
     "data_pipeline.load_data",
-    "agent_a_service",
-    "agent_a_service.*",
+    "rune_agent",
+    "rune_agent.*",
     "shared",
     "shared.models",
 ]
@@ -154,7 +154,7 @@ filterwarnings = [
 ]
 pythonpath = [
     "services/api-service/src",
-    "services/agent-a-service/src",
+    "services/rune-agent/src",
     "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",
@@ -169,7 +169,7 @@ addopts = "-n auto"
 [tool.coverage.run]
 source = [
     "services/api-service/src",
-    "services/agent-a-service/src",
+    "services/rune-agent/src",
     "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",

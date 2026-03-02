@@ -138,7 +138,7 @@ graph TD
 ### AI Agent Services
 | Component | Purpose | Path |
 | :--- | :--- | :--- |
-| **agent-a-service** | Guest interaction agent using LangGraph flows. | [agent-a-service](services/agent-a-service/) |
+| **rune-agent** | Rune coding agent — recursive code generation with parametric memory, using LangGraph flows. | [rune-agent](services/rune-agent/) |
 
 ### Data & Infrastructure
 | Component | Purpose | Path |

@@ -37,7 +37,7 @@ The API Service is the central orchestrator for the application. It provides HTT
 Do not import agent code directly if possible. Instead, use the factories in `inference` or clean interfaces in agent packages.
 
 ```python
-from agent_a_service.graph import create_graph
+from rune_agent.graph import create_graph
 
 async def run_agent_task(task_id: str):
     graph = create_graph()
