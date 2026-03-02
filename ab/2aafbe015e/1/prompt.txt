@@ -1,0 +1,5 @@
+@/Users/noahdolevelixir/.cursor/projects/Users-noahdolevelixir-Code-rune/terminals/2.txt Fix this by upgrading everything or getting rid of material.
+
+---
+
+Update always to the latest Mkdocs. Use the mkdocs solution from here: /Users/noahdolevelixir/Code/medgemma-hackathon

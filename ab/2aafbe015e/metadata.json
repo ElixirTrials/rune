@@ -3,7 +3,7 @@
   "checkpoint_id": "ab2aafbe015e",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 2,
+  "checkpoints_count": 4,
   "files_touched": [
     "mkdocs.yml"
   ],
@@ -14,6 +14,13 @@
       "context": "/ab/2aafbe015e/0/context.md",
       "content_hash": "/ab/2aafbe015e/0/content_hash.txt",
       "prompt": "/ab/2aafbe015e/0/prompt.txt"
+    },
+    {
+      "metadata": "/ab/2aafbe015e/1/metadata.json",
+      "transcript": "/ab/2aafbe015e/1/full.jsonl",
+      "context": "/ab/2aafbe015e/1/context.md",
+      "content_hash": "/ab/2aafbe015e/1/content_hash.txt",
+      "prompt": "/ab/2aafbe015e/1/prompt.txt"
     }
   ],
   "token_usage": {
