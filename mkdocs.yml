@@ -92,6 +92,11 @@ validation:
 nav:
 - Home: index.md
 - Implementation Plan: implementation-plan.md
+- Architecture:
+  - Recursive Loop: architecture/recursive-loop.md
+  - Monorepo Mapping: architecture/monorepo-mapping.md
+  - Adapter Storage: architecture/adapter-storage.md
+  - Multi-GPU Strategy: architecture/multi-gpu-strategy.md
 - Appendices:
   - Risk Matrix: appendices/risk-matrix.md
   - Build Order: appendices/build-order.md
