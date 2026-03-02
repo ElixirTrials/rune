@@ -100,9 +100,23 @@ Plans:
 - [x] 05-02-PLAN.md — Extend libs/shared with rune_models.py (CodingSession, AdapterRef, EvolMetrics)
 - [x] 05-03-PLAN.md — Extend libs/model-training with PEFT stubs and extend libs/inference with adapter_loader and vLLM client stub
 
+### Phase 5.1: Template Artifact Cleanup
+**Goal**: All remaining template artifacts are removed from libs/, docs/, and root — the three unused TypeScript/Python template libraries are deleted, template-specific documentation and diagrams are removed, and the workspace configuration is updated to reflect the cleaned state
+**Depends on**: Phase 5
+**Requirements**: CLN-05, CLN-06, CLN-07
+**Success Criteria** (what must be TRUE):
+  1. `libs/data-pipeline`, `libs/events-ts`, and `libs/shared-ts` directories do not exist; no references to them appear in root `pyproject.toml`, `mkdocs.yml`, or any configuration file; `uv lock && uv sync` passes after removal
+  2. Template-specific docs are removed: `docs/diagrams/agent-flow.md`, `docs/diagrams/hitl-flow.md`, `docs/diagrams/langgraph-architecture.md`, `docs/onboarding.md`, `docs/testing-guide.md`, `docs/components-overview.md`, and `PROJECT_OVERVIEW.md`; `mkdocs.yml` nav is updated to remove references to deleted files; `uv run mkdocs build` still passes
+  3. No file in the repository references "ElixirTrials" in its content (excluding `.planning/` and `pyproject.toml` project name which will be updated in a later milestone); `grep -r "ElixirTrials" --include="*.md" --include="*.py" . | grep -v .planning/` returns zero matches
+**Plans**: 2 plans
+
+Plans:
+- [ ] 05.1-01-PLAN.md — Remove template libraries (data-pipeline, events-ts, shared-ts) from workspace and filesystem
+- [ ] 05.1-02-PLAN.md — Remove template docs and diagrams, update mkdocs.yml nav, clean ElixirTrials references
+
 ### Phase 6: Service Scaffolds
 **Goal**: All five services exist in their correct forms — four as importable uv workspace members with FastAPI endpoints returning 501, one (lora-server) as a Dockerfile-only service not in the workspace — and the workspace configuration in root pyproject.toml is fully synchronized across all five required sections
-**Depends on**: Phase 5
+**Depends on**: Phase 5.1
 **Requirements**: SVC-01, SVC-02, SVC-03, SVC-04, SVC-05, CFG-01, CFG-02
 **Success Criteria** (what must be TRUE):
   1. `services/lora-server` contains a Dockerfile, `startup.sh`, `config.yaml`, FastAPI health sidecar, and `VLLMClient` stub; it does NOT appear in the uv workspace members list; `LoraServerConfig` raises `ValueError` if `tensor_parallel_size=2`
@@ -140,7 +154,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 4 → 5 → 6 → 7
+Phases execute in numeric order: 4 → 5 → 5.1 → 6 → 7
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -149,5 +163,6 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 3. Architecture Docs | v1.0 | 1/1 | Complete | 2026-03-02 |
 | 4. Cleanup | v2.0 | 3/3 | Complete | 2026-03-02 |
 | 5. Foundation Libraries | v2.0 | 3/3 | Complete | 2026-03-02 |
+| 5.1. Template Artifact Cleanup | v2.0 | 0/2 | Planned | - |
 | 6. Service Scaffolds | v2.0 | 0/6 | Not started | - |
 | 7. Configuration & Quality Gate | v2.0 | 0/3 | Not started | - |
