@@ -1,41 +1,9 @@
-# Welcome to ElixirTrials  Template
+# Rune Documentation
 
-This is a mono-repo template combining Python backend services, LangGraph AI agents, and a React/Vite HITL frontend.
+Rune is a local-first coding agent that uses LoRA weight space as episodic memory. Rather than relying on context window size to retain knowledge across sessions, Rune generates task-specific LoRA adapters and retrieves them at inference time — building a persistent parametric memory that scales independently of context length. This site contains the implementation plan and supporting documentation for the project.
 
-## 🚀 Quick Start
+## Documentation
 
-### Prerequisites
-- **Python 3.12+**
-- **Node.js 20+**
-- **uv** (Python package manager)
-- **Docker**
-
-### Installation
-Run the following commands to get started:
-
-```bash
-# Sync dependencies
-uv sync
-
-# Create a new service (interactive)
-make create-service
-```
-
-## 🎯 Project Goals
-- **Robust Template**: A production-ready foundation for AI applications.
-- **Unified Tooling**: Standardized patterns for backend, frontend, and AI agents.
-- **Rapid Development**: Pre-configured CI/CD, linting, and testing.
-
-## 🏗️ Architecture
-
-- **API Service**: FastAPI orchestrator handling requests and persistence.
-- **Agent Services**: Independent LangGraph agents for specific workflows.
-- **Inference**: Shared library for model loading and LLM interactions.
-- **Data Pipeline**: ETL processes for data ingestion.
-- **Evaluation**: Offline metrics and benchmarks.
-- **HITL UI**: React/Vite frontend for human review and approval.
-
-## 📚 Documentation Index
-
-- **[Components](components-overview.md)**: Detailed docs for all services and libraries.
-- **[Diagrams](diagrams/hitl-flow.md)**: Visual flows of the system.
+- [Implementation Plan](implementation-plan.md) — Phased build plan from hardware validation through hypernetwork training
+- [Risk Matrix](appendices/risk-matrix.md) — Primary research risks with mitigations and warning signs
+- [Build Order](appendices/build-order.md) — Component dependency chain and recommended build sequence

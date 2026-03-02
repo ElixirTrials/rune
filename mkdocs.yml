@@ -1,11 +1,9 @@
-site_name: ElixirTrials  Template Documentation
-site_description: Template Repo for ElixirTrials 
-site_author: ElixirTrials  Team
-site_url: https://elixirtrials-.github.io/template-repo/docs/
+site_name: Rune Documentation
+site_description: Implementation plan and architecture documentation for Rune
+site_author: Noah
 site_dir: site/docs
 docs_dir: docs
-repo_name: elixirtrials-/template-repo
-repo_url: https://github.com/elixirtrials-/template-repo
+repo_name: rune
 edit_uri: edit/main/docs/
 exclude_docs: '**/node_modules/**
 
@@ -37,44 +35,17 @@ exclude_docs: '**/node_modules/**
 
   '
 theme:
-  name: material
-  features:
-  - navigation.tabs
-  - navigation.sections
-  - navigation.expand
-  - navigation.top
-  - search.suggest
-  - search.highlight
-  - content.code.copy
-  - content.code.annotate
-  palette:
-  - media: (prefers-color-scheme)
-    scheme: default
-    primary: indigo
-    accent: indigo
-    toggle:
-      icon: material/brightness-auto
-      name: Switch to dark mode
-  - media: '(prefers-color-scheme: dark)'
-    scheme: slate
-    primary: indigo
-    accent: indigo
-    toggle:
-      icon: material/brightness-7
-      name: Switch to light mode
+  name: mkdocs
+  navigation_depth: 3
+  locale: en
+extra_css:
+- assets/custom.css
+extra_javascript:
+- https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
+- assets/mermaid-init.js
 plugins:
 - search
 - monorepo
-- mermaid2:
-    arguments:
-      theme: base
-      themeVariables:
-        primaryColor: '#6366f1'
-        primaryTextColor: '#fff'
-        primaryBorderColor: '#4f46e5'
-        lineColor: '#64748b'
-        secondaryColor: '#f1f5f9'
-        tertiaryColor: '#e2e8f0'
 - mkdocstrings:
     default_handler: python
     handlers:
@@ -100,26 +71,27 @@ plugins:
           show_submodules: true
           show_inheritance_diagram: true
           show_root_toc_entry: true
+markdown_extensions:
+- admonition
+- pymdownx.details
+- pymdownx.superfences:
+    custom_fences:
+    - name: mermaid
+      class: mermaid
+      format: !!python/name:pymdownx.superfences.fence_div_format ''
+- pymdownx.tabbed:
+    alternate_style: true
+- tables
+- toc:
+    permalink: true
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
 nav:
 - Home: index.md
-- Onboarding: onboarding.md
-- Components:
-  - Overview: components-overview.md
-  - agent-a-service: !include './services/agent-a-service/mkdocs.yml'
-  - agent-b-service: !include './services/agent-b-service/mkdocs.yml'
-  - api-service: !include './services/api-service/mkdocs.yml'
-  - data-pipeline: !include './libs/data-pipeline/mkdocs.yml'
-  - evaluation: !include './libs/evaluation/mkdocs.yml'
-  - events-py: !include './libs/events-py/mkdocs.yml'
-  - events-ts: !include './libs/events-ts/mkdocs.yml'
-  - hitl-ui: !include './apps/hitl-ui/mkdocs.yml'
-  - inference: !include './libs/inference/mkdocs.yml'
-  - model-training: !include './libs/model-training/mkdocs.yml'
-  - shared: !include './libs/shared/mkdocs.yml'
-  - shared-ts: !include './libs/shared-ts/mkdocs.yml'
-- Diagrams:
-  - HITL Flow: diagrams/hitl-flow.md
-  - Agent Flow: diagrams/agent-flow.md
-  - LangGraph Architecture: diagrams/langgraph-architecture.md
-- Guides:
-  - Testing Guide: testing-guide.md
+- Implementation Plan: implementation-plan.md
+- Appendices:
+  - Risk Matrix: appendices/risk-matrix.md
+  - Build Order: appendices/build-order.md
