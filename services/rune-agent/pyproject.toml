@@ -1,7 +1,7 @@
 [project]
-name = "agent-a-service"
+name = "rune-agent"
 version = "0.1.0"
-description = "Template Agent A Service"
+description = "Rune coding agent service — recursive code generation with parametric memory"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -20,7 +20,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent_a_service"]
+packages = ["src/rune_agent"]
 
 [tool.ruff]
 lint.select = ["E", "F", "W", "C", "N", "I", "D"]
@@ -39,7 +39,7 @@ mypy_path = ["../shared/src", "../inference/src"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "../shared/src", "../inference/src"]
 testpaths = ["tests"]
-addopts = "--cov=agent_a_service --cov-branch --cov-report=term-missing"
+addopts = "--cov=rune_agent --cov-branch --cov-report=term-missing"
 
 [tool.uv.sources]
 shared = { workspace = true }

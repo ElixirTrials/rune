@@ -1,5 +1,5 @@
 docs_dir: docs
-site_name: agent-a-service
+site_name: rune-agent
 nav:
   - API Reference: api/index.md
 
