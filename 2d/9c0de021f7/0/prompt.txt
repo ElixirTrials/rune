@@ -1114,3 +1114,266 @@ Normalize phase input in step 2 before any directory lookups.
 Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
 Preserve all workflow gates (validation, research, planning, verification loop, routing).
 </process>
+
+---
+
+<objective>
+Create all phases necessary to close gaps identified by `/gsd:audit-milestone`.
+
+Reads MILESTONE-AUDIT.md, groups gaps into logical phases, creates phase entries in ROADMAP.md, and offers to plan each phase.
+
+One command creates all fix phases — no manual `/gsd:add-phase` per gap.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-milestone-gaps.md
+</execution_context>
+
+<context>
+**Audit results:**
+Glob: .planning/v*-MILESTONE-AUDIT.md (use most recent)
+
+**Original intent (for prioritization):**
+@.planning/PROJECT.md
+@.planning/REQUIREMENTS.md
+
+**Current state:**
+@.planning/ROADMAP.md
+@.planning/STATE.md
+</context>
+
+<process>
+Execute the plan-milestone-gaps workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-milestone-gaps.md end-to-end.
+Preserve all workflow gates (audit loading, prioritization, phase grouping, user confirmation, roadmap updates).
+</process>
+
+
+ARGUMENTS: You need to clean up the libs and apps directories as well so they fit our plan rather than the template.
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 5.1 --auto (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Session Start**: This is a continuation from a previous conversation. The summary indicates:
+   - v1.0 milestone (Phases 1-3) complete
+   - v2.0 milestone in progress: Phase 4 (Cleanup) was complete with 2 gaps found in scripts/check-all.sh
+   - The workflow was at gap closure stage for Phase 4
+
+2. **Gap Closure for Phase 4**: I fixed `scripts/check-all.sh:68` which had hardcoded `services/agent-a-service/src` and `services/agent-b-service/src` paths. Replaced with glob+filter pattern matching Makefile and CI. Committed as `e4c4c20`.
+
+3. **Phase 5 Planning and Execution**: Invoked `/gsd:plan-phase 5 --auto` which:
+   - Initialized, created `.planning/phases/05-foundation-libraries/` directory
+   - Spawned researcher → wrote `05-RESEARCH.md` (634 lines) covering uv workspace, SQLModel, Pydantic v2, deferred GPU imports, OpenAI client patterns
+   - Spawned planner → created 3 plans in 1 wave (all parallel):
+     - 05-01: Scaffold libs/adapter-registry (new workspace member)
+     - 05-02: Extend libs/shared with rune_models.py
+     - 05-03: Extend model-training + inference
+   - Plan checker verified: VERIFICATION PASSED
+   - Auto-advanced to execution
+   - All 3 plans executed successfully, verified 4/4 must-haves
+   - STATE.md updated to Phase 6 ready
+
+4. **User Request - Milestone Gaps**: User sent `/gsd:plan-milestone-gaps "You need to clean up the libs and apps directories as well so they fit our plan rather than the template."`
+
+5. **Template Artifact Analysis**: No MILESTONE-AUDIT.md existed, so I:
+   - Launched explore agent to analyze libs/ and apps/ directories
+   - Found 3 directories to REMOVE: `libs/data-pipeline/`, `libs/events-ts/`, `libs/shared-ts/`
+   - Found 3 to KEEP: `libs/evaluation/`, `libs/events-py/`, `apps/hitl-ui/`
+   - Asked user where to place cleanup → chose "Insert as Phase 5.1"
+
+6. **User Follow-up - Docs Cleanup**: User noted "Consider that also the docs contain figures and docs from the template rather than our actual codebase."
+   - Launched docs scan agent
+   - Found template docs to remove: agent-flow.md, hitl-flow.md, langgraph-architecture.md, onboarding.md, testing-guide.md, components-overview.md, PROJECT_OVERVIEW.md
+   - Rune-specific docs to keep: index.md, implementation-plan.md, architecture/* docs, appendices/*
+
+7. **Phase 5.1 Creation**: Created Phase 5.1 in ROADMAP.md with:
+   - 3 new requirements: CLN-05, CLN-06, CLN-07
+   - 2 planned plans
+   - Inserted between Phase 5 and Phase 6
+   - Updated REQUIREMENTS.md traceability table
+   - Created `.planning/phases/05.1-template-artifact-cleanup/` directory
+
+8. **User Request - New Milestone**: User sent `/gsd:new-milestone "Consider how the research described here (look at the full article as well) should lead us to modify or improve our plan. /Users/noahdolevelixir/Code/rune/instructions/some_new_insights.md. After thorough research and consideration, make a plan for updating our repo"`
+   - Read the insights file about PBB (Programming by Backprop) research
+   - Key insights: code internalizes algorithmic abstractions, code > natural language for abstraction learning, compositional evaluation from independent training, robustness across input distributions, CoT enhances reliability
+   - Asked user about timing → chose "Plan v3.0 now in parallel"
+
+9. **Phase 5.1 Planning**: Invoked `/gsd:plan-phase 5.1 --auto` which:
+   - Initialized successfully (phase_found: true)
+   - Skipped research (targets already identified)
+   - Spawned planner → created 2 plans in 2 waves:
+     - Wave 1: 05.1-01 — Remove template libraries from workspace and filesystem
+     - Wave 2: 05.1-02 — Remove template docs/diagrams, update mkdocs nav, clean ElixirTrials refs
+   - ROADMAP.md was updated with plan status "Planned"
+   - Auto-advance should proceed to execution
+
+Key files modified in this session:
+- `scripts/check-all.sh` — Fixed stale mypy paths with glob pattern
+- `.planning/ROADMAP.md` — Phase 5 marked complete, Phase 5.1 inserted, progress table updated
+- `.planning/STATE.md` — Updated multiple times through phases 4→5→6 readiness
+- `.planning/REQUIREMENTS.md` — Added CLN-05, CLN-06, CLN-07, updated traceability
+
+Pending tasks:
+1. Phase 5.1 auto-advance to execution (plans just created, `--auto` flag was set)
+2. v3.0 milestone planning (PBB insights) — user chose "plan in parallel" but hasn't been started yet
+3. After Phase 5.1: Phase 6, Phase 7 remain for v2.0
+
+Summary:
+1. Primary Request and Intent:
+   - **Original task (from prior session)**: Complete the GSD workflow for v2.0 milestone — plan and execute phases 4-7 of the Repo Restructuring & Scaffold milestone with `auto_advance: true`
+   - **Gap closure**: Fix Phase 4 verification gaps in `scripts/check-all.sh` (2 stale references to agent-a-service and agent-b-service)
+   - **Phase 5 execution**: Plan and execute Foundation Libraries phase (adapter-registry, shared rune_models, model-training stubs, inference adapter_loader)
+   - **Template cleanup request**: User requested `/gsd:plan-milestone-gaps` to clean up libs/ and apps/ directories to fit the Rune plan rather than the template
+   - **Docs cleanup**: User noted docs also contain template figures and content that need removal
+   - **PBB research integration**: User requested `/gsd:new-milestone` to incorporate Programming by Backprop research insights from `instructions/some_new_insights.md` into a v3.0 milestone plan — chose to plan in parallel with v2.0 completion
+   - **Phase 5.1 planning**: Create and plan Phase 5.1 (Template Artifact Cleanup) with `--auto` flag for auto-advance to execution
+
+2. Key Technical Concepts:
+   - **GSD Workflow**: new-milestone → research → requirements → roadmap → plan-phase → execute-phase cycle with auto_advance
+   - **uv Workspace**: Python monorepo with 5 hardcoded path sections in root pyproject.toml (workspace members, mypy overrides, pytest pythonpath, testpaths, coverage source)
+   - **Package Naming**: Four name locations per package (directory, src/ module, pyproject.toml name, hatch wheel packages)
+   - **Lockfile Discipline**: `uv lock && uv sync` after every workspace member change; removal order: remove references → uv lock → delete directory
+   - **Phase 5 Libraries**: adapter-registry (SQLModel, hatchling), shared rune_models (Pydantic v2), model-training stubs (TYPE_CHECKING guards for GPU imports), inference adapter_loader (openai AsyncOpenAI with base_url for vLLM)
+   - **Decimal Phase Numbering**: Phase 5.1 inserted between Phase 5 and Phase 6 using `/gsd:insert-phase` pattern
+   - **PBB (Programming by Backprop)**: Research paper (arXiv:2506.18777) showing LLMs can internalize algorithmic abstractions via code training, supporting Rune's LoRA adapter approach
+
+3. Files and Code Sections:
+   - **`scripts/check-all.sh`** — Fixed stale mypy paths (Phase 4 gap closure)
+     - Replaced hardcoded agent-a/b-service paths with glob+filter pattern
+     - Committed as `e4c4c20`
+     ```bash
+     PY_DIRS=$(for d in services/*/src libs/*/src; do find "$d" -name '*.py' -print -quit 2>/dev/null | grep -q . && echo "$d"; done)
+     run_check "Mypy (type check)" "uv run mypy $PY_DIRS"
+     ```
+   
+   - **`.planning/ROADMAP.md`** — Multiple updates throughout session
+     - Phase 4 marked complete (3/3)
+     - Phase 5 marked complete (3/3) 
+     - Phase 5.1 inserted between Phase 5 and Phase 6 with requirements CLN-05, CLN-06, CLN-07
+     - Phase 6 depends_on changed from Phase 5 to Phase 5.1
+     - Progress table updated with Phase 5.1 row
+     - Execution order updated: 4 → 5 → 5.1 → 6 → 7
+   
+   - **`.planning/STATE.md`** — Updated multiple times
+     - Phase 4 gap closure noted
+     - Phase 5 completion with 4/4 must-haves
+     - Currently shows Phase 6 readiness (updated by Phase 5 execution agent)
+     - Performance metrics: 10 plans completed, 3.6 min average, improving trend
+   
+   - **`.planning/REQUIREMENTS.md`** — Added 3 new requirements
+     - CLN-05: Remove libs/data-pipeline, libs/events-ts, libs/shared-ts from workspace
+     - CLN-06: Remove template docs (7 files listed), update mkdocs.yml nav, mkdocs build passes
+     - CLN-07: No "ElixirTrials" references in non-planning files
+     - Traceability table updated with Phase 5.1 mappings
+     - Coverage count updated from 21 to 24
+   
+   - **`.planning/phases/05-foundation-libraries/05-RESEARCH.md`** — 634 lines of research
+     - Covers uv workspace mechanics, SQLModel patterns, Pydantic v2, deferred GPU imports, OpenAI client
+     - Key finding: `uv init --lib` creates `uv_build` backend (must replace with hatchling)
+     - Key finding: `openai` not in lockfile, must add to inference deps
+     - Key finding: 5 root pyproject.toml sections need updating for new libs
+   
+   - **`.planning/phases/05-foundation-libraries/05-01-PLAN.md`** through **05-03-PLAN.md** — Phase 5 execution plans
+     - 05-01: adapter-registry scaffold (2 tasks, wave 1)
+     - 05-02: shared rune_models.py (1 task, wave 1)
+     - 05-03: model-training stubs + inference adapter_loader (2 tasks, wave 1)
+     - All in wave 1 (parallel) — no file overlap between plans
+   
+   - **`.planning/phases/05.1-template-artifact-cleanup/05.1-01-PLAN.md`** and **05.1-02-PLAN.md** — Phase 5.1 plans
+     - 05.1-01 (Wave 1): Remove template libraries from workspace config and filesystem
+     - 05.1-02 (Wave 2): Remove template docs/diagrams, update mkdocs nav, clean ElixirTrials references
+     - Wave 2 depends on Wave 1 because both modify mkdocs.yml
+   
+   - **`instructions/some_new_insights.md`** — PBB research insights
+     - 5 key findings from Programming by Backprop paper
+     - 5 specific modifications proposed for Rune: training data strategy, hypernetwork objective, CoT integration, compositional memory validation, code-first encoding
+   
+   - **Phase 5 execution artifacts** (created by background agent):
+     - `libs/adapter-registry/` — New workspace member with SQLModel AdapterRecord, AdapterRegistry, exceptions
+     - `libs/shared/src/shared/rune_models.py` — CodingSession, AdapterRef, EvolMetrics Pydantic models
+     - `libs/model-training/src/model_training/{peft_utils,trajectory,config}.py` — GPU-safe stubs with TYPE_CHECKING guards
+     - `libs/inference/src/inference/adapter_loader.py` — vLLM OpenAI client with AsyncOpenAI(base_url=...)
+     - Multiple commits for each plan execution
+
+4. Errors and Fixes:
+   - **Phase 5 execution agent couldn't auto-advance**: The background agent completed Phase 5 execution and verification but couldn't invoke `/gsd:execute-phase 6` from a subagent context (Skill tool not available to subagents). STATE.md was still updated correctly to show Phase 6 readiness.
+   - **No MILESTONE-AUDIT.md for plan-milestone-gaps**: The workflow requires an audit file but none existed. Adapted by directly analyzing the codebase to identify template artifacts, then manually creating Phase 5.1 with requirements instead of using the standard gap closure workflow.
+   - **Plan checker timeout**: The plan checker for Phase 5 ran in background and timed out on first TaskOutput call, but completed successfully and returned VERIFICATION PASSED when the notification arrived.
+
+5. Problem Solving:
+   - **Phase 4 gap closure**: Identified that `scripts/check-all.sh:68` was missed by Phase 4 plans because verification greps only checked `*.toml/*.yml/*.yaml/*.md/*.py` — shell scripts excluded. Fixed with same glob+filter pattern used in Makefile/CI.
+   - **Template artifact identification**: Launched explore agents to analyze both libs/apps directories and docs directory, identifying which are template artifacts (REMOVE) vs Rune-specific (KEEP). Comprehensive analysis covered pyproject.toml/package.json, imports, architecture docs, and README content.
+   - **Phase insertion**: Successfully used decimal phase numbering (5.1) to insert cleanup work between existing phases without renumbering, updating dependency chain (Phase 6 now depends on Phase 5.1).
+   - **Parallel milestone planning**: User chose to plan v3.0 (PBB insights) in parallel with completing v2.0 scaffold work. This hasn't been started yet.
+
+6. All User Messages:
+   - (Continuation prompt from previous session with full context summary)
+   - `/gsd:plan-phase 4 --auto` (from prior session, led to Phase 4 execution)
+   - `/gsd:plan-milestone-gaps "You need to clean up the libs and apps directories as well so they fit our plan rather than the template."`
+   - "Consider that also the docs contain figures and docs from the template rather than our actual codebase."
+   - `/gsd:new-milestone "Consider how the research described here (look at the full article as well) should lead us to modify or improve our plan. /Users/noahdolevelixir/Code/rune/instructions/some_new_insights.md . After thorough research and consideration, make a plan for updating our repo"`
+   - User selected "Insert as Phase 5.1 (before Phase 6)" for template cleanup placement
+   - User selected "Plan v3.0 now in parallel" for PBB research timing
+
+7. Pending Tasks:
+   - **Phase 5.1 auto-advance to execution**: Plans were just created with `--auto` flag. The plan-phase workflow should auto-advance to execute-phase. The planner returned PLANNING COMPLETE with 2 plans in 2 waves.
+   - **v3.0 milestone planning (PBB insights)**: User chose "Plan v3.0 now in parallel" but this hasn't been started yet. Needs `/gsd:new-milestone` with the PBB research context from `instructions/some_new_insights.md`.
+   - **Phase 6 (Service Scaffolds)**: 6 plans, not started, depends on Phase 5.1 completion
+   - **Phase 7 (Configuration & Quality Gate)**: 3 plans, not started, depends on Phase 6
+
+8. Current Work:
+   The `/gsd:plan-phase 5.1 --auto` workflow is at Step 9 (Handle Planner Return). The planner returned "## PLANNING COMPLETE" with 2 plans in 2 waves. The `--auto` flag means it should proceed to plan verification (Step 10) and then auto-advance to execution (Step 14).
+   
+   The planner created:
+   - `.planning/phases/05.1-template-artifact-cleanup/05.1-01-PLAN.md` — Wave 1: Remove template libraries
+   - `.planning/phases/05.1-template-artifact-cleanup/05.1-02-PLAN.md` — Wave 2: Remove template docs/diagrams + ElixirTrials cleanup
+   
+   ROADMAP.md was modified to show Phase 5.1 with "Planned" status and 0/2 plans complete.
+   
+   Additionally, the user has a pending request for v3.0 milestone planning with PBB insights that should run in parallel.
+
+9. Optional Next Step:
+   Continue the `/gsd:plan-phase 5.1 --auto` workflow:
+   1. **Verify plans** (Step 10): Spawn gsd-plan-checker to verify the 2 Phase 5.1 plans
+   2. **Auto-advance to execute** (Step 14): Execute Phase 5.1 with wave-based execution
+   3. **In parallel**: Start v3.0 milestone planning with PBB research insights per user's choice of "Plan v3.0 now in parallel"
+   
+   The last workflow action was the planner returning "## PLANNING COMPLETE" for Phase 5.1 with 2 plans. The `--auto` flag and `auto_advance: true` config mean verification → execution should follow automatically.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/0bf13c74-ac3a-40fc-8b1a-4968b155f2fb.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
