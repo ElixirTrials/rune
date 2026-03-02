@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "aa5af0415511",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".planning/STATE.md",
+    "docs/assets/custom.css",
+    "docs/assets/mermaid-init.js",
+    "scripts/build_docs.py",
+    "scripts/update_root_navigation.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/aa/5af0415511/0/metadata.json",
+      "transcript": "/aa/5af0415511/0/full.jsonl",
+      "context": "/aa/5af0415511/0/context.md",
+      "content_hash": "/aa/5af0415511/0/content_hash.txt",
+      "prompt": "/aa/5af0415511/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 167,
+    "cache_creation_tokens": 407941,
+    "cache_read_tokens": 11859381,
+    "output_tokens": 50695,
+    "api_call_count": 132
+  }
+}
