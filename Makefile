@@ -86,7 +86,8 @@ lint-fix:
 
 typecheck:
 	@echo "Running type checkers..."
-	uv run mypy libs/shared/src services/api-service/src libs/inference/src services/rune-agent/src libs/data-pipeline/src libs/evaluation/src libs/events-py/src libs/model-training/src
+	@PY_DIRS=$$(for d in services/*/src libs/*/src; do find "$$d" -name '*.py' -print -quit 2>/dev/null | grep -q . && echo "$$d"; done); \
+	uv run mypy $$PY_DIRS
 	@if [ -d "apps/hitl-ui/node_modules" ]; then \
 		cd apps/hitl-ui && npx tsc --noEmit; \
 	fi
