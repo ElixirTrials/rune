@@ -93,12 +93,12 @@ Plans:
   2. `libs/shared/src/shared/rune_models.py` exists and exports `CodingSession`, `AdapterRef`, and `EvolMetrics` as Pydantic models importable without GPU
   3. `libs/model-training` contains `peft_utils.py`, `trajectory.py`, and `config.py` with typed function signatures that raise `NotImplementedError`; no `torch`, `peft`, `bitsandbytes`, or `transformers` imports appear at module level
   4. `libs/inference` contains `adapter_loader.py` and the inference loader points at the vLLM OpenAI-compatible endpoint via the `openai` package (not a direct `vllm` import); importable without GPU
-**Plans**: 3 plans
+**Plans**: 3/3 plans complete
 
 Plans:
-- [ ] 05-01-PLAN.md — Scaffold libs/adapter-registry (new workspace member: AdapterRecord, AdapterRegistry, exceptions, smoke test)
-- [ ] 05-02-PLAN.md — Extend libs/shared with rune_models.py (CodingSession, AdapterRef, EvolMetrics)
-- [ ] 05-03-PLAN.md — Extend libs/model-training with PEFT stubs and extend libs/inference with adapter_loader and vLLM client stub
+- [x] 05-01-PLAN.md — Scaffold libs/adapter-registry (new workspace member: AdapterRecord, AdapterRegistry, exceptions, smoke test)
+- [x] 05-02-PLAN.md — Extend libs/shared with rune_models.py (CodingSession, AdapterRef, EvolMetrics)
+- [x] 05-03-PLAN.md — Extend libs/model-training with PEFT stubs and extend libs/inference with adapter_loader and vLLM client stub
 
 ### Phase 6: Service Scaffolds
 **Goal**: All five services exist in their correct forms — four as importable uv workspace members with FastAPI endpoints returning 501, one (lora-server) as a Dockerfile-only service not in the workspace — and the workspace configuration in root pyproject.toml is fully synchronized across all five required sections
@@ -148,6 +148,6 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 2. Implementation Plan | v1.0 | 2/2 | Complete | 2026-03-02 |
 | 3. Architecture Docs | v1.0 | 1/1 | Complete | 2026-03-02 |
 | 4. Cleanup | v2.0 | 3/3 | Complete | 2026-03-02 |
-| 5. Foundation Libraries | v2.0 | 0/3 | Not started | - |
+| 5. Foundation Libraries | v2.0 | 3/3 | Complete | 2026-03-02 |
 | 6. Service Scaffolds | v2.0 | 0/6 | Not started | - |
 | 7. Configuration & Quality Gate | v2.0 | 0/3 | Not started | - |

@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Milestone v2.0 — Phase 5: Foundation Libraries
+**Current focus:** Milestone v2.0 — Phase 6: Service Scaffolds
 
 ## Current Position
 
-Phase: 5 of 7 (Foundation Libraries)
+Phase: 6 of 7 (Service Scaffolds)
 Plan: 0 of N in current phase
-Status: Phase 4 complete (verified, gaps closed), ready for Phase 5
-Last activity: 2026-03-02 — Phase 4 verified: fixed check-all.sh glob pattern (9/9 must-haves)
+Status: Phase 5 complete (verified, 4/4 must-haves), ready for Phase 6
+Last activity: 2026-03-02 — Phase 5 verified: all foundation libraries importable without GPU
 
-Progress: [█████░░░░░] 50% (v1.0 complete; v2.0 phase 4 complete)
+Progress: [██████░░░░] 60% (v1.0 complete; v2.0 phases 4-5 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 4.0 min
-- Total execution time: 0.47 hours
+- Total plans completed: 10
+- Average duration: 3.6 min
+- Total execution time: 0.60 hours
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Progress: [█████░░░░░] 50% (v1.0 complete; v2.0 phase 4 comp
 | 02-implementation-plan | 2 | 6 min | 3 min |
 | 03-architecture-docs | 1 | ~5 min | ~5 min |
 | 04-cleanup | 3 | 11 min | 3.7 min |
+| 05-foundation-libraries | 3 | 8 min | 2.7 min |
 
 **Recent Trend:**
-- Last 5 plans: 4 min, ~5 min, 3 min, 5 min, 3 min
-- Trend: Stable
+- Last 5 plans: 3 min, 5 min, 3 min, 3 min, 2 min
+- Trend: Improving
 
 *Updated after each plan completion*
 
@@ -57,6 +58,9 @@ Recent decisions affecting current work:
 - [Phase 04-cleanup]: Renamed agent-a-service to rune-agent; also updated Makefile and copilot-instructions glob patterns (not in plan but contained stale references)
 - [Phase 04-cleanup]: Added Python-file filter to mypy glob pattern to skip TypeScript directories (events-ts, shared-ts)
 - [Phase 04-cleanup]: Kept torch/transformers/peft in mypy ignore_missing_imports for future Phase 5 model-training lib
+- [Phase 05-foundation-libraries]: Used explicit __tablename__ = "adapter_records" to avoid collision with shared.models Entity/Task tables
+- [Phase 05-foundation-libraries]: Used openai AsyncOpenAI with custom base_url for vLLM (not direct vllm import)
+- [Phase 05-foundation-libraries]: All GPU imports deferred behind TYPE_CHECKING guards in peft_utils.py
 
 ### Pending Todos
 
@@ -69,5 +73,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 04-03-PLAN.md (Phase 4 complete)
+Stopped at: Completed Phase 5 (Foundation Libraries) — all 3 plans executed, verified 4/4 must-haves
 Resume file: None
