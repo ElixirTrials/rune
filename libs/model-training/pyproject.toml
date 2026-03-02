@@ -1,0 +1,45 @@
+[project]
+name = "model-training"
+version = "0.1.0"
+description = "Training pipelines"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "shared",
+    "torch>=2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/model_training"]
+
+[tool.ruff]
+lint.select = ["E", "F", "W", "C", "N", "I", "D"]
+lint.ignore = ["E203", "D203", "D213", "D100", "D413", "D104"]
+lint.pydocstyle.convention = "google"
+target-version = "py312"
+line-length = 88
+exclude = ["venv", ".venv", "docs"]
+
+[tool.mypy]
+strict = true
+exclude = ["venv", ".venv", "docs"]
+plugins = []
+mypy_path = ["../shared/src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "../shared/src"]
+testpaths = ["tests"]
+addopts = "--cov=model_training --cov-branch --cov-report=term-missing"
+
+[tool.uv.sources]
+shared = { workspace = true }

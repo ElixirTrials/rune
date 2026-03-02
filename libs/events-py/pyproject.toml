@@ -1,0 +1,38 @@
+[project]
+name = "events-py"
+version = "0.1.0"
+description = "Event types and helpers for Python services (e.g. Pub/Sub)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/events_py"]
+
+[tool.ruff]
+lint.select = ["E", "F", "W", "C", "N", "I", "D"]
+lint.ignore = ["E203", "D203", "D213", "D100", "D413", "D104"]
+lint.pydocstyle.convention = "google"
+target-version = "py312"
+line-length = 88
+exclude = ["venv", ".venv", "docs"]
+
+[tool.mypy]
+strict = true
+exclude = ["venv", ".venv", "docs"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

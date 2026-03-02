@@ -1,0 +1,12 @@
+docs_dir: docs
+site_name: hitl-ui
+nav:
+  - API Reference: api/index.md
+
+# Exclude non-documentation directories from doc processing
+exclude_docs: |
+  node_modules/
+  src/
+  e2e/
+  dist/
+  .vite/

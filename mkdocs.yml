@@ -1,0 +1,125 @@
+site_name: ElixirTrials  Template Documentation
+site_description: Template Repo for ElixirTrials 
+site_author: ElixirTrials  Team
+site_url: https://elixirtrials-.github.io/template-repo/docs/
+site_dir: site/docs
+docs_dir: docs
+repo_name: elixirtrials-/template-repo
+repo_url: https://github.com/elixirtrials-/template-repo
+edit_uri: edit/main/docs/
+exclude_docs: '**/node_modules/**
+
+  **/.pytest_cache/**
+
+  **/.ruff_cache/**
+
+  **/.mypy_cache/**
+
+  **/__pycache__/**
+
+  **/src/**
+
+  **/tests/**
+
+  **/scripts/**
+
+  **/alembic/**
+
+  **/e2e/**
+
+  **/dist/**
+
+  **/.vite/**
+
+  # Exclude frontend app entry HTML files (not documentation)
+
+  hitl-ui/index.html
+
+  '
+theme:
+  name: material
+  features:
+  - navigation.tabs
+  - navigation.sections
+  - navigation.expand
+  - navigation.top
+  - search.suggest
+  - search.highlight
+  - content.code.copy
+  - content.code.annotate
+  palette:
+  - media: (prefers-color-scheme)
+    scheme: default
+    primary: indigo
+    accent: indigo
+    toggle:
+      icon: material/brightness-auto
+      name: Switch to dark mode
+  - media: '(prefers-color-scheme: dark)'
+    scheme: slate
+    primary: indigo
+    accent: indigo
+    toggle:
+      icon: material/brightness-7
+      name: Switch to light mode
+plugins:
+- search
+- monorepo
+- mermaid2:
+    arguments:
+      theme: base
+      themeVariables:
+        primaryColor: '#6366f1'
+        primaryTextColor: '#fff'
+        primaryBorderColor: '#4f46e5'
+        lineColor: '#64748b'
+        secondaryColor: '#f1f5f9'
+        tertiaryColor: '#e2e8f0'
+- mkdocstrings:
+    default_handler: python
+    handlers:
+      python:
+        paths:
+        - services/*/src
+        - libs/*/src
+        options:
+          show_source: true
+          show_root_heading: true
+          show_category_heading: true
+          show_signature_annotations: true
+          show_bases: true
+          heading_level: 2
+          members_order: source
+          docstring_style: google
+          filters:
+          - '!^_'
+          merge_init_into_class: true
+          show_if_no_docstring: false
+          separate_signature: true
+          signature_crossrefs: true
+          show_submodules: true
+          show_inheritance_diagram: true
+          show_root_toc_entry: true
+nav:
+- Home: index.md
+- Onboarding: onboarding.md
+- Components:
+  - Overview: components-overview.md
+  - agent-a-service: !include './services/agent-a-service/mkdocs.yml'
+  - agent-b-service: !include './services/agent-b-service/mkdocs.yml'
+  - api-service: !include './services/api-service/mkdocs.yml'
+  - data-pipeline: !include './libs/data-pipeline/mkdocs.yml'
+  - evaluation: !include './libs/evaluation/mkdocs.yml'
+  - events-py: !include './libs/events-py/mkdocs.yml'
+  - events-ts: !include './libs/events-ts/mkdocs.yml'
+  - hitl-ui: !include './apps/hitl-ui/mkdocs.yml'
+  - inference: !include './libs/inference/mkdocs.yml'
+  - model-training: !include './libs/model-training/mkdocs.yml'
+  - shared: !include './libs/shared/mkdocs.yml'
+  - shared-ts: !include './libs/shared-ts/mkdocs.yml'
+- Diagrams:
+  - HITL Flow: diagrams/hitl-flow.md
+  - Agent Flow: diagrams/agent-flow.md
+  - LangGraph Architecture: diagrams/langgraph-architecture.md
+- Guides:
+  - Testing Guide: testing-guide.md

@@ -1,0 +1,15 @@
+docs_dir: docs
+site_name: model-training
+nav:
+  - API Reference: api/index.md
+
+# Exclude non-documentation directories from doc processing
+exclude_docs: |
+  .pytest_cache/
+  .ruff_cache/
+  .mypy_cache/
+  __pycache__/
+  src/
+  tests/
+  scripts/
+  alembic/

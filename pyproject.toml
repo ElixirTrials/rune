@@ -1,0 +1,194 @@
+[project]
+name = "elixirtrials--template"
+version = "0.1.0"
+description = "Template Repo ElixirTrials "
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.10.0",
+    "httpx>=0.28.1",
+    "markdown>=3.4.0",
+    "playwright>=1.40.0",
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocs-monorepo-plugin>=1.0.0",
+    "mkdocs-mermaid2-plugin>=1.0.0",
+    "mkdocstrings[python]>=0.24.0",
+    "requests>=2.32.5",
+    "tenacity>=8.2.0",
+    "pytest-asyncio>=1.3.0",
+    "aioresponses>=0.7.8",
+    "fastapi>=0.128.0",
+    "sqlalchemy>=2.0.45",
+    "sqlmodel>=0.0.31",
+    "python-dotenv>=1.2.1",
+    "diskcache>=5.6.3",
+    "platformdirs>=4.5.1",
+    "torch>=2.9.1",
+    "langchain>=1.2.6",
+    "langchain-huggingface>=1.2.0",
+    "langgraph>=1.0.6",
+    "transformers>=4.57.6",
+    "accelerate>=1.12.0",
+    "bitsandbytes>=0.49.1",
+    "google-cloud-aiplatform>=1.130.0",
+    "vertexai>=1.43.0",
+    "google-genai>=1.55.0",
+    "sentence-transformers>=5.2.2",
+    "python-multipart>=0.0.21",
+    "alembic>=1.13.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.0",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.14.8",
+    "aioresponses>=0.7.8",
+    "mlflow>=3.8.1",
+    "pytest-xdist>=3.8.0",
+    "requests-mock>=1.12.1",
+]
+
+[tool.uv.workspace]
+members = [
+    "services/api-service",
+    "services/agent-a-service",
+    "services/agent-b-service",
+    "libs/data-pipeline",
+    "libs/evaluation",
+    "libs/events-py",
+    "libs/inference",
+    "libs/model-training",
+    "libs/shared",
+]
+
+[tool.mypy]
+exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks)/"
+
+[[tool.mypy.overrides]]
+module = "fastapi"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pydantic"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "yaml"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sqlalchemy"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sqlalchemy.engine"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sqlmodel"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "httpx"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "fitz",
+    "fitz.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "data_pipeline",
+    "data_pipeline.load_data",
+    "agent_a_service",
+    "agent_a_service.*",
+    "agent_b_service",
+    "agent_b_service.*",
+    "shared",
+    "shared.models",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "datasets",
+    "datasets.*",
+    "fastmcp",
+    "langchain_core",
+    "langchain_core.*",
+    "langchain_google_vertexai",
+    "langchain_google_vertexai.*",
+    "langchain_huggingface",
+    "langchain_huggingface.*",
+    "langgraph",
+    "langgraph.*",
+    "peft",
+    "peft.*",
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["services", "libs"]
+norecursedirs = ["site", "docs", ".venv", "venv", ".uv_cache", "node_modules", ".git"]
+markers = [
+    "e2e: end-to-end API workflow tests",
+    "integration: marks tests as integration tests",
+]
+filterwarnings = [
+    "ignore:Inheritance class AiohttpClientSession.*:DeprecationWarning:google\\.genai\\._api_client",
+    "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
+    "ignore:unclosed database:ResourceWarning",
+    "ignore:No data was collected:coverage.exceptions.CoverageWarning",
+    "ignore:Use 'content=<...>' to upload raw bytes:DeprecationWarning:httpx",
+]
+pythonpath = [
+    "services/api-service/src",
+    "services/agent-a-service/src",
+    "services/agent-b-service/src",
+    "libs/data-pipeline/src",
+    "libs/evaluation/src",
+    "libs/events-py/src",
+    "libs/inference/src",
+    "libs/model-training/src",
+    "libs/shared/src",
+]
+asyncio_mode = "auto"
+# Coverage is optional - use `pytest --cov` to enable
+addopts = "-n auto"
+
+[tool.coverage.run]
+source = [
+    "services/api-service/src",
+    "services/agent-a-service/src",
+    "services/agent-b-service/src",
+    "libs/data-pipeline/src",
+    "libs/evaluation/src",
+    "libs/events-py/src",
+    "libs/inference/src",
+    "libs/model-training/src",
+    "libs/shared/src",
+]
+omit = ["*/tests/*", "*/.venv/*", "*/venv/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

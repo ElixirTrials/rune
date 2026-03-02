@@ -1,0 +1,81 @@
+# Deployment stack: API, UI, Postgres, MLflow, Pub/Sub emulator.
+# Run from repo root: docker-compose -f infra/docker-compose.yml up --build
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: services/api-service/Dockerfile
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-app}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      db:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ui:
+    build:
+      context: ..
+      dockerfile: apps/hitl-ui/Dockerfile
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    ports:
+      - "5000:5000"
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow
+    volumes:
+      - mlflow_data:/mlflow
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  pubsub-emulator:
+    image: 3apag/pubsub-emulator:latest
+    ports:
+      - "${PUBSUB_EMULATOR_PORT:-8432}:8432"
+    environment:
+      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-default}
+      PUBSUB_LISTEN_ADDRESS: "0.0.0.0:8432"
+    volumes:
+      - pubsub_data:/opt/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8432 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  mlflow_data:
+  pubsub_data:
