@@ -67,3 +67,29 @@ Create executable phase prompts (PLAN.md files) for a roadmap phase with integra
 <execution_context>
 @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md...
 
+### Prompt 8
+
+<objective>
+Start a new milestone: questioning → research (optional) → requirements → roadmap.
+
+Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Gathers "what's next", updates PROJECT.md, then runs requirements → roadmap cycle.
+
+**Creates/Updates:**
+- `.planning/PROJECT.md` — updated with new milestone goals
+- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/REQUIREMENTS.md` — scoped requirements for this milestone
+- `.planning/RO...
+
+### Prompt 9
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Phase 1 Execution** (`/gsd:execute-phase 1`):
+   - Initialized execute-phase for phase 1 (README)
+   - Found 1 plan (01-01) in 1 wave
+   - Spawned gsd-executor agent to write README.md
+   - Executor completed: wrote 200-line README.md with paper-adjacent structure, 3 Mermaid dia...
+

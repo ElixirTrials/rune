@@ -177,3 +177,289 @@ Normalize phase input in step 2 before any directory lookups.
 Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
 Preserve all workflow gates (validation, research, planning, verification loop, routing).
 </process>
+
+---
+
+<objective>
+Start a new milestone: questioning → research (optional) → requirements → roadmap.
+
+Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Gathers "what's next", updates PROJECT.md, then runs requirements → roadmap cycle.
+
+**Creates/Updates:**
+- `.planning/PROJECT.md` — updated with new milestone goals
+- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/REQUIREMENTS.md` — scoped requirements for this milestone
+- `.planning/ROADMAP.md` — phase structure (continues numbering)
+- `.planning/STATE.md` — reset for new milestone
+
+**After:** `/gsd:plan-phase [N]` to start execution.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/questioning.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/project.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/requirements.md
+</execution_context>
+
+<context>
+Milestone name: Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe (optional - will prompt if not provided)
+
+**Load project context:**
+@.planning/PROJECT.md
+@.planning/STATE.md
+@.planning/MILESTONES.md
+@.planning/config.json
+
+**Load milestone context (if exists, from /gsd:discuss-milestone):**
+@.planning/MILESTONE-CONTEXT.md
+</context>
+
+<process>
+Execute the new-milestone workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md end-to-end.
+Preserve all workflow gates (validation, questioning, research, requirements, roadmap approval, commits).
+</process>
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Phase 1 Execution** (`/gsd:execute-phase 1`):
+   - Initialized execute-phase for phase 1 (README)
+   - Found 1 plan (01-01) in 1 wave
+   - Spawned gsd-executor agent to write README.md
+   - Executor completed: wrote 200-line README.md with paper-adjacent structure, 3 Mermaid diagrams, hardware requirements, references
+   - Spot-checks passed (README exists, git commit 50a141c, no Self-Check FAILED)
+   - Verifier confirmed: 6/6 must-haves, all 5 DOC requirements satisfied
+   - Phase marked complete via `phase complete "01"`
+   - .planning directory is gitignored - planning file commits skip
+
+2. **Plan Phase 2** (`/gsd:plan-phase 2`):
+   - Init showed phase_found: false, needed to create directory
+   - Created `.planning/phases/02-implementation-plan/`
+   - Context check: no CONTEXT.md found
+   - User chose "Run discuss-phase first"
+
+3. **Discuss Phase 2** (`/gsd:discuss-phase 2`):
+   - Identified gray areas for Implementation Plan (something users READ)
+   - User selected: Plan granularity, Document structure, Success criteria style
+   - **Plan granularity decisions:**
+     - 5-6 coarse phases
+     - Detailed with rationale (~30-40 lines per phase)
+     - No time estimates
+     - Single kill-switch at Phase 1
+   - **Document structure decisions:**
+     - Hybrid tone (both engineering spec AND paper-adjacent)
+     - Main doc + appendices
+     - Use MkDocs (already in repo)
+     - Remove template/placeholder docs
+     - Executive summary first
+     - Dependency diagram + tables
+   - **Success criteria decisions:**
+     - Mix of metrics and checklists
+     - MLflow for experiment tracking (firm choice)
+     - Primary + secondary signals for kill-switch
+     - Experiment sketches per phase
+     - Failed criteria = stop and reassess, no fallbacks
+   - Additional user note: Remove template docs, clean MkDocs build
+   - Wrote 02-CONTEXT.md
+
+4. **Plan Phase 2 with --auto --research** (`/gsd:plan-phase 2 --auto --research`):
+   - Initialized, phase found with context
+   - **Research phase**: Spawned gsd-phase-researcher
+     - Key finding: RTX 4090 (not 5090) - hardware discrepancy resolved
+     - 5-phase structure (Phase 0-4) recommended
+     - MkDocs cleanup required before writing docs
+     - 02-RESEARCH.md written (608 lines, HIGH confidence)
+   - **Planning phase**: Spawned gsd-planner
+     - Created 2 plans in 2 waves:
+       - 02-01 (wave 1): MkDocs cleanup, landing page, risk matrix + build order appendices
+       - 02-02 (wave 2): Main implementation plan document
+   - **Verification**: Plan checker passed all 7 dimensions
+   - **Auto-advance**: Persisted auto_advance config, proceeded to execute
+
+5. **Execute Phase 2** (auto-advanced):
+   - **Wave 1 (02-01)**:
+     - Cleaned mkdocs.yml (removed all !include directives, updated metadata)
+     - Replaced docs/index.md with Rune landing page
+     - Created docs/appendices/risk-matrix.md (3 risks)
+     - Created docs/appendices/build-order.md (8-step chain + Mermaid)
+     - Commits: 8e668e0, db968e9
+   - **Wave 2 (02-02)**:
+     - Wrote docs/implementation-plan.md (311 lines)
+     - 5 phases (0-4), kill-switch gate, MLflow tracking, experiment sketches
+     - Commit: 4fc1f01
+   - **Verification**: Passed (6/6 must-haves)
+   - Phase marked complete
+
+6. **Transition issues**:
+   - `phase complete "02"` returned `is_last_phase: true` and `next_phase: null` - this seems incorrect since Phase 3 exists
+   - ROADMAP.md shows Phase 2 checkbox still unchecked, progress table shows "0/2" and "In progress"
+   - The phase complete tool didn't fully update the ROADMAP
+
+7. **New Milestone Request**:
+   - User sent `/gsd:new-milestone` with description about restructuring the repo
+   - The skill was invoked and workflow files were loaded
+   - Need to execute the new-milestone workflow
+
+Key errors/issues:
+- .planning directory is gitignored - all commit attempts for planning files are skipped
+- `phase complete "02"` returned incorrect `is_last_phase: true` - Phase 3 still exists in ROADMAP
+- ROADMAP.md wasn't fully updated by phase complete for Phase 2 (checkbox unchecked, progress table not updated)
+- Some background bash commands had issues (uv run triggered venv creation)
+
+User messages (non-tool):
+1. `/gsd:execute-phase 1`
+2. `/gsd:plan-phase 2`
+3. `/gsd:discuss-phase 2` (after choosing "Run discuss-phase first")
+4. Various AskUserQuestion responses during discuss-phase
+5. `/gsd:plan-phase 2 --auto --research`
+6. `/gsd:new-milestone "Remove and restructure the repo..."` (sent while Phase 2 transition was in progress)
+
+The current work is: The new-milestone workflow has been invoked. All reference files have been loaded (new-milestone.md, questioning.md, ui-brand.md, project.md template, requirements.md template, config.json). The workflow needs to:
+1. Load context (PROJECT.md, MILESTONES.md, STATE.md)
+2. Gather milestone goals
+3. Determine version
+4. Update PROJECT.md
+5. Research (if selected)
+6. Define requirements
+7. Create roadmap
+
+Summary:
+1. Primary Request and Intent:
+   The user executed a complete GSD workflow cycle for the Rune project:
+   - **Phase 1 Execution**: Execute the README phase (completed successfully)
+   - **Phase 2 Planning & Execution**: Discuss context, research, plan, and execute the Implementation Plan phase (completed successfully)
+   - **New Milestone**: User requested `/gsd:new-milestone "Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe"` — this is the current pending work.
+
+   The Rune project is a local coding agent that uses LoRA weight space as episodic memory. The current milestone (v1.0) was documentation-focused with 3 phases. Phases 1 and 2 are complete; Phase 3 (Architecture Docs) remains incomplete but the user is pivoting to a new milestone focused on repo restructuring.
+
+2. Key Technical Concepts:
+   - **GSD Workflow**: execute-phase → plan-phase → discuss-phase → new-milestone orchestration
+   - **Rune Architecture**: Doc-to-LoRA hypernetwork, parametric episodic memory via LoRA adapters, recursive code generation loop
+   - **Hardware**: Dual RTX 4090 (Ada Lovelace, sm_89, 24GB VRAM each), CXL interconnect, PP=2/TP=1 (pipeline parallelism mandated due to vLLM bug #21471)
+   - **MkDocs**: Used for documentation site, pymdownx.superfences for Mermaid rendering, monorepo-plugin
+   - **MLflow**: Chosen for experiment tracking throughout implementation phases
+   - **Kill-switch gate**: 5% Pass@1 improvement on HumanEval as go/no-go threshold
+   - **QLoRA**: NF4 4-bit quantization, introduced after bfloat16 baseline validates
+   - **Build order**: adapter-registry → lora-server → model-training → api-service → rune-agent → evolution-svc → training-svc → hypernetwork
+
+3. Files and Code Sections:
+   - **README.md** (project root)
+     - Created in Phase 1 execution (200 lines)
+     - Paper-adjacent structure: abstract, motivation, approach, 3 Mermaid diagrams, hardware requirements, current status, references
+     - Committed at `50a141c`
+   
+   - **mkdocs.yml** (project root)
+     - Updated in Phase 2 execution (Plan 02-01)
+     - Removed all ElixirTrials template content, 12 `!include` directives removed
+     - Updated metadata: `site_name: Rune Documentation`
+     - Nav reduced to 4 entries: Home, Implementation Plan, Appendices (Risk Matrix, Build Order)
+     - Committed at `8e668e0`
+   
+   - **docs/index.md**
+     - Replaced with Rune landing page (9 lines)
+     - Committed at `8e668e0`
+   
+   - **docs/appendices/risk-matrix.md**
+     - Created: 3 research risks (hypernetwork mode collapse/High, adapter composition interference/Medium, catastrophic forgetting/Medium)
+     - Each with phase assignment, mitigation, warning signs, MLflow monitoring
+     - Committed at `db968e9`
+   
+   - **docs/appendices/build-order.md**
+     - Created: 8-step component dependency table + Mermaid flowchart TD dependency graph
+     - Committed at `db968e9`
+   
+   - **docs/implementation-plan.md**
+     - Primary artifact of Phase 2 (311 lines)
+     - Executive summary with Mermaid dependency graph (diamond node for kill-switch)
+     - 5 phases: Phase 0 (hardware validation), Phase 1 (kill-switch hypothesis gate), Phase 2 (adapter library + serving), Phase 3 (recursive agent loop), Phase 4 (evolution + hypernetwork)
+     - All 6 PLAN requirements satisfied
+     - Committed at `4fc1f01`
+   
+   - **.planning/phases/02-implementation-plan/02-CONTEXT.md**
+     - User decisions captured from discuss-phase
+     - Locked: 5-6 coarse phases, hybrid tone, MkDocs, MLflow, no time estimates, single kill-switch
+   
+   - **.planning/phases/02-implementation-plan/02-RESEARCH.md**
+     - 608-line research document, HIGH confidence
+     - Key finding: RTX 4090 (not 5090) is authoritative hardware spec
+     - MkDocs nav cleanup required, 5-phase structure recommended
+   
+   - **.planning/phases/02-implementation-plan/02-01-PLAN.md** and **02-02-PLAN.md**
+     - Plan 01: MkDocs cleanup + appendices (wave 1)
+     - Plan 02: Main implementation plan document (wave 2, depends on 01)
+   
+   - **.planning/config.json**
+     - Current state: `{"workflow": {"research": true, "auto_advance": true}}`
+
+4. Errors and Fixes:
+   - **.planning directory is gitignored**: All `gsd-tools commit` calls for .planning files return `"reason": "skipped_gitignored"`. This is by design (commit `e00a358` "add instructions to gitignore"). Planning files exist on disk but aren't git-tracked. Only non-.planning files (README.md, mkdocs.yml, docs/*) get committed.
+   - **`phase complete "02"` returned incorrect `is_last_phase: true`**: Phase 3 (Architecture Docs) still exists in ROADMAP.md but the CLI returned `next_phase: null`. The ROADMAP.md also wasn't fully updated — Phase 2 checkbox still shows `[ ]` (unchecked) and progress table shows "0/2" and "In progress". This is a CLI tool issue, not addressed.
+   - **`state record-session` failed**: Returned `"reason": "No session fields found in STATE.md"` — the STATE.md format may not match what the tool expects.
+   - **Background bash task timeout**: `test -f README.md` ran as background task unexpectedly (triggered uv venv creation). Output was eventually retrieved.
+   - **grep -P not available on macOS**: Used `grep -oP` which failed on darwin. Fell back to echo fallback for requirement IDs extraction.
+
+5. Problem Solving:
+   - Resolved hardware discrepancy: STACK.md had RTX 5090 references but README.md (authoritative) specifies RTX 4090. Research flagged this and all plan documents use correct RTX 4090 specs.
+   - MkDocs template cleanup: Identified that existing mkdocs.yml had 12 `!include` directives pointing to non-existent service docs. Removed all template nav entries before adding new content.
+   - Mermaid rendering compatibility: Ensured diagrams use only basic flowchart syntax (no classDef, style, subgraph) for cross-platform rendering between MkDocs and GitHub.
+
+6. All User Messages:
+   - `/gsd:execute-phase 1` — Execute phase 1
+   - `/gsd:plan-phase 2` — Plan phase 2
+   - Answer to "No CONTEXT.md found": "Run discuss-phase first"
+   - `/gsd:discuss-phase 2` — Discuss phase 2 context
+   - Gray areas selection: "Plan granularity, Document structure, Success criteria style"
+   - Granularity: "5-6 coarse phases"
+   - Phase depth: "Detailed with rationale"
+   - Timing: "No time estimates"
+   - Kill switches: "Single kill-switch at Phase 1"
+   - Continue/next: "Next area"
+   - Tone: "Both engineering spec docs and paper-adjacent docs"
+   - Visuals: "Dependency diagram + tables"
+   - Layout: "Executive summary first"
+   - File count: "I want separate engineering docs and paper-adjacent docs. The main doc + appendices is the best approach. use the native MKdocs which is built in to the repo for the docs."
+   - Continue/next: "Next area"
+   - Criteria: "Mix of metrics and checklists"
+   - Kill-switch: "Use MLFlow to track experiments and secondary signals"
+   - Failure path: "Stop and reassess"
+   - Experiment def: "Experiment sketches"
+   - Done: "Done but also add a step for removing the 'template' docs and making sure to leave a clean mkdocs build with all the documentation we've described."
+   - Create context: "Create context"
+   - `/gsd:plan-phase 2 --auto --research` — Plan phase 2 with auto-advance and forced research
+   - `/gsd:new-milestone "Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe"` — Start new milestone (sent while Phase 2 transition was in progress)
+
+7. Pending Tasks:
+   - **Execute the new-milestone workflow** for restructuring the repo. The skill has been invoked, all reference files loaded (new-milestone.md, questioning.md, ui-brand.md, templates). Need to:
+     1. Load context (PROJECT.md, MILESTONES.md, STATE.md)
+     2. Gather milestone goals (user provided description)
+     3. Determine milestone version (likely v1.1 or v2.0)
+     4. Update PROJECT.md
+     5. Update STATE.md
+     6. Research decision
+     7. Define requirements
+     8. Create roadmap
+   - **Note**: Phase 3 (Architecture Docs) from v1.0 milestone is still incomplete. The user is pivoting away from it.
+   - **Note**: ROADMAP.md Phase 2 checkbox and progress table were not properly updated by `phase complete`.
+
+8. Current Work:
+   The `/gsd:new-milestone` skill was invoked with the user's description: "Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe."
+   
+   All reference workflow files have been loaded into context (new-milestone.md, questioning.md, ui-brand.md, project.md template, requirements.md template). The config.json shows `workflow.research: true` and `workflow.auto_advance: true`.
+   
+   The workflow process needs to begin at Step 1 (Load Context) — reading PROJECT.md, MILESTONES.md (may not exist), and STATE.md.
+
+9. Optional Next Step:
+   Execute the new-milestone workflow starting from Step 1:
+   - Read `.planning/PROJECT.md` and `.planning/MILESTONES.md` (if exists)
+   - Run `node gsd-tools.cjs init new-milestone` to get model configs
+   - Present what shipped in last milestone, gather milestone goals from the user's provided description
+   - The user's exact request: `"Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe"`
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/0bf13c74-ac3a-40fc-8b1a-4968b155f2fb.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
