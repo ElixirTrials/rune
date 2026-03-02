@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 4 of 7 (Cleanup)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-03-02 — Completed 04-01 (remove agent-b-service)
+Last activity: 2026-03-02 — Completed 04-02 (rename agent-a-service to rune-agent)
 
 Progress: [████░░░░░░] 40% (v1.0 complete; v2.0 phase 4 in progress)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 4 min
-- Total execution time: 0.35 hours
+- Total plans completed: 6
+- Average duration: 4.2 min
+- Total execution time: 0.42 hours
 
 **By Phase:**
 
@@ -30,10 +30,10 @@ Progress: [████░░░░░░] 40% (v1.0 complete; v2.0 phase 4 in p
 | 01-readme | 1 | 6 min | 6 min |
 | 02-implementation-plan | 2 | 6 min | 3 min |
 | 03-architecture-docs | 1 | ~5 min | ~5 min |
-| 04-cleanup | 1 | 3 min | 3 min |
+| 04-cleanup | 2 | 8 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 6 min, 2 min, 4 min, ~5 min, 3 min
+- Last 5 plans: 2 min, 4 min, ~5 min, 3 min, 5 min
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -54,6 +54,7 @@ Recent decisions affecting current work:
 - [Phase 6]: LoraServerConfig must raise ValueError on tensor_parallel_size=2 (vLLM bug #21471)
 - [Phase 7]: QA-01 through QA-04 are a terminal validation gate; all must pass before v2.0 is complete
 - [Phase 04-cleanup]: Removed agent-b-service from Makefile typecheck target (not in plan but required for correctness)
+- [Phase 04-cleanup]: Renamed agent-a-service to rune-agent; also updated Makefile and copilot-instructions glob patterns (not in plan but contained stale references)
 
 ### Pending Todos
 
@@ -66,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 04-01-PLAN.md
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
