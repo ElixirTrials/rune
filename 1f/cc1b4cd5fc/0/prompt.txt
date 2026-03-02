@@ -1,0 +1,1183 @@
+/gsd:execute-phase 1
+
+---
+
+<objective>
+Execute all plans in a phase using wave-based parallel execution.
+
+Orchestrator stays lean: discover plans, analyze dependencies, group into waves, spawn subagents, collect results. Each subagent loads the full execute-plan context and handles its own plan.
+
+Context budget: ~15% orchestrator, 100% fresh per subagent.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase: 1
+
+**Flags:**
+- `--gaps-only` — Execute only gap closure plans (plans with `gap_closure: true` in frontmatter). Use after verify-work creates fix plans.
+
+@.planning/ROADMAP.md
+@.planning/STATE.md
+</context>
+
+<process>
+Execute the execute-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md end-to-end.
+Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
+</process>
+
+---
+
+/gsd:plan-phase 2
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 2 (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+<objective>
+Extract implementation decisions that downstream agents need — researcher and planner will use CONTEXT.md to know what to investigate and what choices are locked.
+
+**How it works:**
+1. Analyze the phase to identify gray areas (UI, UX, behavior, etc.)
+2. Present gray areas — user selects which to discuss
+3. Deep-dive each selected area until satisfied
+4. Create CONTEXT.md with decisions that guide research and planning
+
+**Output:** `{phase_num}-CONTEXT.md` — decisions clear enough that downstream agents can act without asking the user again
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/discuss-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/context.md
+</execution_context>
+
+<context>
+Phase number: 2 (required)
+
+**Load project state:**
+@.planning/STATE.md
+
+**Load roadmap:**
+@.planning/ROADMAP.md
+</context>
+
+<process>
+1. Validate phase number (error if missing or not in roadmap)
+2. Check if CONTEXT.md exists (offer update/view/skip if yes)
+3. **Analyze phase** — Identify domain and generate phase-specific gray areas
+4. **Present gray areas** — Multi-select: which to discuss? (NO skip option)
+5. **Deep-dive each area** — 4 questions per area, then offer more/next
+6. **Write CONTEXT.md** — Sections match areas discussed
+7. Offer next steps (research or plan)
+
+**CRITICAL: Scope guardrail**
+- Phase boundary from ROADMAP.md is FIXED
+- Discussion clarifies HOW to implement, not WHETHER to add more
+- If user suggests new capabilities: "That's its own phase. I'll note it for later."
+- Capture deferred ideas — don't lose them, don't act on them
+
+**Domain-aware gray areas:**
+Gray areas depend on what's being built. Analyze the phase goal:
+- Something users SEE → layout, density, interactions, states
+- Something users CALL → responses, errors, auth, versioning
+- Something users RUN → output format, flags, modes, error handling
+- Something users READ → structure, tone, depth, flow
+- Something being ORGANIZED → criteria, grouping, naming, exceptions
+
+Generate 3-4 **phase-specific** gray areas, not generic categories.
+
+**Probing depth:**
+- Ask 4 questions per area before checking
+- "More questions about [area], or move to next?"
+- If more → ask 4 more, check again
+- After all areas → "Ready to create context?"
+
+**Do NOT ask about (Claude handles these):**
+- Technical implementation
+- Architecture choices
+- Performance concerns
+- Scope expansion
+</process>
+
+<success_criteria>
+- Gray areas identified through intelligent analysis
+- User chose which areas to discuss
+- Each selected area explored until satisfied
+- Scope creep redirected to deferred ideas
+- CONTEXT.md captures decisions, not vague vision
+- User knows next steps
+</success_criteria>
+
+---
+
+/gsd:plan-phase 2 --auto --research
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 2 --auto --research (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+<objective>
+Start a new milestone: questioning → research (optional) → requirements → roadmap.
+
+Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Gathers "what's next", updates PROJECT.md, then runs requirements → roadmap cycle.
+
+**Creates/Updates:**
+- `.planning/PROJECT.md` — updated with new milestone goals
+- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/REQUIREMENTS.md` — scoped requirements for this milestone
+- `.planning/ROADMAP.md` — phase structure (continues numbering)
+- `.planning/STATE.md` — reset for new milestone
+
+**After:** `/gsd:plan-phase [N]` to start execution.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/questioning.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/project.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/requirements.md
+</execution_context>
+
+<context>
+Milestone name: Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe (optional - will prompt if not provided)
+
+**Load project context:**
+@.planning/PROJECT.md
+@.planning/STATE.md
+@.planning/MILESTONES.md
+@.planning/config.json
+
+**Load milestone context (if exists, from /gsd:discuss-milestone):**
+@.planning/MILESTONE-CONTEXT.md
+</context>
+
+<process>
+Execute the new-milestone workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md end-to-end.
+Preserve all workflow gates (validation, questioning, research, requirements, roadmap approval, commits).
+</process>
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Phase 1 Execution** (`/gsd:execute-phase 1`):
+   - Initialized execute-phase for phase 1 (README)
+   - Found 1 plan (01-01) in 1 wave
+   - Spawned gsd-executor agent to write README.md
+   - Executor completed: wrote 200-line README.md with paper-adjacent structure, 3 Mermaid diagrams, hardware requirements, references
+   - Spot-checks passed (README exists, git commit 50a141c, no Self-Check FAILED)
+   - Verifier confirmed: 6/6 must-haves, all 5 DOC requirements satisfied
+   - Phase marked complete via `phase complete "01"`
+   - .planning directory is gitignored - planning file commits skip
+
+2. **Plan Phase 2** (`/gsd:plan-phase 2`):
+   - Init showed phase_found: false, needed to create directory
+   - Created `.planning/phases/02-implementation-plan/`
+   - Context check: no CONTEXT.md found
+   - User chose "Run discuss-phase first"
+
+3. **Discuss Phase 2** (`/gsd:discuss-phase 2`):
+   - Identified gray areas for Implementation Plan (something users READ)
+   - User selected: Plan granularity, Document structure, Success criteria style
+   - **Plan granularity decisions:**
+     - 5-6 coarse phases
+     - Detailed with rationale (~30-40 lines per phase)
+     - No time estimates
+     - Single kill-switch at Phase 1
+   - **Document structure decisions:**
+     - Hybrid tone (both engineering spec AND paper-adjacent)
+     - Main doc + appendices
+     - Use MkDocs (already in repo)
+     - Remove template/placeholder docs
+     - Executive summary first
+     - Dependency diagram + tables
+   - **Success criteria decisions:**
+     - Mix of metrics and checklists
+     - MLflow for experiment tracking (firm choice)
+     - Primary + secondary signals for kill-switch
+     - Experiment sketches per phase
+     - Failed criteria = stop and reassess, no fallbacks
+   - Additional user note: Remove template docs, clean MkDocs build
+   - Wrote 02-CONTEXT.md
+
+4. **Plan Phase 2 with --auto --research** (`/gsd:plan-phase 2 --auto --research`):
+   - Initialized, phase found with context
+   - **Research phase**: Spawned gsd-phase-researcher
+     - Key finding: RTX 4090 (not 5090) - hardware discrepancy resolved
+     - 5-phase structure (Phase 0-4) recommended
+     - MkDocs cleanup required before writing docs
+     - 02-RESEARCH.md written (608 lines, HIGH confidence)
+   - **Planning phase**: Spawned gsd-planner
+     - Created 2 plans in 2 waves:
+       - 02-01 (wave 1): MkDocs cleanup, landing page, risk matrix + build order appendices
+       - 02-02 (wave 2): Main implementation plan document
+   - **Verification**: Plan checker passed all 7 dimensions
+   - **Auto-advance**: Persisted auto_advance config, proceeded to execute
+
+5. **Execute Phase 2** (auto-advanced):
+   - **Wave 1 (02-01)**:
+     - Cleaned mkdocs.yml (removed all !include directives, updated metadata)
+     - Replaced docs/index.md with Rune landing page
+     - Created docs/appendices/risk-matrix.md (3 risks)
+     - Created docs/appendices/build-order.md (8-step chain + Mermaid)
+     - Commits: 8e668e0, db968e9
+   - **Wave 2 (02-02)**:
+     - Wrote docs/implementation-plan.md (311 lines)
+     - 5 phases (0-4), kill-switch gate, MLflow tracking, experiment sketches
+     - Commit: 4fc1f01
+   - **Verification**: Passed (6/6 must-haves)
+   - Phase marked complete
+
+6. **Transition issues**:
+   - `phase complete "02"` returned `is_last_phase: true` and `next_phase: null` - this seems incorrect since Phase 3 exists
+   - ROADMAP.md shows Phase 2 checkbox still unchecked, progress table shows "0/2" and "In progress"
+   - The phase complete tool didn't fully update the ROADMAP
+
+7. **New Milestone Request**:
+   - User sent `/gsd:new-milestone` with description about restructuring the repo
+   - The skill was invoked and workflow files were loaded
+   - Need to execute the new-milestone workflow
+
+Key errors/issues:
+- .planning directory is gitignored - all commit attempts for planning files are skipped
+- `phase complete "02"` returned incorrect `is_last_phase: true` - Phase 3 still exists in ROADMAP
+- ROADMAP.md wasn't fully updated by phase complete for Phase 2 (checkbox unchecked, progress table not updated)
+- Some background bash commands had issues (uv run triggered venv creation)
+
+User messages (non-tool):
+1. `/gsd:execute-phase 1`
+2. `/gsd:plan-phase 2`
+3. `/gsd:discuss-phase 2` (after choosing "Run discuss-phase first")
+4. Various AskUserQuestion responses during discuss-phase
+5. `/gsd:plan-phase 2 --auto --research`
+6. `/gsd:new-milestone "Remove and restructure the repo..."` (sent while Phase 2 transition was in progress)
+
+The current work is: The new-milestone workflow has been invoked. All reference files have been loaded (new-milestone.md, questioning.md, ui-brand.md, project.md template, requirements.md template, config.json). The workflow needs to:
+1. Load context (PROJECT.md, MILESTONES.md, STATE.md)
+2. Gather milestone goals
+3. Determine version
+4. Update PROJECT.md
+5. Research (if selected)
+6. Define requirements
+7. Create roadmap
+
+Summary:
+1. Primary Request and Intent:
+   The user executed a complete GSD workflow cycle for the Rune project:
+   - **Phase 1 Execution**: Execute the README phase (completed successfully)
+   - **Phase 2 Planning & Execution**: Discuss context, research, plan, and execute the Implementation Plan phase (completed successfully)
+   - **New Milestone**: User requested `/gsd:new-milestone "Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe"` — this is the current pending work.
+
+   The Rune project is a local coding agent that uses LoRA weight space as episodic memory. The current milestone (v1.0) was documentation-focused with 3 phases. Phases 1 and 2 are complete; Phase 3 (Architecture Docs) remains incomplete but the user is pivoting to a new milestone focused on repo restructuring.
+
+2. Key Technical Concepts:
+   - **GSD Workflow**: execute-phase → plan-phase → discuss-phase → new-milestone orchestration
+   - **Rune Architecture**: Doc-to-LoRA hypernetwork, parametric episodic memory via LoRA adapters, recursive code generation loop
+   - **Hardware**: Dual RTX 4090 (Ada Lovelace, sm_89, 24GB VRAM each), CXL interconnect, PP=2/TP=1 (pipeline parallelism mandated due to vLLM bug #21471)
+   - **MkDocs**: Used for documentation site, pymdownx.superfences for Mermaid rendering, monorepo-plugin
+   - **MLflow**: Chosen for experiment tracking throughout implementation phases
+   - **Kill-switch gate**: 5% Pass@1 improvement on HumanEval as go/no-go threshold
+   - **QLoRA**: NF4 4-bit quantization, introduced after bfloat16 baseline validates
+   - **Build order**: adapter-registry → lora-server → model-training → api-service → rune-agent → evolution-svc → training-svc → hypernetwork
+
+3. Files and Code Sections:
+   - **README.md** (project root)
+     - Created in Phase 1 execution (200 lines)
+     - Paper-adjacent structure: abstract, motivation, approach, 3 Mermaid diagrams, hardware requirements, current status, references
+     - Committed at `50a141c`
+   
+   - **mkdocs.yml** (project root)
+     - Updated in Phase 2 execution (Plan 02-01)
+     - Removed all ElixirTrials template content, 12 `!include` directives removed
+     - Updated metadata: `site_name: Rune Documentation`
+     - Nav reduced to 4 entries: Home, Implementation Plan, Appendices (Risk Matrix, Build Order)
+     - Committed at `8e668e0`
+   
+   - **docs/index.md**
+     - Replaced with Rune landing page (9 lines)
+     - Committed at `8e668e0`
+   
+   - **docs/appendices/risk-matrix.md**
+     - Created: 3 research risks (hypernetwork mode collapse/High, adapter composition interference/Medium, catastrophic forgetting/Medium)
+     - Each with phase assignment, mitigation, warning signs, MLflow monitoring
+     - Committed at `db968e9`
+   
+   - **docs/appendices/build-order.md**
+     - Created: 8-step component dependency table + Mermaid flowchart TD dependency graph
+     - Committed at `db968e9`
+   
+   - **docs/implementation-plan.md**
+     - Primary artifact of Phase 2 (311 lines)
+     - Executive summary with Mermaid dependency graph (diamond node for kill-switch)
+     - 5 phases: Phase 0 (hardware validation), Phase 1 (kill-switch hypothesis gate), Phase 2 (adapter library + serving), Phase 3 (recursive agent loop), Phase 4 (evolution + hypernetwork)
+     - All 6 PLAN requirements satisfied
+     - Committed at `4fc1f01`
+   
+   - **.planning/phases/02-implementation-plan/02-CONTEXT.md**
+     - User decisions captured from discuss-phase
+     - Locked: 5-6 coarse phases, hybrid tone, MkDocs, MLflow, no time estimates, single kill-switch
+   
+   - **.planning/phases/02-implementation-plan/02-RESEARCH.md**
+     - 608-line research document, HIGH confidence
+     - Key finding: RTX 4090 (not 5090) is authoritative hardware spec
+     - MkDocs nav cleanup required, 5-phase structure recommended
+   
+   - **.planning/phases/02-implementation-plan/02-01-PLAN.md** and **02-02-PLAN.md**
+     - Plan 01: MkDocs cleanup + appendices (wave 1)
+     - Plan 02: Main implementation plan document (wave 2, depends on 01)
+   
+   - **.planning/config.json**
+     - Current state: `{"workflow": {"research": true, "auto_advance": true}}`
+
+4. Errors and Fixes:
+   - **.planning directory is gitignored**: All `gsd-tools commit` calls for .planning files return `"reason": "skipped_gitignored"`. This is by design (commit `e00a358` "add instructions to gitignore"). Planning files exist on disk but aren't git-tracked. Only non-.planning files (README.md, mkdocs.yml, docs/*) get committed.
+   - **`phase complete "02"` returned incorrect `is_last_phase: true`**: Phase 3 (Architecture Docs) still exists in ROADMAP.md but the CLI returned `next_phase: null`. The ROADMAP.md also wasn't fully updated — Phase 2 checkbox still shows `[ ]` (unchecked) and progress table shows "0/2" and "In progress". This is a CLI tool issue, not addressed.
+   - **`state record-session` failed**: Returned `"reason": "No session fields found in STATE.md"` — the STATE.md format may not match what the tool expects.
+   - **Background bash task timeout**: `test -f README.md` ran as background task unexpectedly (triggered uv venv creation). Output was eventually retrieved.
+   - **grep -P not available on macOS**: Used `grep -oP` which failed on darwin. Fell back to echo fallback for requirement IDs extraction.
+
+5. Problem Solving:
+   - Resolved hardware discrepancy: STACK.md had RTX 5090 references but README.md (authoritative) specifies RTX 4090. Research flagged this and all plan documents use correct RTX 4090 specs.
+   - MkDocs template cleanup: Identified that existing mkdocs.yml had 12 `!include` directives pointing to non-existent service docs. Removed all template nav entries before adding new content.
+   - Mermaid rendering compatibility: Ensured diagrams use only basic flowchart syntax (no classDef, style, subgraph) for cross-platform rendering between MkDocs and GitHub.
+
+6. All User Messages:
+   - `/gsd:execute-phase 1` — Execute phase 1
+   - `/gsd:plan-phase 2` — Plan phase 2
+   - Answer to "No CONTEXT.md found": "Run discuss-phase first"
+   - `/gsd:discuss-phase 2` — Discuss phase 2 context
+   - Gray areas selection: "Plan granularity, Document structure, Success criteria style"
+   - Granularity: "5-6 coarse phases"
+   - Phase depth: "Detailed with rationale"
+   - Timing: "No time estimates"
+   - Kill switches: "Single kill-switch at Phase 1"
+   - Continue/next: "Next area"
+   - Tone: "Both engineering spec docs and paper-adjacent docs"
+   - Visuals: "Dependency diagram + tables"
+   - Layout: "Executive summary first"
+   - File count: "I want separate engineering docs and paper-adjacent docs. The main doc + appendices is the best approach. use the native MKdocs which is built in to the repo for the docs."
+   - Continue/next: "Next area"
+   - Criteria: "Mix of metrics and checklists"
+   - Kill-switch: "Use MLFlow to track experiments and secondary signals"
+   - Failure path: "Stop and reassess"
+   - Experiment def: "Experiment sketches"
+   - Done: "Done but also add a step for removing the 'template' docs and making sure to leave a clean mkdocs build with all the documentation we've described."
+   - Create context: "Create context"
+   - `/gsd:plan-phase 2 --auto --research` — Plan phase 2 with auto-advance and forced research
+   - `/gsd:new-milestone "Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe"` — Start new milestone (sent while Phase 2 transition was in progress)
+
+7. Pending Tasks:
+   - **Execute the new-milestone workflow** for restructuring the repo. The skill has been invoked, all reference files loaded (new-milestone.md, questioning.md, ui-brand.md, templates). Need to:
+     1. Load context (PROJECT.md, MILESTONES.md, STATE.md)
+     2. Gather milestone goals (user provided description)
+     3. Determine milestone version (likely v1.1 or v2.0)
+     4. Update PROJECT.md
+     5. Update STATE.md
+     6. Research decision
+     7. Define requirements
+     8. Create roadmap
+   - **Note**: Phase 3 (Architecture Docs) from v1.0 milestone is still incomplete. The user is pivoting away from it.
+   - **Note**: ROADMAP.md Phase 2 checkbox and progress table were not properly updated by `phase complete`.
+
+8. Current Work:
+   The `/gsd:new-milestone` skill was invoked with the user's description: "Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe."
+   
+   All reference workflow files have been loaded into context (new-milestone.md, questioning.md, ui-brand.md, project.md template, requirements.md template). The config.json shows `workflow.research: true` and `workflow.auto_advance: true`.
+   
+   The workflow process needs to begin at Step 1 (Load Context) — reading PROJECT.md, MILESTONES.md (may not exist), and STATE.md.
+
+9. Optional Next Step:
+   Execute the new-milestone workflow starting from Step 1:
+   - Read `.planning/PROJECT.md` and `.planning/MILESTONES.md` (if exists)
+   - Run `node gsd-tools.cjs init new-milestone` to get model configs
+   - Present what shipped in last milestone, gather milestone goals from the user's provided description
+   - The user's exact request: `"Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe"`
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/0bf13c74-ac3a-40fc-8b1a-4968b155f2fb.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+<task-notification>
+<task-id>a3d3961bf2c4343d2</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "Research features for repo restructuring" completed</summary>
+<result>410 lines, 33KB. Here is the structured result:
+
+---
+
+## RESEARCH COMPLETE
+
+**Project:** Rune monorepo restructuring
+**Mode:** Ecosystem (scaffold-feature analysis)
+**Confidence:** HIGH for scaffold philosophy and component structure; MEDIUM-HIGH for specific schema field choices
+
+### Key Findings
+
+- **Scaffold vs implementation line is clear**: A scaffold passes ruff/mypy, exports the right public interfaces, uses `raise NotImplementedError` in function bodies, and requires no GPU to import or test. Anything beyond that is implementation.
+- **`libs/adapter-registry` is the only true blocker**: All 7 other components have import dependencies on it. Scaffold sequence must start here.
+- **`services/rune-agent` has one legitimate scaffold logic piece**: `should_retry(state) -> str` is simple enough (a comparison) and necessary enough (graph edges won't compile without a real conditional function) that it belongs in the scaffold.
+- **`services/lora-server` has one legitimate scaffold validation piece**: `LoraServerConfig` raising `ValueError` when `tensor_parallel_size=2` encodes the hardware constraint at the type level and is worth the 3 lines.
+- **501 Not Implemented is the right HTTP status for stub API routes** — 200 with fake data is misleading; 501 accurately communicates "route exists, implementation pending."
+- **No GPU imports at module level in any component** — the test suite cannot require CUDA; torch/peft/bitsandbytes imports must be gated inside function bodies.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/FEATURES.md` | Per-component scaffold feature lists, table stakes, differentiators, anti-features, dependency ordering |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Scaffold philosophy | HIGH | Well-established pattern; directly grounded in existing codebase conventions |
+| `adapter-registry` schema | HIGH | Fields specified verbatim in Phase 2 deliverables and risk matrix |
+| `lora-server` structure | HIGH | PP=2/TP=1 config is explicit in implementation plan; Dockerfile is Phase 2 deliverable |
+| `rune-agent` state/graph | HIGH | Phase 3 deliverable explicitly describes the `generate→execute→reflect→save` StateGraph |
+| `training-svc` / `evolution-svc` schemas | MEDIUM-HIGH | Phase 4 deliverables describe endpoints; request schemas are reasonable inferences from the training job and lifecycle concepts |
+| `model-training` / `inference` extensions | MEDIUM | Function names follow PEFT conventions; specific signatures are inferred from rune-agent usage patterns |
+
+### Roadmap Implications
+
+**Mandatory ordering:** `libs/adapter-registry` first — it is an import-time dependency for every other component. Nothing else can be scaffolded until it exists and is importable.
+
+**Parallel after registry:** `libs/model-training` extensions, `services/lora-server`, `services/api-service` extensions can all be scaffolded in parallel since they depend on adapter-registry but not each other.
+
+**Scaffold last:** `services/rune-agent` depends on adapter-registry, inference extensions, and the lora-server client — it is the last scaffold to build because it integrates all others.
+
+**One rule to enforce:** No GPU imports at module level in any scaffold. The test suite must pass in a CPU-only environment. This is the single most likely mistake that will break CI.
+
+### Open Questions
+
+- Whether `services/lora-server` should have its own FastAPI health-check sidecar or rely entirely on the vLLM server's native health endpoint — the scaffold currently includes a sidecar FastAPI app, but this may be unnecessary if vLLM's `/health` is sufficient.
+- Whether `libs/inference` extensions should import from `services/lora-server` (creating a lib→service dependency, which is unusual) or whether `VLLMClient` should be extracted to a shared lib — the scaffold currently imports from lora-server, which may need architectural review.</result>
+<usage><total_tokens>84097</total_tokens><tool_uses>36</tool_uses><duration_ms>318841</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a3d3961bf2c4343d2.output
+
+---
+
+<task-notification>
+<task-id>a94e30312e4eac493</task-id>
+<tool-use-id>toolu_01QyQoYPQmbWrb59aBtXMAth</tool-use-id>
+<status>completed</status>
+<summary>Agent "Research repo structure for milestone" completed</summary>
+<result>All sections are present. Here is the structured result:
+
+---
+
+## RESEARCH COMPLETE
+
+**Project:** Rune v2.0 Monorepo Restructuring
+**Mode:** Ecosystem (structural analysis)
+**Confidence:** HIGH
+
+### Key Findings
+
+- **`agent-b-service` is dead weight.** It has identical structure to `agent-a-service` but no Rune equivalent. Delete it cleanly — 5 places in root `pyproject.toml` reference it.
+
+- **`agent-a-service` → `rune-agent` is a rename, not a rebuild.** The LangGraph skeleton (state.py, graph.py, nodes.py) is exactly what rune-agent needs. The template stub content gets replaced, the structure is preserved.
+
+- **`services/lora-server` must NOT be a uv workspace member.** It is a Dockerfile + shell script wrapping the `vllm serve` CLI — no Python package, no `pyproject.toml`. Every other `services/` directory is a workspace member, so this exception needs explicit documentation to prevent confusion.
+
+- **`adapter-registry` is the first new lib to create** — four other components (`rune-agent`, `training-svc`, `evolution-svc`, `api-service`) depend on it. It must exist in the workspace before those services can declare workspace dependencies on it.
+
+- **Root `pyproject.toml` has four change sites** — workspace members, mypy overrides, pytest pythonpath, and coverage source — all must be updated in sync whenever a component is added, renamed, or removed. Missing any one causes `uv sync`, `make typecheck`, or `make test` to break.
+
+- **Alembic import trap:** New SQLModel tables (in `adapter-registry`, `shared/rune_models.py`) must be explicitly imported in `services/api-service/alembic/env.py` or `alembic revision --autogenerate` generates an empty migration.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/ARCHITECTURE.md` | Complete restructuring plan: component mapping, scaffold structures, pyproject.toml diffs, build order, risks |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Component disposition (keep/rename/remove/extend) | HIGH | Direct source inspection of all files; no ambiguity |
+| uv workspace mechanics | HIGH | Inspected actual pyproject.toml; uv workspace semantics are well-documented |
+| New component directory structure | HIGH | Follows established patterns from existing components |
+| pyproject.toml change details | HIGH | All paths verified by inspection; diffs are concrete, not approximate |
+| Risks | MEDIUM-HIGH | Alembic and mypy risks from inspection; uv lock risk from known uv behavior |
+
+### Roadmap Implications
+
+The build order for scaffolding is:
+1. Remove `agent-b-service`
+2. Rename `agent-a-service` → `rune-agent`
+3. Create `libs/adapter-registry` (foundation dependency)
+4. Extend `libs/shared`, `libs/model-training`, `libs/inference`
+5. Extend `services/api-service` (add routers + alembic imports)
+6. Create `services/lora-server` (Dockerfile only)
+7. Create `services/training-svc`
+8. Create `services/evolution-svc`
+9. Extend `apps/hitl-ui`
+10. Update `infra/docker-compose.yml` and `mkdocs.yml`
+
+Each step is blocked by the previous — the workspace dependency graph enforces this ordering. Steps 1-2 can be done in either order (no dependency between them).
+
+### Open Questions
+
+- Whether `libs/data-pipeline` and `libs/evaluation` should be repurposed for Rune-specific meanings (training data pipeline, adapter fitness evaluation) or left as generic stubs. Decision deferred to implementation milestone.
+- GPU lease coordination mechanism between `training-svc` and `lora-server` — whether to use Redis, SQLite flag, or a direct API call. Deferred to implementation.</result>
+<usage><total_tokens>93291</total_tokens><tool_uses>45</tool_uses><duration_ms>366864</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a94e30312e4eac493.output
+
+---
+
+<task-notification>
+<task-id>a889dab7aa4966820</task-id>
+<tool-use-id>toolu_01SxpQonn6pZqSFpxNdp8Y78</tool-use-id>
+<status>completed</status>
+<summary>Agent "Write Phase 3 architecture docs" completed</summary>
+<result>All success criteria met. Let me also note one thing -- the success criteria mention "consumer Blackwell" but the hardware is actually RTX 4090 (Ada Lovelace). My multi-gpu-strategy.md correctly identifies the hardware as Ada Lovelace/RTX 4090 and correctly states the NVLink absence as the primary reason TP is excluded, which is the accurate description.
+
+## PLAN COMPLETE
+
+**Plan:** 03-01 (Architecture Docs)
+**Tasks:** 6/6
+**SUMMARY:** `/Users/noahdolevelixir/Code/rune/.planning/phases/03-architecture-docs/03-01-SUMMARY.md`
+
+**Commits:**
+- `e816cb9`: feat(03-arch): add 4 architecture documents and update MkDocs nav
+
+**Duration:** ~5 min
+
+### What was delivered
+
+**4 architecture documents** added to `/Users/noahdolevelixir/Code/rune/docs/architecture/`:
+
+1. **`recursive-loop.md`** (131 lines) -- Step-by-step data flow for the generate-execute-reflect-distill loop. Documents what enters and exits each step, retry conditions (tests fail + attempts remaining), termination conditions (tests pass or max attempts reached), and the full trajectory schema passed to distillation.
+
+2. **`monorepo-mapping.md`** (126 lines) -- Maps all 4 new Rune services (`rune-agent`, `lora-server`, `training-svc`, `evolution-svc`) and 1 new library (`adapter-registry`) to their positions in the monorepo. Names integration points: GPU lease (lora-server <-> training-svc), adapter router (rune-agent <-> lora-server), event publishing (via events-py), and REST API (via api-service). Lists 3 extended components and 8 unchanged ones.
+
+3. **`adapter-storage.md`** (142 lines) -- Specifies filesystem path convention (`~/.rune/adapters/{level}/{slug}/v{version}/`), full SQLite schema with `adapters` table (id, version, task_type, created_at, file_path, pass_rate, plus 11 additional fields) and `trajectories` table, 6 indexes, and write-once enforcement at the storage API level (no update/overwrite functions exposed).
+
+4. **`multi-gpu-strategy.md`** (133 lines) -- Specifies PP=2, TP=1 as required configuration. Documents three reasons TP is excluded: no NVLink on RTX 4090, vLLM bug #21471 (silent output corruption with TP+LoRA), and CXL not providing the low-latency GPU-to-GPU path TP requires. Includes VRAM budget tables for serving and training modes, and the full GPU lease protocol with state diagram.
+
+**MkDocs nav** updated in `/Users/noahdolevelixir/Code/rune/mkdocs.yml` with Architecture section containing all 4 docs. Build succeeds (non-strict; pre-existing template warnings prevent strict mode).</result>
+<usage><total_tokens>57948</total_tokens><tool_uses>53</tool_uses><duration_ms>479026</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a889dab7aa4966820.output
+
+---
+
+<task-notification>
+<task-id>a3ef70c2c28918031</task-id>
+<tool-use-id>toolu_01SmbzsU6cTrEbzsNfkUkyhN</tool-use-id>
+<status>completed</status>
+<summary>Agent "Research stack for repo restructuring" completed</summary>
+<result>## RESEARCH COMPLETE
+
+**Project:** Rune monorepo restructuring — Stack dimension
+**Mode:** Ecosystem (per-component dependency research)
+**Confidence:** MEDIUM-HIGH
+
+### Key Findings
+
+- **vLLM is not a Python import dependency** of `lora-server` — it is launched as a subprocess (`asyncio.create_subprocess_exec`), and the `openai` package (v2.24.0) is used as the HTTP client to the vLLM OpenAI-compatible API. This prevents CUDA from bleeding into non-GPU service containers.
+
+- **`langgraph-checkpoint-sqlite` is a separate PyPI package** (v3.0.1) and must be explicitly declared in `rune-agent`'s deps — it is not bundled with `langgraph` core since LangGraph v0.2.
+
+- **Dramatiq 2.0.1 beats Celery** for `training-svc` and `evolution-svc` — 10x faster in 2026 benchmarks, native Python 3.10+ async, simpler API, same Redis/RabbitMQ broker support.
+
+- **Scaffold deps must be installable without CUDA** — GPU packages (torch, peft, trl, transformers, bitsandbytes) belong exclusively in `training-svc`'s full implementation block and are kept out of all other components.
+
+- **Template components being superseded:** `agent-a-service`, `agent-b-service`, `libs/inference`, `libs/model-training`, `libs/data-pipeline`, `libs/evaluation`, `libs/events-py` should be removed from workspace members. `api-service` and `libs/shared` stay.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/STACK.md` | Per-component dependency lists, pyproject.toml templates, scaffold vs full deps, version compatibility, workspace changes |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Package versions | HIGH | Verified against PyPI directly for all 19 packages |
+| Scaffold dep logic | HIGH | Based on component role analysis; GPU isolation is a clear architectural boundary |
+| vLLM subprocess pattern | HIGH | Confirmed by vLLM official docs (OpenAI-compatible server, `/v1/load_lora_adapter` endpoint) |
+| Dramatiq recommendation | MEDIUM | Multiple benchmark sources agree; no single definitive 2026 comparison |
+| FastAPI version | MEDIUM | Conflicting search results (0.135.1 most likely current) |
+
+### Roadmap Implications
+
+- **Phase 1 (scaffold):** All five new components can be wired up with pure-Python deps (no GPU required). This enables CI/CD and test infrastructure before any GPU code exists.
+- **Phase 2 (GPU integration):** Add full implementation deps to `training-svc` only; lora-server stays GPU-free (subprocess pattern).
+- **Workspace root cleanup** should happen in the same phase as scaffold creation to avoid version conflicts from the template's bloated root deps.
+
+### Open Questions
+
+- Whether to use E2B, Modal, or subprocess-based sandboxing for `rune-agent` — left as a scaffold decision (no extra dep needed until the choice is made)
+- Whether `evolution-svc` needs Dramatiq immediately or FastAPI `BackgroundTasks` is sufficient for the first evaluation milestone
+- Redis availability for Dramatiq broker — needs Docker Compose service entry if Dramatiq is used</result>
+<usage><total_tokens>58895</total_tokens><tool_uses>43</tool_uses><duration_ms>519438</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a3ef70c2c28918031.output
+
+---
+
+<task-notification>
+<task-id>a809550f6cd327853</task-id>
+<tool-use-id>toolu_019HkX5wbFZwRCR7KRCuKJrn</tool-use-id>
+<status>completed</status>
+<summary>Agent "Research pitfalls for repo restructuring" completed</summary>
+<result>## RESEARCH COMPLETE
+
+**Project:** Rune monorepo restructuring
+**Mode:** Ecosystem / Pitfalls
+**Confidence:** HIGH
+
+### Key Findings
+
+- **Four-location consistency rule**: Every package rename requires synchronized updates across (1) the `services/` or `libs/` directory name, (2) the `src/<module_name>/` directory, (3) `[project] name` in `pyproject.toml`, and (4) `[tool.hatch.build.targets.wheel] packages`. Missing any one produces a different failure mode.
+
+- **Lockfile order is critical**: The `uv.lock` must be regenerated (`uv lock`) before deleting any removed member's directory. Deleting first causes `uv lock` to fail on a missing `pyproject.toml` reference. The order is: remove all consumer references → remove from workspace members → `uv lock` → `uv sync` → delete directory.
+
+- **Root `pyproject.toml` has five hardcoded sections** that must ALL be updated for every add/remove: `[tool.uv.workspace] members`, `[tool.mypy.overrides]`, `[tool.pytest.ini_options] pythonpath`, `[tool.pytest.ini_options] testpaths`, and `[tool.coverage.run] source`. The Makefile and CI workflow duplicate the mypy list independently — two more locations to update.
+
+- **MkDocs component detection requires `mkdocs.yml` present**: The `update_root_navigation.py` script auto-discovers components by scanning for `mkdocs.yml` in each component directory. New components without this file are invisible to the docs nav. The script must be run before each docs build after any component change.
+
+- **Stale editable installs are a real risk**: After removing a workspace member, `import agent_a_service` still succeeds until `uv sync` is run. Tests can pass against phantom code.
+
+- **CI mypy target is fragile**: Both the Makefile and `.github/workflows/ci.yml` hardcode every component's src path in the mypy invocation. Switching to `uv run mypy services/*/src libs/*/src` is strongly recommended to avoid silent type-safety holes when new services are added.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/PITFALLS.md` | Ordered pitfalls for monorepo restructuring with prevention checklists |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| uv workspace mechanics | HIGH | Verified against official uv docs and confirmed GitHub issues |
+| Package naming rules | HIGH | Verified against hatchling docs and directly inspected repo configs |
+| MkDocs monorepo plugin | HIGH | Directly inspected this repo's scripts and confirmed plugin behavior from source |
+| CI/CD breakage risks | HIGH | Directly inspected `.github/workflows/ci.yml` and `Makefile` — specific line numbers confirmed |
+| Git history preservation | MEDIUM | Based on verified git internals and community best practices |
+
+### Roadmap Implications
+
+The restructuring should be done in atomic phases to avoid CI breakage at intermediate states: (1) Remove dead services first since they are leaf nodes with no dependents; (2) Add new packages before extending existing ones that will depend on them; (3) Rename/extend existing packages last when all dependencies are stable. Each phase should end with a passing `uv lock && uv sync && uv run pytest` before committing.</result>
+<usage><total_tokens>71261</total_tokens><tool_uses>56</tool_uses><duration_ms>523331</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a809550f6cd327853.output
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 4 --auto (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+<objective>
+Execute all plans in a phase using wave-based parallel execution.
+
+Orchestrator stays lean: discover plans, analyze dependencies, group into waves, spawn subagents, collect results. Each subagent loads the full execute-plan context and handles its own plan.
+
+Context budget: ~15% orchestrator, 100% fresh per subagent.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase: 4
+
+**Flags:**
+- `--gaps-only` — Execute only gap closure plans (plans with `gap_closure: true` in frontmatter). Use after verify-work creates fix plans.
+
+@.planning/ROADMAP.md
+@.planning/STATE.md
+</context>
+
+<process>
+Execute the execute-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md end-to-end.
+Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
+</process>
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Session Start**: This is a continuation from a previous conversation that ran out of context. The summary from the previous session indicates:
+   - Phase 1 (README) and Phase 2 (Implementation Plan) of v1.0 milestone were completed
+   - Phase 3 (Architecture Docs) was still incomplete
+   - A `/gsd:new-milestone` was invoked for repo restructuring
+   - The new-milestone workflow needed to be executed
+
+2. **User Message**: "Finish phase 3 and at the same time plan the next milestone. Work in parallel."
+   - User wants two things done simultaneously: complete Phase 3 Architecture Docs AND plan the new milestone for repo restructuring
+
+3. **My approach**: 
+   - Read PROJECT.md, ROADMAP.md, STATE.md, config.json, README.md, implementation-plan.md, mkdocs.yml, PROJECT_OVERVIEW.md
+   - Listed repo structure (services/, libs/, apps/, docs/)
+   - Created `.planning/phases/03-architecture-docs/` directory
+   - Ran `gsd-tools.cjs init new-milestone` to get model configs
+   - Updated PROJECT.md for new milestone v2.0 (changed Active requirements, Current Milestone section, Key Decisions)
+   - Updated STATE.md for new milestone
+
+4. **Parallel Launch**: Launched 5 agents simultaneously:
+   - Phase 3 executor (gsd-executor) - write 4 architecture docs
+   - 4 milestone research agents (gsd-project-researcher): Architecture, Stack, Features, Pitfalls
+
+5. **Phase 3 Result**: Architecture docs executor completed:
+   - `docs/architecture/recursive-loop.md` (131 lines)
+   - `docs/architecture/monorepo-mapping.md` (126 lines)
+   - `docs/architecture/adapter-storage.md` (142 lines)
+   - `docs/architecture/multi-gpu-strategy.md` (133 lines)
+   - mkdocs.yml nav updated
+   - Commit: `e816cb9`
+
+6. **Research Results**: All 4 researchers completed:
+   - ARCHITECTURE.md - component mapping, build order (10-step scaffold sequence)
+   - STACK.md - per-component deps, vLLM subprocess pattern, Dramatiq
+   - FEATURES.md - scaffold philosophy, per-component feature lists
+   - PITFALLS.md - 4-location consistency rule, lockfile ordering, CI breakage
+
+7. **Synthesis**: Spawned gsd-research-synthesizer → SUMMARY.md written (342 lines)
+
+8. **Requirements**: Wrote REQUIREMENTS.md with 21 v2 requirements across 5 categories:
+   - CLN (Cleanup): CLN-01 through CLN-04
+   - LIB (Libraries): LIB-01 through LIB-04
+   - SVC (Services): SVC-01 through SVC-05
+   - CFG (Configuration): CFG-01 through CFG-04
+   - QA (Quality): QA-01 through QA-04
+
+9. **Roadmap**: Spawned gsd-roadmapper → ROADMAP.md created with 4 phases:
+   - Phase 4: Cleanup (CLN-01..04)
+   - Phase 5: Foundation Libraries (LIB-01..04)
+   - Phase 6: Service Scaffolds (SVC-01..05, CFG-01..02)
+   - Phase 7: Configuration & Quality Gate (CFG-03..04, QA-01..04)
+
+10. **User Message**: `/gsd:plan-phase 4 --auto`
+    - User wants to plan Phase 4 with auto-advance to execution
+
+11. **Plan Phase 4**:
+    - Initialized plan-phase, created `04-cleanup` directory
+    - Validated Phase 4 in roadmap
+    - Skipped research (already available from milestone research)
+    - Spawned gsd-planner → 3 plans in 3 waves:
+      - 04-01 (Wave 1): Remove agent-b-service
+      - 04-02 (Wave 2): Rename agent-a → rune-agent
+      - 04-03 (Wave 3): Clean root deps + Makefile glob
+    - Verification: gsd-plan-checker passed all checks
+    - Auto-advanced to execute
+
+12. **Execute Phase 4**:
+    - Initialized execute-phase
+    - Got plan index with wave grouping
+    
+    **Wave 1 (04-01)**: Remove agent-b-service
+    - Spawned gsd-executor
+    - Commits: `7c3a864`, `fc678b6`
+    - Removed all references, deleted directory, uv lock/sync passed
+    - Deviation: also removed from Makefile (not in plan but necessary)
+    - Spot-checks: SUMMARY exists, commits present, directory gone
+    
+    **Wave 2 (04-02)**: Rename agent-a-service to rune-agent
+    - Spawned gsd-executor
+    - Commits: `55aeea2`, `deaccbc`, `5019abb`
+    - All 4 name locations updated, 14 files updated, uv lock/sync passes
+    - Spot-checks: services/ has api-service and rune-agent only
+    
+    **Wave 3 (04-03)**: Clean root deps + Makefile glob
+    - Spawned gsd-executor
+    - Commits: `4c06a63`, `988db27`, `a8a1cf8`
+    - Removed 9 unused deps, 38 transitive packages uninstalled
+    - Glob pattern in Makefile and CI
+    
+    **Verification**: Spawned gsd-verifier → **gaps_found** (7/9 must-haves)
+    - Gap 1: `scripts/check-all.sh:68` still has `agent-b-service` reference
+    - Gap 2: Same line has `agent-a-service` reference
+    - Both are on the same line in `scripts/check-all.sh`
+
+13. **Current State**: Phase 4 execution complete but verification found 2 gaps in `scripts/check-all.sh`. The workflow should proceed with gap closure.
+
+Key files modified:
+- `.planning/PROJECT.md` - Updated for v2.0 milestone
+- `.planning/STATE.md` - Updated for v2.0
+- `.planning/REQUIREMENTS.md` - 21 v2 requirements added
+- `.planning/ROADMAP.md` - 4 new phases (4-7)
+- `.planning/research/` - ARCHITECTURE.md, STACK.md, FEATURES.md, PITFALLS.md, SUMMARY.md
+- `docs/architecture/` - 4 new docs (recursive-loop, monorepo-mapping, adapter-storage, multi-gpu-strategy)
+- `mkdocs.yml` - Updated nav with Architecture section
+- `pyproject.toml` - Cleaned deps, updated workspace members
+- `services/agent-b-service/` - DELETED
+- `services/agent-a-service/` - RENAMED to `services/rune-agent/`
+- `Makefile` - Glob typecheck pattern
+- `.github/workflows/ci.yml` - Glob typecheck pattern
+- Various docs files updated to remove agent-b and rename agent-a references
+
+Errors:
+- `phase_found: false` on init for Phase 4 - fixed by creating directory manually
+- Spot-check `test ! -d` confused by pytest conftest auto-running - verified with `ls` instead
+- Verification found gaps in `scripts/check-all.sh:68` - still has hardcoded agent-a/agent-b paths
+
+The auto_advance config is `true` so the workflow should continue after gap closure.
+
+Summary:
+1. Primary Request and Intent:
+   - **First request**: "Finish phase 3 and at the same time plan the next milestone. Work in parallel." — User wanted two concurrent tracks: (1) Complete Phase 3 Architecture Docs from v1.0 milestone, and (2) Execute the new-milestone workflow for repo restructuring (description: "Remove and restructure the repo (particularly, the libs and services subfolders) to fit the implementation goals described in the readme and implementation plans. We want to keep the organizational idea of the template but adapt it for our needs and create an initial wireframe").
+   - **Second request**: `/gsd:plan-phase 4 --auto` — Plan Phase 4 (Cleanup) with auto-advance to execution.
+   - The GSD workflow is being used with `auto_advance: true` and `research: true` in config.
+
+2. Key Technical Concepts:
+   - **Rune Project**: Local-first coding agent using LoRA weight space as episodic memory, Doc-to-LoRA hypernetwork
+   - **GSD Workflow**: new-milestone → research → requirements → roadmap → plan-phase → execute-phase cycle
+   - **uv Workspace**: Python monorepo with shared lockfile, 5 hardcoded path sections in root pyproject.toml (workspace members, mypy overrides, pytest pythonpath, testpaths, coverage source)
+   - **Package Naming**: Four name locations per package (directory, src/ module, pyproject.toml name, hatch wheel packages)
+   - **Lockfile Discipline**: Must run `uv lock && uv sync` after every workspace member change; removal order is critical (remove references → uv lock → delete directory)
+   - **Hardware**: Dual RTX 4090 (Ada Lovelace, sm_89), PP=2/TP=1, QLoRA NF4, CXL interconnect
+   - **vLLM**: Launched as subprocess (NOT Python import), OpenAI-compatible API via `openai` package
+   - **lora-server**: Dockerfile-only service, NOT a uv workspace member
+
+3. Files and Code Sections:
+
+   - **`.planning/PROJECT.md`**
+     - Updated from v1.0 to v2.0 milestone
+     - Moved v1.0 requirements to Validated section (checked off)
+     - Added v2.0 Active requirements (repo restructuring, template removal, workspace config, wireframes)
+     - Updated Current Milestone section to "v2.0 Repo Restructuring & Scaffold"
+     - Updated Key Decisions table (documentation-first marked "v1.0 Complete", added "Restructure before implement")
+   
+   - **`.planning/STATE.md`**
+     - Reset for v2.0 milestone with Phase 4 focus
+     - Performance metrics carried forward (4 plans completed, ~4 min average)
+     - Accumulated decisions include v2.0 roadmap decisions and per-phase constraints
+   
+   - **`.planning/REQUIREMENTS.md`**
+     - v1 requirements (15 total, all complete): DOC-01..05, PLAN-01..06, ARCH-01..04
+     - v2 requirements (21 total, all pending): CLN-01..04, LIB-01..04, SVC-01..05, CFG-01..04, QA-01..04
+     - Traceability section maps all v2 requirements to phases 4-7
+   
+   - **`.planning/ROADMAP.md`**
+     - v1.0 phases 1-3 collapsed under `<details>` tag, marked COMPLETE
+     - v2.0 phases 4-7 with full success criteria:
+       - Phase 4: Cleanup (CLN-01..04) - 3 plans
+       - Phase 5: Foundation Libraries (LIB-01..04) - 3 plans
+       - Phase 6: Service Scaffolds (SVC-01..05, CFG-01..02) - 6 plans
+       - Phase 7: Configuration & Quality Gate (CFG-03..04, QA-01..04) - 3 plans
+     - Progress table shows phases 1-3 complete, 4-7 not started
+   
+   - **`.planning/research/SUMMARY.md`** (342 lines)
+     - Synthesized from STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md
+     - Key findings: scaffold-only milestone (no GPU code), 14-step build order, adapter-registry is dependency root
+     - Stack additions table, anti-features table, workspace changes, open questions
+   
+   - **`.planning/research/ARCHITECTURE.md`**
+     - Component mapping: agent-b → REMOVE, agent-a → RENAME to rune-agent, api-service → EXTEND
+     - Build order enforced by import dependency DAG
+     - Root pyproject.toml has 5 hardcoded sections requiring atomic updates
+   
+   - **`.planning/research/FEATURES.md`**
+     - Per-component scaffold feature lists with table stakes vs differentiators
+     - Key: adapter-registry is only true blocker; all others depend on it
+     - 501 Not Implemented for stub API routes, NotImplementedError for stub functions
+     - No GPU imports at module level
+   
+   - **`.planning/research/STACK.md`**
+     - Per-component dependency lists (scaffold-safe vs full implementation)
+     - vLLM is NOT a Python import dependency — launched as subprocess
+     - langgraph-checkpoint-sqlite is a separate PyPI package
+     - Dramatiq 2.0.1 recommended over Celery
+   
+   - **`.planning/research/PITFALLS.md`**
+     - Critical: uv lockfile regeneration at every workspace member change
+     - Four names per package must all match independently
+     - Root pyproject.toml five hardcoded path sections
+     - GPU imports at module level break CI
+   
+   - **`docs/architecture/recursive-loop.md`** (131 lines, commit `e816cb9`)
+     - Step-by-step data flow for generate→execute→reflect→distill loop
+     - Entry/exit data per step, retry conditions, termination conditions
+   
+   - **`docs/architecture/monorepo-mapping.md`** (126 lines, commit `e816cb9`)
+     - Maps 4 new services + 1 new lib to monorepo positions
+     - Integration points: GPU lease, adapter router, event publishing, REST API
+   
+   - **`docs/architecture/adapter-storage.md`** (142 lines, commit `e816cb9`)
+     - Filesystem path: `~/.rune/adapters/{level}/{slug}/v{version}/`
+     - SQLite schema: adapters table + trajectories table + 6 indexes
+     - Write-once enforcement at API surface
+   
+   - **`docs/architecture/multi-gpu-strategy.md`** (133 lines, commit `e816cb9`)
+     - PP=2, TP=1 required; 3 reasons TP excluded
+     - VRAM budget tables for serving and training modes
+     - GPU lease protocol with state diagram
+   
+   - **`mkdocs.yml`** — Updated nav with Architecture section (4 docs) + Appendices
+   
+   - **`pyproject.toml`** (root)
+     - Removed from workspace members: agent-a-service, agent-b-service
+     - Added: rune-agent (replacing agent-a)
+     - Removed 9 dependencies: google-cloud-aiplatform, vertexai, google-genai, sentence-transformers, torch, transformers, accelerate, bitsandbytes, langchain-huggingface
+     - Updated mypy overrides, pytest pythonpath, coverage source sections
+   
+   - **`Makefile`** — Typecheck target changed from hardcoded paths to `services/*/src libs/*/src` glob with Python-file filter
+   
+   - **`.github/workflows/ci.yml`** — Same glob pattern update for mypy step
+   
+   - **`services/agent-b-service/`** — DELETED entirely (commit `7c3a864`)
+   
+   - **`services/rune-agent/`** — Renamed from agent-a-service (commits `55aeea2`, `deaccbc`)
+     - `src/rune_agent/` module (was `src/agent_a_service/`)
+     - `pyproject.toml`: `name = "rune-agent"`, `packages = ["src/rune_agent"]`
+   
+   - **`.planning/phases/04-cleanup/04-01-PLAN.md`** — Remove agent-b-service (wave 1)
+   - **`.planning/phases/04-cleanup/04-02-PLAN.md`** — Rename agent-a to rune-agent (wave 2)
+   - **`.planning/phases/04-cleanup/04-03-PLAN.md`** — Clean deps + glob typecheck (wave 3)
+   - **`.planning/phases/04-cleanup/04-VERIFICATION.md`** — Gaps found (2 gaps in scripts/check-all.sh)
+
+4. Errors and Fixes:
+   - **`phase_found: false` on init**: Phase 4 directory didn't exist. Fixed by `mkdir -p .planning/phases/04-cleanup`.
+   - **Spot-check `test ! -d` confused by pytest**: Running `test ! -d services/agent-b-service` triggered pytest conftest.py auto-running, producing misleading output showing "EXISTS". Fixed by using `ls /Users/noahdolevelixir/Code/rune/services/` instead, which clearly showed only `api-service` and `rune-agent`.
+   - **Verification gaps**: `scripts/check-all.sh:68` still has hardcoded `services/agent-a-service/src` and `services/agent-b-service/src` in its mypy invocation. The plans' verification greps only checked `*.toml`, `*.yml`, `*.yaml`, `*.md`, `*.py` — shell scripts were excluded. This needs gap closure.
+   - **`.planning/` is gitignored**: All planning file commits via gsd-tools return `skipped_gitignored`. This is by design — only non-planning files get committed.
+
+5. Problem Solving:
+   - **Parallel execution of Phase 3 + Milestone planning**: Successfully ran 5 background agents simultaneously (1 Phase 3 executor + 4 milestone researchers), then synthesized research and built requirements/roadmap while Phase 3 docs were being written.
+   - **Sequential wave execution for Phase 4**: Correctly identified that all 3 plans must be sequential (shared pyproject.toml dependency), executed in order with uv lock/sync verification between each.
+   - **Lockfile discipline**: Followed research-specified removal order (remove references → uv lock → uv sync → delete directory) which prevented lockfile resolution failures.
+   - **Verification caught missed file**: The verifier found `scripts/check-all.sh` still had stale references — a file that was not in any plan's scope. This demonstrates the value of the verification step.
+
+6. All User Messages:
+   - "Finish phase 3 and at the same time plan the next milestone. Work in parallel."
+   - `/gsd:plan-phase 4 --auto`
+
+7. Pending Tasks:
+   - **Gap closure for Phase 4**: `scripts/check-all.sh:68` needs updating to use glob pattern instead of hardcoded paths (same fix as Makefile/CI). Should run `/gsd:plan-phase 4 --gaps` to create gap closure plan, then execute.
+   - **After Phase 4 gap closure**: Auto-advance should continue to Phase 5 (Foundation Libraries), Phase 6 (Service Scaffolds), Phase 7 (Configuration & Quality Gate) based on `auto_advance: true` config.
+   - **Phase 5-7 planning and execution**: 15 plans remaining across 3 phases (3 + 6 + 3).
+
+8. Current Work:
+   Phase 4 execution completed all 3 plans (04-01, 04-02, 04-03) but the gsd-verifier found **2 gaps** (same root cause):
+   - `scripts/check-all.sh:68` still references `services/agent-b-service/src` (CLN-01 gap)
+   - `scripts/check-all.sh:68` still references `services/agent-a-service/src` (CLN-02 gap)
+   
+   The verifier returned `status: gaps_found` with score 7/9 must-haves. The VERIFICATION.md has been written to `.planning/phases/04-cleanup/04-VERIFICATION.md`.
+
+   The execute-phase workflow was invoked via `/gsd:execute-phase 4` which was itself auto-advanced from `/gsd:plan-phase 4 --auto`. The workflow is at the `verify_phase_goal` step with `gaps_found` status.
+
+9. Optional Next Step:
+   Per the execute-phase workflow, when `gaps_found` is returned, the next step is to present the gap summary and offer `/gsd:plan-phase 4 --gaps`. Since `auto_advance` is `true`, this should proceed to gap closure:
+   
+   The workflow documentation states for gaps_found:
+   ```
+   ## ⚠ Phase {X}: {Name} — Gaps Found
+   **Score:** {N}/{M} must-haves verified
+   ## ▶ Next Up
+   `/gsd:plan-phase {X} --gaps`
+   ```
+   
+   The fix is simple: update `scripts/check-all.sh:68` to use the same glob pattern as the Makefile and CI. This should be a quick gap closure plan and execution cycle, after which Phase 4 can be marked complete and auto-advance to Phase 5.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/0bf13c74-ac3a-40fc-8b1a-4968b155f2fb.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 5 --auto (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+<objective>
+Create all phases necessary to close gaps identified by `/gsd:audit-milestone`.
+
+Reads MILESTONE-AUDIT.md, groups gaps into logical phases, creates phase entries in ROADMAP.md, and offers to plan each phase.
+
+One command creates all fix phases — no manual `/gsd:add-phase` per gap.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-milestone-gaps.md
+</execution_context>
+
+<context>
+**Audit results:**
+Glob: .planning/v*-MILESTONE-AUDIT.md (use most recent)
+
+**Original intent (for prioritization):**
+@.planning/PROJECT.md
+@.planning/REQUIREMENTS.md
+
+**Current state:**
+@.planning/ROADMAP.md
+@.planning/STATE.md
+</context>
+
+<process>
+Execute the plan-milestone-gaps workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-milestone-gaps.md end-to-end.
+Preserve all workflow gates (audit loading, prioritization, phase grouping, user confirmation, roadmap updates).
+</process>
+
+
+ARGUMENTS: You need to clean up the libs and apps directories as well so they fit our plan rather than the template.
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 5.1 --auto (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
