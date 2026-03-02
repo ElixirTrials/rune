@@ -1,0 +1,8 @@
+/* Minimal theme tweaks for the built-in MkDocs theme. */
+
+/* Mermaid diagrams */
+.mermaid {
+  text-align: center;
+  margin: 1.5em 0;
+}
+

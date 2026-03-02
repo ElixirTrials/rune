@@ -1,26 +1,9 @@
-import yaml
+from __future__ import annotations
+
 from pathlib import Path
 
-
-# 1. Define a class to represent the tagged value
-class IncludeTag(str):
-    pass
-
-
-# 2. Define a representer for this class
-def include_representer(dumper, data):
-    # represent_scalar(tag, value)
-    return dumper.represent_scalar("!include", str(data))
-
-
-# 3. Define a constructor (optional, if you want to read existing tags)
-def include_constructor(loader, node):
-    return IncludeTag(loader.construct_scalar(node))
-
-
-# 4. Register them
-yaml.SafeLoader.add_constructor("!include", include_constructor)
-yaml.SafeDumper.add_representer(IncludeTag, include_representer)
+import yaml
+import pymdownx.superfences  # type: ignore[import-untyped]  # noqa: F401  (needed for PyYAML !!python/name constructors)
 
 
 def update_navigation():
@@ -33,9 +16,14 @@ def update_navigation():
         print("Error: mkdocs.yml not found.")
         return
 
+    # Use FullLoader so `mkdocs.yml` can include tags like
+    # `!!python/name:pymdownx.superfences.fence_div_format` (used by pymdownx).
+    loader = getattr(yaml, "FullLoader", yaml.Loader)
+    dumper = getattr(yaml, "Dumper", yaml.SafeDumper)
+
     with open(mkdocs_file, "r") as f:
         try:
-            config = yaml.load(f, Loader=yaml.SafeLoader)
+            config = yaml.load(f, Loader=loader)
         except yaml.YAMLError as e:
             print(f"Error parsing mkdocs.yml: {e}")
             return
@@ -66,8 +54,9 @@ def update_navigation():
                     found.append((item.name, f"./{label}/{item.name}/mkdocs.yml"))
 
     for name, include_path in sorted(found, key=lambda x: x[0]):
-        tag_object = IncludeTag(include_path)
-        new_components_list.append({name: tag_object})
+        # NOTE: Use a quoted string, not a YAML tag, so MkDocs can parse
+        # the config without custom YAML constructors.
+        new_components_list.append({name: f"!include {include_path}"})
 
     # Find and update (or add) the "Components" section
     components_idx = -1
@@ -90,7 +79,7 @@ def update_navigation():
         yaml.dump(
             config,
             f,
-            Dumper=yaml.SafeDumper,
+            Dumper=dumper,
             sort_keys=False,
             default_flow_style=False,
             indent=2,

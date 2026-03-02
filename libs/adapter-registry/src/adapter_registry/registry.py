@@ -1,9 +1,5 @@
 """AdapterRegistry class providing CRUD operations for adapter metadata."""
 
-from adapter_registry.exceptions import (
-    AdapterAlreadyExistsError,
-    AdapterNotFoundError,
-)
 from adapter_registry.models import AdapterRecord
 
 
