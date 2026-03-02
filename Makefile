@@ -86,7 +86,7 @@ lint-fix:
 
 typecheck:
 	@echo "Running type checkers..."
-	uv run mypy libs/shared/src services/api-service/src libs/inference/src services/agent-a-service/src services/agent-b-service/src libs/data-pipeline/src libs/evaluation/src libs/events-py/src libs/model-training/src
+	uv run mypy libs/shared/src services/api-service/src libs/inference/src services/agent-a-service/src libs/data-pipeline/src libs/evaluation/src libs/events-py/src libs/model-training/src
 	@if [ -d "apps/hitl-ui/node_modules" ]; then \
 		cd apps/hitl-ui && npx tsc --noEmit; \
 	fi

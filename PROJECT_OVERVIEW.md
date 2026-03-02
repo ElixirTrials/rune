@@ -139,7 +139,6 @@ graph TD
 | Component | Purpose | Path |
 | :--- | :--- | :--- |
 | **agent-a-service** | Guest interaction agent using LangGraph flows. | [agent-a-service](services/agent-a-service/) |
-| **agent-b-service** | Guardrail agent to validate outputs and ensure safety. | [agent-b-service](services/agent-b-service/) |
 
 ### Data & Infrastructure
 | Component | Purpose | Path |

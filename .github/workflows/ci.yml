@@ -42,7 +42,7 @@ jobs:
       - name: Format check
         run: uv run ruff format --check .
       - name: Type check
-        run: uv run mypy libs/shared/src services/api-service/src libs/inference/src services/agent-a-service/src services/agent-b-service/src libs/data-pipeline/src libs/evaluation/src libs/events-py/src libs/model-training/src
+        run: uv run mypy libs/shared/src services/api-service/src libs/inference/src services/agent-a-service/src libs/data-pipeline/src libs/evaluation/src libs/events-py/src libs/model-training/src
 
   test:
     runs-on: ubuntu-latest

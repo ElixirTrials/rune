@@ -14,7 +14,7 @@ For the component build order and dependency chain, see [Build Order](../appendi
 
 | Rune Service | Path | Extends / Runs Alongside | Integration Points |
 |-------------|------|--------------------------|-------------------|
-| `rune-agent` | `services/rune-agent/` | Runs alongside `agent-a-service`, `agent-b-service` | Consumes `libs/adapter-registry` for adapter selection; calls `lora-server` for inference; uses `libs/events-py` for event publishing; manages Docker sandbox containers |
+| `rune-agent` | `services/rune-agent/` | Runs alongside existing services | Consumes `libs/adapter-registry` for adapter selection; calls `lora-server` for inference; uses `libs/events-py` for event publishing; manages Docker sandbox containers |
 | `lora-server` | `services/lora-server/` | Runs alongside `services/inference` (existing) | Wraps vLLM subprocess (PP=2, TP=1, `--enable-lora`); exposes adapter loading API; coordinates GPU lease with `training-svc` |
 | `training-svc` | `services/training-svc/` | Extends `libs/model-training` | Consumes PEFT utilities from `model-training`; reads adapter corpus from `adapter-registry`; acquires GPU lease from `lora-server` for training jobs |
 | `evolution-svc` | `services/evolution-svc/` | Runs alongside `services/evaluation` (existing) | Reads adapter metadata from `adapter-registry`; evaluates adapter fitness using held-out test sets; writes promotion/pruning events via `libs/events-py` |
@@ -95,7 +95,6 @@ These existing monorepo services are not modified by Rune and continue operating
 | Service / Library | Role | Rune Relationship |
 |------------------|------|-------------------|
 | `agent-a-service` | Existing agent service | Rune-agent runs alongside; no direct integration |
-| `agent-b-service` | Existing agent service | Rune-agent runs alongside; no direct integration |
 | `libs/events-ts` | TypeScript event library | Not used by Rune (Python-only) |
 | `libs/shared-ts` | TypeScript shared utilities | Not used by Rune (Python-only) |
 | `libs/shared` | Shared utilities | May consume for common config patterns |
@@ -111,7 +110,6 @@ rune/
   services/
     api-service/          # Extended: +adapter and session routes
     agent-a-service/      # Unchanged
-    agent-b-service/      # Unchanged
     rune-agent/           # New: recursive code generation loop
     lora-server/          # New: vLLM serving with dynamic LoRA
     training-svc/         # New: hypernetwork + fine-tuning jobs

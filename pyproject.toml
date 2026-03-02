@@ -9,10 +9,8 @@ dependencies = [
     "httpx>=0.28.1",
     "markdown>=3.4.0",
     "playwright>=1.40.0",
-    "mkdocs>=1.5.0",
-    "mkdocs-material>=9.0.0",
+    "mkdocs>=1.6.1",
     "mkdocs-monorepo-plugin>=1.0.0",
-    "mkdocs-mermaid2-plugin>=1.0.0",
     "mkdocstrings[python]>=0.24.0",
     "requests>=2.32.5",
     "tenacity>=8.2.0",
@@ -37,6 +35,7 @@ dependencies = [
     "sentence-transformers>=5.2.2",
     "python-multipart>=0.0.21",
     "alembic>=1.13.0",
+    "pymdown-extensions>=10.21",
 ]
 
 [dependency-groups]
@@ -56,7 +55,6 @@ dev = [
 members = [
     "services/api-service",
     "services/agent-a-service",
-    "services/agent-b-service",
     "libs/data-pipeline",
     "libs/evaluation",
     "libs/events-py",
@@ -109,8 +107,6 @@ module = [
     "data_pipeline.load_data",
     "agent_a_service",
     "agent_a_service.*",
-    "agent_b_service",
-    "agent_b_service.*",
     "shared",
     "shared.models",
 ]
@@ -121,6 +117,8 @@ module = [
     "datasets",
     "datasets.*",
     "fastmcp",
+    "pymdownx",
+    "pymdownx.*",
     "langchain_core",
     "langchain_core.*",
     "langchain_google_vertexai",
@@ -157,7 +155,6 @@ filterwarnings = [
 pythonpath = [
     "services/api-service/src",
     "services/agent-a-service/src",
-    "services/agent-b-service/src",
     "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",
@@ -173,7 +170,6 @@ addopts = "-n auto"
 source = [
     "services/api-service/src",
     "services/agent-a-service/src",
-    "services/agent-b-service/src",
     "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",
