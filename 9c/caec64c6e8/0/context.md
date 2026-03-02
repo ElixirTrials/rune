@@ -201,3 +201,70 @@ Context budget: ~15% orchestrator, 100% fresh per subagent.
 @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
 @/Users/noahdolevelixir/.claude-elixirtrials/g...
 
+### Prompt 17
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Session Start**: This is a continuation from a previous conversation that ran out of context. The summary from the previous session indicates:
+   - Phase 1 (README) and Phase 2 (Implementation Plan) of v1.0 milestone were completed
+   - Phase 3 (Architecture Docs) was still inco...
+
+### Prompt 18
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md...
+
+### Prompt 19
+
+<objective>
+Create all phases necessary to close gaps identified by `/gsd:audit-milestone`.
+
+Reads MILESTONE-AUDIT.md, groups gaps into logical phases, creates phase entries in ROADMAP.md, and offers to plan each phase.
+
+One command creates all fix phases — no manual `/gsd:add-phase` per gap.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-milestone-gaps.md
+</execution_context>
+
+<context>
+**Audit results:**
+Glob: .planning/v*-MILESTO...
+
+### Prompt 20
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md...
+
+### Prompt 21
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Session Start**: This is a continuation from a previous conversation. The summary indicates:
+   - v1.0 milestone (Phases 1-3) complete
+   - v2.0 milestone in progress: Phase 4 (Cleanup) was complete with 2 gaps found in scripts/check-all.sh
+   - The workflow was at gap closure s...
+
