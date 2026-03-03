@@ -109,6 +109,8 @@ nav:
 - Appendices:
   - Risk Matrix: appendices/risk-matrix.md
   - Build Order: appendices/build-order.md
+- Scientific Article:
+  - Overview: article/index.md
 - Components:
   - api-service: '!include ./services/api-service/mkdocs.yml'
   - adapter-registry: '!include ./libs/adapter-registry/mkdocs.yml'
