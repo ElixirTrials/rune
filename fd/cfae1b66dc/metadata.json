@@ -3,7 +3,7 @@
   "checkpoint_id": "fdcfae1b66dc",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 2,
+  "checkpoints_count": 6,
   "files_touched": [
     ".planning/ROADMAP.md"
   ],
@@ -14,13 +14,20 @@
       "context": "/fd/cfae1b66dc/0/context.md",
       "content_hash": "/fd/cfae1b66dc/0/content_hash.txt",
       "prompt": "/fd/cfae1b66dc/0/prompt.txt"
+    },
+    {
+      "metadata": "/fd/cfae1b66dc/1/metadata.json",
+      "transcript": "/fd/cfae1b66dc/1/full.jsonl",
+      "context": "/fd/cfae1b66dc/1/context.md",
+      "content_hash": "/fd/cfae1b66dc/1/content_hash.txt",
+      "prompt": "/fd/cfae1b66dc/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 83,
-    "cache_creation_tokens": 143699,
-    "cache_read_tokens": 7100204,
-    "output_tokens": 23974,
-    "api_call_count": 69
+    "input_tokens": 645,
+    "cache_creation_tokens": 230897,
+    "cache_read_tokens": 10313052,
+    "output_tokens": 37446,
+    "api_call_count": 110
   }
 }
