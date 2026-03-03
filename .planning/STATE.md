@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
 status: executing
-stopped_at: Completed 16-02-PLAN.md
-last_updated: "2026-03-03T21:37:55.812Z"
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-03-03T21:38:03.821Z"
 last_activity: 2026-03-03 — completed 15-01; libs/inference cleaned of Vertex AI/LangChain code; 4 adapter + 3 completion stubs; 9 TDD tests passing; LIB-07 satisfied
 progress:
   total_phases: 18
@@ -69,6 +69,7 @@ Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 compl
 | Phase 15 P02 | 2 | 2 tasks | 4 files |
 | Phase 16 P04 | 5 | 2 tasks | 4 files |
 | Phase 16 P02 | 2 | 2 tasks | 4 files |
+| Phase 16 P01 | 2 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,7 @@ Recent decisions affecting current work:
 - [15-01]: libs/inference pyproject.toml cleaned — langchain/langgraph/jinja2/tenacity removed; only openai/pydantic/shared remain after deleting loaders.py and factory.py
 - [Phase 16-04]: check_vllm_ready extracted as standalone function from ready() endpoint for independent unit testability
 - [Phase 16]: TDD red phase: tests assert 200 + response schema while stubs return 501, confirming failing state
+- [Phase 16]: Factory fixtures duplicated in api-service conftest.py because pytest rootdir isolation (local pyproject.toml) prevents root conftest.py discovery
 
 ### Pending Todos
 
@@ -104,6 +106,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T21:37:29.396Z
-Stopped at: Completed 16-02-PLAN.md
+Last session: 2026-03-03T21:38:03.817Z
+Stopped at: Completed 16-01-PLAN.md
 Resume file: None

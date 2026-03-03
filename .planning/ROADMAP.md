@@ -346,5 +346,5 @@ Phases execute in numeric order: 13 → 14 → 15 → 16 → 17
 | 13. Test Infrastructure | 1/2 | Complete    | 2026-03-03 | - |
 | 14. Core Library Wireframes | v4.0 | Complete    | 2026-03-03 | 2026-03-03 |
 | 15. New & Reworked Library Wireframes | 2/2 | Complete    | 2026-03-03 | - |
-| 16. Service Wireframes | 2/4 | In Progress|  | - |
+| 16. Service Wireframes | 4/4 | Complete   | 2026-03-03 | - |
 | 17. Quality Gate | v4.0 | 0/2 | Not started | - |
