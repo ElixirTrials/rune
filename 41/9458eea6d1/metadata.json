@@ -3,11 +3,13 @@
   "checkpoint_id": "419458eea6d1",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     ".planning/REQUIREMENTS.md",
     ".planning/ROADMAP.md",
-    ".planning/STATE.md"
+    ".planning/STATE.md",
+    "libs/adapter-registry/tests/__init__.py",
+    "libs/events-py/tests/__init__.py"
   ],
   "sessions": [
     {
@@ -16,6 +18,13 @@
       "context": "/41/9458eea6d1/0/context.md",
       "content_hash": "/41/9458eea6d1/0/content_hash.txt",
       "prompt": "/41/9458eea6d1/0/prompt.txt"
+    },
+    {
+      "metadata": "/41/9458eea6d1/1/metadata.json",
+      "transcript": "/41/9458eea6d1/1/full.jsonl",
+      "context": "",
+      "content_hash": "/41/9458eea6d1/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
