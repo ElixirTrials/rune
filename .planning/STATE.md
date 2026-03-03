@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
 status: executing
-stopped_at: Completed 15-01-PLAN.md
-last_updated: "2026-03-03T20:44:00.000Z"
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-03-03T21:37:29.399Z"
 last_activity: 2026-03-03 — completed 15-01; libs/inference cleaned of Vertex AI/LangChain code; 4 adapter + 3 completion stubs; 9 TDD tests passing; LIB-07 satisfied
 progress:
   total_phases: 18
-  completed_phases: 14
-  total_plans: 34
-  completed_plans: 34
+  completed_phases: 15
+  total_plans: 38
+  completed_plans: 37
   percent: 5
 ---
 
@@ -67,6 +67,8 @@ Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 compl
 | Phase 14-core-library-wireframes P01 | 2 | 2 tasks | 3 files |
 | Phase 15-01 | 5 min | 2 tasks | 6 files |
 | Phase 15 P02 | 2 | 2 tasks | 4 files |
+| Phase 16 P04 | 5 | 2 tasks | 4 files |
+| Phase 16 P02 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -89,6 +91,8 @@ Recent decisions affecting current work:
 - [Phase 15]: Alias test_generalization import as _test_generalization in test file to prevent pytest from collecting src function as test
 - [Phase 15]: libs/evaluation conftest.py stays minimal — 6 TDD tests use only literal arguments, no factory fixtures needed
 - [15-01]: libs/inference pyproject.toml cleaned — langchain/langgraph/jinja2/tenacity removed; only openai/pydantic/shared remain after deleting loaders.py and factory.py
+- [Phase 16-04]: check_vllm_ready extracted as standalone function from ready() endpoint for independent unit testability
+- [Phase 16]: TDD red phase: tests assert 200 + response schema while stubs return 501, confirming failing state
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T20:57:19.504Z
-Stopped at: Completed 15-02-PLAN.md
+Last session: 2026-03-03T21:37:29.396Z
+Stopped at: Completed 16-02-PLAN.md
 Resume file: None

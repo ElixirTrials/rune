@@ -301,7 +301,7 @@ Plans:
   2. All 4 endpoint functions in `services/evolution-svc` and all 3 in `services/training-svc` have Google-style docstrings; each has a TestClient test asserting the expected response shape and HTTP 501 status
   3. All 4 node functions and 2 graph functions in `services/rune-agent` (`generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`, `should_retry`, `create_graph`) have Google-style docstrings; each node function has a test asserting expected state key mutations; `should_retry` test covers both retry and terminal branches
   4. `check_vllm_ready` and all `VLLMClient` methods in `services/lora-server` have Google-style docstrings; each has a failing test (lora-server is Dockerfile-only, so tests run against the Python source directly, not via TestClient)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
 - [ ] 16-01-PLAN.md — Upgrade services/api-service: Google-style docstrings on 6 endpoints; write failing TestClient tests for each
@@ -345,6 +345,6 @@ Phases execute in numeric order: 13 → 14 → 15 → 16 → 17
 | 12. Abstract + Quality Audit | v3.0 | 2/2 | Complete | 2026-03-03 |
 | 13. Test Infrastructure | 1/2 | Complete    | 2026-03-03 | - |
 | 14. Core Library Wireframes | v4.0 | Complete    | 2026-03-03 | 2026-03-03 |
-| 15. New & Reworked Library Wireframes | 2/2 | Complete   | 2026-03-03 | - |
-| 16. Service Wireframes | v4.0 | 0/4 | Not started | - |
+| 15. New & Reworked Library Wireframes | 2/2 | Complete    | 2026-03-03 | - |
+| 16. Service Wireframes | 2/4 | In Progress|  | - |
 | 17. Quality Gate | v4.0 | 0/2 | Not started | - |
