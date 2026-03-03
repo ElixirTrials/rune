@@ -7,7 +7,17 @@ from uuid import uuid4
 
 
 class EventKind(str, Enum):
-    """Supported event kinds."""
+    """Supported event kinds for Rune service events.
+
+    Defines the three base event types. Rune-specific kinds
+    (e.g. TRAINING_STARTED) will be added in service phases.
+
+    Example:
+        >>> EventKind.CREATED.value
+        'created'
+        >>> EventKind("updated") == EventKind.UPDATED
+        True
+    """
 
     CREATED = "created"
     UPDATED = "updated"
@@ -15,7 +25,19 @@ class EventKind(str, Enum):
 
 
 class EventEnvelope(TypedDict, total=True):
-    """Base event envelope for Pub/Sub or internal events."""
+    """Base event envelope for Pub/Sub or internal events.
+
+    All events share this structure. The payload field carries
+    event-specific data as a JSON-serializable dict.
+
+    Example:
+        >>> envelope: EventEnvelope = {
+        ...     "id": "evt-001",
+        ...     "kind": "created",
+        ...     "payload": {"name": "adapter-1"},
+        ...     "timestamp": "2026-01-01T00:00:00+00:00",
+        ... }
+    """
 
     id: str
     kind: Literal["created", "updated", "deleted"]
@@ -38,12 +60,19 @@ def create_event(
     Returns:
         Event envelope dict.
 
+    Raises:
+        ValueError: If kind is not an EventKind member or payload is None.
+
     Example:
         >>> from events_py import EventKind, create_event
         >>> ev = create_event(EventKind.CREATED, {"name": "foo"})
         >>> ev["kind"]
         'created'
     """
+    if not isinstance(kind, EventKind):
+        raise ValueError(f"kind must be an EventKind member, got {kind!r}")
+    if payload is None:
+        raise ValueError("payload must not be None")
     return {
         "id": event_id or str(uuid4()),
         "kind": kind.value,

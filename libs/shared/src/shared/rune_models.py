@@ -19,6 +19,13 @@ class AdapterRef(BaseModel):
         adapter_id: UUID of the adapter in the registry.
         task_type: Task category this adapter was trained on (e.g. 'bug-fix').
         fitness_score: Evolutionary fitness score, if evaluated.
+
+    Example:
+        >>> ref = AdapterRef(adapter_id="abc-123", task_type="bug-fix")
+        >>> ref.adapter_id
+        'abc-123'
+        >>> ref.fitness_score is None
+        True
     """
 
     adapter_id: str
@@ -40,6 +47,19 @@ class CodingSession(BaseModel):
         adapter_refs: List of adapters loaded during this session.
         attempt_count: Number of generate-execute-reflect cycles completed.
         outcome: Final session result ('success', 'exhausted', or None if in progress).
+
+    Example:
+        >>> session = CodingSession(
+        ...     session_id="sess-001",
+        ...     task_description="Fix import error",
+        ...     task_type="bug-fix",
+        ... )
+        >>> session.adapter_refs
+        []
+        >>> session.attempt_count
+        0
+        >>> session.outcome is None
+        True
     """
 
     session_id: str
@@ -61,6 +81,15 @@ class EvolMetrics(BaseModel):
         pass_rate: Pass rate on benchmark tasks (0.0 to 1.0).
         fitness_score: Overall evolutionary fitness score.
         generalization_delta: Difference between in-distribution and OOD performance.
+
+    Example:
+        >>> metrics = EvolMetrics(
+        ...     adapter_id="adapter-001",
+        ...     pass_rate=0.85,
+        ...     fitness_score=0.9,
+        ... )
+        >>> metrics.generalization_delta is None
+        True
     """
 
     adapter_id: str
