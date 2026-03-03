@@ -2,13 +2,17 @@
   <img src="docs/assets/et_illustration_transparent.png" alt="Rune logo" width="180">
 </p>
 
-# Rune
+<h1 align="center">Rune</h1>
 
-SoTA-level coding performance from a local SLM, achieved by encoding experience into weight-space memory.
+<p align="center">
+  SoTA-level coding performance from a local SLM,<br/>
+  achieved by encoding experience into weight-space memory.
+</p>
 
-![Research Stage](https://img.shields.io/badge/stage-research-orange)
-
----
+<p align="center">
+  <a href="https://elixirtrials.github.io/rune/"><img alt="Docs" src="https://img.shields.io/badge/docs-GitHub%20Pages-8ca0e0.svg" /></a>
+  <img alt="Stage" src="https://img.shields.io/badge/stage-research-orange" />
+</p>
 
 ---
 
@@ -207,6 +211,6 @@ The build order follows component dependencies: `adapter-registry` first (no dep
 
 Rune is at the research stage — there is no working code to contribute to yet. But if you are working on hypernetwork training for procedural knowledge, LoRA episodic memory for agents, or local inference and training infrastructure on consumer hardware, this is adjacent territory. Discussion, critique, and related work are welcome.
 
-Open a thread in [GitHub Discussions](../../discussions) or reach out directly. The architecture is documented in detail in `.planning/` — the design decisions, hardware constraints, and open questions are all available for review.
+Open a thread in [GitHub Discussions](../../discussions) or reach out directly. The architecture documentation, design decisions, and open questions are available in the project documentation.
 
 The most useful form of collaboration at this stage is critique: identifying flaws in the architectural reasoning, pointing to prior work that addresses the open questions, or sharing results from related experiments. Code contributions will become relevant once the core hypothesis is validated and implementation begins.

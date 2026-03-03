@@ -340,6 +340,10 @@ charts/*.tgz
 qodo_cache/
 qodo.log
 
+# Local agent/editor state (not repo content)
+.claude/
+.entire/
+
 # Auditing files
 *.pos
 *.wal
