@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Milestone v2.0 — Phase 6 in progress (Service Scaffolds)
+**Current focus:** Milestone v2.0 — Phase 6 complete, Phase 7 next (Config & Quality Gate)
 
 ## Current Position
 
-Phase: 6 of 7 (Service Scaffolds)
-Plan: 3 of 4 in current phase (plans 01-03 complete)
-Status: Phase 6 in progress
-Last activity: 2026-03-03 — Phase 6 Plan 03: training-svc and evolution-svc scaffolds with 7 stub 501 endpoints
+Phase: 6 of 7 (Service Scaffolds) -- COMPLETE
+Plan: 4 of 4 in current phase (all plans complete)
+Status: Phase 6 complete, ready for Phase 7
+Last activity: 2026-03-03 — Phase 6 Plan 04: API router stubs & root pyproject.toml sync
 
-Progress: [████████░░] 82% (v1.0 complete; v2.0 phases 4-6.03 complete)
+Progress: [█████████░] 88% (v1.0 complete; v2.0 phases 4-6 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: 3.1 min
-- Total execution time: 0.83 hours
+- Total execution time: 0.88 hours
 
 **By Phase:**
 
@@ -33,10 +33,10 @@ Progress: [████████░░] 82% (v1.0 complete; v2.0 phases 4-6.0
 | 04-cleanup | 3 | 11 min | 3.7 min |
 | 05-foundation-libraries | 3 | 8 min | 2.7 min |
 | 05.1-template-artifact-cleanup | 2 | 7 min | 3.5 min |
-| 06-service-scaffolds | 3 | 7 min | 2.3 min |
+| 06-service-scaffolds | 4 | 10 min | 2.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 4 min, 3 min, 2 min, 2 min, 3 min
+- Last 5 plans: 3 min, 2 min, 2 min, 3 min, 3 min
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -75,6 +75,8 @@ Recent decisions affecting current work:
 - [Phase 06-service-scaffolds]: should_retry is fully implemented (not stubbed) with 3-way branching: tests_passed, attempts exhausted, retry
 - [Phase 06-service-scaffolds]: Used APIRouter with no prefix and full endpoint paths to avoid nesting issues
 - [Phase 06-service-scaffolds]: Followed api-service storage.py pattern with SQLite default and check_same_thread=False
+- [Phase 06-service-scaffolds]: Used APIRouter with prefix='/adapters' and prefix='/sessions' for router stub pattern
+- [Phase 06-service-scaffolds]: Root pyproject.toml five-section sync completed (members, mypy, pythonpath, testpaths, coverage)
 
 ### Pending Todos
 
@@ -87,5 +89,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 06-03-PLAN.md (Training & Evolution Service Scaffolds)
+Stopped at: Completed 06-04-PLAN.md (API Router Stubs & Root Config Sync) -- Phase 6 complete
 Resume file: None

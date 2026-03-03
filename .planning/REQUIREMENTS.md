@@ -62,12 +62,12 @@ Requirements for milestone v2.0 — Repo Restructuring & Scaffold.
 - [x] **SVC-02**: `services/lora-server` exists as a Dockerfile-only service (NOT a uv workspace member) with startup script, config enforcing PP=2/TP=1, FastAPI health sidecar, and `VLLMClient` stub
 - [x] **SVC-03**: `services/training-svc` exists as a uv workspace service with FastAPI endpoints (`/train/lora`, `/train/hypernetwork`, `/jobs/{job_id}`), request schemas, and `TrainingJob` SQLModel
 - [x] **SVC-04**: `services/evolution-svc` exists as a uv workspace service with FastAPI endpoints (`/evaluate`, `/evolve`, `/promote`, `/prune`), evaluation schemas, and stub lifecycle manager
-- [ ] **SVC-05**: `services/api-service` is extended with `/adapters` and `/sessions` router stubs (501 responses) wired into main.py
+- [x] **SVC-05**: `services/api-service` is extended with `/adapters` and `/sessions` router stubs (501 responses) wired into main.py
 
 ### Configuration
 
-- [ ] **CFG-01**: Root pyproject.toml workspace members list includes all new components and excludes removed ones; all five hardcoded path sections (workspace members, mypy overrides, pytest pythonpath, testpaths, coverage source) are consistent
-- [ ] **CFG-02**: `uv lock && uv sync` passes cleanly with the final workspace configuration
+- [x] **CFG-01**: Root pyproject.toml workspace members list includes all new components and excludes removed ones; all five hardcoded path sections (workspace members, mypy overrides, pytest pythonpath, testpaths, coverage source) are consistent
+- [x] **CFG-02**: `uv lock && uv sync` passes cleanly with the final workspace configuration
 - [ ] **CFG-03**: `infra/docker-compose.yml` includes lora-server container definition with GPU passthrough and adapter volume mount
 - [ ] **CFG-04**: `mkdocs.yml` nav reflects the new component structure; `uv run mkdocs build` passes
 
@@ -144,9 +144,9 @@ Which phases cover which requirements.
 | SVC-02 | Phase 6 | Complete |
 | SVC-03 | Phase 6 | Complete |
 | SVC-04 | Phase 6 | Complete |
-| SVC-05 | Phase 6 | Pending |
-| CFG-01 | Phase 6 | Pending |
-| CFG-02 | Phase 6 | Pending |
+| SVC-05 | Phase 6 | Complete |
+| CFG-01 | Phase 6 | Complete |
+| CFG-02 | Phase 6 | Complete |
 | CFG-03 | Phase 7 | Pending |
 | CFG-04 | Phase 7 | Pending |
 | QA-01 | Phase 7 | Pending |
