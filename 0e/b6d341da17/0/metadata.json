@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "0eb6d341da17",
+  "session_id": "a3f1a5ec-a075-48ac-8191-8723a0ca47d9",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-03T20:23:44.268805Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/events-py/tests/test_models.py",
+    "libs/shared/tests/test_rune_models.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "dd7dd9cb20c6",
+  "checkpoint_transcript_start": 479,
+  "transcript_lines_at_start": 479,
+  "token_usage": {
+    "input_tokens": 9,
+    "cache_creation_tokens": 14695,
+    "cache_read_tokens": 169473,
+    "output_tokens": 119,
+    "api_call_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-03T20:23:43.856933Z",
+    "agent_lines": 0,
+    "human_added": 887,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 887,
+    "agent_percentage": 0
+  }
+}
