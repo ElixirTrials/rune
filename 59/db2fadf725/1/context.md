@@ -54,3 +54,20 @@ Context budget: ~15% orchestrator, 100% fresh per subagent.
 @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
 @/Users/noahdolevelixir/.claude-elixirtrials/g...
 
+### Prompt 5
+
+<objective>
+Create `.continue-here.md` handoff file to preserve complete work state across sessions.
+
+Routes to the pause-work workflow which handles:
+- Current phase detection from recent files
+- Complete state gathering (position, completed work, remaining work, decisions, blockers)
+- Handoff file creation with all context sections
+- Git commit as WIP
+- Resume instructions
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/pause-work.md
+</...
+
