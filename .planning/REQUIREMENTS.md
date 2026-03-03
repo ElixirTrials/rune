@@ -45,8 +45,8 @@ Requirements for milestone v2.0 — Repo Restructuring & Scaffold.
 ### Template Artifact Cleanup
 
 - [x] **CLN-05**: Template libraries `libs/data-pipeline`, `libs/events-ts`, and `libs/shared-ts` are removed from the workspace (directories deleted, all references in root pyproject.toml removed, uv lock/sync passes)
-- [ ] **CLN-06**: Template-specific documentation removed: `docs/diagrams/agent-flow.md`, `docs/diagrams/hitl-flow.md`, `docs/diagrams/langgraph-architecture.md`, `docs/onboarding.md`, `docs/testing-guide.md`, `docs/components-overview.md`, `PROJECT_OVERVIEW.md`; mkdocs.yml nav updated; mkdocs build passes
-- [ ] **CLN-07**: No file references "ElixirTrials" in content (excluding .planning/ and pyproject.toml project name)
+- [x] **CLN-06**: Template-specific documentation removed: `docs/diagrams/agent-flow.md`, `docs/diagrams/hitl-flow.md`, `docs/diagrams/langgraph-architecture.md`, `docs/onboarding.md`, `docs/testing-guide.md`, `docs/components-overview.md`, `PROJECT_OVERVIEW.md`; mkdocs.yml nav updated; mkdocs build passes
+- [x] **CLN-07**: No file references "ElixirTrials" in content (excluding .planning/ and pyproject.toml project name)
 - [x] **CLN-08**: Template app `apps/hitl-ui` is removed from the workspace (directory deleted, all references in CI, Makefile, docker-compose, scripts, and copilot-instructions removed)
 
 ### Scaffold — Libraries
@@ -133,8 +133,8 @@ Which phases cover which requirements.
 | CLN-03 | Phase 4 | Complete |
 | CLN-04 | Phase 4 | Complete |
 | CLN-05 | Phase 5.1 | Complete |
-| CLN-06 | Phase 5.1 | Pending |
-| CLN-07 | Phase 5.1 | Pending |
+| CLN-06 | Phase 5.1 | Complete |
+| CLN-07 | Phase 5.1 | Complete |
 | CLN-08 | Phase 5.1 | Complete |
 | LIB-01 | Phase 5 | Pending |
 | LIB-02 | Phase 5 | Pending |
