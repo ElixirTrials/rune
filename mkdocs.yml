@@ -36,6 +36,7 @@ theme:
   favicon: assets/et_illustration_transparent.png
 extra_css:
 - assets/custom.css
+- assets/academic.css
 extra_javascript:
 - https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
 - assets/mermaid-init.js
@@ -89,6 +90,9 @@ markdown_extensions:
     block_syntax:
       - square
       - begin
+- footnotes
+- attr_list
+- md_in_html
 validation:
   omitted_files: warn
   absolute_links: warn
