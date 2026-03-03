@@ -1,6 +1,6 @@
 """Pytest configuration for libs/evaluation.
 
-Placeholder — libs/evaluation module will be created in Phase 15.
-Shared factories are provided by the root conftest.py
-and available here automatically via pytest fixture discovery.
+Evaluation tests primarily test NotImplementedError stubs.
+Factory fixtures from root conftest.py can be accessed by running
+tests with `-c pyproject.toml` from the repo root.
 """
