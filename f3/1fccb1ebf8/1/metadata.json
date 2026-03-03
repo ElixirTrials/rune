@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "f31fccb1ebf8",
+  "session_id": "unknown",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-03T06:46:56.481303Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".planning/REQUIREMENTS.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "ce2d51505240",
+  "initial_attribution": {
+    "calculated_at": "2026-03-03T06:46:56.481001Z",
+    "agent_lines": 10,
+    "human_added": 181,
+    "human_modified": 4,
+    "human_removed": 0,
+    "total_committed": 195,
+    "agent_percentage": 5.128205128205128
+  }
+}
