@@ -26,6 +26,20 @@ class AdapterRecord(SQLModel, table=True):
         source: How the adapter was created ('distillation', 'evolution', 'manual').
         session_id: ID of the coding session that produced this adapter.
         is_archived: Whether this adapter has been archived (soft delete).
+
+    Example:
+        >>> record = AdapterRecord(
+        ...     id="adapter-001", version=1, task_type="bug-fix",
+        ...     base_model_id="Qwen/Qwen2.5-Coder-7B", rank=16,
+        ...     created_at="2026-01-01T00:00:00Z",
+        ...     file_path="/adapters/adapter-001.safetensors",
+        ...     file_hash="abc123", file_size_bytes=1024,
+        ...     source="distillation", session_id="sess-001",
+        ... )
+        >>> record.task_type
+        'bug-fix'
+        >>> record.is_archived
+        False
     """
 
     __tablename__ = "adapter_records"

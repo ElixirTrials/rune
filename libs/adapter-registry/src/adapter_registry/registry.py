@@ -12,6 +12,10 @@ class AdapterRegistry:
     Raises:
         AdapterAlreadyExistsError: When storing a duplicate adapter ID.
         AdapterNotFoundError: When querying for a non-existent adapter.
+
+    Example:
+        >>> registry = AdapterRegistry()
+        >>> registry.store(record)  # Persists adapter when implemented
     """
 
     def store(self, record: AdapterRecord) -> None:
@@ -23,6 +27,16 @@ class AdapterRegistry:
         Raises:
             NotImplementedError: Method is not yet implemented.
             AdapterAlreadyExistsError: If an adapter with the same ID exists.
+
+        Example:
+            >>> registry = AdapterRegistry()
+            >>> record = AdapterRecord(id="abc-1", version=1, task_type="bug-fix",
+            ...     base_model_id="qwen2.5-coder-7b", rank=16,
+            ...     created_at="2026-01-01T00:00:00Z",
+            ...     file_path="/adapters/abc-1.safetensors",
+            ...     file_hash="sha256hash", file_size_bytes=4096,
+            ...     source="distillation", session_id="sess-001")
+            >>> registry.store(record)  # Persists to SQLite when implemented
         """
         raise NotImplementedError(
             "AdapterRegistry.store is not yet implemented. "
@@ -41,6 +55,10 @@ class AdapterRegistry:
         Raises:
             NotImplementedError: Method is not yet implemented.
             AdapterNotFoundError: If no adapter with the given ID exists.
+
+        Example:
+            >>> registry = AdapterRegistry()
+            >>> record = registry.retrieve_by_id("abc-1")  # Returns AdapterRecord when implemented
         """
         raise NotImplementedError(
             "AdapterRegistry.retrieve_by_id is not yet implemented. "
@@ -58,6 +76,10 @@ class AdapterRegistry:
 
         Raises:
             NotImplementedError: Method is not yet implemented.
+
+        Example:
+            >>> registry = AdapterRegistry()
+            >>> results = registry.query_by_task_type("bug-fix")  # Returns list[AdapterRecord] when implemented
         """
         raise NotImplementedError(
             "AdapterRegistry.query_by_task_type is not yet implemented. "
@@ -72,6 +94,10 @@ class AdapterRegistry:
 
         Raises:
             NotImplementedError: Method is not yet implemented.
+
+        Example:
+            >>> registry = AdapterRegistry()
+            >>> all_adapters = registry.list_all()  # Returns list[AdapterRecord] when implemented
         """
         raise NotImplementedError(
             "AdapterRegistry.list_all is not yet implemented. "
