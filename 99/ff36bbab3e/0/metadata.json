@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "99ff36bbab3e",
+  "session_id": "0bf13c74-ac3a-40fc-8b1a-4968b155f2fb",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-03T07:49:21.870445Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "docs/assets/custom.css",
+    "docs/assets/et_illustration_transparent.png",
+    "libs/inference/src/inference/adapter_loader.py",
+    "libs/model-training/src/model_training/config.py",
+    "libs/shared/src/shared/__init__.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "a3e282db4638",
+  "token_usage": {
+    "input_tokens": 274,
+    "cache_creation_tokens": 719944,
+    "cache_read_tokens": 20809191,
+    "output_tokens": 86398,
+    "api_call_count": 217
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-03T07:49:16.089676Z",
+    "agent_lines": 68,
+    "human_added": 11,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 79,
+    "agent_percentage": 86.07594936708861
+  }
+}
