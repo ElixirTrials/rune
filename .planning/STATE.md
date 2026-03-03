@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 6 of 7 (Service Scaffolds)
-Plan: 2 of 4 in current phase (plans 01-02 complete)
+Plan: 3 of 4 in current phase (plans 01-03 complete)
 Status: Phase 6 in progress
-Last activity: 2026-03-03 — Phase 6 Plan 02: rune-agent graph with RuneState, 4-node topology, should_retry
+Last activity: 2026-03-03 — Phase 6 Plan 03: training-svc and evolution-svc scaffolds with 7 stub 501 endpoints
 
-Progress: [████████░░] 78% (v1.0 complete; v2.0 phases 4-6.02 complete)
+Progress: [████████░░] 82% (v1.0 complete; v2.0 phases 4-6.03 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 3.2 min
-- Total execution time: 0.78 hours
+- Total plans completed: 15
+- Average duration: 3.1 min
+- Total execution time: 0.83 hours
 
 **By Phase:**
 
@@ -33,11 +33,11 @@ Progress: [████████░░] 78% (v1.0 complete; v2.0 phases 4-6.0
 | 04-cleanup | 3 | 11 min | 3.7 min |
 | 05-foundation-libraries | 3 | 8 min | 2.7 min |
 | 05.1-template-artifact-cleanup | 2 | 7 min | 3.5 min |
-| 06-service-scaffolds | 2 | 4 min | 2 min |
+| 06-service-scaffolds | 3 | 7 min | 2.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 4 min, 3 min, 2 min, 2 min
-- Trend: Improving
+- Last 5 plans: 4 min, 3 min, 2 min, 2 min, 3 min
+- Trend: Stable
 
 *Updated after each plan completion*
 
@@ -73,6 +73,8 @@ Recent decisions affecting current work:
 - [Phase 06-service-scaffolds]: Health sidecar uses httpx for /ready check against vLLM on port 8000
 - [Phase 06-service-scaffolds]: RuneState uses plain TypedDict without Annotated[..., add_messages] -- trajectory managed explicitly by nodes
 - [Phase 06-service-scaffolds]: should_retry is fully implemented (not stubbed) with 3-way branching: tests_passed, attempts exhausted, retry
+- [Phase 06-service-scaffolds]: Used APIRouter with no prefix and full endpoint paths to avoid nesting issues
+- [Phase 06-service-scaffolds]: Followed api-service storage.py pattern with SQLite default and check_same_thread=False
 
 ### Pending Todos
 
@@ -85,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 06-02-PLAN.md (Rune Agent Graph)
+Stopped at: Completed 06-03-PLAN.md (Training & Evolution Service Scaffolds)
 Resume file: None
