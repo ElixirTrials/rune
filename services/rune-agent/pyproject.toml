@@ -16,6 +16,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
     "pytest-cov>=5.0.0",
 ]
 
@@ -39,6 +40,7 @@ mypy_path = ["../shared/src", "../inference/src"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "../shared/src", "../inference/src"]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 addopts = "--cov=rune_agent --cov-branch --cov-report=term-missing"
 
 [tool.uv.sources]
