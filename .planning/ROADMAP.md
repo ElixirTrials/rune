@@ -112,8 +112,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05.1-01-PLAN.md — Remove template libraries (data-pipeline, events-ts, shared-ts) and template app (hitl-ui) from workspace and filesystem
-- [ ] 05.1-02-PLAN.md — Remove template docs and diagrams, update mkdocs.yml nav, clean all ElixirTrials references
+- [x] 05.1-01-PLAN.md — Remove template libraries (data-pipeline, events-ts, shared-ts) and template app (hitl-ui) from workspace and filesystem
+- [x] 05.1-02-PLAN.md — Remove template docs and diagrams, update mkdocs.yml nav, clean all ElixirTrials references
 
 ### Phase 6: Service Scaffolds
 **Goal**: All five services exist in their correct forms — four as importable uv workspace members with FastAPI endpoints returning 501, one (lora-server) as a Dockerfile-only service not in the workspace — and the workspace configuration in root pyproject.toml is fully synchronized across all five required sections
@@ -125,15 +125,13 @@ Plans:
   3. `services/rune-agent` has a LangGraph `StateGraph(RuneState)` with generate, execute, reflect, and save_trajectory nodes; `should_retry` is implemented (not stubbed) and returns the correct branch for both retry and terminal cases; the graph compiles without error
   4. `services/api-service` exposes `/adapters` and `/sessions` router stubs returning HTTP 501, wired into `main.py` via `include_router`; `adapter-registry` is declared as a workspace dependency
   5. Root `pyproject.toml` workspace members list includes all new components (rune-agent, training-svc, evolution-svc, adapter-registry) and excludes removed ones (agent-a-service, agent-b-service); all five hardcoded path sections (workspace members, mypy overrides, pytest pythonpath, testpaths, coverage source) are consistent; `uv lock && uv sync` passes cleanly
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Scaffold services/lora-server (Dockerfile-only: startup.sh, config.yaml, health sidecar, VLLMClient stub, LoraServerConfig validator)
-- [ ] 06-02-PLAN.md — Scaffold services/training-svc (workspace member: FastAPI 501 endpoints, LoraTrainingRequest, TrainingJob SQLModel, trainer stubs)
-- [ ] 06-03-PLAN.md — Scaffold services/evolution-svc (workspace member: FastAPI 501 endpoints, evaluation schemas, AdapterEvaluator, LifecycleManager stubs)
-- [ ] 06-04-PLAN.md — Update services/api-service (adapters + sessions routers, 501 stubs, wire into main.py, add adapter-registry dep)
-- [ ] 06-05-PLAN.md — Update services/rune-agent (RuneState, StateGraph with 4 nodes, should_retry implementation, tool stubs)
-- [ ] 06-06-PLAN.md — Synchronize root pyproject.toml (all five sections atomic update, uv lock && uv sync verification)
+- [ ] 06-01-PLAN.md — Scaffold services/lora-server (Dockerfile-only: config.py with TP=2 ValueError, startup.sh, config.yaml, Dockerfile, health sidecar, VLLMClient stub)
+- [ ] 06-02-PLAN.md — Rework services/rune-agent (RuneState TypedDict, 4-node StateGraph, should_retry implementation, updated exports)
+- [ ] 06-03-PLAN.md — Scaffold services/training-svc and services/evolution-svc (workspace members: FastAPI 501 endpoints, Pydantic schemas, SQLModel job tracking, uv lock/sync)
+- [ ] 06-04-PLAN.md — Extend api-service with /adapters and /sessions routers; synchronize root pyproject.toml across all five config sections; final uv lock/sync
 
 ### Phase 7: Configuration & Quality Gate
 **Goal**: The full workspace passes every quality gate without GPU — pytest importability tests pass, no GPU imports exist at module level in any scaffold, ruff lints clean, all API stubs return 501, docker-compose includes lora-server, and mkdocs builds successfully
@@ -164,6 +162,6 @@ Phases execute in numeric order: 4 → 5 → 5.1 → 6 → 7
 | 3. Architecture Docs | v1.0 | 1/1 | Complete | 2026-03-02 |
 | 4. Cleanup | v2.0 | 3/3 | Complete | 2026-03-02 |
 | 5. Foundation Libraries | v2.0 | 3/3 | Complete | 2026-03-02 |
-| 5.1. Template Artifact Cleanup | v2.0 | 0/2 | Planned | - |
-| 6. Service Scaffolds | v2.0 | 0/6 | Not started | - |
+| 5.1. Template Artifact Cleanup | v2.0 | 2/2 | Complete | 2026-03-03 |
+| 6. Service Scaffolds | v2.0 | 0/4 | Not started | - |
 | 7. Configuration & Quality Gate | v2.0 | 0/3 | Not started | - |
