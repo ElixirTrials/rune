@@ -1,9 +1,11 @@
 """Pytest configuration for services/api-service.
 
 Provides database fixtures and a FastAPI TestClient with the test database
-injected via dependency override.
+injected via dependency override. Also re-exports factory fixtures from root
+conftest.py (duplicated here due to pytest rootdir isolation from local
+pyproject.toml).
 """
-from typing import AsyncGenerator, Generator
+from typing import Any, AsyncGenerator, Callable, Generator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -98,3 +100,55 @@ def reset_singletons():
         _clear_all_singletons()
     except ImportError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Factory fixtures — duplicated from root conftest.py because pytest rootdir
+# isolation (services/api-service/pyproject.toml) prevents root discovery.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def make_adapter_record() -> Callable[..., Any]:
+    """Factory fixture for AdapterRecord domain objects."""
+    from adapter_registry.models import AdapterRecord
+
+    def _factory(**kwargs: Any) -> AdapterRecord:
+        defaults: dict[str, Any] = {
+            "id": "test-adapter-001",
+            "version": 1,
+            "task_type": "bug-fix",
+            "base_model_id": "Qwen/Qwen2.5-Coder-7B",
+            "rank": 16,
+            "created_at": "2026-01-01T00:00:00Z",
+            "file_path": "/adapters/test-adapter-001.safetensors",
+            "file_hash": "abc123def456",
+            "file_size_bytes": 1024,
+            "pass_rate": None,
+            "fitness_score": None,
+            "source": "distillation",
+            "session_id": "test-session-001",
+            "is_archived": False,
+        }
+        return AdapterRecord(**{**defaults, **kwargs})
+
+    return _factory
+
+
+@pytest.fixture
+def make_coding_session() -> Callable[..., Any]:
+    """Factory fixture for CodingSession domain objects."""
+    from shared.rune_models import CodingSession
+
+    def _factory(**kwargs: Any) -> CodingSession:
+        defaults: dict[str, Any] = {
+            "session_id": "test-session-001",
+            "task_description": "Fix the off-by-one error in list slicing",
+            "task_type": "bug-fix",
+            "adapter_refs": [],
+            "attempt_count": 0,
+            "outcome": None,
+        }
+        return CodingSession(**{**defaults, **kwargs})
+
+    return _factory
