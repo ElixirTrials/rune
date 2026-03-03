@@ -259,8 +259,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 13-01-PLAN.md — Create root conftest.py with 6 shared factory fixtures (make_adapter_record, make_coding_session, make_training_job, make_evolution_job, make_evol_metrics, make_adapter_ref)
-- [ ] 13-02-PLAN.md — Create per-component conftest.py files for all 11 components with component-specific fixtures (TestClient for services, mock vLLM for inference)
+- [x] 13-01-PLAN.md — Create root conftest.py with 6 shared factory fixtures (make_adapter_record, make_coding_session, make_training_job, make_evolution_job, make_evol_metrics, make_adapter_ref)
+- [x] 13-02-PLAN.md — Create per-component conftest.py files for all 11 components with component-specific fixtures (TestClient for services, mock vLLM for inference)
 
 ### Phase 14: Core Library Wireframes
 **Goal**: The four existing library scaffolds — adapter-registry, model-training, shared, and events-py — are upgraded to full API wireframes: every public method has a Google-style docstring with Args, Returns, Raises, and Example sections, and every method has a failing TDD test asserting expected signature and behavior

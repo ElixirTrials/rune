@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
 status: in-progress
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-03-03T17:00:00.000Z"
-last_activity: 2026-03-03 — completed Phase 13 Plan 01 (root conftest.py factory fixtures)
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-03-03T18:00:00.000Z"
+last_activity: 2026-03-03 — completed Phase 13 Plan 02 (11 per-component conftest.py files)
 progress:
   total_phases: 18
   completed_phases: 12
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 13 of 17 (Test Infrastructure)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-03-03 — completed 13-01 root conftest.py with 6 factory fixtures
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase complete — ready for Phase 14
+Last activity: 2026-03-03 — completed 13-02 with 11 per-component conftest.py files; 23 tests passing
 
 Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 complete; v3.0 complete)
 
@@ -56,7 +56,7 @@ Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 compl
 | 10-methods-section | 1 | 4 min | 4 min |
 | 11-results-discussion | 2 | 9 min | 4.5 min |
 | 12-abstract-audit | 2 | 3 min | 1.5 min |
-| 13-test-infrastructure | 1/2 | 3 min | 3 min |
+| 13-test-infrastructure | 2/2 | 7 min | 3.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4 min, 5 min, 4 min, 2 min, 1 min
@@ -78,6 +78,7 @@ Recent decisions affecting current work:
 - [Milestone v4.0]: libs/inference needs template code cleanup (remove loaders.py, factory.py) before wireframing
 - [Milestone v4.0]: libs/evaluation is empty — wireframe from scratch as new module
 - [Milestone v4.0]: lora-server is Dockerfile-only — not a uv workspace member; tests run against Python source directly
+- [13-02]: lora-server conftest uses parent dir (not /src subdir) since source files live directly in services/lora-server/
 
 ### Pending Todos
 
@@ -89,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T17:00:00.000Z
-Stopped at: Completed 13-01-PLAN.md
-Resume file: .planning/phases/13-test-infrastructure/13-01-SUMMARY.md
+Last session: 2026-03-03T18:00:00.000Z
+Stopped at: Completed 13-02-PLAN.md
+Resume file: .planning/phases/13-test-infrastructure/13-02-SUMMARY.md
