@@ -101,18 +101,19 @@ Plans:
 - [x] 05-03-PLAN.md — Extend libs/model-training with PEFT stubs and extend libs/inference with adapter_loader and vLLM client stub
 
 ### Phase 5.1: Template Artifact Cleanup
-**Goal**: All remaining template artifacts are removed from libs/, docs/, and root — the three unused TypeScript/Python template libraries are deleted, template-specific documentation and diagrams are removed, and the workspace configuration is updated to reflect the cleaned state
+**Goal**: All remaining template artifacts are removed from libs/, apps/, docs/, and root — the three unused TypeScript/Python template libraries are deleted, the template HITL UI app is deleted, template-specific documentation and diagrams are removed, and the workspace configuration is updated to reflect the cleaned state
 **Depends on**: Phase 5
-**Requirements**: CLN-05, CLN-06, CLN-07
+**Requirements**: CLN-05, CLN-06, CLN-07, CLN-08
 **Success Criteria** (what must be TRUE):
   1. `libs/data-pipeline`, `libs/events-ts`, and `libs/shared-ts` directories do not exist; no references to them appear in root `pyproject.toml`, `mkdocs.yml`, or any configuration file; `uv lock && uv sync` passes after removal
-  2. Template-specific docs are removed: `docs/diagrams/agent-flow.md`, `docs/diagrams/hitl-flow.md`, `docs/diagrams/langgraph-architecture.md`, `docs/onboarding.md`, `docs/testing-guide.md`, `docs/components-overview.md`, and `PROJECT_OVERVIEW.md`; `mkdocs.yml` nav is updated to remove references to deleted files; `uv run mkdocs build` still passes
-  3. No file in the repository references "ElixirTrials" in its content (excluding `.planning/` and `pyproject.toml` project name which will be updated in a later milestone); `grep -r "ElixirTrials" --include="*.md" --include="*.py" . | grep -v .planning/` returns zero matches
+  2. `apps/hitl-ui` directory does not exist; no references to it appear in CI workflow, Makefile, docker-compose, scripts, or copilot-instructions
+  3. Template-specific docs are removed: `docs/diagrams/agent-flow.md`, `docs/diagrams/hitl-flow.md`, `docs/diagrams/langgraph-architecture.md`, `docs/onboarding.md`, `docs/testing-guide.md`, `docs/components-overview.md`, and `PROJECT_OVERVIEW.md`; `mkdocs.yml` nav is updated to remove references to deleted files; `uv run mkdocs build` still passes
+  4. No file in the repository references "ElixirTrials" in its content (excluding `.planning/` and `pyproject.toml` project name); `grep -r "ElixirTrials" . | grep -v .planning/ | grep -v pyproject.toml` returns zero matches
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05.1-01-PLAN.md — Remove template libraries (data-pipeline, events-ts, shared-ts) from workspace and filesystem
-- [ ] 05.1-02-PLAN.md — Remove template docs and diagrams, update mkdocs.yml nav, clean ElixirTrials references
+- [ ] 05.1-01-PLAN.md — Remove template libraries (data-pipeline, events-ts, shared-ts) and template app (hitl-ui) from workspace and filesystem
+- [ ] 05.1-02-PLAN.md — Remove template docs and diagrams, update mkdocs.yml nav, clean all ElixirTrials references
 
 ### Phase 6: Service Scaffolds
 **Goal**: All five services exist in their correct forms — four as importable uv workspace members with FastAPI endpoints returning 501, one (lora-server) as a Dockerfile-only service not in the workspace — and the workspace configuration in root pyproject.toml is fully synchronized across all five required sections

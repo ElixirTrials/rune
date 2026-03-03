@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Milestone v2.0 — Phase 6: Service Scaffolds
+**Current focus:** Milestone v2.0 — Phase 5.1: Template Artifact Cleanup
 
 ## Current Position
 
-Phase: 6 of 7 (Service Scaffolds)
-Plan: 0 of N in current phase
-Status: Phase 5 complete (verified, 4/4 must-haves), ready for Phase 6
-Last activity: 2026-03-02 — Phase 5 verified: all foundation libraries importable without GPU
+Phase: 5.1 of 7 (Template Artifact Cleanup)
+Plan: 1 of 2 in current phase
+Status: Phase 5.1 Plan 01 complete, Plan 02 remaining
+Last activity: 2026-03-03 — Phase 5.1 Plan 01: template artifacts removed from workspace and filesystem
 
-Progress: [██████░░░░] 60% (v1.0 complete; v2.0 phases 4-5 complete)
+Progress: [██████░░░░] 63% (v1.0 complete; v2.0 phases 4-5 complete, 5.1 plan 1/2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 3.6 min
-- Total execution time: 0.60 hours
+- Total plans completed: 11
+- Average duration: 3.5 min
+- Total execution time: 0.67 hours
 
 **By Phase:**
 
@@ -32,9 +32,10 @@ Progress: [██████░░░░] 60% (v1.0 complete; v2.0 phases 4-5 c
 | 03-architecture-docs | 1 | ~5 min | ~5 min |
 | 04-cleanup | 3 | 11 min | 3.7 min |
 | 05-foundation-libraries | 3 | 8 min | 2.7 min |
+| 05.1-template-artifact-cleanup | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 5 min, 3 min, 3 min, 2 min
+- Last 5 plans: 5 min, 3 min, 3 min, 2 min, 4 min
 - Trend: Improving
 
 *Updated after each plan completion*
@@ -61,6 +62,9 @@ Recent decisions affecting current work:
 - [Phase 05-foundation-libraries]: Used explicit __tablename__ = "adapter_records" to avoid collision with shared.models Entity/Task tables
 - [Phase 05-foundation-libraries]: Used openai AsyncOpenAI with custom base_url for vLLM (not direct vllm import)
 - [Phase 05-foundation-libraries]: All GPU imports deferred behind TYPE_CHECKING guards in peft_utils.py
+- [Phase 05.1-cleanup]: Removed apps/ directory entirely since hitl-ui was the only app
+- [Phase 05.1-cleanup]: Removed apps/**/docs/** filter from CI since apps/ no longer exists
+- [Phase 05.1-cleanup]: Updated Makefile help text to reflect Python-only tooling (no more tsc/vitest)
 
 ### Pending Todos
 
@@ -72,6 +76,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Completed Phase 5 (Foundation Libraries) — all 3 plans executed, verified 4/4 must-haves
+Last session: 2026-03-03
+Stopped at: Completed 05.1-01-PLAN.md (Template Artifact Cleanup - plan 1 of 2)
 Resume file: None

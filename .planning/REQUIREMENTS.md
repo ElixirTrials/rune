@@ -42,6 +42,13 @@ Requirements for milestone v2.0 — Repo Restructuring & Scaffold.
 - [x] **CLN-03**: Root pyproject.toml dev dependencies are cleaned of unused template packages (google-cloud-aiplatform, vertexai, google-genai, sentence-transformers) and GPU packages are moved out of root scope
 - [x] **CLN-04**: Makefile typecheck target uses glob pattern (`services/*/src libs/*/src`) instead of hardcoded component list
 
+### Template Artifact Cleanup
+
+- [x] **CLN-05**: Template libraries `libs/data-pipeline`, `libs/events-ts`, and `libs/shared-ts` are removed from the workspace (directories deleted, all references in root pyproject.toml removed, uv lock/sync passes)
+- [ ] **CLN-06**: Template-specific documentation removed: `docs/diagrams/agent-flow.md`, `docs/diagrams/hitl-flow.md`, `docs/diagrams/langgraph-architecture.md`, `docs/onboarding.md`, `docs/testing-guide.md`, `docs/components-overview.md`, `PROJECT_OVERVIEW.md`; mkdocs.yml nav updated; mkdocs build passes
+- [ ] **CLN-07**: No file references "ElixirTrials" in content (excluding .planning/ and pyproject.toml project name)
+- [x] **CLN-08**: Template app `apps/hitl-ui` is removed from the workspace (directory deleted, all references in CI, Makefile, docker-compose, scripts, and copilot-instructions removed)
+
 ### Scaffold — Libraries
 
 - [ ] **LIB-01**: `libs/adapter-registry` exists as a uv workspace member with SQLModel `AdapterRecord` schema, stub CRUD methods (`store`, `retrieve_by_id`, `query_by_task_type`, `list_all`), and custom exceptions (`AdapterAlreadyExistsError`, `AdapterNotFoundError`)
@@ -125,6 +132,10 @@ Which phases cover which requirements.
 | CLN-02 | Phase 4 | Complete |
 | CLN-03 | Phase 4 | Complete |
 | CLN-04 | Phase 4 | Complete |
+| CLN-05 | Phase 5.1 | Complete |
+| CLN-06 | Phase 5.1 | Pending |
+| CLN-07 | Phase 5.1 | Pending |
+| CLN-08 | Phase 5.1 | Complete |
 | LIB-01 | Phase 5 | Pending |
 | LIB-02 | Phase 5 | Pending |
 | LIB-03 | Phase 5 | Pending |
@@ -144,10 +155,10 @@ Which phases cover which requirements.
 | QA-04 | Phase 7 | Pending |
 
 **v2 Coverage:**
-- v2 requirements: 21 total
-- Mapped to phases: 21
+- v2 requirements: 25 total
+- Mapped to phases: 25
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 — v2 traceability filled (phases 4-7)*
+*Last updated: 2026-03-03 — Added CLN-08 (hitl-ui removal)*
