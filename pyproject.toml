@@ -46,7 +46,6 @@ dev = [
 members = [
     "services/api-service",
     "services/rune-agent",
-    "libs/data-pipeline",
     "libs/evaluation",
     "libs/events-py",
     "libs/inference",
@@ -97,8 +96,6 @@ ignore_missing_imports = true
 module = [
     "adapter_registry",
     "adapter_registry.*",
-    "data_pipeline",
-    "data_pipeline.load_data",
     "rune_agent",
     "rune_agent.*",
     "shared",
@@ -147,7 +144,6 @@ pythonpath = [
     "services/api-service/src",
     "services/rune-agent/src",
     "libs/adapter-registry/src",
-    "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",
     "libs/inference/src",
@@ -163,7 +159,6 @@ source = [
     "services/api-service/src",
     "services/rune-agent/src",
     "libs/adapter-registry/src",
-    "libs/data-pipeline/src",
     "libs/evaluation/src",
     "libs/events-py/src",
     "libs/inference/src",

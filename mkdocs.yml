@@ -4,7 +4,8 @@ site_author: Noah
 site_dir: site/docs
 docs_dir: docs
 repo_name: rune
-edit_uri: edit/main/docs/
+repo_url: https://github.com/ElixirTrials/rune
+edit_uri: https://github.com/ElixirTrials/rune/edit/main/docs/
 exclude_docs: '**/node_modules/**
 
   **/.pytest_cache/**
@@ -29,15 +30,13 @@ exclude_docs: '**/node_modules/**
 
   **/.vite/**
 
-  # Exclude frontend app entry HTML files (not documentation)
-
-  hitl-ui/index.html
-
   '
 theme:
   name: mkdocs
   navigation_depth: 3
   locale: en
+  logo: assets/et_illustration_transparent.png
+  favicon: assets/et_illustration_transparent.png
 extra_css:
 - assets/custom.css
 extra_javascript:
@@ -100,3 +99,18 @@ nav:
 - Appendices:
   - Risk Matrix: appendices/risk-matrix.md
   - Build Order: appendices/build-order.md
+- Onboarding: onboarding.md
+- Testing Guide: testing-guide.md
+- Diagrams:
+  - Agent Flow: diagrams/agent-flow.md
+  - HITL Flow: diagrams/hitl-flow.md
+  - LangGraph Architecture: diagrams/langgraph-architecture.md
+- Components:
+  - Overview: components-overview.md
+  - api-service: '!include ./services/api-service/mkdocs.yml'
+  - evaluation: '!include ./libs/evaluation/mkdocs.yml'
+  - events-py: '!include ./libs/events-py/mkdocs.yml'
+  - inference: '!include ./libs/inference/mkdocs.yml'
+  - model-training: '!include ./libs/model-training/mkdocs.yml'
+  - rune-agent: '!include ./services/rune-agent/mkdocs.yml'
+  - shared: '!include ./libs/shared/mkdocs.yml'
