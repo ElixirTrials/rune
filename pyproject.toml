@@ -159,8 +159,9 @@ pythonpath = [
     "libs/shared/src",
 ]
 asyncio_mode = "auto"
-# Coverage is optional - use `pytest --cov` to enable
-addopts = "-n auto"
+# importlib mode allows multiple test files with the same basename across
+# different directories without __init__.py (required for pytest-xdist)
+addopts = "-n auto --import-mode=importlib"
 
 [tool.coverage.run]
 source = [
