@@ -274,9 +274,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 14-01-PLAN.md — Upgrade libs/adapter-registry: Google-style docstrings on all 4 CRUD methods; write failing TDD tests for each
-- [ ] 14-02-PLAN.md — Upgrade libs/model-training: Google-style docstrings on all 9 functions; write failing TDD tests for each
-- [ ] 14-03-PLAN.md — Upgrade libs/shared models and libs/events-py: Google-style docstrings; write failing TDD tests for models and event edge cases
+- [x] 14-01-PLAN.md — Upgrade libs/adapter-registry: Google-style docstrings on all 4 CRUD methods; write failing TDD tests for each
+- [x] 14-02-PLAN.md — Upgrade libs/model-training: Google-style docstrings on all 9 functions; write failing TDD tests for each
+- [x] 14-03-PLAN.md — Upgrade libs/shared models and libs/events-py: Google-style docstrings; write failing TDD tests for models and event edge cases
 
 ### Phase 15: New & Reworked Library Wireframes
 **Goal**: The two libraries requiring deeper structural changes are completed — libs/inference has template-era code removed and replaced with Rune-specific wireframes; libs/evaluation is built from scratch with a complete 6-function public API; both have full Google-style docstrings and failing TDD tests
@@ -344,7 +344,7 @@ Phases execute in numeric order: 13 → 14 → 15 → 16 → 17
 | 11. Results & Discussion Outlines | v3.0 | 2/2 | Complete | 2026-03-03 |
 | 12. Abstract + Quality Audit | v3.0 | 2/2 | Complete | 2026-03-03 |
 | 13. Test Infrastructure | 1/2 | Complete    | 2026-03-03 | - |
-| 14. Core Library Wireframes | 2/3 | In Progress|  | - |
+| 14. Core Library Wireframes | v4.0 | 3/3 | Complete | 2026-03-03 |
 | 15. New & Reworked Library Wireframes | v4.0 | 0/2 | Not started | - |
 | 16. Service Wireframes | v4.0 | 0/4 | Not started | - |
 | 17. Quality Gate | v4.0 | 0/2 | Not started | - |

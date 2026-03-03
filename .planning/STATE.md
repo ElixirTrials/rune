@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
-status: completed
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-03-03T20:23:50.315Z"
-last_activity: 2026-03-03 — completed 13-02 with 11 per-component conftest.py files; 23 tests passing
+status: in-progress
+stopped_at: Completed 14-03-PLAN.md
+last_updated: "2026-03-03T20:25:30.000Z"
+last_activity: 2026-03-03 — completed 14-03 with 9 shared model tests + 5 events-py tests passing; LIB-09 and LIB-10 satisfied
 progress:
   total_phases: 18
   completed_phases: 13
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 13 of 17 (Test Infrastructure)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase complete — ready for Phase 14
-Last activity: 2026-03-03 — completed 13-02 with 11 per-component conftest.py files; 23 tests passing
+Phase: 14 of 17 (Core Library Wireframes)
+Plan: 3 of 4 in current phase
+Status: In progress — plan 14-03 complete, plan 14-04 next
+Last activity: 2026-03-03 — completed 14-03 with 9 shared model tests + 5 events-py tests; LIB-09 and LIB-10 satisfied
 
 Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 complete; v3.0 complete)
 
@@ -83,6 +83,7 @@ Recent decisions affecting current work:
 - [13-02]: lora-server conftest uses parent dir (not /src subdir) since source files live directly in services/lora-server/
 - [Phase 14]: Example sections in peft_utils.py use comment-style for GPU return types to avoid CPU-only importability issues
 - [Phase 14-core-library-wireframes]: Component conftest.py must define its own factory fixtures; pytest rootdir isolation from component pyproject.toml prevents root conftest.py discovery
+- [14-03]: Shared model tests require running with root pyproject.toml (-c pyproject.toml) to pick up root conftest.py factory fixtures; lib-specific pyproject.toml overrides rootdir
 
 ### Pending Todos
 
@@ -94,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T20:23:50.311Z
-Stopped at: Completed 14-01-PLAN.md
-Resume file: None
+Last session: 2026-03-03T20:25:30.000Z
+Stopped at: Completed 14-03-PLAN.md
+Resume file: .planning/phases/14-core-library-wireframes/14-03-SUMMARY.md
