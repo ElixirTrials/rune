@@ -271,7 +271,7 @@ Plans:
   2. All 9 functions across `libs/model-training` (`config.py`, `peft_utils.py`, `trajectory.py`) have Google-style docstrings; each has a test that calls the function and expects `NotImplementedError`
   3. `AdapterRef`, `CodingSession`, and `EvolMetrics` in `libs/shared` have Google-style class and field docstrings; tests validate field types, required vs optional fields, defaults, and round-trip JSON serialization
   4. `create_event` and associated models in `libs/events-py` have Google-style docstrings; tests cover edge cases: missing payload, invalid kind, and custom event_id override
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 - [ ] 14-01-PLAN.md — Upgrade libs/adapter-registry: Google-style docstrings on all 4 CRUD methods; write failing TDD tests for each
@@ -343,7 +343,7 @@ Phases execute in numeric order: 13 → 14 → 15 → 16 → 17
 | 10. Methods Section | v3.0 | 1/1 | Complete | 2026-03-03 |
 | 11. Results & Discussion Outlines | v3.0 | 2/2 | Complete | 2026-03-03 |
 | 12. Abstract + Quality Audit | v3.0 | 2/2 | Complete | 2026-03-03 |
-| 13. Test Infrastructure | 1/2 | In Progress|  | - |
+| 13. Test Infrastructure | 1/2 | Complete    | 2026-03-03 | - |
 | 14. Core Library Wireframes | v4.0 | 0/3 | Not started | - |
 | 15. New & Reworked Library Wireframes | v4.0 | 0/2 | Not started | - |
 | 16. Service Wireframes | v4.0 | 0/4 | Not started | - |
