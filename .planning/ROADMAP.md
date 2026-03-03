@@ -3,8 +3,9 @@
 ## Milestones
 
 - [x] **v1.0 Documentation & Implementation Plan** - Phases 1-3 (shipped 2026-03-02)
-- [ ] **v2.0 Repo Restructuring & Scaffold** - Phases 4-7 (in progress)
-- [ ] **v3.0 Scientific Article Documentation** - Phases 8-12 (planned)
+- [x] **v2.0 Repo Restructuring & Scaffold** - Phases 4-7 (shipped 2026-03-03)
+- [x] **v3.0 Scientific Article Documentation** - Phases 8-12 (shipped 2026-03-03)
+- [ ] **v4.0 API Wireframes & TDD Foundation** - Phases 13-17 (in progress)
 
 ## Phases
 
@@ -61,13 +62,12 @@ Plans:
 
 ---
 
-### v2.0 Repo Restructuring & Scaffold (In Progress)
+<details>
+<summary>v2.0 Repo Restructuring & Scaffold (Phases 4-7) - COMPLETE 2026-03-03</summary>
 
 **Milestone Goal:** Restructure the monorepo to match the Rune implementation plan's component layout. Remove template placeholders, create initial importable scaffolds for all planned services and libraries, and validate the full workspace builds and passes quality gates without GPU.
 
 **Build constraint:** Each phase ends with `uv lock && uv sync` passing. Phases respect the import dependency DAG: cleanup unlocks rename → adapter-registry unlocks all services → services unlock final config sync.
-
-## Phase Details
 
 ### Phase 4: Cleanup
 **Goal**: The template placeholders are gone and the workspace is clean — agent-b-service deleted, agent-a-service renamed to rune-agent with all four name locations updated, root pyproject.toml free of unused template dependencies, and the Makefile typecheck target future-proofed with a glob pattern
@@ -81,9 +81,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Remove agent-b-service (grep references, remove from workspace, uv lock/sync, delete directory)
-- [ ] 04-02-PLAN.md — Rename agent-a-service to rune-agent (git mv, update all four name locations, update root pyproject.toml references, uv lock/sync)
-- [ ] 04-03-PLAN.md — Clean root pyproject.toml dependencies and update Makefile typecheck glob
+- [x] 04-01-PLAN.md — Remove agent-b-service (grep references, remove from workspace, uv lock/sync, delete directory)
+- [x] 04-02-PLAN.md — Rename agent-a-service to rune-agent (git mv, update all four name locations, update root pyproject.toml references, uv lock/sync)
+- [x] 04-03-PLAN.md — Clean root pyproject.toml dependencies and update Makefile typecheck glob
 
 ### Phase 5: Foundation Libraries
 **Goal**: All four library scaffolds exist as importable uv workspace members — adapter-registry first (the dependency root that all services import), followed by extensions to shared, model-training, and inference; every library passes a CPU-only importability test
@@ -129,10 +129,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Scaffold services/lora-server (Dockerfile-only: config.py with TP=2 ValueError, startup.sh, config.yaml, Dockerfile, health sidecar, VLLMClient stub)
-- [ ] 06-02-PLAN.md — Rework services/rune-agent (RuneState TypedDict, 4-node StateGraph, should_retry implementation, updated exports)
-- [ ] 06-03-PLAN.md — Scaffold services/training-svc and services/evolution-svc (workspace members: FastAPI 501 endpoints, Pydantic schemas, SQLModel job tracking, uv lock/sync)
-- [ ] 06-04-PLAN.md — Extend api-service with /adapters and /sessions routers; synchronize root pyproject.toml across all five config sections; final uv lock/sync
+- [x] 06-01-PLAN.md — Scaffold services/lora-server (Dockerfile-only: config.py with TP=2 ValueError, startup.sh, config.yaml, Dockerfile, health sidecar, VLLMClient stub)
+- [x] 06-02-PLAN.md — Rework services/rune-agent (RuneState TypedDict, 4-node StateGraph, should_retry implementation, updated exports)
+- [x] 06-03-PLAN.md — Scaffold services/training-svc and services/evolution-svc (workspace members: FastAPI 501 endpoints, Pydantic schemas, SQLModel job tracking, uv lock/sync)
+- [x] 06-04-PLAN.md — Extend api-service with /adapters and /sessions routers; synchronize root pyproject.toml across all five config sections; final uv lock/sync
 
 ### Phase 7: Configuration & Quality Gate
 **Goal**: The full workspace passes every quality gate without GPU — pytest importability tests pass, no GPU imports exist at module level in any scaffold, ruff lints clean, all API stubs return 501, docker-compose includes lora-server, and mkdocs builds successfully
@@ -147,21 +147,18 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Fix ruff lint, create importability tests for 3 components, fix xdist collision, verify QA-01 through QA-04
+- [x] 07-01-PLAN.md — Fix ruff lint, create importability tests for 3 components, fix xdist collision, verify QA-01 through QA-04
 - [x] 07-02-PLAN.md — Add lora-server service with GPU passthrough to docker-compose.yml (CFG-03)
-- [ ] 07-03-PLAN.md — Create mkdocs.yml + docs for 3 components, update root nav, verify mkdocs build (CFG-04)
+- [x] 07-03-PLAN.md — Create mkdocs.yml + docs for 3 components, update root nav, verify mkdocs build (CFG-04)
+
+</details>
 
 ---
 
-### v3.0 Scientific Article Documentation (Planned)
+<details>
+<summary>v3.0 Scientific Article Documentation (Phases 8-12) - COMPLETE 2026-03-03</summary>
 
 **Milestone Goal:** Write a scientific-article style page for the MkDocs documentation site presenting the theoretical foundation and algorithmic design of Rune's parametric episodic memory approach. Infrastructure comes first (math rendering must exist before equations are written). Abstract is written last (summarizes what was actually written, not what was planned).
-
-- [x] **Phase 8: MkDocs Infrastructure** - Math rendering, footnote citations, academic CSS, and article directory structure (completed 2026-03-03)
-- [x] **Phase 9: References Skeleton + Background** - Anchored bibliography and the Background section surveying related work (completed 2026-03-03)
-- [x] **Phase 10: Methods Section** - Formal algorithm specification with pseudocode and mathematical notation (completed 2026-03-03)
-- [x] **Phase 11: Results & Discussion Outlines** - Experimental design proposal and structured placeholder sections (completed 2026-03-03)
-- [x] **Phase 12: Abstract + Quality Audit** - Abstract written last; citation link validation; final build gate (completed 2026-03-03)
 
 ### Phase 8: MkDocs Infrastructure
 **Goal**: Math rendering, citation footnotes, and academic styling are active in the MkDocs site; the article directory structure exists with nav integration; `uv run mkdocs build` passes — all of this confirmed before a single equation or citation is written
@@ -172,11 +169,11 @@ Plans:
   2. A footnote reference `[^hu2021lora]` in any article page renders as a numbered superscript that links to the endnote at the bottom of the same page; the endnote links back to the footnote location
   3. The `docs/article/` directory exists and appears as a "Scientific Article" nav section in the MkDocs sidebar between "Appendices" and "Components"; `uv run mkdocs build` exits 0
   4. `docs/assets/academic.css` is loaded; an abstract block rendered with the `.abstract` class is visually distinguished from surrounding body text (bordered/shaded box)
-**Plans**: 2 plans
+**Plans**: 2/2 plans complete
 
 Plans:
-- [ ] 08-01-PLAN.md — Configure arithmatex + MathJax 3 (mkdocs.yml extensions, mathjax-config.js, CDN extra_javascript)
-- [ ] 08-02-PLAN.md — Enable footnotes + attr_list + md_in_html, create academic.css, scaffold docs/article/ with stub index.md and nav entry
+- [x] 08-01-PLAN.md — Configure arithmatex + MathJax 3 (mkdocs.yml extensions, mathjax-config.js, CDN extra_javascript)
+- [x] 08-02-PLAN.md — Enable footnotes + attr_list + md_in_html, create academic.css, scaffold docs/article/ with stub index.md and nav entry
 
 ### Phase 9: References Skeleton + Background
 **Goal**: A complete annotated bibliography exists with HTML anchor targets for all cited papers; the Background section is fully written covering the memory taxonomy, LoRA/QLoRA foundations, S-LoRA serving, hypernetwork architectures, LoRA composition methods, and concurrent work — with all in-text citations linking to bibliography anchors
@@ -187,7 +184,7 @@ Plans:
   2. The Background section establishes the three-category memory taxonomy (token-space vs destructive weight-space vs composable weight-space) and positions Rune in the composable weight-space category with citations to supporting papers
   3. Background covers LoRA mathematical foundations with at least one rendered equation (the rank decomposition `ΔW = BA`), QLoRA's 4-bit quantization relevance, S-LoRA's concurrent adapter loading, Ha et al. hypernetwork framing, and Doc-to-LoRA as the central prior work — with honest description of what Doc-to-LoRA validates vs what Rune proposes to extend
   4. The trajectory-as-distinct-input-modality argument appears in Background, distinguishing code trajectories from document inputs (Doc-to-LoRA), in-context examples (SHINE), and text instructions (Text-to-LoRA), with PBB cited as independent empirical support
-**Plans**: 2 plans
+**Plans**: 2/2 plans complete
 
 Plans:
 - [x] 09-01-PLAN.md — Create docs/article/references.md with 12 bibliography entries and HTML anchor targets; add to mkdocs.yml nav
@@ -202,10 +199,10 @@ Plans:
   2. The Methods section contains rendered LaTeX equations for the LoRA adapter update rule (`ΔW = BA`), the hypernetwork mapping from trajectory to adapter weights, and at least one equation representing the evolution operator fitness criterion
   3. The adapter hierarchy (project, domain, task levels with compositional accumulation) and the Evolution Operator (consolidate/update/forget/merge operations) are described with explicit contrast against LoRA Soups; design decisions are labeled as "specified," "ablation target," or "TBD" throughout
   4. The training data strategy section cites PBB (arXiv:2506.18777) as empirical grounding for training on code execution trajectories without input-output pairs; the serving architecture section frames PP=2 + QLoRA as the intended configuration pending Phase 0 empirical validation (not asserted as confirmed working)
-**Plans**: 1 plan
+**Plans**: 1/1 plan complete
 
 Plans:
-- [ ] 10-01-PLAN.md — Write docs/article/methods.md (system architecture, hypernetwork adaptation, adapter distillation pseudocode, evolution operator, hierarchy, PBB-grounded training strategy, hardware section)
+- [x] 10-01-PLAN.md — Write docs/article/methods.md (system architecture, hypernetwork adaptation, adapter distillation pseudocode, evolution operator, hierarchy, PBB-grounded training strategy, hardware section)
 
 ### Phase 11: Results & Discussion Outlines
 **Goal**: Results and Discussion sections exist as detailed placeholder structures — the experimental design is specific enough to be a real research proposal (named benchmarks, explicit hypotheses, concrete metrics) while clearly marked as planned work; Discussion covers limitations, future directions, and broader implications
@@ -216,11 +213,11 @@ Plans:
   2. The Results section includes a PBB-inspired evaluation criterion: a description of testing whether a generated adapter enables program evaluation on held-out inputs without those inputs in context, grounded explicitly in PBB's experimental methodology
   3. The Discussion section has subsection headers for: expected contributions, limitations (pre-implementation status, adapter interference risk, hypernetwork mode collapse, cold-start corpus size), four open research questions (procedural encoding, recursive refinement value, composition interference, cold-start minimum), and future work (QDoRA, cross-project transfer, online adaptation)
   4. A visible research-status admonition or disclaimer appears at the top of the article (or in the Discussion Limitations subsection) stating explicitly that the system is pre-implementation and no experiments have been run
-**Plans**: 2 plans
+**Plans**: 2/2 plans complete
 
 Plans:
-- [ ] 11-01-PLAN.md — Write docs/article/results.md (experimental design proposal, kill-switch hypothesis, PBB-inspired metric, ablation structure, placeholder tables)
-- [ ] 11-02-PLAN.md — Write docs/article/discussion.md (contributions, limitations, open questions, future work, broader implications, research-status disclaimer)
+- [x] 11-01-PLAN.md — Write docs/article/results.md (experimental design proposal, kill-switch hypothesis, PBB-inspired metric, ablation structure, placeholder tables)
+- [x] 11-02-PLAN.md — Write docs/article/discussion.md (contributions, limitations, open questions, future work, broader implications, research-status disclaimer)
 
 ### Phase 12: Abstract + Quality Audit
 **Goal**: The abstract is written after all other sections exist and accurately summarizes what was written; all citation footnotes resolve to bibliography anchors; `uv run mkdocs build` exits 0 with no warnings; the article is complete and publication-ready within the MkDocs site
@@ -231,16 +228,105 @@ Plans:
   2. Every footnote citation in every article section (`[^citekey]`) renders as a numbered superscript that hyperlinks to a named anchor in `references.md`; clicking the link in a built site navigates to the correct bibliography entry
   3. `uv run mkdocs build` exits 0 with no warnings; the "Scientific Article" nav section appears correctly with all section pages (index, abstract, background, methods, results, discussion, references) reachable; all internal links resolve
   4. A claim-tier audit is complete: every sentence in the article containing a performance verb (achieves, improves, enables, demonstrates) is either backed by a citation or labeled with a claim tier (expected/proposed); no present-tense empirical claims appear without qualification
+**Plans**: 2/2 plans complete
+
+Plans:
+- [x] 12-01-PLAN.md — Write docs/article/abstract.md and docs/article/index.md (cover page with linked TOC, author block, research-status admonition)
+- [x] 12-02-PLAN.md — Claim-tier audit, citation link verification, final mkdocs build --strict gate
+
+</details>
+
+---
+
+### v4.0 API Wireframes & TDD Foundation (In Progress)
+
+**Milestone Goal:** Expand all service and library scaffolds with complete API wireframes — every public method has a Google-style docstring and raises NotImplementedError, every method has a failing test, and shared test fixture factories maximize DRY across the test suite.
+
+**Build constraint:** Test infrastructure (Phase 13) must come first — all other phases depend on shared fixtures. Library wireframes (Phases 14-15) precede service wireframes (Phase 16) because services import from libs. Quality gate (Phase 17) is terminal.
+
+**Branch:** feat/v4-wireframes
+
+## Phase Details
+
+### Phase 13: Test Infrastructure
+**Goal**: Shared test fixture factories exist at the root and in every component conftest.py — `pytest` can discover and inject any shared factory fixture into any component test without duplication; the factory functions produce valid, typed domain objects covering all core Rune models
+**Depends on**: Phase 12 (v3.0 complete)
+**Requirements**: TINF-01, TINF-02
+**Success Criteria** (what must be TRUE):
+  1. A root-level `conftest.py` exports `make_adapter_record`, `make_coding_session`, `make_training_job`, `make_evolution_job`, `make_evol_metrics`, and `make_adapter_ref` as pytest fixtures; a test in any workspace component can use `make_adapter_record()` without importing it explicitly
+  2. Each of the 11 components (6 libs + 5 services) has a `conftest.py`; service conftest files provide a `test_client` fixture returning a FastAPI `TestClient`; the inference component conftest provides a mock vLLM client fixture
+  3. Calling any factory fixture with no arguments returns a valid object that passes Pydantic model validation; calling with keyword overrides (e.g., `make_adapter_record(task_type="code-gen")`) produces an object with the override applied
 **Plans**: 2 plans
 
 Plans:
-- [ ] 12-01-PLAN.md — Write docs/article/abstract.md and docs/article/index.md (cover page with linked TOC, author block, research-status admonition)
-- [ ] 12-02-PLAN.md — Claim-tier audit, citation link verification, final mkdocs build --strict gate
+- [ ] 13-01-PLAN.md — Create root conftest.py with 6 shared factory fixtures (make_adapter_record, make_coding_session, make_training_job, make_evolution_job, make_evol_metrics, make_adapter_ref)
+- [ ] 13-02-PLAN.md — Create per-component conftest.py files for all 11 components with component-specific fixtures (TestClient for services, mock vLLM for inference)
+
+### Phase 14: Core Library Wireframes
+**Goal**: The four existing library scaffolds — adapter-registry, model-training, shared, and events-py — are upgraded to full API wireframes: every public method has a Google-style docstring with Args, Returns, Raises, and Example sections, and every method has a failing TDD test asserting expected signature and behavior
+**Depends on**: Phase 13
+**Requirements**: LIB-05, LIB-08, LIB-09, LIB-10
+**Success Criteria** (what must be TRUE):
+  1. All 4 CRUD methods in `libs/adapter-registry` (`store`, `retrieve_by_id`, `query_by_task_type`, `list_all`) have Google-style docstrings; each has a test that fails with `NotImplementedError` and asserts the expected return type signature
+  2. All 9 functions across `libs/model-training` (`config.py`, `peft_utils.py`, `trajectory.py`) have Google-style docstrings; each has a test that calls the function and expects `NotImplementedError`
+  3. `AdapterRef`, `CodingSession`, and `EvolMetrics` in `libs/shared` have Google-style class and field docstrings; tests validate field types, required vs optional fields, defaults, and round-trip JSON serialization
+  4. `create_event` and associated models in `libs/events-py` have Google-style docstrings; tests cover edge cases: missing payload, invalid kind, and custom event_id override
+**Plans**: TBD
+
+Plans:
+- [ ] 14-01-PLAN.md — Upgrade libs/adapter-registry: Google-style docstrings on all 4 CRUD methods; write failing TDD tests for each
+- [ ] 14-02-PLAN.md — Upgrade libs/model-training: Google-style docstrings on all 9 functions; write failing TDD tests for each
+- [ ] 14-03-PLAN.md — Upgrade libs/shared models and libs/events-py: Google-style docstrings; write failing TDD tests for models and event edge cases
+
+### Phase 15: New & Reworked Library Wireframes
+**Goal**: The two libraries requiring deeper structural changes are completed — libs/inference has template-era code removed and replaced with Rune-specific wireframes; libs/evaluation is built from scratch with a complete 6-function public API; both have full Google-style docstrings and failing TDD tests
+**Depends on**: Phase 14
+**Requirements**: LIB-06, LIB-07
+**Success Criteria** (what must be TRUE):
+  1. `libs/inference` contains no references to Vertex AI or LangChain; `loaders.py` and `factory.py` from the template era are deleted; `adapter_loader.py` exports `load_adapter`, `unload_adapter`, and `list_loaded_adapters`; new `completion.py` exports `generate_completion`, `generate_with_adapter`, and `batch_generate`; all 6 functions have Google-style docstrings and raise `NotImplementedError`
+  2. `libs/evaluation` is a uv workspace member with at least 6 public functions: `run_humaneval_subset`, `calculate_pass_at_k`, `score_adapter_quality`, `compare_adapters`, `test_generalization`, `evaluate_fitness`; each has a Google-style docstring with Args, Returns, Raises, and Example sections
+  3. Every public function in both `libs/inference` and `libs/evaluation` has a failing TDD test; inference tests use the mock vLLM client fixture from the component conftest; evaluation tests verify expected return types and that `NotImplementedError` is raised
+**Plans**: TBD
+
+Plans:
+- [ ] 15-01-PLAN.md — Rework libs/inference: remove template code (loaders.py, factory.py); expand adapter_loader.py; add completion.py; write failing TDD tests for all 6 functions
+- [ ] 15-02-PLAN.md — Wireframe libs/evaluation from scratch: scaffold module, 6 public functions with Google-style docstrings and NotImplementedError; write failing TDD tests
+
+### Phase 16: Service Wireframes
+**Goal**: All five services have complete API wireframes — every endpoint handler, node function, and client method has a Google-style docstring with Args, Returns, Raises sections, and every function has a failing TDD test asserting the expected response schema and status code (for HTTP endpoints) or return type (for internal functions)
+**Depends on**: Phase 15
+**Requirements**: SVC-06, SVC-07, SVC-08, SVC-09, SVC-10
+**Success Criteria** (what must be TRUE):
+  1. All 6 endpoint functions in `services/api-service` (`list_adapters`, `get_adapter`, `create_adapter`, `list_sessions`, `get_session`, `create_session`) have Google-style docstrings; each has a TestClient test asserting the expected response schema structure and HTTP 501 status code
+  2. All 4 endpoint functions in `services/evolution-svc` and all 3 in `services/training-svc` have Google-style docstrings; each has a TestClient test asserting the expected response shape and HTTP 501 status
+  3. All 4 node functions and 2 graph functions in `services/rune-agent` (`generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`, `should_retry`, `create_graph`) have Google-style docstrings; each node function has a test asserting expected state key mutations; `should_retry` test covers both retry and terminal branches
+  4. `check_vllm_ready` and all `VLLMClient` methods in `services/lora-server` have Google-style docstrings; each has a failing test (lora-server is Dockerfile-only, so tests run against the Python source directly, not via TestClient)
+**Plans**: TBD
+
+Plans:
+- [ ] 16-01-PLAN.md — Upgrade services/api-service: Google-style docstrings on 6 endpoints; write failing TestClient tests for each
+- [ ] 16-02-PLAN.md — Upgrade services/evolution-svc and services/training-svc: Google-style docstrings on all endpoints; write failing TestClient tests
+- [ ] 16-03-PLAN.md — Upgrade services/rune-agent: Google-style docstrings on 4 nodes + 2 graph functions; write failing tests for node state mutations and should_retry branches
+- [ ] 16-04-PLAN.md — Upgrade services/lora-server: Google-style docstrings on check_vllm_ready and VLLMClient methods; write failing tests (direct Python, no TestClient)
+
+### Phase 17: Quality Gate
+**Goal**: The TDD red phase is verified — every new test fails with the correct failure mode (NotImplementedError or assertion failure, never unexpected pass), every public method across all 11 components has a complete Google-style docstring, and the full workspace passes ruff and mypy cleanly
+**Depends on**: Phase 16
+**Requirements**: QA-05, QA-06, QA-07
+**Success Criteria** (what must be TRUE):
+  1. `uv run pytest` reports the expected pattern: all TDD wireframe tests fail (with `NotImplementedError` or assertion failure), zero tests fail unexpectedly, and zero new tests pass unexpectedly — the test suite is in a confirmed red phase
+  2. A docstring coverage audit across all 11 components (6 libs + 5 services) finds zero public methods or functions missing a Google-style docstring with at minimum Args, Returns, and Raises sections
+  3. `uv run ruff check .` exits 0 with no errors or warnings; `uv run mypy services/*/src libs/*/src` exits 0 with no type errors — all new wireframe code passes static analysis without exceptions or ignores
+**Plans**: TBD
+
+Plans:
+- [ ] 17-01-PLAN.md — Run full pytest suite; verify all TDD tests fail with NotImplementedError or assertion failure; fix any unexpected passes; confirm red-phase pattern
+- [ ] 17-02-PLAN.md — Docstring coverage audit across all 11 components; fix any missing or incomplete Google-style docstrings; run ruff + mypy gate to completion
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 4 → 5 → 5.1 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 13 → 14 → 15 → 16 → 17
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -250,10 +336,15 @@ Phases execute in numeric order: 4 → 5 → 5.1 → 6 → 7 → 8 → 9 → 10 
 | 4. Cleanup | v2.0 | 3/3 | Complete | 2026-03-02 |
 | 5. Foundation Libraries | v2.0 | 3/3 | Complete | 2026-03-02 |
 | 5.1. Template Artifact Cleanup | v2.0 | 2/2 | Complete | 2026-03-03 |
-| 6. Service Scaffolds | v2.0 | Complete | 2026-03-03 | - |
-| 7. Configuration & Quality Gate | v2.0 | 2/3 | Complete | 2026-03-03 | - |
-| 8. MkDocs Infrastructure | 2/2 | Complete    | 2026-03-03 | - |
-| 9. References Skeleton + Background | v3.0 | Complete    | 2026-03-03 | 2026-03-03 |
-| 10. Methods Section | 1/1 | Complete   | 2026-03-03 | - |
-| 11. Results & Discussion Outlines | 2/2 | Complete   | 2026-03-03 | - |
-| 12. Abstract + Quality Audit | 2/2 | Complete   | 2026-03-03 | - |
+| 6. Service Scaffolds | v2.0 | 4/4 | Complete | 2026-03-03 |
+| 7. Configuration & Quality Gate | v2.0 | 3/3 | Complete | 2026-03-03 |
+| 8. MkDocs Infrastructure | v3.0 | 2/2 | Complete | 2026-03-03 |
+| 9. References Skeleton + Background | v3.0 | 2/2 | Complete | 2026-03-03 |
+| 10. Methods Section | v3.0 | 1/1 | Complete | 2026-03-03 |
+| 11. Results & Discussion Outlines | v3.0 | 2/2 | Complete | 2026-03-03 |
+| 12. Abstract + Quality Audit | v3.0 | 2/2 | Complete | 2026-03-03 |
+| 13. Test Infrastructure | v4.0 | 0/2 | Not started | - |
+| 14. Core Library Wireframes | v4.0 | 0/3 | Not started | - |
+| 15. New & Reworked Library Wireframes | v4.0 | 0/2 | Not started | - |
+| 16. Service Wireframes | v4.0 | 0/4 | Not started | - |
+| 17. Quality Gate | v4.0 | 0/2 | Not started | - |
