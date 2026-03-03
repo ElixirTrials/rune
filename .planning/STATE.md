@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
-status: in-progress
-stopped_at: Completed 14-03-PLAN.md
-last_updated: "2026-03-03T20:25:30.000Z"
-last_activity: 2026-03-03 — completed 14-03 with 9 shared model tests + 5 events-py tests passing; LIB-09 and LIB-10 satisfied
+status: executing
+stopped_at: Completed 15-02-PLAN.md
+last_updated: "2026-03-03T20:57:19.507Z"
+last_activity: 2026-03-03 — completed 14-03 with 9 shared model tests + 5 events-py tests; LIB-09 and LIB-10 satisfied
 progress:
   total_phases: 18
-  completed_phases: 13
-  total_plans: 32
-  completed_plans: 32
+  completed_phases: 14
+  total_plans: 34
+  completed_plans: 34
   percent: 5
 ---
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 compl
 *Updated after each plan completion*
 | Phase 14 P02 | 2 | 2 tasks | 3 files |
 | Phase 14-core-library-wireframes P01 | 2 | 2 tasks | 3 files |
+| Phase 15 P02 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,8 @@ Recent decisions affecting current work:
 - [Phase 14]: Example sections in peft_utils.py use comment-style for GPU return types to avoid CPU-only importability issues
 - [Phase 14-core-library-wireframes]: Component conftest.py must define its own factory fixtures; pytest rootdir isolation from component pyproject.toml prevents root conftest.py discovery
 - [14-03]: Shared model tests require running with root pyproject.toml (-c pyproject.toml) to pick up root conftest.py factory fixtures; lib-specific pyproject.toml overrides rootdir
+- [Phase 15]: Alias test_generalization import as _test_generalization in test file to prevent pytest from collecting src function as test
+- [Phase 15]: libs/evaluation conftest.py stays minimal — 6 TDD tests use only literal arguments, no factory fixtures needed
 
 ### Pending Todos
 
@@ -95,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T20:25:30.000Z
-Stopped at: Completed 14-03-PLAN.md
-Resume file: .planning/phases/14-core-library-wireframes/14-03-SUMMARY.md
+Last session: 2026-03-03T20:57:19.504Z
+Stopped at: Completed 15-02-PLAN.md
+Resume file: None
