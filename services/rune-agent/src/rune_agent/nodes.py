@@ -11,33 +11,50 @@ logger = logging.getLogger(__name__)
 async def generate_node(state: RuneState) -> dict[str, Any]:
     """Generate code for the given task using the inference layer.
 
-    In a future phase this will call the LLM (with optional LoRA adapters)
-    to produce a code solution for the task description.
+    Calls the LLM (with optional LoRA adapters) to produce a code solution
+    for the task description.
 
     Args:
         state: Current agent state with task description and context.
 
     Returns:
-        State update with generated_code.
+        State update dict with generated_code key.
+
+    Raises:
+        NotImplementedError: Pending LLM integration.
+
+    Example:
+        >>> state = {"task_description": "Write fibonacci", "task_type": "function",
+        ...          "test_suite": "assert fib(5) == 5", "adapter_ids": []}
+        >>> result = await generate_node(state)
+        >>> 'generated_code' in result
+        True
     """
-    logger.info("Running generate node")
-    return {"generated_code": "# TODO: call LLM to generate code"}
+    raise NotImplementedError("generate_node is not yet implemented")
 
 
 async def execute_node(state: RuneState) -> dict[str, Any]:
     """Execute the generated code in a sandboxed environment.
 
-    In a future phase this will run the generated code against the test
-    suite in an isolated sandbox and capture stdout, stderr, and exit code.
+    Runs the generated code against the test suite in an isolated sandbox
+    and captures stdout, stderr, and exit code.
 
     Args:
         state: Current agent state with generated code and test suite.
 
     Returns:
-        State update with execution results.
+        State update dict with stdout, stderr, exit_code, and tests_passed keys.
+
+    Raises:
+        NotImplementedError: Pending sandbox integration.
+
+    Example:
+        >>> state = {"generated_code": "def fib(n): return n"}
+        >>> result = await execute_node(state)
+        >>> 'tests_passed' in result
+        True
     """
-    logger.info("Running execute node")
-    return {"stdout": "", "stderr": "", "exit_code": 1, "tests_passed": False}
+    raise NotImplementedError("execute_node is not yet implemented")
 
 
 async def reflect_node(state: RuneState) -> dict[str, Any]:
@@ -51,34 +68,40 @@ async def reflect_node(state: RuneState) -> dict[str, Any]:
         state: Current agent state with execution results.
 
     Returns:
-        State update with incremented attempt_count and extended trajectory.
+        State update dict with incremented attempt_count and extended trajectory.
+
+    Raises:
+        NotImplementedError: Pending reflection logic integration.
+
+    Example:
+        >>> state = {"attempt_count": 0, "generated_code": "def fib(n): pass",
+        ...          "exit_code": 1, "tests_passed": False, "trajectory": []}
+        >>> result = await reflect_node(state)
+        >>> result['attempt_count']
+        1
     """
-    logger.info("Running reflect node")
-    return {
-        "attempt_count": state["attempt_count"] + 1,
-        "trajectory": state["trajectory"]
-        + [
-            {
-                "attempt": state["attempt_count"] + 1,
-                "code": state["generated_code"],
-                "exit_code": state["exit_code"],
-                "tests_passed": state["tests_passed"],
-            }
-        ],
-    }
+    raise NotImplementedError("reflect_node is not yet implemented")
 
 
 async def save_trajectory_node(state: RuneState) -> dict[str, Any]:
     """Save the completed trajectory for parametric memory training.
 
-    In a future phase this will persist the trajectory to the
-    adapter-registry so it can be used for LoRA fine-tuning.
+    Persists the trajectory to the adapter-registry so it can be used
+    for LoRA fine-tuning.
 
     Args:
-        state: Current agent state with complete trajectory.
+        state: Current agent state with complete trajectory and outcome.
 
     Returns:
-        State update with final outcome.
+        State update dict with outcome key ('success' or 'exhausted').
+
+    Raises:
+        NotImplementedError: Pending persistence integration.
+
+    Example:
+        >>> state = {"tests_passed": True}
+        >>> result = await save_trajectory_node(state)
+        >>> result['outcome']
+        'success'
     """
-    logger.info("Running save_trajectory node")
-    return {"outcome": "success" if state["tests_passed"] else "exhausted"}
+    raise NotImplementedError("save_trajectory_node is not yet implemented")

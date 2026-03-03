@@ -21,6 +21,14 @@ def should_retry(state: RuneState) -> Literal["generate", "save_trajectory"]:
 
     Returns:
         Next node name: 'generate' to retry or 'save_trajectory' to finish.
+
+    Example:
+        >>> state = {"tests_passed": False, "attempt_count": 0, "max_attempts": 3}
+        >>> should_retry(state)
+        'generate'
+        >>> state2 = {"tests_passed": True, "attempt_count": 1, "max_attempts": 3}
+        >>> should_retry(state2)
+        'save_trajectory'
     """
     if state["tests_passed"]:
         return "save_trajectory"
@@ -38,6 +46,11 @@ def create_graph() -> Any:
 
     Returns:
         Compiled StateGraph ready for execution.
+
+    Example:
+        >>> graph = create_graph()
+        >>> graph is not None
+        True
     """
     workflow = StateGraph(RuneState)
 
