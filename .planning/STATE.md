@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Milestone v2.0 — Phase 5.1 complete, ready for Phase 6
+**Current focus:** Milestone v2.0 — Phase 6 in progress (Service Scaffolds)
 
 ## Current Position
 
-Phase: 5.1 of 7 (Template Artifact Cleanup) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase 5.1 complete, ready for Phase 6
-Last activity: 2026-03-03 — Phase 5.1 Plan 02: template docs deleted, ElixirTrials references removed
+Phase: 6 of 7 (Service Scaffolds)
+Plan: 2 of 4 in current phase (plans 01-02 complete)
+Status: Phase 6 in progress
+Last activity: 2026-03-03 — Phase 6 Plan 02: rune-agent graph with RuneState, 4-node topology, should_retry
 
-Progress: [███████░░░] 69% (v1.0 complete; v2.0 phases 4-5.1 complete)
+Progress: [████████░░] 78% (v1.0 complete; v2.0 phases 4-6.02 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: 3.4 min
-- Total execution time: 0.72 hours
+- Total plans completed: 14
+- Average duration: 3.2 min
+- Total execution time: 0.78 hours
 
 **By Phase:**
 
@@ -33,9 +33,10 @@ Progress: [███████░░░] 69% (v1.0 complete; v2.0 phases 4-5.1
 | 04-cleanup | 3 | 11 min | 3.7 min |
 | 05-foundation-libraries | 3 | 8 min | 2.7 min |
 | 05.1-template-artifact-cleanup | 2 | 7 min | 3.5 min |
+| 06-service-scaffolds | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 3 min, 2 min, 4 min, 3 min
+- Last 5 plans: 3 min, 2 min, 4 min, 3 min, 2 min
 - Trend: Improving
 
 *Updated after each plan completion*
@@ -66,6 +67,10 @@ Recent decisions affecting current work:
 - [Phase 05.1-cleanup]: Removed apps/**/docs/** filter from CI since apps/ no longer exists
 - [Phase 05.1-cleanup]: Updated Makefile help text to reflect Python-only tooling (no more tsc/vitest)
 - [Phase 05.1-cleanup]: Removed repo_name/repo_url/edit_uri from mkdocs.yml (no public repo yet)
+- [Phase 06-service-scaffolds]: lora-server is Dockerfile-only with no pyproject.toml, not in uv workspace members
+- [Phase 06-service-scaffolds]: LoraServerConfig raises ValueError on TP=2 referencing vLLM bug #21471
+- [Phase 06-service-scaffolds]: VLLMClient wraps AsyncOpenAI, not direct vllm import
+- [Phase 06-service-scaffolds]: Health sidecar uses httpx for /ready check against vLLM on port 8000
 
 ### Pending Todos
 
@@ -78,5 +83,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 05.1-02-PLAN.md (Phase 5.1 Template Artifact Cleanup - all plans complete)
+Stopped at: Completed 06-01-PLAN.md (LoRA Server Scaffold)
 Resume file: None
