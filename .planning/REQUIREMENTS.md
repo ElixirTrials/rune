@@ -58,7 +58,7 @@ Requirements for milestone v2.0 — Repo Restructuring & Scaffold.
 
 ### Scaffold — Services
 
-- [ ] **SVC-01**: `services/rune-agent` has a LangGraph `StateGraph` with `RuneState`, four nodes (generate, execute, reflect, save_trajectory), conditional edges, and a working `should_retry` function
+- [x] **SVC-01**: `services/rune-agent` has a LangGraph `StateGraph` with `RuneState`, four nodes (generate, execute, reflect, save_trajectory), conditional edges, and a working `should_retry` function
 - [x] **SVC-02**: `services/lora-server` exists as a Dockerfile-only service (NOT a uv workspace member) with startup script, config enforcing PP=2/TP=1, FastAPI health sidecar, and `VLLMClient` stub
 - [ ] **SVC-03**: `services/training-svc` exists as a uv workspace service with FastAPI endpoints (`/train/lora`, `/train/hypernetwork`, `/jobs/{job_id}`), request schemas, and `TrainingJob` SQLModel
 - [ ] **SVC-04**: `services/evolution-svc` exists as a uv workspace service with FastAPI endpoints (`/evaluate`, `/evolve`, `/promote`, `/prune`), evaluation schemas, and stub lifecycle manager
@@ -140,7 +140,7 @@ Which phases cover which requirements.
 | LIB-02 | Phase 5 | Pending |
 | LIB-03 | Phase 5 | Pending |
 | LIB-04 | Phase 5 | Pending |
-| SVC-01 | Phase 6 | Pending |
+| SVC-01 | Phase 6 | Complete |
 | SVC-02 | Phase 6 | Complete |
 | SVC-03 | Phase 6 | Pending |
 | SVC-04 | Phase 6 | Pending |

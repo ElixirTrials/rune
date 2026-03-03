@@ -33,10 +33,10 @@ Progress: [████████░░] 78% (v1.0 complete; v2.0 phases 4-6.0
 | 04-cleanup | 3 | 11 min | 3.7 min |
 | 05-foundation-libraries | 3 | 8 min | 2.7 min |
 | 05.1-template-artifact-cleanup | 2 | 7 min | 3.5 min |
-| 06-service-scaffolds | 1 | 2 min | 2 min |
+| 06-service-scaffolds | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 2 min, 4 min, 3 min, 2 min
+- Last 5 plans: 2 min, 4 min, 3 min, 2 min, 2 min
 - Trend: Improving
 
 *Updated after each plan completion*
@@ -71,6 +71,8 @@ Recent decisions affecting current work:
 - [Phase 06-service-scaffolds]: LoraServerConfig raises ValueError on TP=2 referencing vLLM bug #21471
 - [Phase 06-service-scaffolds]: VLLMClient wraps AsyncOpenAI, not direct vllm import
 - [Phase 06-service-scaffolds]: Health sidecar uses httpx for /ready check against vLLM on port 8000
+- [Phase 06-service-scaffolds]: RuneState uses plain TypedDict without Annotated[..., add_messages] -- trajectory managed explicitly by nodes
+- [Phase 06-service-scaffolds]: should_retry is fully implemented (not stubbed) with 3-way branching: tests_passed, attempts exhausted, retry
 
 ### Pending Todos
 
@@ -83,5 +85,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 06-01-PLAN.md (LoRA Server Scaffold)
+Stopped at: Completed 06-02-PLAN.md (Rune Agent Graph)
 Resume file: None
