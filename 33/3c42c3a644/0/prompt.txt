@@ -1505,3 +1505,397 @@ Wait until 12:01 AM and then proceed.
 ---
 
 proceed
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 6 --auto (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+<objective>
+Execute all plans in a phase using wave-based parallel execution.
+
+Orchestrator stays lean: discover plans, analyze dependencies, group into waves, spawn subagents, collect results. Each subagent loads the full execute-plan context and handles its own plan.
+
+Context budget: ~15% orchestrator, 100% fresh per subagent.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase: 6 --auto
+
+**Flags:**
+- `--gaps-only` — Execute only gap closure plans (plans with `gap_closure: true` in frontmatter). Use after verify-work creates fix plans.
+
+@.planning/ROADMAP.md
+@.planning/STATE.md
+</context>
+
+<process>
+Execute the execute-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md end-to-end.
+Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
+</process>
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Session Start**: This is a continuation from a previous conversation. The context summary tells us:
+   - v1.0 milestone (Phases 1-3) complete
+   - v2.0 milestone in progress: Phases 4-5 complete
+   - Phase 5.1 (Template Artifact Cleanup) was being planned with `--auto` flag
+   - v3.0 milestone planning with PBB insights was requested but not started
+   - The `/gsd:plan-phase 5.1 --auto` workflow was at Step 9 (Handle Planner Return)
+
+2. **Plan Checker for Phase 5.1**: I launched a background plan checker agent for Phase 5.1 plans (2 plans in 2 waves).
+
+3. **User Message - HITL-UI**: User asked "Don't you think the HITL-UI is out of scope and irrelevant for this project?" while the checker was running.
+
+4. **HITL-UI Analysis**: I investigated `apps/hitl-ui/` references:
+   - Found it's a React/Vite template artifact from ElixirTrials template
+   - Referenced in: CI workflow, Makefile, docker-compose, scripts/check-all.sh, copilot-instructions, mkdocs.yml, docs
+   - Not part of Rune architecture at all (Rune is backend-only services)
+
+5. **Plan Checker Results**: Returned VERIFICATION PASSED with one info note:
+   - `ElixirTrials` in `Makefile:103` and `apps/hitl-ui/e2e/example.spec.ts:22` not covered by plans
+   - Plans would pass their stated success criteria but these files were outside the grep check scope
+
+6. **Plan Updates**: I updated all planning files to include hitl-ui removal:
+   - Added CLN-08 requirement to REQUIREMENTS.md
+   - Updated ROADMAP.md Phase 5.1 with expanded goal, success criteria, and CLN-08
+   - Rewrote 05.1-01-PLAN.md with 4 tasks (was 2): added hitl-ui removal from CI/docker-compose/Makefile/scripts + directory deletion
+   - Rewrote 05.1-02-PLAN.md: expanded ElixirTrials grep to check ALL file types including Makefile
+
+7. **Phase 5.1 Execution**:
+   - **Plan 01** (Wave 1): Executed successfully - 5 commits, removed template libs and hitl-ui from all config + deleted directories
+   - **Plan 02** (Wave 2): Executed successfully - 3 commits, deleted template docs, fixed Makefile ElixirTrials→Rune
+   - Updated ROADMAP.md to mark Phase 5.1 complete
+
+8. **Phase 6 Planning** (`/gsd:plan-phase 6 --auto`):
+   - Initialize: Created `.planning/phases/06-service-scaffolds/` directory
+   - No CONTEXT.md - continued with research + requirements only
+   - **Research**: Spawned researcher agent → wrote 06-RESEARCH.md (708 lines). HIGH confidence. Key findings:
+     - LangGraph 1.0.10 `add_conditional_edges` verified working
+     - `should_retry` MUST be implemented, not stubbed
+     - lora-server is Dockerfile-only — no `uv init`
+     - Root pyproject.toml has 4 sections needing updating (testpaths already glob)
+     - SQLite table names to avoid: entity, task, adapter_records
+   - **Planning**: Spawned planner → created 4 plans (compressed from roadmap's 6):
+     - 06-01: lora-server scaffold (Wave 1)
+     - 06-02: rune-agent rework (Wave 1)
+     - 06-03: training-svc + evolution-svc (Wave 1)
+     - 06-04: api-service routers + root pyproject.toml sync (Wave 2)
+   - **Verification**: Plan checker passed all dimensions
+
+9. **Phase 6 Execution** (`/gsd:execute-phase 6 --auto`):
+   - **Wave 1** (3 agents parallel):
+     - 06-01: lora-server scaffold - 2 tasks, 3 commits, 6 files created
+     - 06-02: rune-agent rework - 2 tasks, 3 commits, 4 files modified
+     - 06-03: training-svc + evolution-svc - 3 tasks, 4 commits, 18+ files created
+   - **Wave 2** (1 agent):
+     - 06-04: api-service + root sync - 2 tasks, 3 commits, 6 files
+
+10. **Phase 6 Verification**: Verifier found 2 gaps:
+    - training-svc/README.md missing (hatchling build fails)
+    - evolution-svc/README.md missing (same root cause)
+    - Fix: Created both README.md files, `uv sync --all-packages` now passes
+    - Committed fix as `6605ebc`
+
+11. **Phase 6 Complete**: Ran `phase complete "6"` - returned `is_last_phase: true` (but Phase 7 exists - this may be a tool quirk with decimal phases)
+
+Key files modified/created in this session:
+- `.planning/REQUIREMENTS.md` - Added CLN-08, updated traceability
+- `.planning/ROADMAP.md` - Phase 5.1 expanded and completed, Phase 6 planned and completed
+- `.planning/STATE.md` - Multiple updates through phases
+- Phase 5.1 plans (rewritten) and summaries
+- Phase 6 research, plans, summaries, verification
+- `services/lora-server/` - 6 new files (config.py, config.yaml, startup.sh, Dockerfile, health.py, vllm_client.py)
+- `services/rune-agent/src/rune_agent/` - state.py, nodes.py, graph.py, __init__.py rewritten
+- `services/training-svc/` - Full scaffold (pyproject.toml, main.py, schemas.py, models.py, routers/)
+- `services/evolution-svc/` - Full scaffold (same structure)
+- `services/api-service/src/api_service/routers/` - adapters.py, sessions.py, __init__.py
+- `pyproject.toml` - 5-section sync for new workspace members
+- Various config files cleaned (CI, Makefile, docker-compose, scripts, copilot-instructions, mkdocs.yml)
+
+User messages in this session:
+1. (Continuation prompt from previous session)
+2. "Don't you think the HITL-UI is out of scope and irrelevant for this project?"
+3. "proceed" (after the date change wait instruction)
+
+Pending tasks:
+- Phase 7 (Configuration & Quality Gate) - next phase in v2.0
+- v3.0 milestone planning (PBB insights) - user chose "Plan v3.0 now in parallel" but this was never started
+- The `--auto` flag should continue the chain to Phase 7
+
+The most recent work was completing Phase 6 execution, fixing verification gaps (missing README files), and marking Phase 6 complete. The `--auto` flag was present throughout, meaning the workflow should auto-advance to Phase 7.
+
+Summary:
+1. Primary Request and Intent:
+   - **Original task (from prior session)**: Complete the GSD workflow for v2.0 milestone with `--auto` flag — plan and execute all remaining phases (5.1 through 7)
+   - **User feedback on HITL-UI**: User pointed out that `apps/hitl-ui` is out of scope and irrelevant for the Rune project, prompting expansion of Phase 5.1 to include hitl-ui removal
+   - **v3.0 milestone planning (PBB insights)**: User previously chose "Plan v3.0 now in parallel" to incorporate Programming by Backprop research from `instructions/some_new_insights.md` — this has NOT been started yet
+   - **Auto-advance chain**: The `--auto` flag means the workflow should continue: Phase 5.1 → Phase 6 → Phase 7 automatically
+
+2. Key Technical Concepts:
+   - **GSD Workflow**: plan-phase → execute-phase cycle with auto_advance, wave-based parallel execution
+   - **uv Workspace**: Python monorepo with 5 hardcoded path sections in root pyproject.toml (workspace members, mypy overrides, pytest pythonpath, testpaths, coverage source)
+   - **LangGraph 1.0.10**: `StateGraph`, `add_conditional_edges` with string-returning router function, verified working in repo
+   - **FastAPI 501 Stubs**: All scaffold endpoints return `JSONResponse(status_code=501, content={"detail": "Not Implemented"})`
+   - **SQLModel**: `table=True` with explicit `__tablename__` to avoid collisions (known tables: entity, task, adapter_records, training_jobs, evolution_jobs)
+   - **Dockerfile-only service pattern**: lora-server has no pyproject.toml, no workspace membership — just Dockerfile, startup.sh, config files, Python scripts
+   - **Hatchling build backend**: All Python packages use hatchling; `readme = "README.md"` in pyproject.toml requires the file to exist
+   - **LoraServerConfig**: Dataclass with `__post_init__` that raises `ValueError` on `tensor_parallel_size=2` (vLLM bug #21471)
+   - **should_retry**: The ONLY real implementation in Phase 6 — checks `tests_passed` and `attempt_count >= max_attempts`, returns `Literal["generate", "save_trajectory"]`
+
+3. Files and Code Sections:
+
+   - **`.planning/REQUIREMENTS.md`**
+     - Added CLN-08 requirement for hitl-ui removal, updated traceability table and coverage count from 24→25
+     - CLN-05 through CLN-08 all marked complete after Phase 5.1
+
+   - **`.planning/ROADMAP.md`**
+     - Phase 5.1 expanded with CLN-08, hitl-ui success criteria, broader ElixirTrials grep
+     - Phase 5.1 marked complete (2/2 plans, 2026-03-03)
+     - Phase 6 updated from 6 planned plans to 4 actual plans (compressed)
+     - Phase 6 marked complete (4/4 plans)
+
+   - **`.planning/phases/05.1-template-artifact-cleanup/05.1-01-PLAN.md`** (rewritten)
+     - Expanded from 2 tasks to 4 tasks: (1) remove template lib refs from pyproject.toml+mkdocs.yml, (2) remove hitl-ui from CI/docker-compose/Makefile/scripts, (3) update copilot-instructions/monorepo-mapping/build-order, (4) delete 4 directories
+     - Added CLN-08 to requirements, hitl-ui to must_haves
+
+   - **`.planning/phases/05.1-template-artifact-cleanup/05.1-02-PLAN.md`** (rewritten)
+     - Expanded ElixirTrials cleanup to check ALL file types (not just .md/.py)
+     - Added Makefile fix: `"ElixirTrials  - Makefile Commands"` → `"Rune - Makefile Commands"`
+
+   - **`.planning/phases/06-service-scaffolds/06-RESEARCH.md`** (708 lines)
+     - Comprehensive research covering LangGraph patterns, FastAPI stubs, SQLModel job tables, lora-server isolation
+     - 8 verified code patterns with live test results
+     - 7 common pitfalls documented
+
+   - **`services/lora-server/config.py`** — LoraServerConfig with TP=2 ValueError
+   - **`services/lora-server/config.yaml`** — PP=2, TP=1, AWQ quantization defaults
+   - **`services/lora-server/startup.sh`** — Entrypoint launching health sidecar + vLLM
+   - **`services/lora-server/Dockerfile`** — Container build definition
+   - **`services/lora-server/health.py`** — FastAPI sidecar on port 8001
+   - **`services/lora-server/vllm_client.py`** — VLLMClient wrapping AsyncOpenAI with load_adapter/generate stubs
+
+   - **`services/rune-agent/src/rune_agent/state.py`** — RuneState TypedDict with 13 fields (task_description, task_type, test_suite, adapter_ids, attempt_count, max_attempts, generated_code, stdout, stderr, exit_code, tests_passed, trajectory, outcome)
+   - **`services/rune-agent/src/rune_agent/nodes.py`** — 4 async node stubs: generate_node, execute_node, reflect_node, save_trajectory_node
+   - **`services/rune-agent/src/rune_agent/graph.py`** — StateGraph(RuneState), should_retry implementation, create_graph/get_graph
+   - **`services/rune-agent/src/rune_agent/__init__.py`** — Exports RuneState, create_graph, get_graph (AgentState removed)
+
+   - **`services/training-svc/`** — Full scaffold: pyproject.toml, main.py (3 stub endpoints), schemas.py (LoraTrainingRequest, HypernetworkTrainingRequest, JobStatusResponse), models.py (TrainingJob with __tablename__="training_jobs"), routers/training.py, README.md
+   - **`services/evolution-svc/`** — Full scaffold: pyproject.toml, main.py (4 stub endpoints), schemas.py (EvaluationRequest, EvolveRequest, PromoteRequest, PruneRequest), models.py (EvolutionJob with __tablename__="evolution_jobs"), routers/evolution.py, README.md
+
+   - **`services/api-service/src/api_service/routers/adapters.py`** — 3 adapter endpoints (list, get by ID, create) returning 501
+   - **`services/api-service/src/api_service/routers/sessions.py`** — 3 session endpoints (list, get by ID, create) returning 501
+   - **`services/api-service/src/api_service/main.py`** — Updated with include_router for adapters and sessions
+   - **`services/api-service/pyproject.toml`** — adapter-registry added as workspace dependency
+
+   - **`pyproject.toml`** (root) — Synchronized across all 5 sections: workspace members (added training-svc, evolution-svc), mypy overrides (added training_svc.*, evolution_svc.*), pytest pythonpath (added src paths), coverage source (added src paths)
+
+   - Config files cleaned in Phase 5.1:
+     - `.github/workflows/ci.yml` — Removed entire frontend job and filter
+     - `infra/docker-compose.yml` — Removed ui service
+     - `scripts/check-all.sh` — Removed frontend checks section
+     - `Makefile` — Removed hitl-ui conditionals from lint/lint-fix/typecheck/test, fixed ElixirTrials→Rune in help
+     - `.github/copilot-instructions.md` — Removed HITL UI references, updated key dirs
+     - `mkdocs.yml` — Removed template !includes, ElixirTrials repo_url/edit_uri
+
+4. Errors and fixes:
+   - **Phase 6 verification gaps — missing README.md files**:
+     - `services/training-svc/pyproject.toml` declared `readme = "README.md"` but the file didn't exist
+     - `services/evolution-svc/pyproject.toml` same issue
+     - Hatchling build failed: `OSError: Readme file does not exist: README.md`
+     - `uv sync --all-packages` failed (plain `uv sync` passed because root doesn't directly depend on these)
+     - Fix: Created both README.md files with one-line descriptions, committed as `6605ebc`
+     - `uv sync --all-packages` now passes cleanly
+   - **Plan checker info note — ElixirTrials in non-.md/.py files**:
+     - `Makefile:103` and `apps/hitl-ui/e2e/example.spec.ts` had ElixirTrials references
+     - Original plans only checked .md and .py files
+     - Fix: Expanded Phase 5.1 plans to include ALL file types and Makefile specifically
+   - **hitl-ui not in original Phase 5.1 scope**:
+     - User pointed out hitl-ui should be removed
+     - Fix: Added CLN-08 requirement, expanded Plan 01 with 2 additional tasks, updated all planning docs
+
+5. Problem Solving:
+   - **hitl-ui identification**: User identified template artifact that the automated planning missed. Comprehensive analysis found references in 18 files across CI, Makefile, docker-compose, scripts, docs, and config. Resolved by expanding Phase 5.1 scope.
+   - **Phase compression**: Planner compressed Phase 6 from 6 plans to 4 by combining training-svc+evolution-svc (same pattern) and api-service+root sync (both modify root pyproject.toml).
+   - **Wave dependency management**: lora-server (Plan 01), rune-agent (Plan 02), and new services (Plan 03) all execute in parallel Wave 1 since they touch disjoint files. Plan 04 (Wave 2) depends on Plan 03 for workspace member registration.
+
+6. All user messages:
+   - (Continuation prompt from previous session with full context summary)
+   - "Don't you think the HITL-UI is out of scope and irrelevant for this project?"
+   - "proceed" (after a system date change instruction)
+   - (Current message asking for summary)
+
+7. Pending Tasks:
+   - **Phase 7 (Configuration & Quality Gate)**: Next phase in v2.0 — pytest importability tests, GPU import scan, ruff check, 501 verification, docker-compose lora-server, mkdocs build. Plans outlined in ROADMAP: 07-01, 07-02, 07-03
+   - **v3.0 milestone planning (PBB insights)**: User chose "Plan v3.0 now in parallel" in the prior session but this was never started. Needs `/gsd:new-milestone` with PBB research from `instructions/some_new_insights.md`. Key modifications proposed: training data strategy, hypernetwork objective, CoT integration, compositional memory validation, code-first encoding
+   - **Auto-advance chain**: The `--auto` flag should continue from Phase 6 → Phase 7 (plan, then execute)
+
+8. Current Work:
+   Phase 6 execution just completed. The `phase complete "6"` tool was called and returned `is_last_phase: true`. However, Phase 7 exists in the roadmap. The auto-advance workflow was in progress — after `phase complete`, the `execute-phase` workflow's `offer_next` step should handle the transition to Phase 7.
+
+   The last actions were:
+   1. Created `services/training-svc/README.md` and `services/evolution-svc/README.md` to fix verification gaps
+   2. Committed as `6605ebc`
+   3. Ran `node gsd-tools.cjs phase complete "6"` which returned successfully
+   
+   The execute-phase workflow's auto-advance step should now trigger transition to Phase 7, but the `is_last_phase: true` return may affect this flow.
+
+9. Optional Next Step:
+   Continue the `--auto` workflow chain by planning and executing Phase 7 (Configuration & Quality Gate). The workflow was invoked with `/gsd:plan-phase 6 --auto` which chains to `/gsd:execute-phase 6 --auto` which should chain to Phase 7 planning/execution. Since `phase complete` returned `is_last_phase: true`, the auto-advance may need manual triggering via `/gsd:plan-phase 7 --auto`.
+
+   Phase 7 requirements (CFG-03, CFG-04, QA-01, QA-02, QA-03, QA-04):
+   - Add importability tests for all new components
+   - Scan for GPU imports at module level
+   - Run ruff check
+   - Verify all API stubs return 501
+   - Add lora-server to docker-compose with GPU passthrough
+   - Update mkdocs.yml nav and verify build
+
+   Additionally, the v3.0 milestone planning with PBB insights remains pending from the user's earlier request.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/0bf13c74-ac3a-40fc-8b1a-4968b155f2fb.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 7 --auto (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+<objective>
+Execute all plans in a phase using wave-based parallel execution.
+
+Orchestrator stays lean: discover plans, analyze dependencies, group into waves, spawn subagents, collect results. Each subagent loads the full execute-plan context and handles its own plan.
+
+Context budget: ~15% orchestrator, 100% fresh per subagent.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase: 7 --auto
+
+**Flags:**
+- `--gaps-only` — Execute only gap closure plans (plans with `gap_closure: true` in frontmatter). Use after verify-work creates fix plans.
+
+@.planning/ROADMAP.md
+@.planning/STATE.md
+</context>
+
+<process>
+Execute the execute-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md end-to-end.
+Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
+</process>
+
+---
+
+<objective>
+Start a new milestone: questioning → research (optional) → requirements → roadmap.
+
+Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Gathers "what's next", updates PROJECT.md, then runs requirements → roadmap cycle.
+
+**Creates/Updates:**
+- `.planning/PROJECT.md` — updated with new milestone goals
+- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/REQUIREMENTS.md` — scoped requirements for this milestone
+- `.planning/ROADMAP.md` — phase structure (continues numbering)
+- `.planning/STATE.md` — reset for new milestone
+
+**After:** `/gsd:plan-phase [N]` to start execution.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/questioning.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/project.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/requirements.md
+</execution_context>
+
+<context>
+Milestone name: Add to the mkdocs a scientific-article style page that discusses the current state of literature, the theory behind our proposed algorithm. It should have an abstract, background and methods section fully written. And an outline for results and discussion (optional - will prompt if not provided)
+
+**Load project context:**
+@.planning/PROJECT.md
+@.planning/STATE.md
+@.planning/MILESTONES.md
+@.planning/config.json
+
+**Load milestone context (if exists, from /gsd:discuss-milestone):**
+@.planning/MILESTONE-CONTEXT.md
+</context>
+
+<process>
+Execute the new-milestone workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md end-to-end.
+Preserve all workflow gates (validation, questioning, research, requirements, roadmap approval, commits).
+</process>
