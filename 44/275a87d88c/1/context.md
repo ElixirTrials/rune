@@ -40,3 +40,34 @@ Create executable phase prompts (PLAN.md files) for a roadmap phase with integra
 <execution_context>
 @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md...
 
+### Prompt 4
+
+<objective>
+Execute all plans in a phase using wave-based parallel execution.
+
+Orchestrator stays lean: discover plans, analyze dependencies, group into waves, spawn subagents, collect results. Each subagent loads the full execute-plan context and handles its own plan.
+
+Context budget: ~15% orchestrator, 100% fresh per subagent.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/g...
+
+### Prompt 5
+
+<objective>
+Create `.continue-here.md` handoff file to preserve complete work state across sessions.
+
+Routes to the pause-work workflow which handles:
+- Current phase detection from recent files
+- Complete state gathering (position, completed work, remaining work, decisions, blockers)
+- Handoff file creation with all context sections
+- Git commit as WIP
+- Resume instructions
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/pause-work.md
+</...
+
