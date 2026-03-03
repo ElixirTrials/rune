@@ -5,7 +5,7 @@ All functions raise NotImplementedError. No GPU imports required.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 def get_training_config(

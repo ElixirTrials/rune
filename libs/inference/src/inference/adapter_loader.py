@@ -8,7 +8,7 @@ imported and instantiated on CPU-only machines without vLLM installed.
 import os
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI  # type: ignore[import-not-found]
 
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
 

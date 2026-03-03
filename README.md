@@ -1,8 +1,20 @@
+<p align="center">
+  <img src="docs/assets/et_illustration_transparent.png" alt="Rune logo" width="180">
+</p>
+
 # Rune
 
 SoTA-level coding performance from a local SLM, achieved by encoding experience into weight-space memory.
 
 ![Research Stage](https://img.shields.io/badge/stage-research-orange)
+
+---
+
+---
+
+## Documentation
+
+- **Project docs (GitHub Pages)**: https://elixirtrials.github.io/rune/
 
 ---
 

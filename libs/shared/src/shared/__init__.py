@@ -4,6 +4,8 @@ from pathlib import Path
 
 from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
 
+__all__ = ["AdapterRef", "CodingSession", "EvolMetrics", "get_prompts_dir"]
+
 
 def get_prompts_dir() -> Path:
     """Return the path to the shared prompt templates directory (Jinja2 .j2 files).

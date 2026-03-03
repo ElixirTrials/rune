@@ -1,4 +1,5 @@
 """Coding session router stubs."""
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 

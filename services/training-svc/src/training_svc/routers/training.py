@@ -5,7 +5,6 @@ from fastapi.responses import JSONResponse
 
 from training_svc.schemas import (
     HypernetworkTrainingRequest,
-    JobStatusResponse,
     LoraTrainingRequest,
 )
 

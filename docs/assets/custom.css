@@ -1,4 +1,55 @@
-/* Minimal theme tweaks for the built-in MkDocs theme. */
+/* Rune theme customization */
+
+:root {
+  --rune-bg: #020617;          /* near-black */
+  --rune-surface: #020617;
+  --rune-surface-soft: #0b1120;
+  --rune-accent: #22c55e;      /* emerald */
+  --rune-accent-soft: #0f766e; /* teal */
+  --rune-text: #e5e7eb;        /* light gray */
+  --rune-text-muted: #9ca3af;
+}
+
+body {
+  background-color: var(--rune-bg);
+  color: var(--rune-text);
+}
+
+a {
+  color: var(--rune-accent);
+}
+
+a:hover,
+a:focus {
+  color: var(--rune-accent-soft);
+}
+
+header,
+.navbar,
+.navbar-inverse,
+.navbar-default {
+  background-color: var(--rune-surface-soft);
+  border-color: transparent;
+}
+
+.navbar-brand,
+.navbar-nav > li > a {
+  color: var(--rune-text) !important;
+}
+
+.navbar-nav > li > a:hover,
+.navbar-nav > .active > a,
+.navbar-nav > .active > a:hover {
+  background-color: var(--rune-accent-soft) !important;
+  color: #ffffff !important;
+}
+
+code,
+pre {
+  background-color: #020617;
+  color: #e5e7eb;
+  border-radius: 4px;
+}
 
 /* Mermaid diagrams */
 .mermaid {

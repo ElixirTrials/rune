@@ -56,12 +56,15 @@ async def reflect_node(state: RuneState) -> dict[str, Any]:
     logger.info("Running reflect node")
     return {
         "attempt_count": state["attempt_count"] + 1,
-        "trajectory": state["trajectory"] + [{
-            "attempt": state["attempt_count"] + 1,
-            "code": state["generated_code"],
-            "exit_code": state["exit_code"],
-            "tests_passed": state["tests_passed"],
-        }],
+        "trajectory": state["trajectory"]
+        + [
+            {
+                "attempt": state["attempt_count"] + 1,
+                "code": state["generated_code"],
+                "exit_code": state["exit_code"],
+                "tests_passed": state["tests_passed"],
+            }
+        ],
     }
 
 
