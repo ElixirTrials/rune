@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 11 — Results & Discussion
-Plan: 01 of 02 (01 complete)
-Status: Phase 11 plan 01 complete; ready for plan 02
-Last activity: 2026-03-03 — Phase 11 plan 01 complete (results.md + mkdocs.yml nav)
+Phase: 11 — Results & Discussion (COMPLETE)
+Plan: 02 of 02 (02 complete)
+Status: Phase 11 complete; ready for Phase 12
+Last activity: 2026-03-03 — Phase 11 plan 02 complete (discussion.md + mkdocs.yml nav)
 
-Progress: [███████░░░] 70% of v3.0 (v1.0 complete; v2.0 complete; Phases 8-10 done; 11-01 done)
+Progress: [████████░░] 80% of v3.0 (v1.0 complete; v2.0 complete; Phases 8-11 done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: 3.1 min
-- Total execution time: ~1.2 hours
+- Total execution time: ~1.3 hours
 
 **By Phase:**
 
@@ -38,10 +38,10 @@ Progress: [███████░░░] 70% of v3.0 (v1.0 complete; v2.0 comp
 | 08-mkdocs-infrastructure | 2 | 6 min | 3 min |
 | 09-references-skeleton-background | 2 | 8 min | 4 min |
 | 10-methods-section | 1 | 4 min | 4 min |
-| 11-results-discussion | 1 | 5 min | 5 min |
+| 11-results-discussion | 2 | 9 min | 4.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 3 min, 3 min, 4 min, 5 min
+- Last 5 plans: 3 min, 3 min, 4 min, 5 min, 4 min
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -112,6 +112,8 @@ Recent decisions affecting current work:
 - [Phase 10-01]: Perceiver-based encoder labeled as ablation target (not specified) — alternatives to be compared in Phase 1
 - [Phase 10-01]: 9 footnotes defined in methods.md (subset of background.md's 12 — excluded pink2025episodic, charakorn2025t2l, liu2026shine)
 - [Phase 11-01]: Added inline citations for charakorn2026doc2lora, dettmers2023qlora, sheng2023slora to eliminate unreferenced footnote build warnings
+- [Phase 11-02]: QDoRA described without citation footnote — no [^qdora] citekey exists in references.md
+- [Phase 11-02]: 10 footnote declarations in discussion.md covering all cited works (pink2025episodic, cook2025pbb, zhang2025orthogonality, zou2026merging, charakorn2026doc2lora, charakorn2025t2l, liu2026shine, prabhakar2024lorasoups, hu2021lora, dettmers2023qlora)
 
 ### Pending Todos
 
@@ -124,5 +126,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 11-01-PLAN.md
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None

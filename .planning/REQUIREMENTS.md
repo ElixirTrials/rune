@@ -95,7 +95,7 @@ Requirements for milestone v3.0 — Scientific Article Documentation.
 - [x] **ART-02**: Background section is fully written covering: (a) context window problem and memory approaches taxonomy (token-space vs destructive weight-space vs composable weight-space), (b) LoRA/QLoRA foundations with math notation, (c) multi-adapter serving (S-LoRA), (d) hypernetwork architectures (Ha et al. 2016, Doc-to-LoRA, SHINE), (e) LoRA composition methods (TIES, LoRA Soups, adapter merging interference), (f) Programming by Backprop validation of code-as-abstraction, (g) episodic memory position (arXiv:2502.06975); cites all 6+ must-cite papers
 - [x] **ART-03**: Methods section is fully written covering: (a) system architecture overview with recursive loop, (b) Doc-to-LoRA hypernetwork adaptation for coding trajectories, (c) adapter distillation pipeline with pseudocode, (d) evolution operator (consolidate/update/forget/merge) with fitness-based selection, (e) memory composition strategy (hierarchical adapter tree), (f) PBB-grounded training data strategy (code representations over prose), (g) System-2 reasoning loop with chain-of-thought; includes mathematical notation for LoRA operations and hypernetwork mapping
 - [x] **ART-04**: Results section has detailed outline: kill-switch experiment design (Pass@1 on HumanEval), ablation structure (hypernetwork vs fine-tuning, single vs composed adapters, with vs without evolution), specific metrics (Pass@1, adapter quality, composition interference), baseline comparisons (vanilla model, RAG, fine-tuned), hardware configuration; all content marked as "Planned Experiments"
-- [ ] **ART-05**: Discussion section has detailed outline: expected contributions analysis, limitations (pre-implementation status, hardware constraints, adapter interference risk, hypernetwork mode collapse), future work (QDoRA, cross-project transfer, online adaptation), broader implications for local AI agents; structured with subsection headers
+- [x] **ART-05**: Discussion section has detailed outline: expected contributions analysis, limitations (pre-implementation status, hardware constraints, adapter interference risk, hypernetwork mode collapse), future work (QDoRA, cross-project transfer, online adaptation), broader implications for local AI agents; structured with subsection headers
 
 ### References & Quality
 
@@ -196,7 +196,7 @@ Which phases cover which requirements.
 | ART-02 | Phase 9 | Complete |
 | ART-03 | Phase 10 | Complete |
 | ART-04 | Phase 11 | Complete |
-| ART-05 | Phase 11 | Pending |
+| ART-05 | Phase 11 | Complete |
 | ART-01 | Phase 12 | Pending |
 | REF-02 | Phase 12 | Pending |
 | REF-03 | Phase 12 | Pending |
