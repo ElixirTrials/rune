@@ -113,6 +113,7 @@ nav:
   - Overview: article/index.md
   - Background: article/background.md
   - Methods: article/methods.md
+  - Results: article/results.md
   - References: article/references.md
 - Components:
   - Overview: components-overview.md
