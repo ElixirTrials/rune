@@ -103,6 +103,38 @@ Requirements for milestone v3.0 — Scientific Article Documentation.
 - [x] **REF-02**: All in-text citations use footnotes linking to `references.md#anchor` targets; `mkdocs build` with `anchors: warn` produces zero broken citation warnings
 - [x] **REF-03**: `uv run mkdocs build` exits 0 with no warnings; all math renders correctly; all footnote links resolve; nav entry appears correctly
 
+## v4 Requirements
+
+Requirements for milestone v4.0 — API Wireframes & TDD Foundation.
+
+### Test Infrastructure
+
+- [x] **TINF-01**: Root-level `conftest.py` provides shared factory fixtures (`make_adapter_record`, `make_coding_session`, `make_training_job`, `make_evolution_job`, `make_evol_metrics`, `make_adapter_ref`) usable by all component test suites via pytest fixture discovery
+- [ ] **TINF-02**: Each component has a `conftest.py` that imports shared factories and adds component-specific fixtures where needed (e.g., FastAPI TestClient fixtures for services, mock vLLM client for inference)
+
+### Library Wireframes
+
+- [ ] **LIB-05**: `libs/adapter-registry` — all 4 CRUD methods (`store`, `retrieve_by_id`, `query_by_task_type`, `list_all`) upgraded to Google-style docstrings (Args, Returns, Raises, Example sections); each has a failing TDD test asserting expected return type and behavior
+- [ ] **LIB-06**: `libs/evaluation` — wireframed from empty with at least 6 public functions: benchmark runner (`run_humaneval_subset`), pass-rate calculator (`calculate_pass_at_k`), adapter quality scorer (`score_adapter_quality`), adapter comparator (`compare_adapters`), generalization tester (`test_generalization`), fitness evaluator (`evaluate_fitness`); all with Google-style docstrings, all raise NotImplementedError, each has a failing test
+- [ ] **LIB-07**: `libs/inference` — template-era Vertex AI/LangChain code (`loaders.py`, `factory.py`) removed; replaced with Rune-specific wireframes: `adapter_loader.py` expanded with `load_adapter`, `unload_adapter`, `list_loaded_adapters`; new `completion.py` with `generate_completion`, `generate_with_adapter`, `batch_generate`; all Google-style docstrings, NotImplementedError stubs, failing tests
+- [ ] **LIB-08**: `libs/model-training` — all 9 existing functions across `config.py`, `peft_utils.py`, and `trajectory.py` upgraded to Google-style docstrings; each gets a failing TDD test asserting expected signature and return type
+- [ ] **LIB-09**: `libs/shared` — `AdapterRef`, `CodingSession`, `EvolMetrics` Pydantic models get Google-style docstrings; failing tests validate field types, defaults, and serialization
+- [ ] **LIB-10**: `libs/events-py` — `create_event` and models get Google-style docstrings; failing tests for edge cases (missing payload, invalid kind, custom event_id)
+
+### Service Wireframes
+
+- [ ] **SVC-06**: `services/api-service` — all 6 endpoint stubs (`list_adapters`, `get_adapter`, `create_adapter`, `list_sessions`, `get_session`, `create_session`) upgraded to Google-style docstrings; each gets a failing TDD test using TestClient that asserts expected response schema and status code when implemented
+- [ ] **SVC-07**: `services/evolution-svc` — all 4 endpoint stubs (`evaluate_adapter`, `evolve_adapters`, `promote_adapter`, `prune_adapter`) upgraded to Google-style docstrings; each gets a failing TDD test
+- [ ] **SVC-08**: `services/training-svc` — all 3 endpoint stubs (`train_lora`, `train_hypernetwork`, `get_job_status`) upgraded to Google-style docstrings; each gets a failing TDD test
+- [ ] **SVC-09**: `services/rune-agent` — all 4 node functions (`generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`) and 2 graph functions (`should_retry`, `create_graph`) upgraded to Google-style docstrings; each gets a failing TDD test
+- [ ] **SVC-10**: `services/lora-server` — health sidecar (`check_vllm_ready`) and `VLLMClient` methods upgraded to Google-style docstrings; each gets a failing TDD test
+
+### Quality Gate
+
+- [ ] **QA-05**: Every new TDD test fails with either NotImplementedError or assertion failure (TDD red phase verified — `uv run pytest` reports expected test failures, zero unexpected passes)
+- [ ] **QA-06**: Every public method/function across all 11 components has a Google-style docstring with at minimum Args, Returns, and Raises sections
+- [ ] **QA-07**: `uv run ruff check .` passes cleanly; `uv run mypy services/*/src libs/*/src` passes cleanly; no new lint or type errors introduced
+
 ## Future Requirements (Deferred)
 
 - Functional implementation of adapter storage write-once enforcement (deferred to implementation milestone)
@@ -206,6 +238,32 @@ Which phases cover which requirements.
 - Mapped to phases: 12
 - Unmapped: 0
 
+### v4
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| TINF-01 | Phase 13 | Complete |
+| TINF-02 | Phase 13 | Pending |
+| LIB-05 | Phase 14 | Pending |
+| LIB-08 | Phase 14 | Pending |
+| LIB-09 | Phase 14 | Pending |
+| LIB-10 | Phase 14 | Pending |
+| LIB-06 | Phase 15 | Pending |
+| LIB-07 | Phase 15 | Pending |
+| SVC-06 | Phase 16 | Pending |
+| SVC-07 | Phase 16 | Pending |
+| SVC-08 | Phase 16 | Pending |
+| SVC-09 | Phase 16 | Pending |
+| SVC-10 | Phase 16 | Pending |
+| QA-05 | Phase 17 | Pending |
+| QA-06 | Phase 17 | Pending |
+| QA-07 | Phase 17 | Pending |
+
+**v4 Coverage:**
+- v4 requirements: 17 total
+- Mapped to phases: 17
+- Unmapped: 0
+
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-03 — Added v3 traceability (Phases 8-12)*
+*Last updated: 2026-03-03 — v4 traceability populated (Phases 13-17)*

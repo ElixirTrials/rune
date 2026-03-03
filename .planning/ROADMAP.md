@@ -343,7 +343,7 @@ Phases execute in numeric order: 13 → 14 → 15 → 16 → 17
 | 10. Methods Section | v3.0 | 1/1 | Complete | 2026-03-03 |
 | 11. Results & Discussion Outlines | v3.0 | 2/2 | Complete | 2026-03-03 |
 | 12. Abstract + Quality Audit | v3.0 | 2/2 | Complete | 2026-03-03 |
-| 13. Test Infrastructure | v4.0 | 0/2 | Not started | - |
+| 13. Test Infrastructure | 1/2 | In Progress|  | - |
 | 14. Core Library Wireframes | v4.0 | 0/3 | Not started | - |
 | 15. New & Reworked Library Wireframes | v4.0 | 0/2 | Not started | - |
 | 16. Service Wireframes | v4.0 | 0/4 | Not started | - |
