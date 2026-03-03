@@ -63,7 +63,33 @@ services:
       timeout: 5s
       retries: 5
 
+  lora-server:
+    build:
+      context: ..
+      dockerfile: services/lora-server/Dockerfile
+    ports:
+      - "${LORA_SERVER_PORT:-8000}:8000"
+      - "${LORA_HEALTH_PORT:-8001}:8001"
+    volumes:
+      - adapters_data:/adapters
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - VLLM_BASE_URL=http://localhost:8000/v1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
 volumes:
   postgres_data:
   mlflow_data:
   pubsub_data:
+  adapters_data:
