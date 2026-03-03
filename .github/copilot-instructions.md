@@ -3,8 +3,8 @@
 Purpose: give an AI coding agent the minimum, high‑signal knowledge to be productive here (run, test, navigate, and change code safely).
 
 ## 1) Big picture (one-liner)
-- Monorepo of small Python services (FastAPI), LangGraph agent packages, an inference layer, data pipelines, evaluation code and a React/Vite HITL UI. Docs are generated with MkDocs (monorepo plugin + mkdocstrings).
-- Key dirs: `services/{api-service,rune-agent}`; `libs/{inference,data-pipeline,model-training,shared,events-py,events-ts,shared-ts}`; `apps/hitl-ui`.
+- Monorepo of small Python services (FastAPI), LangGraph agent packages, an inference layer, evaluation code, and an adapter registry. Docs are generated with MkDocs (monorepo plugin + mkdocstrings).
+- Key dirs: `services/{api-service,rune-agent}`; `libs/{adapter-registry,inference,model-training,shared,events-py,evaluation}`.
 
 ## 2) Quick start — concrete commands (exact)
 - Full stack (recommended for end-to-end work):
@@ -13,8 +13,6 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
   - ensure deps: `uv sync --all-extras`
   - run (dev reload): `uv run uvicorn api_service.main:app --reload`
   - health/readiness: `GET /health` and `GET /ready`
-- Frontend (HITL UI):
-  - `cd apps/hitl-ui && npm ci && npm run dev` (env: `VITE_API_BASE_URL`)
 - Tests (per-component):
   - `uv run pytest --cov=./src/<package> .` or use `make run-tests` in a component with the generated `Makefile`
 - Docs/OpenAPI:
@@ -26,7 +24,7 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
   - Kill local dev processes: `scripts/kill-running-processes.sh`
 
 ## 3) Architecture & integration (what to know)
-- API Service (`services/api-service`): FastAPI orchestrator, DB (Postgres), MLFlow; exposes REST used by HITL UI and other components.
+- API Service (`services/api-service`): FastAPI orchestrator, DB (Postgres), MLFlow; exposes REST API for adapter management and other components.
 - Agent packages (`services/rune-agent/`): LangGraph StateGraphs — graph in `graph.py`, nodes in `nodes.py`, typed state in `state.py`. Prefer invoking via graph factories (e.g. `create_graph()`), not by importing internal runtime elsewhere.
 - Inference layer: central model-loading / call interface — agents call it rather than calling models directly.
 - Docs: each component has its own `mkdocs.yml` and is included into the root `mkdocs.yml` via `!include` (see `scripts/update_root_navigation.py`).
@@ -42,7 +40,6 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
 - Do: use `Depends()` for DB/session injection and background tasks for long-running work (see `services/api-service/src/api_service/main.py`).
 - Don’t: import agent implementation into the API — use agent factories / inference interfaces (`libs/inference` / agent `create_graph()`).
 - Keep `libs/shared` tiny and dependency-free (no business logic).
-- Frontend expects API at `VITE_API_BASE_URL`; changing API base URL requires updating `infra/docker-compose.yml` and HMR env for dev.
 
 ## 6) Where to look (highest signal files)
 - Run & wiring: `services/api-service/src/api_service/main.py` (health/readiness, lifespan)

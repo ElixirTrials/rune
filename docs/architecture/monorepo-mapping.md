@@ -94,10 +94,7 @@ These existing monorepo services are not modified by Rune and continue operating
 
 | Service / Library | Role | Rune Relationship |
 |------------------|------|-------------------|
-| `libs/events-ts` | TypeScript event library | Not used by Rune (Python-only) |
-| `libs/shared-ts` | TypeScript shared utilities | Not used by Rune (Python-only) |
 | `libs/shared` | Shared utilities | May consume for common config patterns |
-| `libs/data-pipeline` | Data pipeline library | Not directly used; may provide dataset utilities later |
 | `libs/evaluation` | Evaluation library | Used by `evolution-svc` for test execution harness |
 
 ---
@@ -119,7 +116,4 @@ rune/
     events-py/            # Unchanged (consumed by new services)
     evaluation/           # Unchanged (consumed by evolution-svc)
     shared/               # Unchanged
-    shared-ts/            # Unchanged
-    events-ts/            # Unchanged
-    data-pipeline/        # Unchanged
 ```
