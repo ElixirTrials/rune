@@ -98,9 +98,12 @@ nav:
   - Build Order: appendices/build-order.md
 - Components:
   - api-service: '!include ./services/api-service/mkdocs.yml'
+  - adapter-registry: '!include ./libs/adapter-registry/mkdocs.yml'
   - evaluation: '!include ./libs/evaluation/mkdocs.yml'
   - events-py: '!include ./libs/events-py/mkdocs.yml'
+  - evolution-svc: '!include ./services/evolution-svc/mkdocs.yml'
   - inference: '!include ./libs/inference/mkdocs.yml'
   - model-training: '!include ./libs/model-training/mkdocs.yml'
   - rune-agent: '!include ./services/rune-agent/mkdocs.yml'
   - shared: '!include ./libs/shared/mkdocs.yml'
+  - training-svc: '!include ./services/training-svc/mkdocs.yml'
