@@ -45,7 +45,9 @@ dev = [
 [tool.uv.workspace]
 members = [
     "services/api-service",
+    "services/evolution-svc",
     "services/rune-agent",
+    "services/training-svc",
     "libs/evaluation",
     "libs/events-py",
     "libs/inference",
