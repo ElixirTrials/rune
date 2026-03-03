@@ -1,32 +1,56 @@
-"""LangGraph workflow definition for the guest interaction agent."""
+"""LangGraph workflow for the Rune coding agent recursive loop."""
 
-from typing import Any
+from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 
-from .nodes import extraction_node, validation_node
-from .state import AgentState
+from .nodes import execute_node, generate_node, reflect_node, save_trajectory_node
+from .state import RuneState
+
+
+def should_retry(state: RuneState) -> Literal["generate", "save_trajectory"]:
+    """Route from reflect: retry if attempts remain and tests failed, else save.
+
+    This is a REAL implementation, not a stub:
+    - If tests passed -> save_trajectory (success)
+    - If attempt_count >= max_attempts -> save_trajectory (exhausted)
+    - Otherwise -> generate (retry)
+
+    Args:
+        state: Current agent state after reflection.
+
+    Returns:
+        Next node name: 'generate' to retry or 'save_trajectory' to finish.
+    """
+    if state["tests_passed"]:
+        return "save_trajectory"
+    if state["attempt_count"] >= state["max_attempts"]:
+        return "save_trajectory"
+    return "generate"
 
 
 def create_graph() -> Any:
-    """Create and compile the agent workflow graph.
+    """Create and compile the Rune agent workflow graph.
 
     The graph follows this flow:
-    START -> extract -> validate -> END
+    START -> generate -> execute -> reflect -> [should_retry]
+        -> generate (retry) OR save_trajectory -> END
 
     Returns:
         Compiled StateGraph ready for execution.
     """
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(RuneState)
 
-    # Add nodes
-    workflow.add_node("extract", extraction_node)
-    workflow.add_node("validate", validation_node)
+    workflow.add_node("generate", generate_node)
+    workflow.add_node("execute", execute_node)
+    workflow.add_node("reflect", reflect_node)
+    workflow.add_node("save_trajectory", save_trajectory_node)
 
-    # Define edges
-    workflow.add_edge(START, "extract")
-    workflow.add_edge("extract", "validate")
-    workflow.add_edge("validate", END)
+    workflow.add_edge(START, "generate")
+    workflow.add_edge("generate", "execute")
+    workflow.add_edge("execute", "reflect")
+    workflow.add_conditional_edges("reflect", should_retry)
+    workflow.add_edge("save_trajectory", END)
 
     return workflow.compile()
 

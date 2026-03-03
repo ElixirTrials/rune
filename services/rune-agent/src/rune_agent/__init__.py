@@ -1,9 +1,6 @@
-"""Guest Interaction Agent Service.
-
-This agent handles guest interaction workflows using LangGraph.
-"""
+"""Rune coding agent -- recursive code generation with parametric memory."""
 
 from .graph import create_graph, get_graph
-from .state import AgentState
+from .state import RuneState
 
-__all__ = ["AgentState", "create_graph", "get_graph"]
+__all__ = ["RuneState", "create_graph", "get_graph"]
