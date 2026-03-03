@@ -143,12 +143,12 @@ Plans:
   3. `uv run ruff check .` passes cleanly across all new and modified components with zero errors or warnings
   4. Every API route stub in api-service, training-svc, and evolution-svc returns HTTP 501 (Not Implemented); no stub returns HTTP 200 with placeholder data
   5. `infra/docker-compose.yml` defines a `lora-server` service with GPU passthrough (`deploy.resources.reservations.devices`) and a volume mount for adapter storage; `mkdocs.yml` nav reflects the new component structure and `uv run mkdocs build` exits 0
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Add importability tests for all new components and run full pytest suite
-- [ ] 07-02-PLAN.md — Update infra/docker-compose.yml with lora-server GPU service definition
-- [ ] 07-03-PLAN.md — Update mkdocs.yml nav for new structure and verify mkdocs build passes
+- [ ] 07-01-PLAN.md — Fix ruff lint, create importability tests for 3 components, fix xdist collision, verify QA-01 through QA-04
+- [ ] 07-02-PLAN.md — Add lora-server service with GPU passthrough to docker-compose.yml (CFG-03)
+- [ ] 07-03-PLAN.md — Create mkdocs.yml + docs for 3 components, update root nav, verify mkdocs build (CFG-04)
 
 ## Progress
 
@@ -163,5 +163,5 @@ Phases execute in numeric order: 4 → 5 → 5.1 → 6 → 7
 | 4. Cleanup | v2.0 | 3/3 | Complete | 2026-03-02 |
 | 5. Foundation Libraries | v2.0 | 3/3 | Complete | 2026-03-02 |
 | 5.1. Template Artifact Cleanup | v2.0 | 2/2 | Complete | 2026-03-03 |
-| 6. Service Scaffolds | v2.0 | 0/4 | Not started | - |
+| 6. Service Scaffolds | v2.0 | Complete    | 2026-03-03 | - |
 | 7. Configuration & Quality Gate | v2.0 | 0/3 | Not started | - |
