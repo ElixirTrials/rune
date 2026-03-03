@@ -111,6 +111,7 @@ nav:
   - Build Order: appendices/build-order.md
 - Scientific Article:
   - Overview: article/index.md
+  - References: article/references.md
 - Components:
   - api-service: '!include ./services/api-service/mkdocs.yml'
   - adapter-registry: '!include ./libs/adapter-registry/mkdocs.yml'
