@@ -1,0 +1,228 @@
+## Methods
+
+Building on the theoretical foundations established in the Background section — LoRA decomposition, hypernetwork architectures, PBB's procedural encoding findings, and the trajectory modality argument — this section specifies Rune's concrete architecture, algorithms, and design decisions. Each subsection identifies the components, their interactions, and the claim tier for every non-trivial design choice. Where Background introduced a concept, Methods references it without re-derivation. Where Methods introduces new formalism, it is marked as such.
+
+---
+
+### System Architecture Overview
+
+Rune is structured as five services collaborating around a central adapter registry. Each service owns a single responsibility; inter-service communication occurs via HTTP APIs and a shared filesystem-backed adapter store.
+
+**rune-agent** is the core execution service. It implements a LangGraph `StateGraph` with four nodes — `generate`, `execute`, `reflect`, and `save_trajectory` — connected by conditional routing that terminates on test success or attempt exhaustion. The agent receives a task description and test suite, selects adapters from the registry based on task metadata, and runs the recursive generate-execute-reflect loop until a solution passes or attempts are exhausted. The complete trajectory is then persisted for downstream distillation. The loop structure is **specified** — it is implemented in the codebase and tested.
+
+**lora-server** wraps vLLM with pipeline parallelism (PP=2) and dynamic adapter loading following the S-LoRA unified paging pattern.[^sheng2023slora] It serves the base model (Qwen2.5-Coder-7B-Instruct) with QLoRA quantization and exposes an OpenAI-compatible API that accepts adapter selection metadata per request. The serving configuration is discussed in detail in the Training Data Strategy and Serving Architecture subsection.
+
+**training-svc** manages adapter production. In Phase 3, it runs direct LoRA fine-tuning on trajectory data using PEFT utilities. In Phase 4, it hosts the hypernetwork that replaces gradient descent with a single forward pass. Training jobs acquire a GPU lease from lora-server, which yields one GPU for the duration of the training job.
+
+**evolution-svc** manages the adapter lifecycle — consolidation, update, archival, and experimental merging — using fitness-driven selection rather than naive composition. Its operations are detailed in the Evolution Operator subsection.
+
+**adapter-registry** is the shared dependency root: a SQLite-backed metadata store paired with safetensors adapter files on the local filesystem. Every service reads from or writes to the registry. Adapters are write-once and immutable after creation; metadata fields (fitness score, archive status) are mutable. The three-level hierarchy (project, domain, task) is encoded in both the filesystem path convention and the SQLite schema.
+
+The agent loop is implemented as a LangGraph `StateGraph` with four nodes — `generate`, `execute`, `reflect`, and `save_trajectory` — connected by conditional routing that terminates on test success or attempt exhaustion.
+
+**Claim tiers:** The five-service architecture and loop structure are **specified** — they are implemented in the codebase. Phase 0 and Phase 1 empirical performance on coding tasks is **TBD**.
+
+---
+
+### Doc-to-LoRA Hypernetwork Adaptation
+
+The Background section established that Doc-to-LoRA validates the hypernetwork-to-LoRA mechanism: a hypernetwork takes a document as input and produces LoRA adapter weights in a single forward pass, with no gradient-based fine-tuning at inference time.[^charakorn2026doc2lora] The generated adapter encodes the document's content into the base model's parameter space via the low-rank decomposition \(\Delta W = BA\) established in Background.[^hu2021lora]
+
+Doc-to-LoRA was validated on document QA tasks — retrieving specific facts from long textual inputs. It was not validated on coding trajectories, procedural knowledge, or code execution traces. Rune proposes extending the hypernetwork mechanism to a structurally different input modality: code execution trajectories containing sequential (code, execution result, reflection) triples. This extension is **proposed** and requires Phase 1 empirical validation.
+
+Rune's hypernetwork defines the following formal mapping (new equation):
+
+\[
+H: \mathcal{T} \rightarrow (B, A), \quad B \in \mathbb{R}^{d \times r}, \; A \in \mathbb{R}^{r \times k}
+\]
+
+where \(\mathcal{T}\) denotes the trajectory space — a sequence of (code, execution result, reflection) triples produced by the recursive loop. The hypernetwork \(H\) takes a complete trajectory and produces the LoRA weight matrices \(B\) and \(A\) that, when applied to the base model via the \(\Delta W = BA\) decomposition from Background, encode the procedural knowledge from that trajectory into the model's parameter space. The hypernetwork produces per-layer \((B, A)\) pairs — one for each targeted transformer layer — though the equation above shows a single pair for notational clarity.
+
+The architecture of \(H\) consists of two stages. First, a variable-length trajectory encoder processes the trajectory into a fixed-size latent representation. The encoder must handle trajectories of varying length (different numbers of attempts, different code lengths per attempt). The proposed encoder design uses a Perceiver-based cross-attention pooling mechanism:[^ha2016hypernetworks] a set of learned latent queries attend to the trajectory token sequence, producing a fixed-dimensional representation regardless of input length. This Perceiver-based encoder is a **proposed architecture choice and Phase 1 ablation target** — alternative encoders (mean pooling, hierarchical attention, recurrent summarization) will be compared during Phase 1 hypernetwork development.
+
+Second, per-layer output heads map the fixed-size latent representation to \((B, A)\) matrices for each targeted transformer layer. Each output head is a linear projection from the latent dimension to the flattened \(B\) and \(A\) matrices for one layer.
+
+For trajectories exceeding the encoder's context limit, the trajectory is chunked at attempt boundaries (each attempt is one chunk), and chunk representations are averaged before being passed to the output heads. This chunking mechanism preserves the self-contained structure of individual attempts while allowing arbitrarily long trajectories to be processed.
+
+The three structural properties of code execution trajectories identified in Background — temporal ordering, procedural abstraction, and self-correcting structure — motivate the choice of trajectories as input modality. These properties distinguish trajectories from documents (unordered factual content) and from few-shot examples (static input-output pairs), and are the basis for expecting the hypernetwork mechanism to transfer from documents to trajectories.
+
+**Claim tiers:** The hypernetwork-to-LoRA mechanism is **expected** to extend from documents to trajectories based on the structural analogy established in Background. Trajectory-to-adapter quality on coding tasks is **proposed** — it is the central empirical hypothesis requiring Phase 1 validation. The Perceiver-based encoder architecture is an **ablation target** — it will be compared against alternatives during Phase 1 development.
+
+---
+
+### Adapter Distillation Pipeline
+
+The distillation pipeline has two implementation paths depending on the development phase. Phase 3 uses direct LoRA fine-tuning as a bootstrapping path — a validated technique that establishes the training infrastructure and produces the first adapter corpus. Phase 4 replaces gradient descent with the hypernetwork forward pass described above — the target architecture that eliminates per-adapter training cost at inference time. The pseudocode below covers both paths.
+
+```text
+Algorithm: Rune Recursive Loop
+-------------------------------------------------------------
+Input:
+  task_description : str            (RuneState.task_description)
+  test_suite       : str            (RuneState.test_suite)
+  adapter_ids      : list[str]      (RuneState.adapter_ids)
+  max_attempts     : int            (RuneState.max_attempts)
+
+Output:
+  trajectory       : list[AttemptRecord]  (RuneState.trajectory)
+  outcome          : 'success' | 'exhausted'  (RuneState.outcome)
+
+Procedure:
+  attempt_count <- 0
+  trajectory <- []
+
+  loop:
+    -- generate node --------------------------------------------------
+    generated_code <- generate(task_description, trajectory, adapter_ids)
+
+    -- execute node ----------------------------------------------------
+    stdout, stderr, exit_code, tests_passed <- execute(generated_code, test_suite)
+
+    -- reflect node ----------------------------------------------------
+    record <- AttemptRecord(attempt_count + 1, generated_code,
+                           stdout, stderr, exit_code, tests_passed)
+    trajectory.append(record)
+    attempt_count <- attempt_count + 1
+
+    -- should_retry routing --------------------------------------------
+    if tests_passed OR attempt_count >= max_attempts:
+      break  -> save_trajectory
+    else:
+      continue  -> generate
+
+  -- save_trajectory node ----------------------------------------------
+  outcome <- 'success' if tests_passed else 'exhausted'
+
+  -- distillation path (phase-dependent) -------------------------------
+  if Phase == 3:  // bootstrapping implementation (specified)
+    adapter <- direct_lora_finetune(trajectory)
+  elif Phase == 4:  // target implementation (proposed)
+    adapter <- H(trajectory)  // hypernetwork forward pass
+
+  adapter_registry.store(adapter, outcome, trajectory)
+  return trajectory, outcome
+-------------------------------------------------------------
+```
+
+Each node in the pseudocode maps directly to the LangGraph `StateGraph` implementation:
+
+**`generate`** receives the task description, the trajectory accumulated so far (empty on the first attempt), and the selected adapter IDs. It calls the base model (served by lora-server with the specified adapters loaded) to produce a candidate code solution. On subsequent attempts, the full trajectory — prior code, execution outputs, error messages — is included in the prompt, providing the model with debugging context. The `generated_code` field in `RuneState` stores the output.
+
+**`execute`** runs the generated code against the test suite in an isolated Docker sandbox. The sandbox is network-isolated, memory-limited, and CPU-limited. Execution produces four fields in `RuneState`: `stdout`, `stderr`, `exit_code`, and `tests_passed`.
+
+**`reflect`** appends the current attempt's data to the trajectory and increments `attempt_count`. Each `AttemptRecord` in the `RuneState.trajectory` list contains the attempt number, generated code, execution output, and pass/fail status.
+
+**`should_retry`** is the conditional routing function: if `tests_passed` is true, the loop terminates via `save_trajectory` (success). If `attempt_count >= max_attempts`, the loop terminates via `save_trajectory` (exhausted). Otherwise, the loop returns to `generate` for another attempt.
+
+**`save_trajectory`** records the terminal `outcome` ('success' or 'exhausted') and persists the complete trajectory to the adapter registry for downstream distillation.
+
+The Phase 3 distillation path (`direct_lora_finetune`) is **specified** — it uses standard PEFT fine-tuning on trajectory data, a validated technique that will be implemented first to establish the training pipeline and produce the initial adapter corpus. The Phase 4 distillation path (`H(trajectory)`) is **proposed** — it replaces per-adapter gradient descent with the hypernetwork forward pass, eliminating training cost at inference time. The Phase 4 path depends on successful hypernetwork training in Phase 1.
+
+---
+
+### Evolution Operator
+
+The Background section established that LoRA Soups' CAT method can outperform data mixing for binary skill composition tasks,[^prabhakar2024lorasoups] but also that orthogonality between merged LoRA modules does not guarantee semantic disentanglement[^zhang2025orthogonality] and that adapter merging can reactivate latent reasoning traces.[^zou2026merging] The Evolution Operator is Rune's approach to fitness-driven adapter lifecycle management — testing adapter quality empirically before promotion rather than assuming composition is safe by default.
+
+The Evolution Operator defines four operations on the adapter registry:
+
+1. **Consolidate** (**specified**): Merge related adapters across task types into a generalized adapter when similarity exceeds a configurable threshold. The output is a new registry entry at a higher hierarchy level (e.g., task-level adapters consolidated into a domain-level adapter). The input adapters are archived — not deleted, per the write-once policy — and remain queryable but ineligible for retrieval routing.
+
+2. **Update** (**specified**): When a new trajectory produces an adapter with higher fitness than an existing adapter of the same task type, the old adapter is archived and the new adapter is registered. This enforces the write-once, archive-not-delete policy: no adapter is overwritten, but the registry always routes to the highest-fitness entry for each task type.
+
+3. **Forget** (**specified**): The `archive_adapter()` function sets `is_archived = 1` in the SQLite registry. Archived adapters are never deleted from disk — they become ineligible for retrieval routing but remain available for historical analysis, lineage tracking, and potential reactivation.
+
+4. **Merge** (**ablation target**): Combine adapter weight matrices from two adapters into a single composite entry. This operation is labeled as an **ablation target** due to the orthogonality and latent trace concerns identified by Zhang et al.[^zhang2025orthogonality] and Zou.[^zou2026merging] Merge will be tested empirically — if composed adapters produce degraded or incoherent behavior, the operation will be disabled in favor of single-adapter selection.
+
+The Evolution Operator uses a fitness criterion to drive all lifecycle decisions. The fitness function for an adapter \(a\) is defined as (new equation):
+
+\[
+\phi(a) = \alpha \cdot \text{pass\_rate}(a) + (1 - \alpha) \cdot \text{generalization}(a)
+\]
+
+where \(\text{pass\_rate}(a)\) is the adapter's test-passing rate on held-out tasks of the same type, and \(\text{generalization}(a)\) is a cross-task coverage metric measuring the adapter's performance on tasks outside its original training domain. The weighting parameter \(\alpha\) controls the trade-off between specialization (high pass rate on similar tasks) and generalization (broad utility across task types). The default value is \(\alpha = 0.7\), reflecting a preference for specialization — an adapter that reliably solves its own task type is more valuable than one that partially solves many types. The \(\alpha\) parameter is an **ablation target** (default 0.7, pending Phase 4 tuning). The exact generalization metric is **TBD** — it will be defined during Phase 4 when sufficient adapter diversity exists to measure cross-task performance. The `fitness_score` column in the SQLite `adapters` table stores the computed \(\phi(a)\) value.
+
+**Contrast with LoRA Soups:** LoRA Soups' CAT method combines adapters at the data-mixing level — concatenating adapter matrices — without testing whether the resulting combination produces better behavior on downstream tasks. The combination is assumed to be beneficial based on orthogonality properties of the adapter subspaces. The Evolution Operator takes a fundamentally different approach: it tests fitness empirically before promoting any adapter to the registry, and uses fitness-driven selection to determine which adapter combinations (if any) produce beneficial behavior. This directly addresses the orthogonality gap identified by Zhang et al.:[^zhang2025orthogonality] orthogonal subspaces do not guarantee semantic coherence, so Rune tests behavioral coherence rather than assuming it. The merge operation itself is an **ablation target** — it will only be retained if empirical evaluation shows that merged adapters achieve higher fitness than their individual components.
+
+**Claim tiers:** The four operations (consolidate, update, forget, merge) are **specified** in the architecture. The fitness formula weighting \(\alpha\) is an **ablation target**. The merge operation's semantic coherence is **TBD** pending empirical validation of the orthogonality and latent trace concerns from the literature.
+
+---
+
+### Memory Composition Strategy
+
+Rune organizes adapters into a three-level hierarchy that mirrors the granularity of coding knowledge:
+
+- **Project level**: Adapters encoding broad patterns for a specific codebase — its architectural conventions, API design patterns, testing practices, and domain-specific idioms. A project-level adapter captures knowledge that is useful across all tasks within that project.
+
+- **Domain level**: Adapters encoding patterns for a category of tasks that spans projects — API design, database query optimization, algorithm implementation, error handling patterns. A domain-level adapter captures knowledge that transfers across projects for tasks of the same type.
+
+- **Task level**: Fine-grained adapters encoding patterns for a specific task type within a specific context. A task-level adapter captures the most specific knowledge — the particular patterns discovered while solving a particular class of problem.
+
+The filesystem path convention encodes this hierarchy: `~/.rune/adapters/{project|domain|task}/...`. The SQLite `adapters` table tracks `hierarchy_level`, `domain`, and `project_id` columns, enabling queries that filter by any combination of hierarchy and metadata.
+
+At inference time, the adapter router queries the registry by task metadata (`task_type`, `domain`, `project_id`) and selects the highest-fitness adapter at each applicable hierarchy level using the \(\phi(a)\) fitness criterion defined in the Evolution Operator section.
+
+**Default behavior** (**specified**): Single-adapter selection — the most relevant adapter at the most specific applicable level, loaded alone. If a task-level adapter exists with sufficient fitness, it is used. Otherwise, the router falls back to domain level, then project level. The rationale for single-adapter default is the interference risk established in Background: orthogonality between adapter subspaces does not guarantee semantic coherence when multiple adapters are applied simultaneously.
+
+**Multi-adapter composition** (**ablation target**): Additive accumulation across hierarchy levels, where the full weight delta applied to the base model is:
+
+\[
+\Delta W_{\text{composite}} = \Delta W_{\text{project}} + \Delta W_{\text{domain}} + \Delta W_{\text{task}}
+\]
+
+This compositional mode loads one adapter from each applicable hierarchy level and applies their weight deltas additively. It is the **ablation target** for Phase 5 and beyond. Multi-adapter composition will be tested against single-adapter selection once sufficient adapter diversity exists in the registry. The default remains single-adapter selection until empirical evidence supports multi-level composition.
+
+**Claim tiers:** The three-level hierarchy is **specified** — it is implemented in the adapter registry schema and filesystem layout. Single-adapter selection as the default retrieval mode is **specified**. Compositional accumulation across hierarchy levels is **proposed** and requires empirical validation of behavioral coherence. Multi-adapter composition semantics are an **ablation target** for Phase 5+.
+
+---
+
+### Training Data Strategy and Serving Architecture
+
+#### Training Data Strategy
+
+The Background section established Cook et al.'s finding that declarative instructions — including code — can substitute for up to 100 execution examples when fine-tuning LLMs.[^cook2025pbb] This result demonstrates that the format of training signal matters: procedural, instruction-like representations are more information-dense than equivalent example sets. Rune's training data strategy is grounded in this finding: code execution trajectories are the training signal, not (input, output) pairs.
+
+Each trajectory record in the SQLite `trajectories` table contains:
+
+- `task_description`: the natural language specification of the coding task
+- `test_suite`: the test code used for evaluation
+- A sequence of attempts, each containing `generated_code`, `stdout`, `stderr`, `exit_code`, and `tests_passed`
+- A terminal `outcome`: 'success' (tests passed) or 'exhausted' (max attempts reached without passing)
+
+Both successful and exhausted trajectories are training candidates. Successful trajectories encode complete solution patterns — from initial approach through iterative refinement to a passing solution. Exhausted trajectories encode debugging patterns, failure recognition, and partial solutions — knowledge about what does not work and why, which is valuable for avoiding similar failure modes in future tasks.
+
+PBB found that in-context instruction execution remains more reliable than weight-based procedural knowledge for the tasks they tested. This caveat applies directly to Rune: there is a gap between what can be encoded in weights via backpropagation and what can be reliably executed from those weights at inference time. Training on trajectories is **expected** to produce useful adapter representations based on PBB's findings about procedural encoding efficiency — instructions are information-dense, and trajectories are the richest procedural representation available. However, whether trajectory-trained adapters achieve reliable weight-based execution on coding tasks specifically is **proposed** and requires Phase 1 empirical validation. The gap between encoding efficiency and reliable execution from weights is the central empirical question for Rune's training data strategy.
+
+**Claim tiers:** Training on trajectories without input-output pairs is **expected** — grounded in PBB's demonstration that procedural representations are efficient for weight-based learning. Adapter quality on coding tasks specifically is **proposed** — this is Rune-specific and unvalidated.
+
+#### Serving Architecture
+
+The intended serving configuration is vLLM with pipeline parallelism PP=2 and QLoRA (NF4 quantized base model with bfloat16 adapter matrices). This is the **intended configuration pending Phase 0 empirical validation** — not an assertion of confirmed compatibility.
+
+**PP=2 rationale:** Rune's hardware is dual RTX 4090 (24 GB VRAM per GPU) without NVLink. Tensor parallelism (TP) requires all-reduce synchronization at every transformer layer. Over PCIe bandwidth (~32 GB/s bidirectional), the all-reduce at every layer becomes prohibitively slow compared to NVLink (~112 GB/s per direction). Pipeline parallelism (PP=2) splits the transformer layers across both GPUs and transfers activations once at the layer boundary — a single point-to-point transfer per forward pass, respecting the bandwidth constraint. Additionally, vLLM issue #21471 documents TP + LoRA corruption on consumer GPUs without NVLink, which is absent under PP=2.
+
+**QLoRA serves the VRAM constraint:** NF4 quantization reduces the 7B-parameter base model from approximately 14 GB (bfloat16) to approximately 4 GB, leaving headroom for adapter weights and KV cache within the 24 GB per-GPU budget.[^dettmers2023qlora] S-LoRA unified paging manages adapter weights alongside KV cache in a shared GPU memory pool, enabling concurrent serving of multiple adapters without per-adapter VRAM reservation.[^sheng2023slora]
+
+**GPU lease mechanism:** During training jobs, lora-server yields GPU 1 to training-svc. The serving process reconfigures to single-GPU mode (reduced capacity but still available), and training-svc runs on the released GPU with full VRAM access. When the training job completes, training-svc releases the lease, and lora-server restores PP=2 serving on both GPUs. Serving pauses briefly during reconfiguration but is not fully offline during training.
+
+**Claim tiers:** The PP=2 architecture is **specified** — it is the locked design decision based on hardware constraints and the vLLM TP+LoRA bug. PP=2 + QLoRA + vLLM LoRA compatibility is **expected** — it is the primary empirical question for Phase 0 hardware validation. The GPU lease mechanism is **specified** in the architecture but **untested** at the implementation level.
+
+---
+
+[^hu2021lora]: Hu, E. J., et al. (2021). LoRA: Low-Rank Adaptation of Large Language Models. *arXiv:2106.09685*. [Full entry](references.md#hu2021lora)
+
+[^ha2016hypernetworks]: Ha, D., Dai, A., & Le, Q. V. (2016). HyperNetworks. *arXiv:1609.09106*. [Full entry](references.md#ha2016hypernetworks)
+
+[^charakorn2026doc2lora]: Charakorn, R., et al. (2026). Doc-to-LoRA: Learning to Instantly Internalize Contexts. *arXiv:2602.15902*. [Full entry](references.md#charakorn2026doc2lora)
+
+[^prabhakar2024lorasoups]: Prabhakar, A., et al. (2024). LoRA Soups: Merging LoRAs for Practical Skill Composition Tasks. *arXiv:2410.13025*. [Full entry](references.md#prabhakar2024lorasoups)
+
+[^cook2025pbb]: Cook, J., et al. (2025). Programming by Backprop: An Instruction is Worth 100 Examples When Finetuning LLMs. *arXiv:2506.18777*. [Full entry](references.md#cook2025pbb)
+
+[^zhang2025orthogonality]: Zhang, A., et al. (2025). Rethinking Inter-LoRA Orthogonality in Adapter Merging. *arXiv:2510.03262*. [Full entry](references.md#zhang2025orthogonality)
+
+[^zou2026merging]: Zou, J. (2026). Adapter Merging Reactivates Latent Reasoning Traces. *arXiv:2601.18350*. [Full entry](references.md#zou2026merging)
+
+[^dettmers2023qlora]: Dettmers, T., et al. (2023). QLoRA: Efficient Finetuning of Quantized LLMs. *arXiv:2305.14314*. [Full entry](references.md#dettmers2023qlora)
+
+[^sheng2023slora]: Sheng, Y., et al. (2023). S-LoRA: Serving Thousands of Concurrent LoRA Adapters. *arXiv:2311.03285*. [Full entry](references.md#sheng2023slora)
