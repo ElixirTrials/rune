@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
 status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-03-03T21:38:03.821Z"
-last_activity: 2026-03-03 — completed 15-01; libs/inference cleaned of Vertex AI/LangChain code; 4 adapter + 3 completion stubs; 9 TDD tests passing; LIB-07 satisfied
+stopped_at: Completed 16-03-PLAN.md
+last_updated: "2026-03-03T21:39:00Z"
+last_activity: 2026-03-03 — completed 16-03; rune-agent node stubs converted to NotImplementedError; Example sections on all 6 functions; 8 TDD tests passing; SVC-09 satisfied
 progress:
   total_phases: 18
   completed_phases: 15
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 compl
 | Phase 16 P04 | 5 | 2 tasks | 4 files |
 | Phase 16 P02 | 2 | 2 tasks | 4 files |
 | Phase 16 P01 | 2 | 2 tasks | 5 files |
+| Phase 16 P03 | 2 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,7 @@ Recent decisions affecting current work:
 - [Phase 16-04]: check_vllm_ready extracted as standalone function from ready() endpoint for independent unit testability
 - [Phase 16]: TDD red phase: tests assert 200 + response schema while stubs return 501, confirming failing state
 - [Phase 16]: Factory fixtures duplicated in api-service conftest.py because pytest rootdir isolation (local pyproject.toml) prevents root conftest.py discovery
+- [16-03]: Component pyproject.toml needs asyncio_mode=auto and pytest-asyncio for standalone test runs — root config alone is insufficient when pytest picks up component config
 
 ### Pending Todos
 
@@ -106,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T21:38:03.817Z
-Stopped at: Completed 16-01-PLAN.md
-Resume file: None
+Last session: 2026-03-03T21:39:00Z
+Stopped at: Completed 16-03-PLAN.md
+Resume file: .planning/phases/16-service-wireframes/16-04-PLAN.md

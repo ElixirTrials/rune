@@ -306,7 +306,7 @@ Plans:
 Plans:
 - [ ] 16-01-PLAN.md — Upgrade services/api-service: Google-style docstrings on 6 endpoints; write failing TestClient tests for each
 - [ ] 16-02-PLAN.md — Upgrade services/evolution-svc and services/training-svc: Google-style docstrings on all endpoints; write failing TestClient tests
-- [ ] 16-03-PLAN.md — Upgrade services/rune-agent: Google-style docstrings on 4 nodes + 2 graph functions; write failing tests for node state mutations and should_retry branches
+- [x] 16-03-PLAN.md — Upgrade services/rune-agent: Google-style docstrings on 4 nodes + 2 graph functions; write failing tests for node state mutations and should_retry branches
 - [ ] 16-04-PLAN.md — Upgrade services/lora-server: Google-style docstrings on check_vllm_ready and VLLMClient methods; write failing tests (direct Python, no TestClient)
 
 ### Phase 17: Quality Gate
