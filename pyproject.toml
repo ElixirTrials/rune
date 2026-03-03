@@ -98,10 +98,14 @@ ignore_missing_imports = true
 module = [
     "adapter_registry",
     "adapter_registry.*",
+    "evolution_svc",
+    "evolution_svc.*",
     "rune_agent",
     "rune_agent.*",
     "shared",
     "shared.models",
+    "training_svc",
+    "training_svc.*",
 ]
 ignore_missing_imports = true
 
@@ -144,7 +148,9 @@ filterwarnings = [
 ]
 pythonpath = [
     "services/api-service/src",
+    "services/evolution-svc/src",
     "services/rune-agent/src",
+    "services/training-svc/src",
     "libs/adapter-registry/src",
     "libs/evaluation/src",
     "libs/events-py/src",
@@ -159,7 +165,9 @@ addopts = "-n auto"
 [tool.coverage.run]
 source = [
     "services/api-service/src",
+    "services/evolution-svc/src",
     "services/rune-agent/src",
+    "services/training-svc/src",
     "libs/adapter-registry/src",
     "libs/evaluation/src",
     "libs/events-py/src",
