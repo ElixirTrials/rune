@@ -72,32 +72,20 @@ check-with-docs:
 lint:
 	@echo "Running linters..."
 	uv run ruff check .
-	@if [ -d "apps/hitl-ui/node_modules" ]; then \
-		cd apps/hitl-ui && npm run lint; \
-	fi
 
 lint-fix:
 	@echo "Running linters with auto-fix..."
 	uv run ruff check . --fix
 	uv run ruff format .
-	@if [ -d "apps/hitl-ui/node_modules" ]; then \
-		cd apps/hitl-ui && npm run lint:fix; \
-	fi
 
 typecheck:
 	@echo "Running type checkers..."
 	@PY_DIRS=$$(for d in services/*/src libs/*/src; do find "$$d" -name '*.py' -print -quit 2>/dev/null | grep -q . && echo "$$d"; done); \
 	uv run mypy $$PY_DIRS
-	@if [ -d "apps/hitl-ui/node_modules" ]; then \
-		cd apps/hitl-ui && npx tsc --noEmit; \
-	fi
 
 test:
 	@echo "Running tests..."
 	uv run pytest services/api-service/tests libs/events-py/tests -q
-	@if [ -d "apps/hitl-ui/node_modules" ]; then \
-		cd apps/hitl-ui && npm test -- --run; \
-	fi
 
 help:
 	@echo "ElixirTrials  - Makefile Commands"
@@ -106,10 +94,10 @@ help:
 	@echo "  make check           - Run linters, type checkers, and tests"
 	@echo "  make check-with-docs - Run all checks including doc build"
 	@echo "  make check-fix       - Run all checks with auto-fix"
-	@echo "  make lint       - Run ruff and Biome (hitl-ui)"
+	@echo "  make lint       - Run ruff"
 	@echo "  make lint-fix   - Run linters with auto-fix"
-	@echo "  make typecheck  - Run mypy and tsc"
-	@echo "  make test       - Run pytest and vitest"
+	@echo "  make typecheck  - Run mypy"
+	@echo "  make test       - Run pytest"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-build - Build documentation site"

@@ -21,18 +21,6 @@ services:
       timeout: 10s
       retries: 3
 
-  ui:
-    build:
-      context: ..
-      dockerfile: apps/hitl-ui/Dockerfile
-    ports:
-      - "${UI_PORT:-3000}:3000"
-    environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000}
-    depends_on:
-      api:
-        condition: service_healthy
-
   db:
     image: postgres:16-alpine
     environment:

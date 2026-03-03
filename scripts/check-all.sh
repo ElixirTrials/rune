@@ -70,33 +70,6 @@ run_check "Mypy (type check)" "uv run mypy $PY_DIRS"
 
 run_check "Pytest" "uv run pytest services/api-service/tests libs/events-py/tests -q"
 
-# Frontend checks
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Frontend Checks (hitl-ui)"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-
-HITL_UI_DIR="$ROOT_DIR/apps/hitl-ui"
-
-if [[ -d "$HITL_UI_DIR/node_modules" ]]; then
-    cd "$HITL_UI_DIR"
-
-    if $FIX_MODE; then
-        run_check "Biome (fix)" "npm run lint:fix"
-    else
-        run_check "Biome" "npm run lint"
-    fi
-
-    run_check "TypeScript" "npx tsc --noEmit"
-    run_check "Vitest" "npm test -- --run"
-
-    cd "$ROOT_DIR"
-else
-    echo -e "${YELLOW}⚠ Skipping frontend checks - node_modules not installed${NC}"
-    echo "  Run: cd apps/hitl-ui && npm install"
-    echo ""
-fi
-
 # Documentation checks (optional, enabled with --with-docs)
 if $WITH_DOCS; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
