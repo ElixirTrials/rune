@@ -91,7 +91,7 @@ Requirements for milestone v3.0 — Scientific Article Documentation.
 
 ### Article Content
 
-- [ ] **ART-01**: Abstract section is fully written: states the problem (context window limitations for local coding agents), the approach (parametric episodic memory via composable LoRA adapters), the mechanism (Doc-to-LoRA hypernetwork with evolutionary selection), and the expected contribution; uses three-tier claim vocabulary (validated/expected/proposed); includes "Research Stage" disclaimer
+- [x] **ART-01**: Abstract section is fully written: states the problem (context window limitations for local coding agents), the approach (parametric episodic memory via composable LoRA adapters), the mechanism (Doc-to-LoRA hypernetwork with evolutionary selection), and the expected contribution; uses three-tier claim vocabulary (validated/expected/proposed); includes "Research Stage" disclaimer
 - [x] **ART-02**: Background section is fully written covering: (a) context window problem and memory approaches taxonomy (token-space vs destructive weight-space vs composable weight-space), (b) LoRA/QLoRA foundations with math notation, (c) multi-adapter serving (S-LoRA), (d) hypernetwork architectures (Ha et al. 2016, Doc-to-LoRA, SHINE), (e) LoRA composition methods (TIES, LoRA Soups, adapter merging interference), (f) Programming by Backprop validation of code-as-abstraction, (g) episodic memory position (arXiv:2502.06975); cites all 6+ must-cite papers
 - [x] **ART-03**: Methods section is fully written covering: (a) system architecture overview with recursive loop, (b) Doc-to-LoRA hypernetwork adaptation for coding trajectories, (c) adapter distillation pipeline with pseudocode, (d) evolution operator (consolidate/update/forget/merge) with fitness-based selection, (e) memory composition strategy (hierarchical adapter tree), (f) PBB-grounded training data strategy (code representations over prose), (g) System-2 reasoning loop with chain-of-thought; includes mathematical notation for LoRA operations and hypernetwork mapping
 - [x] **ART-04**: Results section has detailed outline: kill-switch experiment design (Pass@1 on HumanEval), ablation structure (hypernetwork vs fine-tuning, single vs composed adapters, with vs without evolution), specific metrics (Pass@1, adapter quality, composition interference), baseline comparisons (vanilla model, RAG, fine-tuned), hardware configuration; all content marked as "Planned Experiments"
@@ -100,8 +100,8 @@ Requirements for milestone v3.0 — Scientific Article Documentation.
 ### References & Quality
 
 - [ ] **REF-01**: `docs/article/references.md` contains a formatted bibliography with HTML anchor targets for all cited papers; minimum 10 references including Doc-to-LoRA, S-LoRA, QLoRA, PBB, SHINE, "Episodic Memory is the Missing Piece", LoRA (Hu et al. 2021), HyperNetworks (Ha et al. 2016), LoRA Soups, and at least one LoRA composition interference paper
-- [ ] **REF-02**: All in-text citations use footnotes linking to `references.md#anchor` targets; `mkdocs build` with `anchors: warn` produces zero broken citation warnings
-- [ ] **REF-03**: `uv run mkdocs build` exits 0 with no warnings; all math renders correctly; all footnote links resolve; nav entry appears correctly
+- [x] **REF-02**: All in-text citations use footnotes linking to `references.md#anchor` targets; `mkdocs build` with `anchors: warn` produces zero broken citation warnings
+- [x] **REF-03**: `uv run mkdocs build` exits 0 with no warnings; all math renders correctly; all footnote links resolve; nav entry appears correctly
 
 ## Future Requirements (Deferred)
 
@@ -197,9 +197,9 @@ Which phases cover which requirements.
 | ART-03 | Phase 10 | Complete |
 | ART-04 | Phase 11 | Complete |
 | ART-05 | Phase 11 | Complete |
-| ART-01 | Phase 12 | Pending |
-| REF-02 | Phase 12 | Pending |
-| REF-03 | Phase 12 | Pending |
+| ART-01 | Phase 12 | Complete |
+| REF-02 | Phase 12 | Complete |
+| REF-03 | Phase 12 | Complete |
 
 **v3 Coverage:**
 - v3 requirements: 12 total
