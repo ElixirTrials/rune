@@ -132,7 +132,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["services", "libs"]
+testpaths = ["services", "libs", "tests"]
 norecursedirs = ["site", "docs", ".venv", "venv", ".uv_cache", "node_modules", ".git"]
 markers = [
     "e2e: end-to-end API workflow tests",
