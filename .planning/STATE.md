@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
 status: executing
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-03-03T20:57:19.507Z"
-last_activity: 2026-03-03 — completed 14-03 with 9 shared model tests + 5 events-py tests; LIB-09 and LIB-10 satisfied
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-03T20:44:00.000Z"
+last_activity: 2026-03-03 — completed 15-01; libs/inference cleaned of Vertex AI/LangChain code; 4 adapter + 3 completion stubs; 9 TDD tests passing; LIB-07 satisfied
 progress:
   total_phases: 18
   completed_phases: 14
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 14 of 17 (Core Library Wireframes)
-Plan: 3 of 4 in current phase
-Status: In progress — plan 14-03 complete, plan 14-04 next
-Last activity: 2026-03-03 — completed 14-03 with 9 shared model tests + 5 events-py tests; LIB-09 and LIB-10 satisfied
+Phase: 15 of 18 (New Reworked Library Wireframes)
+Plan: 1 of 2 in current phase
+Status: In progress — plan 15-01 complete, plan 15-02 next
+Last activity: 2026-03-03 — completed 15-01; libs/inference cleaned of Vertex AI/LangChain code; 4 adapter + 3 completion stubs; 9 TDD tests passing; LIB-07 satisfied
 
 Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 complete; v3.0 complete)
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 compl
 *Updated after each plan completion*
 | Phase 14 P02 | 2 | 2 tasks | 3 files |
 | Phase 14-core-library-wireframes P01 | 2 | 2 tasks | 3 files |
+| Phase 15-01 | 5 min | 2 tasks | 6 files |
 | Phase 15 P02 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
@@ -87,6 +88,7 @@ Recent decisions affecting current work:
 - [14-03]: Shared model tests require running with root pyproject.toml (-c pyproject.toml) to pick up root conftest.py factory fixtures; lib-specific pyproject.toml overrides rootdir
 - [Phase 15]: Alias test_generalization import as _test_generalization in test file to prevent pytest from collecting src function as test
 - [Phase 15]: libs/evaluation conftest.py stays minimal — 6 TDD tests use only literal arguments, no factory fixtures needed
+- [15-01]: libs/inference pyproject.toml cleaned — langchain/langgraph/jinja2/tenacity removed; only openai/pydantic/shared remain after deleting loaders.py and factory.py
 
 ### Pending Todos
 

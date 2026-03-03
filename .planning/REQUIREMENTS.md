@@ -115,8 +115,8 @@ Requirements for milestone v4.0 — API Wireframes & TDD Foundation.
 ### Library Wireframes
 
 - [x] **LIB-05**: `libs/adapter-registry` — all 4 CRUD methods (`store`, `retrieve_by_id`, `query_by_task_type`, `list_all`) upgraded to Google-style docstrings (Args, Returns, Raises, Example sections); each has a failing TDD test asserting expected return type and behavior
-- [ ] **LIB-06**: `libs/evaluation` — wireframed from empty with at least 6 public functions: benchmark runner (`run_humaneval_subset`), pass-rate calculator (`calculate_pass_at_k`), adapter quality scorer (`score_adapter_quality`), adapter comparator (`compare_adapters`), generalization tester (`test_generalization`), fitness evaluator (`evaluate_fitness`); all with Google-style docstrings, all raise NotImplementedError, each has a failing test
-- [ ] **LIB-07**: `libs/inference` — template-era Vertex AI/LangChain code (`loaders.py`, `factory.py`) removed; replaced with Rune-specific wireframes: `adapter_loader.py` expanded with `load_adapter`, `unload_adapter`, `list_loaded_adapters`; new `completion.py` with `generate_completion`, `generate_with_adapter`, `batch_generate`; all Google-style docstrings, NotImplementedError stubs, failing tests
+- [x] **LIB-06**: `libs/evaluation` — wireframed from empty with at least 6 public functions: benchmark runner (`run_humaneval_subset`), pass-rate calculator (`calculate_pass_at_k`), adapter quality scorer (`score_adapter_quality`), adapter comparator (`compare_adapters`), generalization tester (`test_generalization`), fitness evaluator (`evaluate_fitness`); all with Google-style docstrings, all raise NotImplementedError, each has a failing test
+- [x] **LIB-07**: `libs/inference` — template-era Vertex AI/LangChain code (`loaders.py`, `factory.py`) removed; replaced with Rune-specific wireframes: `adapter_loader.py` expanded with `load_adapter`, `unload_adapter`, `list_loaded_adapters`; new `completion.py` with `generate_completion`, `generate_with_adapter`, `batch_generate`; all Google-style docstrings, NotImplementedError stubs, failing tests
 - [x] **LIB-08**: `libs/model-training` — all 9 existing functions across `config.py`, `peft_utils.py`, and `trajectory.py` upgraded to Google-style docstrings; each gets a failing TDD test asserting expected signature and return type
 - [x] **LIB-09**: `libs/shared` — `AdapterRef`, `CodingSession`, `EvolMetrics` Pydantic models get Google-style docstrings; failing tests validate field types, defaults, and serialization
 - [x] **LIB-10**: `libs/events-py` — `create_event` and models get Google-style docstrings; failing tests for edge cases (missing payload, invalid kind, custom event_id)
@@ -248,8 +248,8 @@ Which phases cover which requirements.
 | LIB-08 | Phase 14 | Complete |
 | LIB-09 | Phase 14 | Complete |
 | LIB-10 | Phase 14 | Complete |
-| LIB-06 | Phase 15 | Pending |
-| LIB-07 | Phase 15 | Pending |
+| LIB-06 | Phase 15 | Complete |
+| LIB-07 | Phase 15 | Complete |
 | SVC-06 | Phase 16 | Pending |
 | SVC-07 | Phase 16 | Pending |
 | SVC-08 | Phase 16 | Pending |
