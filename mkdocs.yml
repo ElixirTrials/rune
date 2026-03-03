@@ -114,6 +114,7 @@ nav:
   - Background: article/background.md
   - Methods: article/methods.md
   - Results: article/results.md
+  - Discussion: article/discussion.md
   - References: article/references.md
 - Components:
   - Overview: components-overview.md
