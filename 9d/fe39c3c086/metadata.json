@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "9dfe39c3c086",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "libs/inference/pyproject.toml",
+    "libs/inference/src/inference/__init__.py",
+    "libs/inference/src/inference/adapter_loader.py",
+    "libs/inference/src/inference/completion.py",
+    "libs/inference/src/inference/factory.py",
+    "libs/inference/src/inference/loaders.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9d/fe39c3c086/0/metadata.json",
+      "transcript": "/9d/fe39c3c086/0/full.jsonl",
+      "context": "/9d/fe39c3c086/0/context.md",
+      "content_hash": "/9d/fe39c3c086/0/content_hash.txt",
+      "prompt": "/9d/fe39c3c086/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 63,
+    "cache_creation_tokens": 99646,
+    "cache_read_tokens": 2912639,
+    "output_tokens": 17015,
+    "api_call_count": 41
+  }
+}
