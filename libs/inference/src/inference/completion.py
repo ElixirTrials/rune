@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 
 def generate_completion(
     prompt: str,
@@ -33,7 +31,7 @@ def generate_completion(
     """
     raise NotImplementedError(
         "generate_completion is not yet implemented. "
-        "It will call the vLLM server to generate a code completion from the base model."
+        "It will call the vLLM server to generate a completion."
     )
 
 
@@ -67,7 +65,7 @@ def generate_with_adapter(
     """
     raise NotImplementedError(
         "generate_with_adapter is not yet implemented. "
-        "It will call the vLLM server using a specific LoRA adapter for code generation."
+        "It will call the vLLM server with a LoRA adapter."
     )
 
 

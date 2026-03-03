@@ -15,7 +15,7 @@ def run_humaneval_subset(
     subset_size: int = 20,
     model: str = "Qwen/Qwen2.5-Coder-7B",
 ) -> dict[str, Any]:
-    """Run a HumanEval benchmark subset to evaluate an adapter's code generation ability.
+    """Run a HumanEval benchmark subset to evaluate an adapter.
 
     Loads the specified adapter onto the base model and evaluates it on a
     randomly sampled subset of the HumanEval benchmark tasks. Returns detailed
@@ -84,7 +84,7 @@ def score_adapter_quality(
     pass_rate: float,
     generalization_delta: float | None = None,
 ) -> float:
-    """Compute an overall quality score for an adapter combining pass rate and generalization.
+    """Compute an overall quality score for an adapter.
 
     Aggregates the adapter's benchmark pass rate with its generalization
     performance (if available) into a single scalar quality score. When
@@ -109,7 +109,9 @@ def score_adapter_quality(
         >>> score = score_adapter_quality("adapter-001", pass_rate=0.85)
         >>> score
         0.85
-        >>> score_with_gen = score_adapter_quality("adapter-001", 0.85, generalization_delta=0.1)
+        >>> score_with_gen = score_adapter_quality(
+        ...     "adapter-001", 0.85, generalization_delta=0.1,
+        ... )
         >>> score_with_gen > score
         True
     """
@@ -216,10 +218,14 @@ def evaluate_fitness(
         NotImplementedError: evaluate_fitness is not yet implemented.
 
     Example:
-        >>> fitness = evaluate_fitness("adapter-001", pass_rate=0.85, diversity_score=0.3)
+        >>> fitness = evaluate_fitness(
+        ...     "adapter-001", pass_rate=0.85, diversity_score=0.3,
+        ... )
         >>> fitness
         0.795
-        >>> low_diversity = evaluate_fitness("adapter-001", pass_rate=0.85, diversity_score=0.0)
+        >>> low_diversity = evaluate_fitness(
+        ...     "adapter-001", pass_rate=0.85, diversity_score=0.0,
+        ... )
         >>> low_diversity < fitness
         True
     """
