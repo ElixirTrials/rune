@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
 status: completed
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-03-03T20:20:38.974Z"
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-03T20:23:50.315Z"
 last_activity: 2026-03-03 — completed 13-02 with 11 per-component conftest.py files; 23 tests passing
 progress:
   total_phases: 18
   completed_phases: 13
   total_plans: 32
-  completed_plans: 31
+  completed_plans: 32
   percent: 5
 ---
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 5% of v4.0 (v1.0 complete; v2.0 compl
 
 *Updated after each plan completion*
 | Phase 14 P02 | 2 | 2 tasks | 3 files |
+| Phase 14-core-library-wireframes P01 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,7 @@ Recent decisions affecting current work:
 - [Milestone v4.0]: lora-server is Dockerfile-only — not a uv workspace member; tests run against Python source directly
 - [13-02]: lora-server conftest uses parent dir (not /src subdir) since source files live directly in services/lora-server/
 - [Phase 14]: Example sections in peft_utils.py use comment-style for GPU return types to avoid CPU-only importability issues
+- [Phase 14-core-library-wireframes]: Component conftest.py must define its own factory fixtures; pytest rootdir isolation from component pyproject.toml prevents root conftest.py discovery
 
 ### Pending Todos
 
@@ -92,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T20:20:34.707Z
-Stopped at: Completed 14-02-PLAN.md
+Last session: 2026-03-03T20:23:50.311Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None
