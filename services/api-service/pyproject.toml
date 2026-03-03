@@ -5,6 +5,7 @@ description = "FastAPI Orchestrator"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "adapter-registry",
     "shared",
     "inference",
     "fastapi>=0.110.0",
@@ -60,5 +61,6 @@ filterwarnings = [
 ]
 
 [tool.uv.sources]
+adapter-registry = { workspace = true }
 shared = { workspace = true }
 inference = { workspace = true }

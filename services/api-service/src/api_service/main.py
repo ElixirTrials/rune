@@ -11,6 +11,8 @@ from sqlalchemy import text
 from sqlmodel import Session
 
 from api_service.dependencies import get_db
+from api_service.routers.adapters import router as adapters_router
+from api_service.routers.sessions import router as sessions_router
 from api_service.storage import create_db_and_tables
 
 # Setup basic logging
@@ -50,6 +52,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(adapters_router)
+app.include_router(sessions_router)
 
 
 @app.get("/health")
