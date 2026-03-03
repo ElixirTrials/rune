@@ -88,7 +88,7 @@ test:
 	uv run pytest services/api-service/tests libs/events-py/tests -q
 
 help:
-	@echo "ElixirTrials  - Makefile Commands"
+	@echo "Rune - Makefile Commands"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make check           - Run linters, type checkers, and tests"
