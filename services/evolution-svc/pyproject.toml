@@ -1,0 +1,26 @@
+[project]
+name = "evolution-svc"
+version = "0.1.0"
+description = "Adapter evaluation, evolution, promotion, and pruning service"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "adapter-registry",
+    "shared",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "sqlalchemy>=2.0.0",
+    "sqlmodel>=0.0.16",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/evolution_svc"]
+
+[tool.uv.sources]
+adapter-registry = { workspace = true }
+shared = { workspace = true }
