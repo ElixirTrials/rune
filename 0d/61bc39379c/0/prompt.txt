@@ -1,0 +1,94 @@
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 14 --auto --research (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+- `--prd <file>` — Use a PRD/acceptance criteria file instead of discuss-phase. Parses requirements into CONTEXT.md automatically. Skips discuss-phase entirely.
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+<objective>
+Execute all plans in a phase using wave-based parallel execution.
+
+Orchestrator stays lean: discover plans, analyze dependencies, group into waves, spawn subagents, collect results. Each subagent loads the full execute-plan context and handles its own plan.
+
+Context budget: ~15% orchestrator, 100% fresh per subagent.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase: 14 --auto --no-transition
+
+**Flags:**
+- `--gaps-only` — Execute only gap closure plans (plans with `gap_closure: true` in frontmatter). Use after verify-work creates fix plans.
+
+Context files are resolved inside the workflow via `gsd-tools init execute-phase` and per-subagent `<files_to_read>` blocks.
+</context>
+
+<process>
+Execute the execute-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md end-to-end.
+Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
+</process>
+
+---
+
+Don't commit planning docs
+
+---
+
+<task-notification>
+<task-id>a67444b6bc4c75879</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "Execute plan 14-02" completed</summary>
+<result>All 8 tests pass with 100% coverage.
+
+## PLAN COMPLETE
+
+**Plan:** 14-02
+**Tasks:** 2/2
+**SUMMARY:** `/Users/noahdolevelixir/Code/rune/.planning/phases/14-core-library-wireframes/14-02-SUMMARY.md`
+
+**Commits:**
+- `781194f`: feat(14-02): add Example sections to all 8 model-training docstrings (pre-existing, Task 1)
+- `df67024`: test(14-02): add failing TDD tests for all 8 model-training functions (Task 2)
+- `d4d5cfe`: docs(14-02): planning metadata — SUMMARY.md, STATE.md, ROADMAP.md
+
+**Duration:** ~2 minutes
+
+**Key outcomes:**
+- All 8 model-training functions across `config.py`, `peft_utils.py`, and `trajectory.py` have Google-style docstrings with `Example:` sections
+- 3 new test files created with 8 TDD tests — all passing by asserting `NotImplementedError` with `match=` on function names
+- Zero GPU imports at module level in any source or test file
+- Requirement `LIB-08` marked complete</result>
+<usage><total_tokens>43543</total_tokens><tool_uses>68</tool_uses><duration_ms>331364</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a67444b6bc4c75879.output
