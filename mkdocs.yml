@@ -39,6 +39,8 @@ extra_css:
 extra_javascript:
 - https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
 - assets/mermaid-init.js
+- assets/mathjax-config.js
+- https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js
 plugins:
 - search
 - monorepo
@@ -80,6 +82,13 @@ markdown_extensions:
 - tables
 - toc:
     permalink: true
+- pymdownx.arithmatex:
+    generic: true
+    inline_syntax:
+      - round
+    block_syntax:
+      - square
+      - begin
 validation:
   omitted_files: warn
   absolute_links: warn
