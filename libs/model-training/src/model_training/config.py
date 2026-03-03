@@ -30,6 +30,11 @@ def get_training_config(
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> config = get_training_config("bug-fix", rank=64, epochs=3)
+        >>> config["task_type"]  # Returns 'bug-fix' when implemented
+        'bug-fix'
     """
     raise NotImplementedError(
         "get_training_config is not yet implemented. "
@@ -52,6 +57,11 @@ def validate_config(config: dict[str, Any]) -> bool:
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> valid = validate_config({"task_type": "bug-fix", "rank": 64, "epochs": 3})
+        >>> valid  # Returns True for valid configs when implemented
+        True
     """
     raise NotImplementedError(
         "validate_config is not yet implemented. "

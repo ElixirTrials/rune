@@ -25,6 +25,12 @@ def record_trajectory(
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> steps = [{"action": "edit file", "observation": "syntax error", "reflection": "fix import"}]
+        >>> result = record_trajectory("session-001", steps, outcome="success")
+        >>> result["trajectory_id"]  # Returns trajectory ID when implemented
+        'traj-001'
     """
     raise NotImplementedError(
         "record_trajectory is not yet implemented. "
@@ -43,6 +49,11 @@ def load_trajectory(trajectory_id: str) -> dict[str, Any]:
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> trajectory = load_trajectory("traj-001")
+        >>> trajectory["session_id"]  # Returns session ID when implemented
+        'session-001'
     """
     raise NotImplementedError(
         "load_trajectory is not yet implemented. "
@@ -64,6 +75,11 @@ def format_for_sft(trajectory: dict[str, Any]) -> list[dict[str, str]]:
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> messages = format_for_sft(trajectory)
+        >>> messages[0]["role"]  # Returns 'user' or 'assistant' when implemented
+        'user'
     """
     raise NotImplementedError(
         "format_for_sft is not yet implemented. "

@@ -31,6 +31,10 @@ def build_qlora_config(
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> config = build_qlora_config(rank=64, alpha=128, target_modules=["q_proj"])
+        # Returns peft.LoraConfig when implemented
     """
     raise NotImplementedError(
         "build_qlora_config is not yet implemented. "
@@ -50,6 +54,10 @@ def apply_lora_adapter(model: Any, config: Any) -> Any:
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> adapted_model = apply_lora_adapter(base_model, lora_config)
+        # Returns PEFT-wrapped model when implemented
     """
     raise NotImplementedError(
         "apply_lora_adapter is not yet implemented. "
@@ -68,6 +76,10 @@ def merge_adapter(model: Any) -> Any:
 
     Raises:
         NotImplementedError: Method is not yet implemented.
+
+    Example:
+        >>> merged = merge_adapter(peft_model)
+        # Returns base model with LoRA weights merged when implemented
     """
     raise NotImplementedError(
         "merge_adapter is not yet implemented. "
