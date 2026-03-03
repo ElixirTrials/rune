@@ -40,6 +40,11 @@ class VLLMClient:
 
         Raises:
             NotImplementedError: Pending vLLM dynamic LoRA loading API integration.
+
+        Example:
+            >>> client = VLLMClient()
+            >>> await client.load_adapter("adapter-code-gen-v1", "Qwen/Qwen2.5-Coder-7B-Instruct")
+            {'status': 'loaded', 'adapter_id': 'adapter-code-gen-v1'}
         """
         raise NotImplementedError(
             f"load_adapter('{adapter_id}', '{model_name}') is not yet implemented. "
@@ -62,6 +67,11 @@ class VLLMClient:
 
         Raises:
             NotImplementedError: Pending chat completion call implementation.
+
+        Example:
+            >>> client = VLLMClient()
+            >>> await client.generate("Write hello world", "Qwen/Qwen2.5-Coder-7B-Instruct")
+            'Hello, World!'
         """
         raise NotImplementedError(
             f"generate(model='{model}', adapter_id='{adapter_id}') is not yet implemented. "
