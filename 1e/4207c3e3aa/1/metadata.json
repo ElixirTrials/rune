@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "1e4207c3e3aa",
+  "session_id": "d28c89b1-7ca9-4ec9-8a6f-7ba81022f238",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-04T17:44:32.020068Z",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "docs/assets/mermaid-init.js",
+    "docs/assets/mermaid-loader.js",
+    "mkdocs.yml"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "d927b7688ea1",
+  "token_usage": {
+    "input_tokens": 109,
+    "cache_creation_tokens": 287094,
+    "cache_read_tokens": 7510787,
+    "output_tokens": 23882,
+    "api_call_count": 79
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-04T17:44:31.736366Z",
+    "agent_lines": 35,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 35,
+    "agent_percentage": 100
+  }
+}
