@@ -3,9 +3,10 @@
   "checkpoint_id": "73e8b340d7c0",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 4,
+  "checkpoints_count": 6,
   "files_touched": [
     "docs/implementation-plan.md",
+    "docs/openapi.json",
     "libs/adapter-registry/docs/api/index.md",
     "libs/evaluation/docs/api/index.md",
     "libs/inference/docs/api/index.md",
@@ -23,13 +24,20 @@
       "context": "/73/e8b340d7c0/0/context.md",
       "content_hash": "/73/e8b340d7c0/0/content_hash.txt",
       "prompt": "/73/e8b340d7c0/0/prompt.txt"
+    },
+    {
+      "metadata": "/73/e8b340d7c0/1/metadata.json",
+      "transcript": "/73/e8b340d7c0/1/full.jsonl",
+      "context": "/73/e8b340d7c0/1/context.md",
+      "content_hash": "/73/e8b340d7c0/1/content_hash.txt",
+      "prompt": "/73/e8b340d7c0/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 80,
-    "cache_creation_tokens": 224725,
-    "cache_read_tokens": 5285766,
-    "output_tokens": 18837,
-    "api_call_count": 55
+    "input_tokens": 95,
+    "cache_creation_tokens": 268449,
+    "cache_read_tokens": 5724258,
+    "output_tokens": 22205,
+    "api_call_count": 67
   }
 }
