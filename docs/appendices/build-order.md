@@ -17,15 +17,15 @@ This appendix details the recommended component build order derived from archite
 
 ```mermaid
 flowchart TD
-    adapter-registry --> lora-server
-    adapter-registry --> api-service
-    lora-server --> model-training
-    lora-server --> rune-agent
-    api-service --> rune-agent
-    adapter-registry --> evolution-svc
-    lora-server --> evolution-svc
-    adapter-registry --> training-svc
-    model-training --> training-svc
-    training-svc --> hypernetwork
-    rune-agent --> hypernetwork
+    adapter_registry["adapter-registry"] --> lora_server["lora-server"]
+    adapter_registry --> api_service["api-service"]
+    lora_server --> model_training["model-training"]
+    lora_server --> rune_agent["rune-agent"]
+    api_service --> rune_agent
+    adapter_registry --> evolution_svc["evolution-svc"]
+    lora_server --> evolution_svc
+    adapter_registry --> training_svc["training-svc"]
+    model_training --> training_svc
+    training_svc --> hypernetwork
+    rune_agent --> hypernetwork
 ```

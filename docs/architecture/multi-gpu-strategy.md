@@ -25,9 +25,9 @@ Pipeline parallelism splits the transformer layers across GPUs. GPU 0 holds laye
 ```mermaid
 flowchart LR
     Input([Token Input]) --> GPU0
-    GPU0[GPU 0: Layers 0 to N/2] --> Transfer
-    Transfer[Activation Transfer via PCIe] --> GPU1
-    GPU1[GPU 1: Layers N/2+1 to N] --> Output([Token Output])
+    GPU0["GPU 0: Layers 0 to N/2"] --> Transfer
+    Transfer["Activation Transfer via PCIe"] --> GPU1
+    GPU1["GPU 1: Layers N/2+1 to N"] --> Output([Token Output])
 ```
 
 The PCIe bandwidth (~32 GB/s bidirectional) is sufficient for this pattern because the transfer happens once per forward pass at a single layer boundary. Activation tensors at a layer boundary for a 7B model are small relative to the bus bandwidth.
