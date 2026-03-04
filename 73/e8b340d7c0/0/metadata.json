@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "73e8b340d7c0",
+  "session_id": "b5bb7c8b-7410-4207-91b3-048d566af1e0",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-04T13:55:07.897654Z",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "docs/implementation-plan.md",
+    "libs/adapter-registry/docs/api/index.md",
+    "libs/evaluation/docs/api/index.md",
+    "libs/inference/docs/api/index.md",
+    "libs/model-training/docs/api/index.md",
+    "libs/shared/docs/api/index.md",
+    "services/api-service/docs/api/index.md",
+    "services/evolution-svc/docs/api/index.md",
+    "services/rune-agent/docs/api/index.md",
+    "services/training-svc/docs/api/index.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "bcd6ac325f25",
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 224725,
+    "cache_read_tokens": 5285766,
+    "output_tokens": 18837,
+    "api_call_count": 55
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-04T13:55:07.175022Z",
+    "agent_lines": 23,
+    "human_added": 152,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 175,
+    "agent_percentage": 13.142857142857142
+  }
+}
