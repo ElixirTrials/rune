@@ -3,7 +3,7 @@
   "checkpoint_id": "d2b0c45ae9c7",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 3,
+  "checkpoints_count": 5,
   "files_touched": [
     ".planning/ROADMAP.md",
     ".planning/STATE.md",
@@ -23,6 +23,13 @@
       "context": "/d2/b0c45ae9c7/1/context.md",
       "content_hash": "/d2/b0c45ae9c7/1/content_hash.txt",
       "prompt": "/d2/b0c45ae9c7/1/prompt.txt"
+    },
+    {
+      "metadata": "/d2/b0c45ae9c7/2/metadata.json",
+      "transcript": "/d2/b0c45ae9c7/2/full.jsonl",
+      "context": "/d2/b0c45ae9c7/2/context.md",
+      "content_hash": "/d2/b0c45ae9c7/2/content_hash.txt",
+      "prompt": "/d2/b0c45ae9c7/2/prompt.txt"
     }
   ],
   "token_usage": {
