@@ -3,7 +3,6 @@
 import re
 
 import pytest
-
 from events_py.models import EventKind, create_event
 
 

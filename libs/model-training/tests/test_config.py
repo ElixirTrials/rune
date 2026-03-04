@@ -1,7 +1,6 @@
 """TDD wireframe tests for model_training.config module."""
 
 import pytest
-
 from model_training.config import get_training_config, validate_config
 
 

@@ -5,7 +5,6 @@ Tests assert the TDD red-phase contract.
 """
 
 import pytest
-
 from inference.completion import (
     batch_generate,
     generate_completion,
@@ -20,7 +19,7 @@ def test_generate_completion_raises_not_implemented() -> None:
 
 
 def test_generate_with_adapter_raises_not_implemented() -> None:
-    """generate_with_adapter raises NotImplementedError with function name in message."""
+    """generate_with_adapter raises NotImplementedError."""
     with pytest.raises(NotImplementedError, match="generate_with_adapter"):
         generate_with_adapter("def hello():", "adapter-001")
 

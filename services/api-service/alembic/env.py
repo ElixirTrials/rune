@@ -3,12 +3,12 @@
 import os
 from logging.config import fileConfig
 
+from alembic import context
+
 # Import models to register them with SQLModel.metadata
 from shared.models import Entity, Task  # noqa: F401
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
-
-from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

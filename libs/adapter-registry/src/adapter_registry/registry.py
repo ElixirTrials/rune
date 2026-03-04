@@ -58,7 +58,7 @@ class AdapterRegistry:
 
         Example:
             >>> registry = AdapterRegistry()
-            >>> record = registry.retrieve_by_id("abc-1")  # Returns AdapterRecord when implemented
+            >>> record = registry.retrieve_by_id("abc-1")
         """
         raise NotImplementedError(
             "AdapterRegistry.retrieve_by_id is not yet implemented. "
@@ -79,7 +79,7 @@ class AdapterRegistry:
 
         Example:
             >>> registry = AdapterRegistry()
-            >>> results = registry.query_by_task_type("bug-fix")  # Returns list[AdapterRecord] when implemented
+            >>> results = registry.query_by_task_type("bug-fix")
         """
         raise NotImplementedError(
             "AdapterRegistry.query_by_task_type is not yet implemented. "
@@ -97,7 +97,7 @@ class AdapterRegistry:
 
         Example:
             >>> registry = AdapterRegistry()
-            >>> all_adapters = registry.list_all()  # Returns list[AdapterRecord] when implemented
+            >>> all_adapters = registry.list_all()
         """
         raise NotImplementedError(
             "AdapterRegistry.list_all is not yet implemented. "

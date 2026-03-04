@@ -7,7 +7,6 @@ and verify the error message contains the function name.
 """
 
 import pytest
-
 from rune_agent.nodes import (
     execute_node,
     generate_node,

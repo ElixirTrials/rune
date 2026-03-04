@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
 import pymdownx.superfences  # type: ignore[import-untyped]  # noqa: F401  (needed for PyYAML !!python/name constructors)
+import yaml
 
 
 def update_navigation():

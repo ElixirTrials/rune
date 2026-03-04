@@ -6,13 +6,14 @@ NotImplementedError with its name in the error message.
 """
 
 import pytest
-
 from evaluation.metrics import (
     calculate_pass_at_k,
     compare_adapters,
     evaluate_fitness,
     run_humaneval_subset,
     score_adapter_quality,
+)
+from evaluation.metrics import (
     test_generalization as _test_generalization,
 )
 

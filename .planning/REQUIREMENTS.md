@@ -126,7 +126,7 @@ Requirements for milestone v4.0 — API Wireframes & TDD Foundation.
 - [x] **SVC-06**: `services/api-service` — all 6 endpoint stubs (`list_adapters`, `get_adapter`, `create_adapter`, `list_sessions`, `get_session`, `create_session`) upgraded to Google-style docstrings; each gets a failing TDD test using TestClient that asserts expected response schema and status code when implemented
 - [x] **SVC-07**: `services/evolution-svc` — all 4 endpoint stubs (`evaluate_adapter`, `evolve_adapters`, `promote_adapter`, `prune_adapter`) upgraded to Google-style docstrings; each gets a failing TDD test
 - [x] **SVC-08**: `services/training-svc` — all 3 endpoint stubs (`train_lora`, `train_hypernetwork`, `get_job_status`) upgraded to Google-style docstrings; each gets a failing TDD test
-- [ ] **SVC-09**: `services/rune-agent` — all 4 node functions (`generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`) and 2 graph functions (`should_retry`, `create_graph`) upgraded to Google-style docstrings; each gets a failing TDD test
+- [x] **SVC-09**: `services/rune-agent` — all 4 node functions (`generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`) and 2 graph functions (`should_retry`, `create_graph`) upgraded to Google-style docstrings; each gets a failing TDD test
 - [x] **SVC-10**: `services/lora-server` — health sidecar (`check_vllm_ready`) and `VLLMClient` methods upgraded to Google-style docstrings; each gets a failing TDD test
 
 ### Quality Gate
@@ -253,7 +253,7 @@ Which phases cover which requirements.
 | SVC-06 | Phase 16 | Complete |
 | SVC-07 | Phase 16 | Complete |
 | SVC-08 | Phase 16 | Complete |
-| SVC-09 | Phase 16 | Pending |
+| SVC-09 | Phase 16 | Complete |
 | SVC-10 | Phase 16 | Complete |
 | QA-05 | Phase 17 | Complete |
 | QA-06 | Phase 17 | Pending |

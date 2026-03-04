@@ -94,9 +94,6 @@ def list_loaded_adapters() -> list[str]:
     Queries the vLLM server for the set of LoRA adapters currently
     hot-loaded and available for inference.
 
-    Args:
-        None
-
     Returns:
         List of adapter IDs currently loaded on the vLLM server.
 

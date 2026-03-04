@@ -20,9 +20,22 @@ class VLLMClient:
     Wraps AsyncOpenAI to communicate with the local vLLM server.
     Methods are stubs that will be implemented when the vLLM dynamic
     LoRA loading API is integrated.
+
+    Attributes:
+        _client: Internal AsyncOpenAI client instance.
+
+    Example:
+        >>> client = VLLMClient()
+        >>> client._client.base_url
     """
 
     def __init__(self, base_url: str | None = None) -> None:
+        """Initialize the VLLMClient.
+
+        Args:
+            base_url: Override URL for the vLLM server.
+                Defaults to VLLM_BASE_URL env var.
+        """
         self._client = AsyncOpenAI(
             base_url=base_url or VLLM_BASE_URL,
             api_key="not-needed-for-local-vllm",
@@ -38,13 +51,17 @@ class VLLMClient:
             adapter_id: Identifier for the LoRA adapter to load.
             model_name: Base model the adapter was trained on.
 
+        Returns:
+            Response dict from the vLLM adapter loading API.
+
         Raises:
             NotImplementedError: Pending vLLM dynamic LoRA loading API integration.
 
         Example:
             >>> client = VLLMClient()
-            >>> await client.load_adapter("adapter-code-gen-v1", "Qwen/Qwen2.5-Coder-7B-Instruct")
-            {'status': 'loaded', 'adapter_id': 'adapter-code-gen-v1'}
+            >>> await client.load_adapter(
+            ...     "adapter-v1", "Qwen/Qwen2.5-Coder-7B",
+            ... )
         """
         raise NotImplementedError(
             f"load_adapter('{adapter_id}', '{model_name}') is not yet implemented. "
@@ -63,17 +80,24 @@ class VLLMClient:
         Args:
             prompt: The input prompt for generation.
             model: The base model identifier.
-            adapter_id: Optional LoRA adapter to use for generation.
+            adapter_id: Optional LoRA adapter to use.
+
+        Returns:
+            Generated text completion string.
 
         Raises:
             NotImplementedError: Pending chat completion call implementation.
 
         Example:
             >>> client = VLLMClient()
-            >>> await client.generate("Write hello world", "Qwen/Qwen2.5-Coder-7B-Instruct")
-            'Hello, World!'
+            >>> await client.generate(
+            ...     "Write hello world",
+            ...     "Qwen/Qwen2.5-Coder-7B",
+            ... )
         """
         raise NotImplementedError(
-            f"generate(model='{model}', adapter_id='{adapter_id}') is not yet implemented. "
-            "Will use self._client.chat.completions.create() with the vLLM server."
+            f"generate(model='{model}', "
+            f"adapter_id='{adapter_id}') is not yet "
+            "implemented. Will use "
+            "self._client.chat.completions.create()."
         )

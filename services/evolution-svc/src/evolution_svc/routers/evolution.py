@@ -28,7 +28,8 @@ async def evaluate_adapter(request: EvaluationRequest) -> JSONResponse:
         HTTPException: 501 while not yet implemented.
 
     Example:
-        >>> response = client.post("/evaluate", json={"adapter_id": "a-1", "task_type": "code-gen"})
+        >>> body = {"adapter_id": "a-1", "task_type": "code-gen"}
+        >>> response = client.post("/evaluate", json=body)
         >>> response.status_code
         200
         >>> 'fitness_score' in response.json()
@@ -52,7 +53,8 @@ async def evolve_adapters(request: EvolveRequest) -> JSONResponse:
         HTTPException: 501 while not yet implemented.
 
     Example:
-        >>> response = client.post("/evolve", json={"adapter_ids": ["a-1", "a-2"], "task_type": "code-gen"})
+        >>> body = {"adapter_ids": ["a-1", "a-2"], "task_type": "gen"}
+        >>> response = client.post("/evolve", json=body)
         >>> response.status_code
         200
         >>> 'adapter_id' in response.json()
@@ -76,7 +78,8 @@ async def promote_adapter(request: PromoteRequest) -> JSONResponse:
         HTTPException: 501 while not yet implemented.
 
     Example:
-        >>> response = client.post("/promote", json={"adapter_id": "a-1", "target_level": "domain"})
+        >>> body = {"adapter_id": "a-1", "target_level": "domain"}
+        >>> response = client.post("/promote", json=body)
         >>> response.status_code
         200
         >>> 'adapter_id' in response.json()

@@ -1,7 +1,6 @@
 """TDD wireframe tests for model_training.trajectory module."""
 
 import pytest
-
 from model_training.trajectory import format_for_sft, load_trajectory, record_trajectory
 
 

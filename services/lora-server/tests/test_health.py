@@ -4,9 +4,9 @@ Tests use mocked HTTP since we cannot hit a real vLLM server in tests.
 Imports directly from Python source via conftest.py sys.path setup.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from health import check_vllm_ready
 
 

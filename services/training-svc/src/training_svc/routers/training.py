@@ -26,7 +26,8 @@ async def train_lora(request: LoraTrainingRequest) -> JSONResponse:
         HTTPException: 501 while not yet implemented.
 
     Example:
-        >>> response = client.post("/train/lora", json={"task_type": "code-gen", "rank": 64, "epochs": 3})
+        >>> body = {"task_type": "code-gen", "rank": 64, "epochs": 3}
+        >>> response = client.post("/train/lora", json=body)
         >>> response.status_code
         200
         >>> 'job_id' in response.json()
@@ -50,7 +51,8 @@ async def train_hypernetwork(request: HypernetworkTrainingRequest) -> JSONRespon
         HTTPException: 501 while not yet implemented.
 
     Example:
-        >>> response = client.post("/train/hypernetwork", json={"task_type": "code-gen", "trajectory_ids": ["t-1", "t-2"]})
+        >>> body = {"task_type": "gen", "trajectory_ids": ["t-1"]}
+        >>> response = client.post("/train/hypernetwork", json=body)
         >>> response.status_code
         200
         >>> 'job_id' in response.json()

@@ -1,7 +1,6 @@
 """CPU-only importability smoke tests for adapter-registry."""
 
 import pytest
-
 from adapter_registry import (
     AdapterAlreadyExistsError,
     AdapterNotFoundError,

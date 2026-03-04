@@ -1,8 +1,11 @@
 """TDD wireframe tests for model_training.peft_utils module."""
 
 import pytest
-
-from model_training.peft_utils import apply_lora_adapter, build_qlora_config, merge_adapter
+from model_training.peft_utils import (
+    apply_lora_adapter,
+    build_qlora_config,
+    merge_adapter,
+)
 
 
 def test_build_qlora_config_raises_not_implemented() -> None:

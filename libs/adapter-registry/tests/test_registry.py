@@ -6,7 +6,6 @@ fixtures from root conftest.py.
 """
 
 import pytest
-
 from adapter_registry import AdapterRegistry
 
 
@@ -26,7 +25,7 @@ def test_retrieve_by_id_raises_not_implemented() -> None:
 
 
 def test_query_by_task_type_raises_not_implemented() -> None:
-    """AdapterRegistry.query_by_task_type raises NotImplementedError with method name."""
+    """query_by_task_type raises NotImplementedError."""
     registry = AdapterRegistry()
     with pytest.raises(NotImplementedError, match="query_by_task_type"):
         registry.query_by_task_type("bug-fix")

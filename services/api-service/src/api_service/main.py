@@ -1,3 +1,5 @@
+"""FastAPI application entry point for the API service."""
+
 import asyncio
 import logging
 import os

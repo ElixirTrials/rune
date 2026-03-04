@@ -56,6 +56,24 @@ members = [
     "libs/adapter-registry",
 ]
 
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+exclude = ["venv", ".venv", "docs", "site", ".planning"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "C", "N", "I", "D"]
+ignore = ["E203", "D203", "D213", "D100", "D413", "D104"]
+pydocstyle.convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"**/tests/**" = ["D"]
+"conftest.py" = ["D"]
+"**/conftest.py" = ["D"]
+"scripts/**" = ["D", "C901", "E501"]
+"**/scripts/**" = ["D", "C901", "E501"]
+
 [tool.mypy]
 exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks)/"
 

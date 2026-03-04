@@ -27,7 +27,7 @@ def record_trajectory(
         NotImplementedError: Method is not yet implemented.
 
     Example:
-        >>> steps = [{"action": "edit file", "observation": "syntax error", "reflection": "fix import"}]
+        >>> steps = [{"action": "edit", "observation": "err"}]
         >>> result = record_trajectory("session-001", steps, outcome="success")
         >>> result["trajectory_id"]  # Returns trajectory ID when implemented
         'traj-001'

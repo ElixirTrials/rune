@@ -6,9 +6,8 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 try:
-    from fastapi.openapi.utils import get_openapi
-
     from api_service.main import app
+    from fastapi.openapi.utils import get_openapi
 except ImportError as e:
     print(f"Error importing app: {e}")
     sys.exit(1)

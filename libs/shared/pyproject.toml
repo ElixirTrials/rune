@@ -23,14 +23,6 @@ dev = [
 packages = ["src/shared"]
 force-include = { "src/shared/templates" = "shared/templates" }
 
-[tool.ruff]
-lint.select = ["E", "F", "W", "C", "N", "I", "D"]
-lint.ignore = ["E203", "D203", "D213", "D100", "D413", "D104"]
-lint.pydocstyle.convention = "google"
-target-version = "py312"
-line-length = 88
-exclude = ["venv", ".venv", "docs"]
-
 [tool.mypy]
 strict = true
 exclude = ["venv", ".venv", "docs"]

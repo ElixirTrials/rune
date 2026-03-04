@@ -7,18 +7,16 @@ The mock_vllm_client fixture from conftest.py is exercised to validate
 conftest wiring per ROADMAP Phase 15 SC-3.
 """
 
-import pytest
-
 from unittest.mock import MagicMock
 
-from openai import AsyncOpenAI
-
+import pytest
 from inference.adapter_loader import (
     get_vllm_client,
     list_loaded_adapters,
     load_adapter,
     unload_adapter,
 )
+from openai import AsyncOpenAI
 
 
 def test_get_vllm_client_returns_async_openai() -> None:

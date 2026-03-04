@@ -5,7 +5,6 @@ Imports directly from Python source via conftest.py sys.path setup.
 """
 
 import pytest
-
 from vllm_client import VLLMClient
 
 

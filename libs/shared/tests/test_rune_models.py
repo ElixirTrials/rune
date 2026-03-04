@@ -1,9 +1,7 @@
 """TDD tests for shared.rune_models — field types, defaults, and serialization."""
 
-import pytest
 
 from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
-
 
 # --- AdapterRef tests ---
 
