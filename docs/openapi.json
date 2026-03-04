@@ -11,7 +11,7 @@
           "adapters"
         ],
         "summary": "List Adapters",
-        "description": "List all stored adapters. Not yet implemented.",
+        "description": "List all stored adapters.\n\nReturns:\n    JSONResponse with list of adapter records.\n\nRaises:\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/adapters\")\n    >>> response.status_code\n    200\n    >>> isinstance(response.json(), list)\n    True\n    >>> 'adapter_id' in response.json()[0]\n    True",
         "operationId": "list_adapters_adapters_get",
         "responses": {
           "200": {
@@ -29,7 +29,7 @@
           "adapters"
         ],
         "summary": "Create Adapter",
-        "description": "Store a new adapter. Not yet implemented.",
+        "description": "Store a new adapter.\n\nReturns:\n    JSONResponse with the created adapter record.\n\nRaises:\n    HTTPException: 422 if request body is invalid.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> body = {\"adapter_id\": \"new-adapter-001\", \"task_type\": \"bug-fix\"}\n    >>> response = client.post(\"/adapters\", json=body)\n    >>> response.status_code\n    201\n    >>> 'adapter_id' in response.json()\n    True",
         "operationId": "create_adapter_adapters_post",
         "responses": {
           "200": {
@@ -49,7 +49,7 @@
           "adapters"
         ],
         "summary": "Get Adapter",
-        "description": "Get adapter by ID. Not yet implemented.",
+        "description": "Get adapter by ID.\n\nArgs:\n    adapter_id: Unique identifier for the adapter.\n\nReturns:\n    JSONResponse with a single adapter record dict.\n\nRaises:\n    HTTPException: 404 if adapter not found.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/adapters/test-adapter-123\")\n    >>> response.status_code\n    200\n    >>> 'adapter_id' in response.json()\n    True",
         "operationId": "get_adapter_adapters__adapter_id__get",
         "parameters": [
           {
@@ -90,7 +90,7 @@
           "sessions"
         ],
         "summary": "List Sessions",
-        "description": "List coding sessions. Not yet implemented.",
+        "description": "List coding sessions.\n\nReturns:\n    JSONResponse with list of coding session records.\n\nRaises:\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/sessions\")\n    >>> response.status_code\n    200\n    >>> isinstance(response.json(), list)\n    True\n    >>> 'session_id' in response.json()[0]\n    True",
         "operationId": "list_sessions_sessions_get",
         "responses": {
           "200": {
@@ -108,7 +108,7 @@
           "sessions"
         ],
         "summary": "Create Session",
-        "description": "Create a new coding session. Not yet implemented.",
+        "description": "Create a new coding session.\n\nReturns:\n    JSONResponse with the created coding session record.\n\nRaises:\n    HTTPException: 422 if request body is invalid.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> body = {\"session_id\": \"new-session-001\", \"task_type\": \"bug-fix\"}\n    >>> response = client.post(\"/sessions\", json=body)\n    >>> response.status_code\n    201\n    >>> 'session_id' in response.json()\n    True",
         "operationId": "create_session_sessions_post",
         "responses": {
           "200": {
@@ -128,7 +128,7 @@
           "sessions"
         ],
         "summary": "Get Session",
-        "description": "Get coding session by ID. Not yet implemented.",
+        "description": "Get coding session by ID.\n\nArgs:\n    session_id: Unique identifier for the coding session.\n\nReturns:\n    JSONResponse with a single coding session record dict.\n\nRaises:\n    HTTPException: 404 if session not found.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/sessions/test-session-456\")\n    >>> response.status_code\n    200\n    >>> 'session_id' in response.json()\n    True",
         "operationId": "get_session_sessions__session_id__get",
         "parameters": [
           {

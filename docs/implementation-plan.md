@@ -30,12 +30,12 @@ The recommended component build sequence is detailed in [Build Order](appendices
 
 ```mermaid
 flowchart TD
-    P0[Phase 0\nHardware Validation] --> P1
-    P1{Phase 1\nHypothesis Gate} -->|passes| P2
+    P0["Phase 0<br>Hardware Validation"] --> P1
+    P1{"Phase 1<br>Hypothesis Gate"} -->|passes| P2
     P1 -->|fails| Stop([Stop and Reassess])
-    P2[Phase 2\nAdapter Library\n+ Serving] --> P3
-    P3[Phase 3\nRecursive Agent\nLoop] --> P4
-    P4[Phase 4\nEvolution Operator\n+ Hypernetwork]
+    P2["Phase 2<br>Adapter Library<br>+ Serving"] --> P3
+    P3["Phase 3<br>Recursive Agent<br>Loop"] --> P4
+    P4["Phase 4<br>Evolution Operator<br>+ Hypernetwork"]
 ```
 
 ### Research-Stage Framing
