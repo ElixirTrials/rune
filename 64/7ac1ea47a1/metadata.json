@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "647ac1ea47a1",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/evaluation/src/evaluation/metrics.py",
+    "libs/model-training/src/model_training/trajectory.py",
+    "services/api-service/src/api_service/routers/adapters.py",
+    "services/api-service/src/api_service/routers/sessions.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/64/7ac1ea47a1/0/metadata.json",
+      "transcript": "/64/7ac1ea47a1/0/full.jsonl",
+      "context": "/64/7ac1ea47a1/0/context.md",
+      "content_hash": "/64/7ac1ea47a1/0/content_hash.txt",
+      "prompt": "/64/7ac1ea47a1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 21,
+    "cache_creation_tokens": 48814,
+    "cache_read_tokens": 663854,
+    "output_tokens": 4485,
+    "api_call_count": 16
+  }
+}
