@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Monorepo Mapping - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../multi-gpu-strategy/" class="dropdown-item">Multi-GPU Strategy</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../article/" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../../article/abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../../article/background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../../article/methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../../article/results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../../article/discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../../article/references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../recursive-loop/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../adapter-storage/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#monorepo-service-mapping" class="nav-link">Monorepo Service Mapping</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#overview" class="nav-link">Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#service-mapping" class="nav-link">Service Mapping</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#new-services" class="nav-link">New Services</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#new-libraries" class="nav-link">New Libraries</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#extended-existing-components" class="nav-link">Extended Existing Components</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#integration-point-details" class="nav-link">Integration Point Details</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#adapter-registry-dependency-root" class="nav-link">adapter-registry (dependency root)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#lora-server-training-svc-gpu-lease" class="nav-link">lora-server &lt;-&gt; training-svc (GPU lease)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#rune-agent-lora-server-inference" class="nav-link">rune-agent &lt;-&gt; lora-server (inference)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#evolution-svc-adapter-registry-lifecycle" class="nav-link">evolution-svc &lt;-&gt; adapter-registry (lifecycle)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#existing-services-not-modified" class="nav-link">Existing Services Not Modified</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#monorepo-layout-post-rune" class="nav-link">Monorepo Layout (Post-Rune)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="monorepo-service-mapping">Monorepo Service Mapping<a class="headerlink" href="#monorepo-service-mapping" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>Rune is built within an existing monorepo that provides shared infrastructure (event system, API scaffolding, model training utilities, data pipeline). This document maps each new Rune component to its position in the monorepo, identifies which existing services it extends or runs alongside, and names the specific integration points.</p>
+<p>For the component build order and dependency chain, see <a href="../../appendices/build-order/">Build Order</a>.</p>
+<hr />
+<h2 id="service-mapping">Service Mapping<a class="headerlink" href="#service-mapping" title="Permanent link">&para;</a></h2>
+<h3 id="new-services">New Services<a class="headerlink" href="#new-services" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Rune Service</th>
+<th>Path</th>
+<th>Extends / Runs Alongside</th>
+<th>Integration Points</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rune-agent</code></td>
+<td><code>services/rune-agent/</code></td>
+<td>Runs alongside existing services</td>
+<td>Consumes <code>libs/adapter-registry</code> for adapter selection; calls <code>lora-server</code> for inference; uses <code>libs/events-py</code> for event publishing; manages Docker sandbox containers</td>
+</tr>
+<tr>
+<td><code>lora-server</code></td>
+<td><code>services/lora-server/</code></td>
+<td>Runs alongside <code>services/inference</code> (existing)</td>
+<td>Wraps vLLM subprocess (PP=2, TP=1, <code>--enable-lora</code>); exposes adapter loading API; coordinates GPU lease with <code>training-svc</code></td>
+</tr>
+<tr>
+<td><code>training-svc</code></td>
+<td><code>services/training-svc/</code></td>
+<td>Extends <code>libs/model-training</code></td>
+<td>Consumes PEFT utilities from <code>model-training</code>; reads adapter corpus from <code>adapter-registry</code>; acquires GPU lease from <code>lora-server</code> for training jobs</td>
+</tr>
+<tr>
+<td><code>evolution-svc</code></td>
+<td><code>services/evolution-svc/</code></td>
+<td>Runs alongside <code>services/evaluation</code> (existing)</td>
+<td>Reads adapter metadata from <code>adapter-registry</code>; evaluates adapter fitness using held-out test sets; writes promotion/pruning events via <code>libs/events-py</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="new-libraries">New Libraries<a class="headerlink" href="#new-libraries" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Rune Library</th>
+<th>Path</th>
+<th>Extends / New</th>
+<th>Consumers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>adapter-registry</code></td>
+<td><code>libs/adapter-registry/</code></td>
+<td>New</td>
+<td><code>rune-agent</code>, <code>lora-server</code>, <code>training-svc</code>, <code>evolution-svc</code>, <code>api-service</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="extended-existing-components">Extended Existing Components<a class="headerlink" href="#extended-existing-components" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Path</th>
+<th>What Changes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model-training</code></td>
+<td><code>libs/model-training/</code></td>
+<td>Add PEFT utilities: QLoRA config helpers, trajectory-to-adapter fine-tuning script, hypernetwork model definition</td>
+</tr>
+<tr>
+<td><code>api-service</code></td>
+<td><code>services/api-service/</code></td>
+<td>Add REST routes: <code>/adapters</code> (registry CRUD), <code>/sessions</code> (agent session state); new SQLModel tables for session tracking</td>
+</tr>
+<tr>
+<td><code>inference</code></td>
+<td><code>libs/inference/</code></td>
+<td>Add adapter-aware inference client that routes requests through <code>lora-server</code> with adapter selection headers</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="integration-point-details">Integration Point Details<a class="headerlink" href="#integration-point-details" title="Permanent link">&para;</a></h2>
+<h3 id="adapter-registry-dependency-root">adapter-registry (dependency root)<a class="headerlink" href="#adapter-registry-dependency-root" title="Permanent link">&para;</a></h3>
+<p>Every Rune component depends on the adapter registry. It provides two interfaces:</p>
+<table>
+<thead>
+<tr>
+<th>Interface</th>
+<th>Protocol</th>
+<th>Consumers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python API (<code>adapter_registry.client</code>)</td>
+<td>Direct import (in-process)</td>
+<td><code>rune-agent</code>, <code>training-svc</code>, <code>evolution-svc</code></td>
+</tr>
+<tr>
+<td>REST API (via <code>api-service</code>)</td>
+<td>HTTP</td>
+<td>External tools, UI, monitoring</td>
+</tr>
+</tbody>
+</table>
+<p>The registry owns the SQLite database and the filesystem adapter store. See <a href="../adapter-storage/">Adapter Storage</a> for schema and path conventions.</p>
+<h3 id="lora-server-training-svc-gpu-lease">lora-server &lt;-&gt; training-svc (GPU lease)<a class="headerlink" href="#lora-server-training-svc-gpu-lease" title="Permanent link">&para;</a></h3>
+<p>The lora-server and training-svc share the same two GPUs. They coordinate via a GPU lease mechanism:</p>
+<div class="mermaid">flowchart LR
+    TrainReq([Training Job Request]) --&gt; Lease[Request GPU Lease]
+    Lease --&gt; Check{lora-server idle?}
+    Check --&gt;|yes| Yield[lora-server yields GPU 1]
+    Check --&gt;|no| Queue[Queue until idle]
+    Yield --&gt; Train[training-svc runs on GPU 1]
+    Train --&gt; Release[Release lease]
+    Release --&gt; Resume[lora-server resumes PP=2]</div>
+<p>See <a href="../multi-gpu-strategy/">Multi-GPU Strategy</a> for the full GPU lease protocol.</p>
+<h3 id="rune-agent-lora-server-inference">rune-agent &lt;-&gt; lora-server (inference)<a class="headerlink" href="#rune-agent-lora-server-inference" title="Permanent link">&para;</a></h3>
+<p>The agent sends generation requests to the lora-server with adapter selection metadata. The lora-server loads the requested adapters via vLLM's dynamic LoRA API (S-LoRA unified paging) and returns generated code.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Protocol</td>
+<td>HTTP (OpenAI-compatible <code>/v1/completions</code>)</td>
+</tr>
+<tr>
+<td>Adapter selection</td>
+<td><code>X-Adapter-IDs</code> header or request body field</td>
+</tr>
+<tr>
+<td>Concurrency</td>
+<td>Single-tenant (one agent session at a time in v1)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="evolution-svc-adapter-registry-lifecycle">evolution-svc &lt;-&gt; adapter-registry (lifecycle)<a class="headerlink" href="#evolution-svc-adapter-registry-lifecycle" title="Permanent link">&para;</a></h3>
+<p>The evolution service reads adapter metadata, evaluates fitness on held-out tests, and writes lifecycle events:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Evaluate</td>
+<td>Run held-out tests against adapter, compute pass rate</td>
+</tr>
+<tr>
+<td>Promote</td>
+<td>Move high-fitness task adapter to domain level</td>
+</tr>
+<tr>
+<td>Prune</td>
+<td>Mark low-fitness adapters as archived (not deleted — write-once)</td>
+</tr>
+<tr>
+<td>Merge</td>
+<td>Combine overlapping adapters into a new composite adapter</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="existing-services-not-modified">Existing Services Not Modified<a class="headerlink" href="#existing-services-not-modified" title="Permanent link">&para;</a></h2>
+<p>These existing monorepo services are not modified by Rune and continue operating independently:</p>
+<table>
+<thead>
+<tr>
+<th>Service / Library</th>
+<th>Role</th>
+<th>Rune Relationship</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>libs/shared</code></td>
+<td>Shared utilities</td>
+<td>May consume for common config patterns</td>
+</tr>
+<tr>
+<td><code>libs/evaluation</code></td>
+<td>Evaluation library</td>
+<td>Used by <code>evolution-svc</code> for test execution harness</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="monorepo-layout-post-rune">Monorepo Layout (Post-Rune)<a class="headerlink" href="#monorepo-layout-post-rune" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>rune/
+  services/
+    api-service/          # Extended: +adapter and session routes
+    rune-agent/           # Rune coding agent: recursive code generation loop
+    lora-server/          # New: vLLM serving with dynamic LoRA
+    training-svc/         # New: hypernetwork + fine-tuning jobs
+    evolution-svc/        # New: adapter lifecycle management
+  libs/
+    adapter-registry/     # New: SQLite + filesystem adapter store
+    model-training/       # Extended: +PEFT utilities, hypernetwork
+    inference/            # Extended: +adapter-aware client
+    events-py/            # Unchanged (consumed by new services)
+    evaluation/           # Unchanged (consumed by evolution-svc)
+    shared/               # Unchanged
+</code></pre></div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+        <script src="../../assets/mermaid-init.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

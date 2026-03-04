@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../img/favicon.ico">
+        <title>Implementation Plan - Rune Documentation</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../assets/custom.css" rel="stylesheet">
+        <link href="../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href=".." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="./" class="nav-link active" aria-current="page">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../architecture/recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../architecture/monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../architecture/adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../architecture/multi-gpu-strategy/" class="dropdown-item">Multi-GPU Strategy</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../article/" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../article/abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../article/background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../article/methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../article/results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../article/discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../article/references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href=".." class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../architecture/recursive-loop/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#rune-implementation-plan" class="nav-link">Rune Implementation Plan</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#executive-summary" class="nav-link">Executive Summary</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#phase-overview" class="nav-link">Phase Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#key-risks" class="nav-link">Key Risks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#build-order" class="nav-link">Build Order</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#phase-dependency-graph" class="nav-link">Phase Dependency Graph</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#research-stage-framing" class="nav-link">Research-Stage Framing</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#phase-0-hardware-and-environment-validation" class="nav-link">Phase 0: Hardware and Environment Validation</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#why-this-phase-comes-first" class="nav-link">Why This Phase Comes First</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#hardware-constraints" class="nav-link">Hardware Constraints</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#deliverables" class="nav-link">Deliverables</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#risk-callouts" class="nav-link">Risk Callouts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#success-criteria" class="nav-link">Success Criteria</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#phase-1-core-hypothesis-validation-kill-switch-gate" class="nav-link">Phase 1: Core Hypothesis Validation (Kill-Switch Gate)</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#why-this-phase-comes-before-infrastructure" class="nav-link">Why This Phase Comes Before Infrastructure</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#deliverables_1" class="nav-link">Deliverables</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#kill-switch" class="nav-link">Kill-Switch</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#secondary-diagnostic-signals" class="nav-link">Secondary Diagnostic Signals</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#risk-callouts_1" class="nav-link">Risk Callouts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#success-criteria_1" class="nav-link">Success Criteria</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#experiment-sketch" class="nav-link">Experiment Sketch</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#phase-2-adapter-library-and-serving-infrastructure" class="nav-link">Phase 2: Adapter Library and Serving Infrastructure</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#why-this-phase-comes-here" class="nav-link">Why This Phase Comes Here</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#deliverables_2" class="nav-link">Deliverables</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#risk-callouts_2" class="nav-link">Risk Callouts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#success-criteria_2" class="nav-link">Success Criteria</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#experiment-sketch_1" class="nav-link">Experiment Sketch</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#phase-3-recursive-agent-loop-and-sandbox-integration" class="nav-link">Phase 3: Recursive Agent Loop and Sandbox Integration</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#why-this-phase-comes-here_1" class="nav-link">Why This Phase Comes Here</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#deliverables_3" class="nav-link">Deliverables</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#risk-callouts_3" class="nav-link">Risk Callouts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#success-criteria_3" class="nav-link">Success Criteria</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#phase-4-evolution-operator-and-hypernetwork" class="nav-link">Phase 4: Evolution Operator and Hypernetwork</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#why-this-phase-comes-last" class="nav-link">Why This Phase Comes Last</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#deliverables_4" class="nav-link">Deliverables</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#risk-callouts_4" class="nav-link">Risk Callouts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#success-criteria_4" class="nav-link">Success Criteria</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#experiment-sketch_2" class="nav-link">Experiment Sketch</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#references" class="nav-link">References</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="rune-implementation-plan">Rune Implementation Plan<a class="headerlink" href="#rune-implementation-plan" title="Permanent link">&para;</a></h1>
+<h2 id="executive-summary">Executive Summary<a class="headerlink" href="#executive-summary" title="Permanent link">&para;</a></h2>
+<p>Rune proposes to validate and implement a system that encodes coding trajectories into LoRA adapters using a Doc-to-LoRA hypernetwork, accumulating parametric memory that persists across sessions. This plan covers the full journey from hardware validation through hypernetwork training across five implementation phases (Phase 0 through Phase 4), structured so that the core hypothesis is validated before infrastructure is built.</p>
+<h3 id="phase-overview">Phase Overview<a class="headerlink" href="#phase-overview" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Goal</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 0</td>
+<td>Hardware and environment validation</td>
+<td>Precondition (all binary pass/fail)</td>
+</tr>
+<tr>
+<td>Phase 1</td>
+<td>Core hypothesis validation — Doc-to-LoRA on coding tasks</td>
+<td><strong>Kill-switch</strong> (5% Pass@1 threshold)</td>
+</tr>
+<tr>
+<td>Phase 2</td>
+<td>Adapter library and serving infrastructure</td>
+<td>Success criteria (checklist + metrics)</td>
+</tr>
+<tr>
+<td>Phase 3</td>
+<td>Recursive agent loop and sandbox integration</td>
+<td>Success criteria (checklists)</td>
+</tr>
+<tr>
+<td>Phase 4</td>
+<td>Evolution operator and hypernetwork</td>
+<td>Success criteria (metrics + checklists)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="key-risks">Key Risks<a class="headerlink" href="#key-risks" title="Permanent link">&para;</a></h3>
+<p>Three primary research risks are tracked throughout this plan. See <a href="../appendices/risk-matrix/">Risk Matrix</a> for full mitigation strategies and warning signs.</p>
+<ul>
+<li><strong>Hypernetwork mode collapse</strong> — The degenerate solution (mean adapter) has near-zero variance across inputs; diversity regularization in the training loss is required from the start.</li>
+<li><strong>Adapter composition interference</strong> — Direct additive merging of heterogeneous LoRAs produces interference in non-orthogonal subspaces; default to single-adapter retrieval.</li>
+<li><strong>Catastrophic forgetting</strong> — Adapter registry must enforce write-once semantics; no code path may overwrite an existing adapter.</li>
+</ul>
+<h3 id="build-order">Build Order<a class="headerlink" href="#build-order" title="Permanent link">&para;</a></h3>
+<p>The recommended component build sequence is detailed in <a href="../appendices/build-order/">Build Order</a>. The dependency root is <code>libs/adapter-registry</code> — it must be built first, as all other components depend on it for adapter storage and retrieval.</p>
+<h3 id="phase-dependency-graph">Phase Dependency Graph<a class="headerlink" href="#phase-dependency-graph" title="Permanent link">&para;</a></h3>
+<div class="mermaid">flowchart TD
+    P0["Phase 0&lt;br&gt;Hardware Validation"] --&gt; P1
+    P1{"Phase 1&lt;br&gt;Hypothesis Gate"} --&gt;|passes| P2
+    P1 --&gt;|fails| Stop([Stop and Reassess])
+    P2["Phase 2&lt;br&gt;Adapter Library&lt;br&gt;+ Serving"] --&gt; P3
+    P3["Phase 3&lt;br&gt;Recursive Agent&lt;br&gt;Loop"] --&gt; P4
+    P4["Phase 4&lt;br&gt;Evolution Operator&lt;br&gt;+ Hypernetwork"]</div>
+<h3 id="research-stage-framing">Research-Stage Framing<a class="headerlink" href="#research-stage-framing" title="Permanent link">&para;</a></h3>
+<p>This plan is structured for a research-stage system: the phases after the kill-switch gate (Phase 2 through Phase 4) are contingent on the hypothesis validated in Phase 1. Writing them out does not imply confidence that they will be reached — it means the design is complete enough to proceed if the hypothesis holds. If Phase 1 fails, the plan does not prescribe a pivot. The failure itself is informative and narrows the design space.</p>
+<hr />
+<h2 id="phase-0-hardware-and-environment-validation">Phase 0: Hardware and Environment Validation<a class="headerlink" href="#phase-0-hardware-and-environment-validation" title="Permanent link">&para;</a></h2>
+<p><strong>Depends on:</strong> Nothing — this is the first phase.</p>
+<p>Phase 0 confirms that the hardware and software environment is ready for GPU-dependent work. This is a precondition gate, not a research gate: none of the hypothesis testing in Phase 1 is possible without a validated environment. The success criteria are entirely binary — each check either passes or fails, with no partial credit.</p>
+<h3 id="why-this-phase-comes-first">Why This Phase Comes First<a class="headerlink" href="#why-this-phase-comes-first" title="Permanent link">&para;</a></h3>
+<p>GPU-dependent workloads fail in hardware-specific, non-obvious ways: CUDA version mismatches cause segfaults during backward passes, vLLM may require compilation from source for newer pipeline-parallelism features, and the TP+LoRA corruption bug (vLLM issue #21471) can produce silently wrong outputs rather than crashes. Discovering any of these mid-experiment invalidates results and forces a debugging detour. Phase 0 establishes a clean baseline before any research work begins.</p>
+<p>The distinction between Phase 0 and an installation guide is intentional. Phase 0 validates that the environment works correctly — the pass/fail tests confirm behavior, not installation. The steps required to achieve a passing environment (installing drivers, compiling vLLM, configuring CUDA paths) are pre-conditions that precede this phase.</p>
+<h3 id="hardware-constraints">Hardware Constraints<a class="headerlink" href="#hardware-constraints" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Specification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPU</td>
+<td>2x NVIDIA RTX 4090 (Ada Lovelace, sm_89), 24 GB VRAM each, 48 GB total</td>
+</tr>
+<tr>
+<td>GPU Interconnect</td>
+<td>CXL (cache-coherent memory pooling)</td>
+</tr>
+<tr>
+<td>Multi-GPU Strategy</td>
+<td>Pipeline parallelism: <code>--pipeline-parallel-size 2 --tensor-parallel-size 1</code></td>
+</tr>
+<tr>
+<td>CUDA</td>
+<td>12.8+ (cu128)</td>
+</tr>
+<tr>
+<td>PyTorch</td>
+<td>2.9+ (nightly, cu128 wheels)</td>
+</tr>
+<tr>
+<td>Quantization toolchain</td>
+<td>PEFT + bitsandbytes (QLoRA, NF4 4-bit)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note on tensor parallelism:</strong> <code>--tensor-parallel-size 2</code> is explicitly excluded. All-reduce operations over PCIe (~32 GB/s) are prohibitively expensive compared to NVLink (~112 GB/s per direction). Pipeline parallelism passes activations only at layer boundaries and is the correct strategy for this interconnect. The TP+LoRA corruption bug (vLLM #21471) applies to this hardware configuration and is confirmed absent under PP=2.</p>
+<h3 id="deliverables">Deliverables<a class="headerlink" href="#deliverables" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Both RTX 4090 GPUs recognized by CUDA (<code>nvidia-smi</code> lists both; <code>torch.cuda.device_count() == 2</code>)</li>
+<li>[ ] PyTorch nightly cu128 forward pass and backward pass complete without segfault on both GPUs</li>
+<li>[ ] vLLM serves Qwen2.5-Coder-7B-Instruct with <code>--pipeline-parallel-size 2 --tensor-parallel-size 1</code> without crash</li>
+<li>[ ] vLLM serves a known-good LoRA adapter and produces correct output (regression test confirming TP+LoRA corruption is absent under PP=2)</li>
+<li>[ ] PEFT + bitsandbytes QLoRA fine-tune runs 1 training step without error (confirming quantization toolchain is functional)</li>
+</ul>
+<h3 id="risk-callouts">Risk Callouts<a class="headerlink" href="#risk-callouts" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Driver/CUDA version mismatch:</strong> PyTorch nightly cu128 requires CUDA 12.8+. Mismatched driver and toolkit versions produce cryptic errors at import time or during the first CUDA operation. Verify <code>nvidia-smi</code> reports CUDA 12.8+ and that <code>torch.version.cuda</code> matches.</p>
+<p><strong>vLLM build from source:</strong> Depending on the vLLM release at execution time, pipeline-parallel-size 2 support may require building vLLM from source. Confirm the installed vLLM version supports PP=2 before running the serving validation step.</p>
+</blockquote>
+<h3 id="success-criteria">Success Criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Type</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Both GPUs recognized by CUDA</td>
+<td>Checklist</td>
+<td>Pass (both in <code>nvidia-smi</code>; <code>device_count() == 2</code>)</td>
+</tr>
+<tr>
+<td>PyTorch forward+backward pass without segfault</td>
+<td>Checklist</td>
+<td>Pass (both GPUs)</td>
+</tr>
+<tr>
+<td>vLLM PP=2 serving without crash</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>TP+LoRA corruption absent under PP=2</td>
+<td>Checklist</td>
+<td>Pass (known-good adapter produces correct output)</td>
+</tr>
+<tr>
+<td>QLoRA 1-step fine-tune without error</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="phase-1-core-hypothesis-validation-kill-switch-gate">Phase 1: Core Hypothesis Validation (Kill-Switch Gate)<a class="headerlink" href="#phase-1-core-hypothesis-validation-kill-switch-gate" title="Permanent link">&para;</a></h2>
+<p><strong>Depends on:</strong> Phase 0 passes all success criteria.</p>
+<p>Phase 1 tests the central hypothesis empirically: can a Doc-to-LoRA hypernetwork encode coding trajectories into LoRA adapters that improve task performance over the base model? No infrastructure is built until this gate passes. The rationale for this sequencing is that the adapter registry, serving layer, and recursive agent loop are all contingent on the hypothesis holding — building them before validation would be premature optimization of infrastructure around an unvalidated core idea.</p>
+<h3 id="why-this-phase-comes-before-infrastructure">Why This Phase Comes Before Infrastructure<a class="headerlink" href="#why-this-phase-comes-before-infrastructure" title="Permanent link">&para;</a></h3>
+<p>The infrastructure-first instinct — build the registry, the serving layer, the agent loop, then test the hypothesis — is common and historically problematic. Building infrastructure before validating the core idea embeds assumptions into architecture that are difficult to reverse if the idea fails. The study of failed ML projects (RAND 2024) consistently identifies premature infrastructure investment as a compounding failure mode: teams that discover a hypothesis failure late have also accumulated technical debt in systems that depend on it.</p>
+<p>Rune's kill-switch gate is the operational expression of hypothesis-first ordering: Phase 2 through Phase 4 are real and detailed, but they are explicitly conditional. Passing Phase 1 is what makes them worth building.</p>
+<h3 id="deliverables_1">Deliverables<a class="headerlink" href="#deliverables_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Minimal Doc-to-LoRA hypernetwork trained on 50-100 coding trajectory pairs (one trajectory per task: task description, attempt sequence, final passing code)</li>
+<li>[ ] Adapter quality evaluation on held-out HumanEval subset (20-30 tasks, 5 samples per task)</li>
+<li>[ ] MLflow run documenting: Pass@1 vs baseline, training loss curve, adapter cosine diversity across training batch, <code>||ΔW||</code> norms</li>
+<li>[ ] Written assessment: what passed, what failed, what was learned — regardless of whether the gate passes or fails</li>
+</ul>
+<h3 id="kill-switch">Kill-Switch<a class="headerlink" href="#kill-switch" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Primary metric:</strong> Pass@1 improvement of ≥ 5% on held-out HumanEval tasks (20-30 task subset) compared to Qwen2.5-Coder-7B-Instruct baseline with no adapter.</p>
+<p><strong>If the gate passes:</strong> The hypothesis has empirical support — not proof, but support. Proceed to Phase 2. The architectural decisions made in Phases 2 through 4 are now worth acting on.</p>
+<p><strong>If the gate fails:</strong> Stop and document what was learned. There is no predefined fallback strategy. The failure narrows the design space — it is a research finding, not a project failure. The specific failure mode (mode collapse, no adapter transfer, training instability, insufficient trajectory signal) determines what comes next. Prescribing a fallback now would be speculative.</p>
+</blockquote>
+<p><strong>Hardware note for Phase 1:</strong> Run the baseline in bfloat16 — not QLoRA. This isolates the hypothesis variable (does Doc-to-LoRA on coding trajectories work?) from the quantization variable (does NF4 quantization degrade adapter quality?). QLoRA is introduced in Phase 2 after the bfloat16 baseline passes.</p>
+<h3 id="secondary-diagnostic-signals">Secondary Diagnostic Signals<a class="headerlink" href="#secondary-diagnostic-signals" title="Permanent link">&para;</a></h3>
+<p>These are tracked via MLflow and inform the written assessment, but do not gate the kill-switch decision:</p>
+<ul>
+<li>Adapter cosine diversity &gt; 0.1 across training batch (early signal for mode collapse — if adapters are clustering, the hypernetwork is collapsing to the mean)</li>
+<li>Training loss converges and does not plateau in the first 5% of the budget (training is learning, not stuck)</li>
+<li><code>||ΔW||</code> is meaningfully nonzero (the adapter is affecting the base model's behavior, not being ignored)</li>
+</ul>
+<h3 id="risk-callouts_1">Risk Callouts<a class="headerlink" href="#risk-callouts_1" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Hypernetwork mode collapse</strong> (see <a href="../appendices/risk-matrix/">Risk Matrix</a>): The hypernetwork may learn to produce near-identical adapters regardless of input trajectory — the degenerate solution. Diversity regularization in the training loss and monitoring of cosine diversity are the primary mitigations. If diversity collapses during Phase 1, the gate will fail (Pass@1 will not improve across different task types), but the diagnostic signals should identify the failure mode before the full evaluation.</p>
+<p><strong>Training data quality:</strong> Trajectories must be diverse in task type, failure mode, and correction pattern. A dataset of 50-100 nearly-identical trajectories (e.g., all variations on the same task) will produce mode collapse regardless of architecture. Verify trajectory diversity before training begins.</p>
+</blockquote>
+<h3 id="success-criteria_1">Success Criteria<a class="headerlink" href="#success-criteria_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Type</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pass@1 improvement on held-out HumanEval subset</td>
+<td><strong>Kill-switch metric</strong></td>
+<td>≥ 5% over baseline</td>
+</tr>
+<tr>
+<td>MLflow run with required metrics logged</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Written assessment produced</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Adapter cosine diversity monitored</td>
+<td>Checklist</td>
+<td>Pass (tracked; not a gate)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="experiment-sketch">Experiment Sketch<a class="headerlink" href="#experiment-sketch" title="Permanent link">&para;</a></h3>
+<p><strong>Dataset:</strong> 50-100 real coding trajectory pairs from HumanEval or SWE-bench-lite. Each trajectory consists of: task description, attempt sequence (code + error messages + corrections), final passing code. Trajectories sourced from existing evaluation runs or synthetically generated via a prompted base model.</p>
+<p><strong>Baseline:</strong> Qwen2.5-Coder-7B-Instruct with no adapter — raw model Pass@1 on the held-out task subset (5 samples per task, bfloat16, PP=2 serving).</p>
+<p><strong>Evaluation method:</strong> Pass@1 on 20-30 held-out HumanEval tasks. Five samples per task. Tasks held out from the training trajectory corpus to test generalization, not memorization.</p>
+<p><strong>Expected range:</strong> 5-15% improvement over baseline signals a real effect and passes the gate. Less than 5% = gate fails. Greater than 15% should be treated skeptically and checked against the secondary diagnostics for data leakage.</p>
+<p><strong>Tracking:</strong> MLflow experiment with schema: <code>run_id</code>, <code>phase</code>, <code>adapter_id</code>, <code>pass_at_1</code>, <code>training_loss</code>, <code>adapter_cosine_diversity</code>, <code>delta_w_norm</code>. Gate decision recorded as an MLflow run note: <code>"Gate PASSED"</code> or <code>"Gate FAILED — reassessing"</code>.</p>
+<hr />
+<h2 id="phase-2-adapter-library-and-serving-infrastructure">Phase 2: Adapter Library and Serving Infrastructure<a class="headerlink" href="#phase-2-adapter-library-and-serving-infrastructure" title="Permanent link">&para;</a></h2>
+<p><strong>Depends on:</strong> Phase 1 kill-switch passes.</p>
+<p>Assuming Phase 1 validates the core hypothesis, Phase 2 builds the component foundation: the adapter registry, vLLM serving with dynamic LoRA loading, API extensions, and QLoRA integration. These components are the dependency roots of the <a href="../appendices/build-order/">build order</a> — every subsequent phase depends on them.</p>
+<h3 id="why-this-phase-comes-here">Why This Phase Comes Here<a class="headerlink" href="#why-this-phase-comes-here" title="Permanent link">&para;</a></h3>
+<p>The adapter registry (<code>libs/adapter-registry</code>) is the foundation of the entire system: every component that stores or retrieves adapters depends on it. The vLLM lora-server (<code>services/lora-server</code>) unblocks all agent work and hypothesis testing. Building these before Phase 3 or Phase 4 would have been premature if Phase 1 had failed — infrastructure built around an unvalidated hypothesis is wasted work. With Phase 1 passing, these components are now justified.</p>
+<p>QLoRA is introduced in this phase (not Phase 1) to isolate variables. The Phase 1 baseline established that the hypernetwork approach works in bfloat16. Phase 2 adds quantization and verifies that the quality loss is acceptable (&lt;10% Pass@1 degradation) — a distinct measurement from the core hypothesis.</p>
+<h3 id="deliverables_2">Deliverables<a class="headerlink" href="#deliverables_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>libs/adapter-registry</code>: SQLModel schema, write-once enforcement at the storage API level, <code>.safetensors</code> path resolution, adapter metadata queryable without loading weights into GPU memory</li>
+<li>[ ] <code>services/lora-server</code>: vLLM Dockerfile, startup script (<code>PP=2, TP=1, --enable-lora</code>), dynamic LoRA loading via vLLM's adapter API, health check endpoint</li>
+<li>[ ] <code>services/api-service</code> extensions: <code>/adapters</code> and <code>/sessions</code> routes, SQLModel tables, REST interface for adapter registry queries</li>
+<li>[ ] QLoRA integration: bfloat16 baseline → NF4 QLoRA transition with quality comparison logged to MLflow</li>
+</ul>
+<h3 id="risk-callouts_2">Risk Callouts<a class="headerlink" href="#risk-callouts_2" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Adapter composition interference</strong> (see <a href="../appendices/risk-matrix/">Risk Matrix</a>): Default to single-adapter retrieval at inference time. Multi-adapter composition (additive merging of heterogeneous LoRAs) is an optional future experiment, not the default architecture. The risk of interference in non-orthogonal weight subspaces is real; the single-adapter default avoids it.</p>
+<p><strong>Catastrophic forgetting</strong> (see <a href="../appendices/risk-matrix/">Risk Matrix</a>): Write-once semantics must be enforced at the registry API level, not as a convention. No code path may overwrite an existing adapter. Adapters are indexed by session ID and timestamp — if a new adapter is produced for the same task, it is a new entry, not an update.</p>
+</blockquote>
+<h3 id="success-criteria_2">Success Criteria<a class="headerlink" href="#success-criteria_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Type</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Adapter registry stores and retrieves by session ID and metadata</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Write-once semantics enforced (no overwrite code path exists)</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>vLLM lora-server starts and serves with dynamic LoRA loading</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>No <code>--tensor-parallel-size 2</code> flag anywhere in config</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>QLoRA Pass@1 vs bfloat16 baseline degradation</td>
+<td>Metric</td>
+<td>&lt; 10% degradation (logged in MLflow)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="experiment-sketch_1">Experiment Sketch<a class="headerlink" href="#experiment-sketch_1" title="Permanent link">&para;</a></h3>
+<p><strong>Dataset:</strong> Same held-out HumanEval subset used in Phase 1 (20-30 tasks, 5 samples per task).</p>
+<p><strong>Baseline:</strong> Phase 1 bfloat16 Pass@1 (already logged in MLflow).</p>
+<p><strong>Evaluation method:</strong> Run the same held-out tasks with the Phase 1 adapter loaded into the Phase 2 vLLM lora-server, served in NF4 QLoRA mode. Compare Pass@1 between bfloat16 (Phase 1) and NF4 QLoRA (Phase 2).</p>
+<p><strong>Expected range:</strong> &lt; 10% degradation is acceptable and consistent with QLoRA paper results. Greater than 10% suggests quantization artifacts beyond expected range — investigate NF4 configuration before proceeding.</p>
+<hr />
+<h2 id="phase-3-recursive-agent-loop-and-sandbox-integration">Phase 3: Recursive Agent Loop and Sandbox Integration<a class="headerlink" href="#phase-3-recursive-agent-loop-and-sandbox-integration" title="Permanent link">&para;</a></h2>
+<p><strong>Depends on:</strong> Phase 2 success criteria met.</p>
+<p>Contingent on Phase 2 delivering a functional adapter registry and serving layer, Phase 3 builds the core agent loop (<code>services/rune-agent</code>) and the sandboxed code execution environment. This phase produces the first end-to-end path from task to adapter — the complete recursive loop described in the architecture.</p>
+<h3 id="why-this-phase-comes-here_1">Why This Phase Comes Here<a class="headerlink" href="#why-this-phase-comes-here_1" title="Permanent link">&para;</a></h3>
+<p>Phase 3 depends on Phase 2 at three integration points: the agent needs the adapter registry to select adapters at session start, the lora-server to load and serve them, and the api-service extensions to query and store session state. Without Phase 2, the agent loop has nowhere to retrieve or store adapters. Building the agent loop before the serving infrastructure would require mocking the entire adapter layer — wasted work that needs to be undone.</p>
+<p>Phase 3 also produces the adapter corpus required by Phase 4. The hypernetwork training job requires 50-100 diverse task-adapter pairs. The recursive agent loop is the mechanism that generates these pairs at scale. Phase 4 cannot begin until Phase 3 has produced sufficient corpus.</p>
+<h3 id="deliverables_3">Deliverables<a class="headerlink" href="#deliverables_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>services/rune-agent</code>: LangGraph <code>StateGraph</code> implementing <code>generate → execute → reflect → save</code> cycle, with configurable maximum attempt count</li>
+<li>[ ] Sandbox: Docker-based code execution with network isolation, memory limits, and CPU limits; agent operates outside the container</li>
+<li>[ ] Adapter selection: query adapter-registry at session start, load most-relevant adapter into lora-server based on task metadata</li>
+<li>[ ] <code>libs/model-training</code> extensions: PEFT utilities, trajectory-to-adapter fine-tuning script (direct LoRA fine-tuning path, distinct from hypernetwork inference)</li>
+<li>[ ] End-to-end test: task → agent loop → successful code → trajectory captured → passed to distillation → adapter stored in registry</li>
+</ul>
+<h3 id="risk-callouts_3">Risk Callouts<a class="headerlink" href="#risk-callouts_3" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Sandbox escape:</strong> Agent-generated code must not be able to reach the host network, host filesystem (outside the designated output directory), or other containers. Network isolation and read-only mounts are required from the first implementation — not added later as a hardening step.</p>
+<p><strong>Agent loop divergence:</strong> The generate-execute-reflect cycle requires a maximum attempt count. Without a hard stop, the loop retries indefinitely on tasks that are outside the model's current capability. The trajectory is still captured on loop termination (even without a passing solution) — a failed-but-attempted trajectory may still produce a useful adapter.</p>
+</blockquote>
+<h3 id="success-criteria_3">Success Criteria<a class="headerlink" href="#success-criteria_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Type</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent loop completes generate → execute → reflect → save cycle</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Sandbox network isolation verified</td>
+<td>Checklist</td>
+<td>Pass (no outbound connections from container)</td>
+</tr>
+<tr>
+<td>Adapter selection queries registry and loads adapter</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>End-to-end test passes (task → adapter stored in registry)</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Trajectory-to-adapter fine-tuning script produces loadable adapter</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="phase-4-evolution-operator-and-hypernetwork">Phase 4: Evolution Operator and Hypernetwork<a class="headerlink" href="#phase-4-evolution-operator-and-hypernetwork" title="Permanent link">&para;</a></h2>
+<p><strong>Depends on:</strong> Phase 3 success criteria met AND adapter corpus of 50-100 diverse task-adapter pairs accumulated from Phase 3 runs.</p>
+<p>Contingent on Phase 3 delivering a functional recursive agent loop, Phase 4 builds the adapter lifecycle management system (<code>services/evolution-svc</code>) and the Doc-to-LoRA hypernetwork inference path (<code>services/training-svc</code> hypernetwork job). This is the final phase and closes the loop: adapters produced by Phase 3 train the hypernetwork that generates future adapters.</p>
+<h3 id="why-this-phase-comes-last">Why This Phase Comes Last<a class="headerlink" href="#why-this-phase-comes-last" title="Permanent link">&para;</a></h3>
+<p>The hypernetwork requires a corpus of pre-trained adapters as training data — a cold-start problem that cannot be bypassed. Without Phase 3 producing diverse task-adapter pairs, the hypernetwork has nothing to train on. The evolution operator (<code>services/evolution-svc</code>) also depends on a populated adapter registry: fitness evaluation requires existing adapters to compare and promote.</p>
+<p>Attempting to build Phase 4 before Phase 3 is complete would require synthetic adapter data, which may not reflect the distribution of real coding task adapters. The ordering is forced by the data dependency.</p>
+<h3 id="deliverables_4">Deliverables<a class="headerlink" href="#deliverables_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>services/evolution-svc</code>: fitness evaluation against held-out test sets, tournament selection, adapter pruning below fitness threshold, promotion of high-performing adapters in the hierarchy</li>
+<li>[ ] <code>services/training-svc</code>: hypernetwork training job (trains on Phase 3 adapter corpus), hypernetwork inference path (single forward pass → adapter weights, without gradient descent)</li>
+<li>[ ] Adapter hierarchy: project-root, domain, and task-specific levels populated by the evolution operator from Phase 3 adapters</li>
+<li>[ ] MLflow tracking: adapter fitness scores per evaluation run, evolution events (promotions, prunings, merges), hypernetwork reconstruction loss on held-out adapters</li>
+</ul>
+<h3 id="risk-callouts_4">Risk Callouts<a class="headerlink" href="#risk-callouts_4" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Hypernetwork mode collapse</strong> (see <a href="../appendices/risk-matrix/">Risk Matrix</a>): Diversity regularization must be in the training loss from the start of hypernetwork training. Monitor adapter cosine diversity at each checkpoint — if it falls below the threshold (&lt; 0.1), stop training and investigate. The Phase 1 experiment will have provided a reference baseline for what healthy cosine diversity looks like.</p>
+<p><strong>Minimum corpus size:</strong> The hypernetwork training requires a diverse adapter corpus. Diversity here is over task types, failure modes, and correction patterns — not just adapter count. If the Phase 3 corpus lacks sufficient diversity (e.g., all adapters trained on similar tasks), delay hypernetwork training and continue accumulating adapters from a wider task distribution. The Phase 3 end-to-end test verifies individual adapters; this is a separate concern about corpus-level diversity.</p>
+</blockquote>
+<h3 id="success-criteria_4">Success Criteria<a class="headerlink" href="#success-criteria_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Type</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hypernetwork reconstruction loss on held-out adapters</td>
+<td>Metric</td>
+<td>Below baseline (random adapter)</td>
+</tr>
+<tr>
+<td>Adapter cosine diversity on hypernetwork outputs</td>
+<td>Metric</td>
+<td>&gt; 0.1 threshold</td>
+</tr>
+<tr>
+<td>Evolution operator promotes, prunes, archives without corrupting registry</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Hypernetwork-generated adapters load and run in vLLM without error</td>
+<td>Checklist</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Hypernetwork-generated adapter Pass@1 vs direct fine-tuned adapter Pass@1</td>
+<td>Metric</td>
+<td>Logged in MLflow (directional comparison, not a gate)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="experiment-sketch_2">Experiment Sketch<a class="headerlink" href="#experiment-sketch_2" title="Permanent link">&para;</a></h3>
+<p><strong>Dataset:</strong> Held-out adapter subset from Phase 3 corpus (10-20% withheld from hypernetwork training set).</p>
+<p><strong>Baseline:</strong> Random adapter (Gaussian weight initialization at the same rank) as reconstruction loss reference; direct fine-tuned adapter Pass@1 as inference quality reference.</p>
+<p><strong>Evaluation method:</strong> Reconstruction loss (MSE between hypernetwork-generated adapter weights and held-out fine-tuned adapter weights); cosine diversity across a batch of hypernetwork-generated adapters; Pass@1 comparison on held-out HumanEval tasks using hypernetwork-generated vs fine-tuned adapters.</p>
+<p><strong>Expected range:</strong> Reconstruction loss below random baseline confirms the hypernetwork is learning the adapter manifold. Cosine diversity &gt; 0.1 confirms diversity is preserved. Pass@1 parity with fine-tuned adapters (±5%) would be a strong result; 50-80% of fine-tuned adapter quality is the expected range for a first-pass hypernetwork.</p>
+<hr />
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
+<p>[1] Charakorn et al., "Doc-to-LoRA: Learning to Instantly Internalize Contexts," arXiv:2602.15902, 2026. https://arxiv.org/abs/2602.15902</p>
+<p>[2] Sheng et al., "S-LoRA: Serving Thousands of Concurrent LoRA Adapters," arXiv:2311.03285, 2023. https://arxiv.org/abs/2311.03285</p>
+<p>[3] Dettmers et al., "QLoRA: Efficient Finetuning of Quantized LLMs," arXiv:2305.14314, 2023. https://arxiv.org/abs/2305.14314</p>
+<p><strong>Appendices:</strong></p>
+<ul>
+<li><a href="../appendices/risk-matrix/">Risk Matrix</a> — Primary research risks, mitigations, and warning signs</li>
+<li><a href="../appendices/build-order/">Build Order</a> — Component dependency chain and recommended build sequence</li>
+</ul>
+<p><strong>Project documentation:</strong></p>
+<ul>
+<li>README.md (repository root) — Architecture overview, hardware specification, and theoretical grounding</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+        <script src="../assets/mermaid-init.js"></script>
+        <script src="../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

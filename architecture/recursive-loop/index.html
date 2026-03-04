@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Recursive Loop - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../multi-gpu-strategy/" class="dropdown-item">Multi-GPU Strategy</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../article/" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../../article/abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../../article/background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../../article/methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../../article/results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../../article/discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../../article/references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../../implementation-plan/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../monorepo-mapping/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#recursive-code-generation-loop" class="nav-link">Recursive Code Generation Loop</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#overview" class="nav-link">Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#loop-architecture" class="nav-link">Loop Architecture</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#step-by-step-data-flow" class="nav-link">Step-by-Step Data Flow</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#step-1-task-intake" class="nav-link">Step 1: Task Intake</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#step-2-generate" class="nav-link">Step 2: Generate</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#step-3-execute" class="nav-link">Step 3: Execute</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#step-4-reflect" class="nav-link">Step 4: Reflect</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#step-5-distill" class="nav-link">Step 5: Distill</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#step-6-store" class="nav-link">Step 6: Store</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#retry-and-termination" class="nav-link">Retry and Termination</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#trajectory-schema" class="nav-link">Trajectory Schema</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#integration-points" class="nav-link">Integration Points</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="recursive-code-generation-loop">Recursive Code Generation Loop<a class="headerlink" href="#recursive-code-generation-loop" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>The recursive loop is Rune's central execution mechanism: a task enters, code is generated, executed, evaluated, and — if tests fail — the trajectory feeds back into generation. When the loop terminates (tests pass or max attempts reached), the complete trajectory is distilled into a LoRA adapter. This document specifies the data flow at each step, retry logic, and termination conditions.</p>
+<p>For the serving architecture that supports this loop, see <a href="../multi-gpu-strategy/">Multi-GPU Strategy</a>. For where the resulting adapters are stored, see <a href="../adapter-storage/">Adapter Storage</a>.</p>
+<hr />
+<h2 id="loop-architecture">Loop Architecture<a class="headerlink" href="#loop-architecture" title="Permanent link">&para;</a></h2>
+<div class="mermaid">flowchart TD
+    Task([Task + Selected Adapters]) --&gt; Generate
+    Generate[Generate Code] --&gt; Execute
+    Execute[Execute in Sandbox] --&gt; Reflect
+    Reflect{Tests Pass?} --&gt;|no, attempts remaining| Generate
+    Reflect --&gt;|yes| Distill
+    Reflect --&gt;|no, max attempts reached| Distill
+    Distill[Distill Trajectory] --&gt; Store
+    Store([Store Adapter in Registry])</div>
+<hr />
+<h2 id="step-by-step-data-flow">Step-by-Step Data Flow<a class="headerlink" href="#step-by-step-data-flow" title="Permanent link">&para;</a></h2>
+<h3 id="step-1-task-intake">Step 1: Task Intake<a class="headerlink" href="#step-1-task-intake" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Input</strong></td>
+<td>Task description, test suite, selected adapter IDs from registry</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Initialized agent state with loaded adapters</td>
+</tr>
+<tr>
+<td><strong>Side effects</strong></td>
+<td>Adapter router queries registry, loads best-match adapters into lora-server</td>
+</tr>
+</tbody>
+</table>
+<p>The adapter router queries the <a href="../adapter-storage/">adapter registry</a> by task metadata (language, domain, task type) and selects the highest-fitness adapter at each hierarchy level. Selected adapters are loaded into the vLLM serving process via its dynamic LoRA API.</p>
+<h3 id="step-2-generate">Step 2: Generate<a class="headerlink" href="#step-2-generate" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Input</strong></td>
+<td>Task description + trajectory so far (empty on first attempt)</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Generated code (candidate solution)</td>
+</tr>
+<tr>
+<td><strong>Model</strong></td>
+<td>Base SLM + loaded LoRA adapters, served via vLLM PP=2</td>
+</tr>
+</tbody>
+</table>
+<p>On the first attempt, the prompt contains only the task description and test signatures. On subsequent attempts, the prompt includes the full trajectory: prior code attempts, execution outputs, error messages, and reflection notes. The trajectory grows monotonically — nothing is discarded between attempts.</p>
+<h3 id="step-3-execute">Step 3: Execute<a class="headerlink" href="#step-3-execute" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Input</strong></td>
+<td>Generated code + test suite</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Execution result: stdout, stderr, exit code, test results</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Docker sandbox: network-isolated, memory-limited, CPU-limited</td>
+</tr>
+</tbody>
+</table>
+<p>The sandbox is a Docker container with no network access, read-only filesystem mounts (except the output directory), and strict resource limits. Agent-generated code cannot escape the container. The execution timeout is configurable per task but defaults to 30 seconds.</p>
+<h3 id="step-4-reflect">Step 4: Reflect<a class="headerlink" href="#step-4-reflect" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Input</strong></td>
+<td>Execution result + current attempt count</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Decision: retry, distill-on-success, or distill-on-exhaustion</td>
+</tr>
+<tr>
+<td><strong>Logic</strong></td>
+<td>Tests pass -&gt; distill. Tests fail AND attempts &lt; max -&gt; retry. Tests fail AND attempts &gt;= max -&gt; distill anyway.</td>
+</tr>
+</tbody>
+</table>
+<p>The reflect step appends the execution result to the trajectory and evaluates termination conditions. The trajectory record includes the attempt number, generated code, full execution output, and the pass/fail determination. This record is the input to distillation regardless of outcome.</p>
+<h3 id="step-5-distill">Step 5: Distill<a class="headerlink" href="#step-5-distill" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Input</strong></td>
+<td>Complete trajectory (all attempts, all execution results)</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>New LoRA adapter (<code>.safetensors</code> file) + metadata</td>
+</tr>
+<tr>
+<td><strong>Method</strong></td>
+<td>Direct LoRA fine-tuning (Phase 3) or Doc-to-LoRA hypernetwork forward pass (Phase 4)</td>
+</tr>
+</tbody>
+</table>
+<p>In Phase 3 (implementation plan), distillation uses direct LoRA fine-tuning: the trajectory is formatted as training data and a standard PEFT fine-tune produces the adapter. In Phase 4, the Doc-to-LoRA hypernetwork replaces this with a single forward pass — no gradient descent at inference time.</p>
+<p>Both successful and failed trajectories are distilled. A failed trajectory (max attempts reached, tests still failing) may still encode useful partial knowledge — debugging patterns, error recognition, partial solutions. The adapter metadata records whether the source trajectory was successful.</p>
+<h3 id="step-6-store">Step 6: Store<a class="headerlink" href="#step-6-store" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Input</strong></td>
+<td>New adapter file + metadata (task type, pass rate, trajectory outcome)</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Adapter registered in SQLite, <code>.safetensors</code> written to filesystem</td>
+</tr>
+<tr>
+<td><strong>Policy</strong></td>
+<td>Write-once: no existing adapter is overwritten. See <a href="../adapter-storage/">Adapter Storage</a>.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="retry-and-termination">Retry and Termination<a class="headerlink" href="#retry-and-termination" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Action</th>
+<th>Trajectory State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tests pass on attempt N</td>
+<td>Terminate loop, distill</td>
+<td>N attempts recorded, final attempt marked successful</td>
+</tr>
+<tr>
+<td>Tests fail, attempt &lt; max</td>
+<td>Retry from Generate</td>
+<td>Trajectory grows by one attempt</td>
+</tr>
+<tr>
+<td>Tests fail, attempt = max</td>
+<td>Terminate loop, distill</td>
+<td>All attempts recorded, marked as exhausted</td>
+</tr>
+<tr>
+<td>Sandbox timeout</td>
+<td>Treat as test failure</td>
+<td>Timeout recorded in trajectory</td>
+</tr>
+<tr>
+<td>Sandbox crash (OOM, segfault)</td>
+<td>Treat as test failure</td>
+<td>Crash details recorded in trajectory</td>
+</tr>
+</tbody>
+</table>
+<p>The maximum attempt count is configurable. The default is 5 attempts. This cap prevents indefinite loops on tasks beyond the model's current capability while still allowing multi-step reasoning.</p>
+<hr />
+<h2 id="trajectory-schema">Trajectory Schema<a class="headerlink" href="#trajectory-schema" title="Permanent link">&para;</a></h2>
+<p>Each trajectory is a structured record passed to the distillation step:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task_id</code></td>
+<td>string</td>
+<td>Unique task identifier</td>
+</tr>
+<tr>
+<td><code>task_description</code></td>
+<td>string</td>
+<td>Natural language task description</td>
+</tr>
+<tr>
+<td><code>test_suite</code></td>
+<td>string</td>
+<td>Test code used for evaluation</td>
+</tr>
+<tr>
+<td><code>attempts</code></td>
+<td>list</td>
+<td>Ordered list of attempt records</td>
+</tr>
+<tr>
+<td><code>attempts[].code</code></td>
+<td>string</td>
+<td>Generated code for this attempt</td>
+</tr>
+<tr>
+<td><code>attempts[].stdout</code></td>
+<td>string</td>
+<td>Execution stdout</td>
+</tr>
+<tr>
+<td><code>attempts[].stderr</code></td>
+<td>string</td>
+<td>Execution stderr</td>
+</tr>
+<tr>
+<td><code>attempts[].exit_code</code></td>
+<td>int</td>
+<td>Process exit code</td>
+</tr>
+<tr>
+<td><code>attempts[].tests_passed</code></td>
+<td>bool</td>
+<td>Whether all tests passed</td>
+</tr>
+<tr>
+<td><code>outcome</code></td>
+<td>enum</td>
+<td><code>success</code> or <code>exhausted</code></td>
+</tr>
+<tr>
+<td><code>adapter_ids_loaded</code></td>
+<td>list</td>
+<td>Adapters that were active during generation</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="integration-points">Integration Points<a class="headerlink" href="#integration-points" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Adapter Registry</strong> (<a href="../adapter-storage/">Adapter Storage</a>): Queried at task intake for adapter selection; written to at Store step</li>
+<li><strong>vLLM lora-server</strong> (<a href="../multi-gpu-strategy/">Multi-GPU Strategy</a>): Serves base model + adapters during Generate step</li>
+<li><strong>Sandbox</strong>: Docker container managed by rune-agent, isolated from host</li>
+<li><strong>model-training lib</strong>: Provides PEFT utilities for the distillation step</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+        <script src="../../assets/mermaid-init.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

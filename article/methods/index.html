@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Methods - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../architecture/recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/multi-gpu-strategy/" class="dropdown-item">Multi-GPU Strategy</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../background/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../results/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="2"><a href="#methods" class="nav-link">Methods</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#system-architecture-overview" class="nav-link">System Architecture Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#doc-to-lora-hypernetwork-adaptation" class="nav-link">Doc-to-LoRA Hypernetwork Adaptation</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#adapter-distillation-pipeline" class="nav-link">Adapter Distillation Pipeline</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#evolution-operator" class="nav-link">Evolution Operator</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#memory-composition-strategy" class="nav-link">Memory Composition Strategy</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#training-data-strategy-and-serving-architecture" class="nav-link">Training Data Strategy and Serving Architecture</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">&para;</a></h2>
+<p>Building on the theoretical foundations established in the Background section — LoRA decomposition, hypernetwork architectures, PBB's procedural encoding findings, and the trajectory modality argument — this section specifies Rune's concrete architecture, algorithms, and design decisions. Each subsection identifies the components, their interactions, and the claim tier for every non-trivial design choice. Where Background introduced a concept, Methods references it without re-derivation. Where Methods introduces new formalism, it is marked as such.</p>
+<hr />
+<h3 id="system-architecture-overview">System Architecture Overview<a class="headerlink" href="#system-architecture-overview" title="Permanent link">&para;</a></h3>
+<p>Rune is structured as five services collaborating around a central adapter registry. Each service owns a single responsibility; inter-service communication occurs via HTTP APIs and a shared filesystem-backed adapter store.</p>
+<p><strong>rune-agent</strong> is the core execution service. It implements a LangGraph <code>StateGraph</code> with four nodes — <code>generate</code>, <code>execute</code>, <code>reflect</code>, and <code>save_trajectory</code> — connected by conditional routing that terminates on test success or attempt exhaustion. The agent receives a task description and test suite, selects adapters from the registry based on task metadata, and runs the recursive generate-execute-reflect loop until a solution passes or attempts are exhausted. The complete trajectory is then persisted for downstream distillation. The loop structure is <strong>specified</strong> — it is implemented in the codebase and tested.</p>
+<p><strong>lora-server</strong> wraps vLLM with pipeline parallelism (PP=2) and dynamic adapter loading following the S-LoRA unified paging pattern.<sup id="fnref:sheng2023slora"><a class="footnote-ref" href="#fn:sheng2023slora">9</a></sup> It serves the base model (Qwen2.5-Coder-7B-Instruct) with QLoRA quantization and exposes an OpenAI-compatible API that accepts adapter selection metadata per request. The serving configuration is discussed in detail in the Training Data Strategy and Serving Architecture subsection.</p>
+<p><strong>training-svc</strong> manages adapter production. In Phase 3, it runs direct LoRA fine-tuning on trajectory data using PEFT utilities. In Phase 4, it hosts the hypernetwork that replaces gradient descent with a single forward pass. Training jobs acquire a GPU lease from lora-server, which yields one GPU for the duration of the training job.</p>
+<p><strong>evolution-svc</strong> manages the adapter lifecycle — consolidation, update, archival, and experimental merging — using fitness-driven selection rather than naive composition. Its operations are detailed in the Evolution Operator subsection.</p>
+<p><strong>adapter-registry</strong> is the shared dependency root: a SQLite-backed metadata store paired with safetensors adapter files on the local filesystem. Every service reads from or writes to the registry. Adapters are write-once and immutable after creation; metadata fields (fitness score, archive status) are mutable. The three-level hierarchy (project, domain, task) is encoded in both the filesystem path convention and the SQLite schema.</p>
+<p>The agent loop is implemented as a LangGraph <code>StateGraph</code> with four nodes — <code>generate</code>, <code>execute</code>, <code>reflect</code>, and <code>save_trajectory</code> — connected by conditional routing that terminates on test success or attempt exhaustion.</p>
+<p><strong>Claim tiers:</strong> The five-service architecture and loop structure are <strong>specified</strong> — they are implemented in the codebase. Phase 0 and Phase 1 empirical performance on coding tasks is <strong>TBD</strong>.</p>
+<hr />
+<h3 id="doc-to-lora-hypernetwork-adaptation">Doc-to-LoRA Hypernetwork Adaptation<a class="headerlink" href="#doc-to-lora-hypernetwork-adaptation" title="Permanent link">&para;</a></h3>
+<p>The Background section established that Doc-to-LoRA validates the hypernetwork-to-LoRA mechanism: a hypernetwork takes a document as input and produces LoRA adapter weights in a single forward pass, with no gradient-based fine-tuning at inference time.<sup id="fnref:charakorn2026doc2lora"><a class="footnote-ref" href="#fn:charakorn2026doc2lora">3</a></sup> The generated adapter encodes the document's content into the base model's parameter space via the low-rank decomposition <span class="arithmatex">\(\Delta W = BA\)</span> established in Background.<sup id="fnref:hu2021lora"><a class="footnote-ref" href="#fn:hu2021lora">1</a></sup></p>
+<p>Doc-to-LoRA was validated on document QA tasks — retrieving specific facts from long textual inputs. It was not validated on coding trajectories, procedural knowledge, or code execution traces. Rune proposes extending the hypernetwork mechanism to a structurally different input modality: code execution trajectories containing sequential (code, execution result, reflection) triples. This extension is <strong>proposed</strong> and requires Phase 1 empirical validation.</p>
+<p>Rune's hypernetwork defines the following formal mapping (new equation):</p>
+<div class="arithmatex">\[
+H: \mathcal{T} \rightarrow (B, A), \quad B \in \mathbb{R}^{d \times r}, \; A \in \mathbb{R}^{r \times k}
+\]</div>
+<p>where <span class="arithmatex">\(\mathcal{T}\)</span> denotes the trajectory space — a sequence of (code, execution result, reflection) triples produced by the recursive loop. The hypernetwork <span class="arithmatex">\(H\)</span> takes a complete trajectory and produces the LoRA weight matrices <span class="arithmatex">\(B\)</span> and <span class="arithmatex">\(A\)</span> that, when applied to the base model via the <span class="arithmatex">\(\Delta W = BA\)</span> decomposition from Background, encode the procedural knowledge from that trajectory into the model's parameter space. The hypernetwork produces per-layer <span class="arithmatex">\((B, A)\)</span> pairs — one for each targeted transformer layer — though the equation above shows a single pair for notational clarity.</p>
+<p>The architecture of <span class="arithmatex">\(H\)</span> consists of two stages. First, a variable-length trajectory encoder processes the trajectory into a fixed-size latent representation. The encoder must handle trajectories of varying length (different numbers of attempts, different code lengths per attempt). The proposed encoder design uses a Perceiver-based cross-attention pooling mechanism:<sup id="fnref:ha2016hypernetworks"><a class="footnote-ref" href="#fn:ha2016hypernetworks">2</a></sup> a set of learned latent queries attend to the trajectory token sequence, producing a fixed-dimensional representation regardless of input length. This Perceiver-based encoder is a <strong>proposed architecture choice and Phase 1 ablation target</strong> — alternative encoders (mean pooling, hierarchical attention, recurrent summarization) will be compared during Phase 1 hypernetwork development.</p>
+<p>Second, per-layer output heads map the fixed-size latent representation to <span class="arithmatex">\((B, A)\)</span> matrices for each targeted transformer layer. Each output head is a linear projection from the latent dimension to the flattened <span class="arithmatex">\(B\)</span> and <span class="arithmatex">\(A\)</span> matrices for one layer.</p>
+<p>For trajectories exceeding the encoder's context limit, the trajectory is chunked at attempt boundaries (each attempt is one chunk), and chunk representations are averaged before being passed to the output heads. This chunking mechanism preserves the self-contained structure of individual attempts while allowing arbitrarily long trajectories to be processed.</p>
+<p>The three structural properties of code execution trajectories identified in Background — temporal ordering, procedural abstraction, and self-correcting structure — motivate the choice of trajectories as input modality. These properties distinguish trajectories from documents (unordered factual content) and from few-shot examples (static input-output pairs), and are the basis for expecting the hypernetwork mechanism to transfer from documents to trajectories.</p>
+<p><strong>Claim tiers:</strong> The hypernetwork-to-LoRA mechanism is <strong>expected</strong> to extend from documents to trajectories based on the structural analogy established in Background. Trajectory-to-adapter quality on coding tasks is <strong>proposed</strong> — it is the central empirical hypothesis requiring Phase 1 validation. The Perceiver-based encoder architecture is an <strong>ablation target</strong> — it will be compared against alternatives during Phase 1 development.</p>
+<hr />
+<h3 id="adapter-distillation-pipeline">Adapter Distillation Pipeline<a class="headerlink" href="#adapter-distillation-pipeline" title="Permanent link">&para;</a></h3>
+<p>The distillation pipeline has two implementation paths depending on the development phase. Phase 3 uses direct LoRA fine-tuning as a bootstrapping path — a validated technique that establishes the training infrastructure and produces the first adapter corpus. Phase 4 replaces gradient descent with the hypernetwork forward pass described above — the target architecture that eliminates per-adapter training cost at inference time. The pseudocode below covers both paths.</p>
+<div class="highlight"><pre><span></span><code>Algorithm: Rune Recursive Loop
+-------------------------------------------------------------
+Input:
+  task_description : str            (RuneState.task_description)
+  test_suite       : str            (RuneState.test_suite)
+  adapter_ids      : list[str]      (RuneState.adapter_ids)
+  max_attempts     : int            (RuneState.max_attempts)
+
+Output:
+  trajectory       : list[AttemptRecord]  (RuneState.trajectory)
+  outcome          : &#39;success&#39; | &#39;exhausted&#39;  (RuneState.outcome)
+
+Procedure:
+  attempt_count &lt;- 0
+  trajectory &lt;- []
+
+  loop:
+    -- generate node --------------------------------------------------
+    generated_code &lt;- generate(task_description, trajectory, adapter_ids)
+
+    -- execute node ----------------------------------------------------
+    stdout, stderr, exit_code, tests_passed &lt;- execute(generated_code, test_suite)
+
+    -- reflect node ----------------------------------------------------
+    record &lt;- AttemptRecord(attempt_count + 1, generated_code,
+                           stdout, stderr, exit_code, tests_passed)
+    trajectory.append(record)
+    attempt_count &lt;- attempt_count + 1
+
+    -- should_retry routing --------------------------------------------
+    if tests_passed OR attempt_count &gt;= max_attempts:
+      break  -&gt; save_trajectory
+    else:
+      continue  -&gt; generate
+
+  -- save_trajectory node ----------------------------------------------
+  outcome &lt;- &#39;success&#39; if tests_passed else &#39;exhausted&#39;
+
+  -- distillation path (phase-dependent) -------------------------------
+  if Phase == 3:  // bootstrapping implementation (specified)
+    adapter &lt;- direct_lora_finetune(trajectory)
+  elif Phase == 4:  // target implementation (proposed)
+    adapter &lt;- H(trajectory)  // hypernetwork forward pass
+
+  adapter_registry.store(adapter, outcome, trajectory)
+  return trajectory, outcome
+-------------------------------------------------------------
+</code></pre></div>
+<p>Each node in the pseudocode maps directly to the LangGraph <code>StateGraph</code> implementation:</p>
+<p><strong><code>generate</code></strong> receives the task description, the trajectory accumulated so far (empty on the first attempt), and the selected adapter IDs. It calls the base model (served by lora-server with the specified adapters loaded) to produce a candidate code solution. On subsequent attempts, the full trajectory — prior code, execution outputs, error messages — is included in the prompt, providing the model with debugging context. The <code>generated_code</code> field in <code>RuneState</code> stores the output.</p>
+<p><strong><code>execute</code></strong> runs the generated code against the test suite in an isolated Docker sandbox. The sandbox is network-isolated, memory-limited, and CPU-limited. Execution produces four fields in <code>RuneState</code>: <code>stdout</code>, <code>stderr</code>, <code>exit_code</code>, and <code>tests_passed</code>.</p>
+<p><strong><code>reflect</code></strong> appends the current attempt's data to the trajectory and increments <code>attempt_count</code>. Each <code>AttemptRecord</code> in the <code>RuneState.trajectory</code> list contains the attempt number, generated code, execution output, and pass/fail status.</p>
+<p><strong><code>should_retry</code></strong> is the conditional routing function: if <code>tests_passed</code> is true, the loop terminates via <code>save_trajectory</code> (success). If <code>attempt_count &gt;= max_attempts</code>, the loop terminates via <code>save_trajectory</code> (exhausted). Otherwise, the loop returns to <code>generate</code> for another attempt.</p>
+<p><strong><code>save_trajectory</code></strong> records the terminal <code>outcome</code> ('success' or 'exhausted') and persists the complete trajectory to the adapter registry for downstream distillation.</p>
+<p>The Phase 3 distillation path (<code>direct_lora_finetune</code>) is <strong>specified</strong> — it uses standard PEFT fine-tuning on trajectory data, a validated technique that will be implemented first to establish the training pipeline and produce the initial adapter corpus. The Phase 4 distillation path (<code>H(trajectory)</code>) is <strong>proposed</strong> — it replaces per-adapter gradient descent with the hypernetwork forward pass, eliminating training cost at inference time. The Phase 4 path depends on successful hypernetwork training in Phase 1.</p>
+<hr />
+<h3 id="evolution-operator">Evolution Operator<a class="headerlink" href="#evolution-operator" title="Permanent link">&para;</a></h3>
+<p>The Background section established that LoRA Soups' CAT method can outperform data mixing for binary skill composition tasks,<sup id="fnref:prabhakar2024lorasoups"><a class="footnote-ref" href="#fn:prabhakar2024lorasoups">4</a></sup> but also that orthogonality between merged LoRA modules does not guarantee semantic disentanglement<sup id="fnref:zhang2025orthogonality"><a class="footnote-ref" href="#fn:zhang2025orthogonality">6</a></sup> and that adapter merging can reactivate latent reasoning traces.<sup id="fnref:zou2026merging"><a class="footnote-ref" href="#fn:zou2026merging">7</a></sup> The Evolution Operator is Rune's approach to fitness-driven adapter lifecycle management — testing adapter quality empirically before promotion rather than assuming composition is safe by default.</p>
+<p>The Evolution Operator defines four operations on the adapter registry:</p>
+<ol>
+<li>
+<p><strong>Consolidate</strong> (<strong>specified</strong>): Merge related adapters across task types into a generalized adapter when similarity exceeds a configurable threshold. The output is a new registry entry at a higher hierarchy level (e.g., task-level adapters consolidated into a domain-level adapter). The input adapters are archived — not deleted, per the write-once policy — and remain queryable but ineligible for retrieval routing.</p>
+</li>
+<li>
+<p><strong>Update</strong> (<strong>specified</strong>): When a new trajectory produces an adapter with higher fitness than an existing adapter of the same task type, the old adapter is archived and the new adapter is registered. This enforces the write-once, archive-not-delete policy: no adapter is overwritten, but the registry always routes to the highest-fitness entry for each task type.</p>
+</li>
+<li>
+<p><strong>Forget</strong> (<strong>specified</strong>): The <code>archive_adapter()</code> function sets <code>is_archived = 1</code> in the SQLite registry. Archived adapters are never deleted from disk — they become ineligible for retrieval routing but remain available for historical analysis, lineage tracking, and potential reactivation.</p>
+</li>
+<li>
+<p><strong>Merge</strong> (<strong>ablation target</strong>): Combine adapter weight matrices from two adapters into a single composite entry. This operation is labeled as an <strong>ablation target</strong> due to the orthogonality and latent trace concerns identified by Zhang et al.<sup id="fnref3:zhang2025orthogonality"><a class="footnote-ref" href="#fn:zhang2025orthogonality">6</a></sup> and Zou.<sup id="fnref2:zou2026merging"><a class="footnote-ref" href="#fn:zou2026merging">7</a></sup> Merge will be tested empirically — if composed adapters produce degraded or incoherent behavior, the operation will be disabled in favor of single-adapter selection.</p>
+</li>
+</ol>
+<p>The Evolution Operator uses a fitness criterion to drive all lifecycle decisions. The fitness function for an adapter <span class="arithmatex">\(a\)</span> is defined as (new equation):</p>
+<div class="arithmatex">\[
+\phi(a) = \alpha \cdot \text{pass\_rate}(a) + (1 - \alpha) \cdot \text{generalization}(a)
+\]</div>
+<p>where <span class="arithmatex">\(\text{pass\_rate}(a)\)</span> is the adapter's test-passing rate on held-out tasks of the same type, and <span class="arithmatex">\(\text{generalization}(a)\)</span> is a cross-task coverage metric measuring the adapter's performance on tasks outside its original training domain. The weighting parameter <span class="arithmatex">\(\alpha\)</span> controls the trade-off between specialization (high pass rate on similar tasks) and generalization (broad utility across task types). The default value is <span class="arithmatex">\(\alpha = 0.7\)</span>, reflecting a preference for specialization — an adapter that reliably solves its own task type is more valuable than one that partially solves many types. The <span class="arithmatex">\(\alpha\)</span> parameter is an <strong>ablation target</strong> (default 0.7, pending Phase 4 tuning). The exact generalization metric is <strong>TBD</strong> — it will be defined during Phase 4 when sufficient adapter diversity exists to measure cross-task performance. The <code>fitness_score</code> column in the SQLite <code>adapters</code> table stores the computed <span class="arithmatex">\(\phi(a)\)</span> value.</p>
+<p><strong>Contrast with LoRA Soups:</strong> LoRA Soups' CAT method combines adapters at the data-mixing level — concatenating adapter matrices — without testing whether the resulting combination produces better behavior on downstream tasks. The combination is assumed to be beneficial based on orthogonality properties of the adapter subspaces. The Evolution Operator takes a fundamentally different approach: it tests fitness empirically before promoting any adapter to the registry, and uses fitness-driven selection to determine which adapter combinations (if any) produce beneficial behavior. This directly addresses the orthogonality gap identified by Zhang et al.:<sup id="fnref2:zhang2025orthogonality"><a class="footnote-ref" href="#fn:zhang2025orthogonality">6</a></sup> orthogonal subspaces do not guarantee semantic coherence, so Rune tests behavioral coherence rather than assuming it. The merge operation itself is an <strong>ablation target</strong> — it will only be retained if empirical evaluation shows that merged adapters achieve higher fitness than their individual components.</p>
+<p><strong>Claim tiers:</strong> The four operations (consolidate, update, forget, merge) are <strong>specified</strong> in the architecture. The fitness formula weighting <span class="arithmatex">\(\alpha\)</span> is an <strong>ablation target</strong>. The merge operation's semantic coherence is <strong>TBD</strong> pending empirical validation of the orthogonality and latent trace concerns from the literature.</p>
+<hr />
+<h3 id="memory-composition-strategy">Memory Composition Strategy<a class="headerlink" href="#memory-composition-strategy" title="Permanent link">&para;</a></h3>
+<p>Rune organizes adapters into a three-level hierarchy that mirrors the granularity of coding knowledge:</p>
+<ul>
+<li>
+<p><strong>Project level</strong>: Adapters encoding broad patterns for a specific codebase — its architectural conventions, API design patterns, testing practices, and domain-specific idioms. A project-level adapter captures knowledge that is useful across all tasks within that project.</p>
+</li>
+<li>
+<p><strong>Domain level</strong>: Adapters encoding patterns for a category of tasks that spans projects — API design, database query optimization, algorithm implementation, error handling patterns. A domain-level adapter captures knowledge that transfers across projects for tasks of the same type.</p>
+</li>
+<li>
+<p><strong>Task level</strong>: Fine-grained adapters encoding patterns for a specific task type within a specific context. A task-level adapter captures the most specific knowledge — the particular patterns discovered while solving a particular class of problem.</p>
+</li>
+</ul>
+<p>The filesystem path convention encodes this hierarchy: <code>~/.rune/adapters/{project|domain|task}/...</code>. The SQLite <code>adapters</code> table tracks <code>hierarchy_level</code>, <code>domain</code>, and <code>project_id</code> columns, enabling queries that filter by any combination of hierarchy and metadata.</p>
+<p>At inference time, the adapter router queries the registry by task metadata (<code>task_type</code>, <code>domain</code>, <code>project_id</code>) and selects the highest-fitness adapter at each applicable hierarchy level using the <span class="arithmatex">\(\phi(a)\)</span> fitness criterion defined in the Evolution Operator section.</p>
+<p><strong>Default behavior</strong> (<strong>specified</strong>): Single-adapter selection — the most relevant adapter at the most specific applicable level, loaded alone. If a task-level adapter exists with sufficient fitness, it is used. Otherwise, the router falls back to domain level, then project level. The rationale for single-adapter default is the interference risk established in Background: orthogonality between adapter subspaces does not guarantee semantic coherence when multiple adapters are applied simultaneously.</p>
+<p><strong>Multi-adapter composition</strong> (<strong>ablation target</strong>): Additive accumulation across hierarchy levels, where the full weight delta applied to the base model is:</p>
+<div class="arithmatex">\[
+\Delta W_{\text{composite}} = \Delta W_{\text{project}} + \Delta W_{\text{domain}} + \Delta W_{\text{task}}
+\]</div>
+<p>This compositional mode loads one adapter from each applicable hierarchy level and applies their weight deltas additively. It is the <strong>ablation target</strong> for Phase 5 and beyond. Multi-adapter composition will be tested against single-adapter selection once sufficient adapter diversity exists in the registry. The default remains single-adapter selection until empirical evidence supports multi-level composition.</p>
+<p><strong>Claim tiers:</strong> The three-level hierarchy is <strong>specified</strong> — it is implemented in the adapter registry schema and filesystem layout. Single-adapter selection as the default retrieval mode is <strong>specified</strong>. Compositional accumulation across hierarchy levels is <strong>proposed</strong> and requires empirical validation of behavioral coherence. Multi-adapter composition semantics are an <strong>ablation target</strong> for Phase 5+.</p>
+<hr />
+<h3 id="training-data-strategy-and-serving-architecture">Training Data Strategy and Serving Architecture<a class="headerlink" href="#training-data-strategy-and-serving-architecture" title="Permanent link">&para;</a></h3>
+<h4 id="training-data-strategy">Training Data Strategy<a class="headerlink" href="#training-data-strategy" title="Permanent link">&para;</a></h4>
+<p>The Background section established Cook et al.'s finding that declarative instructions — including code — can substitute for up to 100 execution examples when fine-tuning LLMs.<sup id="fnref:cook2025pbb"><a class="footnote-ref" href="#fn:cook2025pbb">5</a></sup> This result demonstrates that the format of training signal matters: procedural, instruction-like representations are more information-dense than equivalent example sets. Rune's training data strategy is grounded in this finding: code execution trajectories are the training signal, not (input, output) pairs.</p>
+<p>Each trajectory record in the SQLite <code>trajectories</code> table contains:</p>
+<ul>
+<li><code>task_description</code>: the natural language specification of the coding task</li>
+<li><code>test_suite</code>: the test code used for evaluation</li>
+<li>A sequence of attempts, each containing <code>generated_code</code>, <code>stdout</code>, <code>stderr</code>, <code>exit_code</code>, and <code>tests_passed</code></li>
+<li>A terminal <code>outcome</code>: 'success' (tests passed) or 'exhausted' (max attempts reached without passing)</li>
+</ul>
+<p>Both successful and exhausted trajectories are training candidates. Successful trajectories encode complete solution patterns — from initial approach through iterative refinement to a passing solution. Exhausted trajectories encode debugging patterns, failure recognition, and partial solutions — knowledge about what does not work and why, which is valuable for avoiding similar failure modes in future tasks.</p>
+<p>PBB found that in-context instruction execution remains more reliable than weight-based procedural knowledge for the tasks they tested. This caveat applies directly to Rune: there is a gap between what can be encoded in weights via backpropagation and what can be reliably executed from those weights at inference time. Training on trajectories is <strong>expected</strong> to produce useful adapter representations based on PBB's findings about procedural encoding efficiency — instructions are information-dense, and trajectories are the richest procedural representation available. However, whether trajectory-trained adapters achieve reliable weight-based execution on coding tasks specifically is <strong>proposed</strong> and requires Phase 1 empirical validation. The gap between encoding efficiency and reliable execution from weights is the central empirical question for Rune's training data strategy.</p>
+<p><strong>Claim tiers:</strong> Training on trajectories without input-output pairs is <strong>expected</strong> — grounded in PBB's demonstration that procedural representations are efficient for weight-based learning. Adapter quality on coding tasks specifically is <strong>proposed</strong> — this is Rune-specific and unvalidated.</p>
+<h4 id="serving-architecture">Serving Architecture<a class="headerlink" href="#serving-architecture" title="Permanent link">&para;</a></h4>
+<p>The intended serving configuration is vLLM with pipeline parallelism PP=2 and QLoRA (NF4 quantized base model with bfloat16 adapter matrices). This is the <strong>intended configuration pending Phase 0 empirical validation</strong> — not an assertion of confirmed compatibility.</p>
+<p><strong>PP=2 rationale:</strong> Rune's hardware is dual RTX 4090 (24 GB VRAM per GPU) without NVLink. Tensor parallelism (TP) requires all-reduce synchronization at every transformer layer. Over PCIe bandwidth (~32 GB/s bidirectional), the all-reduce at every layer becomes prohibitively slow compared to NVLink (~112 GB/s per direction). Pipeline parallelism (PP=2) splits the transformer layers across both GPUs and transfers activations once at the layer boundary — a single point-to-point transfer per forward pass, respecting the bandwidth constraint. Additionally, vLLM issue #21471 documents TP + LoRA corruption on consumer GPUs without NVLink, which is absent under PP=2.</p>
+<p><strong>QLoRA serves the VRAM constraint:</strong> NF4 quantization reduces the 7B-parameter base model from approximately 14 GB (bfloat16) to approximately 4 GB, leaving headroom for adapter weights and KV cache within the 24 GB per-GPU budget.<sup id="fnref:dettmers2023qlora"><a class="footnote-ref" href="#fn:dettmers2023qlora">8</a></sup> S-LoRA unified paging manages adapter weights alongside KV cache in a shared GPU memory pool, enabling concurrent serving of multiple adapters without per-adapter VRAM reservation.<sup id="fnref2:sheng2023slora"><a class="footnote-ref" href="#fn:sheng2023slora">9</a></sup></p>
+<p><strong>GPU lease mechanism:</strong> During training jobs, lora-server yields GPU 1 to training-svc. The serving process reconfigures to single-GPU mode (reduced capacity but still available), and training-svc runs on the released GPU with full VRAM access. When the training job completes, training-svc releases the lease, and lora-server restores PP=2 serving on both GPUs. Serving pauses briefly during reconfiguration but is not fully offline during training.</p>
+<p><strong>Claim tiers:</strong> The PP=2 architecture is <strong>specified</strong> — it is the locked design decision based on hardware constraints and the vLLM TP+LoRA bug. PP=2 + QLoRA + vLLM LoRA compatibility is <strong>expected</strong> — it is the primary empirical question for Phase 0 hardware validation. The GPU lease mechanism is <strong>specified</strong> in the architecture but <strong>untested</strong> at the implementation level.</p>
+<hr />
+<div class="footnote">
+<hr />
+<ol>
+<li id="fn:hu2021lora">
+<p>Hu, E. J., et al. (2021). LoRA: Low-Rank Adaptation of Large Language Models. <em>arXiv:2106.09685</em>. <a href="../references/#hu2021lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:hu2021lora" title="Jump back to footnote 1 in the text">&#8617;</a></p>
+</li>
+<li id="fn:ha2016hypernetworks">
+<p>Ha, D., Dai, A., &amp; Le, Q. V. (2016). HyperNetworks. <em>arXiv:1609.09106</em>. <a href="../references/#ha2016hypernetworks">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:ha2016hypernetworks" title="Jump back to footnote 2 in the text">&#8617;</a></p>
+</li>
+<li id="fn:charakorn2026doc2lora">
+<p>Charakorn, R., et al. (2026). Doc-to-LoRA: Learning to Instantly Internalize Contexts. <em>arXiv:2602.15902</em>. <a href="../references/#charakorn2026doc2lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:charakorn2026doc2lora" title="Jump back to footnote 3 in the text">&#8617;</a></p>
+</li>
+<li id="fn:prabhakar2024lorasoups">
+<p>Prabhakar, A., et al. (2024). LoRA Soups: Merging LoRAs for Practical Skill Composition Tasks. <em>arXiv:2410.13025</em>. <a href="../references/#prabhakar2024lorasoups">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:prabhakar2024lorasoups" title="Jump back to footnote 4 in the text">&#8617;</a></p>
+</li>
+<li id="fn:cook2025pbb">
+<p>Cook, J., et al. (2025). Programming by Backprop: An Instruction is Worth 100 Examples When Finetuning LLMs. <em>arXiv:2506.18777</em>. <a href="../references/#cook2025pbb">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:cook2025pbb" title="Jump back to footnote 5 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zhang2025orthogonality">
+<p>Zhang, A., et al. (2025). Rethinking Inter-LoRA Orthogonality in Adapter Merging. <em>arXiv:2510.03262</em>. <a href="../references/#zhang2025orthogonality">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zhang2025orthogonality" title="Jump back to footnote 6 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:zhang2025orthogonality" title="Jump back to footnote 6 in the text">&#8617;</a><a class="footnote-backref" href="#fnref3:zhang2025orthogonality" title="Jump back to footnote 6 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zou2026merging">
+<p>Zou, J. (2026). Adapter Merging Reactivates Latent Reasoning Traces. <em>arXiv:2601.18350</em>. <a href="../references/#zou2026merging">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zou2026merging" title="Jump back to footnote 7 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:zou2026merging" title="Jump back to footnote 7 in the text">&#8617;</a></p>
+</li>
+<li id="fn:dettmers2023qlora">
+<p>Dettmers, T., et al. (2023). QLoRA: Efficient Finetuning of Quantized LLMs. <em>arXiv:2305.14314</em>. <a href="../references/#dettmers2023qlora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:dettmers2023qlora" title="Jump back to footnote 8 in the text">&#8617;</a></p>
+</li>
+<li id="fn:sheng2023slora">
+<p>Sheng, Y., et al. (2023). S-LoRA: Serving Thousands of Concurrent LoRA Adapters. <em>arXiv:2311.03285</em>. <a href="../references/#sheng2023slora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:sheng2023slora" title="Jump back to footnote 9 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:sheng2023slora" title="Jump back to footnote 9 in the text">&#8617;</a></p>
+</li>
+</ol>
+</div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+        <script src="../../assets/mermaid-init.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

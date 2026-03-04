@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>API Reference - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../architecture/recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/multi-gpu-strategy/" class="dropdown-item">Multi-GPU Strategy</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../article/" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../../article/abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../../article/background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../../article/methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../../article/results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../../article/discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../../article/references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../../rune-agent/api/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../../training-svc/api/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#api-reference-for-shared" class="nav-link">API Reference for shared</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#shared" class="nav-link">shared</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#shared-classes" class="nav-link">Classes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#shared-functions" class="nav-link">Functions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#shared-modules" class="nav-link">Modules</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="api-reference-for-shared">API Reference for shared<a class="headerlink" href="#api-reference-for-shared" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="shared" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">shared</span>
+
+
+<a href="#shared" class="headerlink" title="Permanent link">&para;</a></h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Shared models, utilities, and canonical prompt templates.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<h3 id="shared-classes">Classes<a href="#shared-classes" class="headerlink" title="Permanent link">&para;</a></h3>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="shared.AdapterRef" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">AdapterRef</span>
+
+
+<a href="#shared.AdapterRef" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="AdapterRef (shared.AdapterRef)" href="#shared.AdapterRef" id="mermaid-link-shared.AdapterRef"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.AdapterRef">
+              flowchart TD
+              shared.AdapterRef[AdapterRef]
+
+              
+
+              click shared.AdapterRef href "" "shared.AdapterRef"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.AdapterRef');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>Reference to a stored LoRA adapter.</p>
+<p>Used within CodingSession to track which adapters were loaded
+during an agent coding session.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.AdapterRef.adapter_id">adapter_id</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UUID of the adapter in the registry.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.AdapterRef.task_type">task_type</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Task category this adapter was trained on (e.g. 'bug-fix').</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.AdapterRef.fitness_score">fitness_score</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Evolutionary fitness score, if evaluated.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>ref = AdapterRef(adapter_id="abc-123", task_type="bug-fix")
+ref.adapter_id
+'abc-123'
+ref.fitness_score is None
+True</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="shared.CodingSession" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">CodingSession</span>
+
+
+<a href="#shared.CodingSession" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="CodingSession (shared.CodingSession)" href="#shared.CodingSession" id="mermaid-link-shared.CodingSession"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.CodingSession">
+              flowchart TD
+              shared.CodingSession[CodingSession]
+
+              
+
+              click shared.CodingSession href "" "shared.CodingSession"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.CodingSession');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>A complete agent coding session record.</p>
+<p>Tracks the full lifecycle of a Rune agent session including which
+adapters were used, how many generate-execute-reflect cycles occurred,
+and the final outcome.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.CodingSession.session_id">session_id</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Unique session identifier.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.CodingSession.task_description">task_description</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Human-readable description of the coding task.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.CodingSession.task_type">task_type</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Task category (e.g. 'bug-fix', 'feature-impl').</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.CodingSession.adapter_refs">adapter_refs</span></code></td>
+            <td>
+                  <code><span title="list">list</span>[<a class="autorefs autorefs-internal" title="AdapterRef (shared.rune_models.AdapterRef)" href="#shared.rune_models.AdapterRef">AdapterRef</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of adapters loaded during this session.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.CodingSession.attempt_count">attempt_count</span></code></td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of generate-execute-reflect cycles completed.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.CodingSession.outcome">outcome</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Final session result ('success', 'exhausted', or None if in progress).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>session = CodingSession(
+...     session_id="sess-001",
+...     task_description="Fix import error",
+...     task_type="bug-fix",
+... )
+session.adapter_refs
+[]
+session.attempt_count
+0
+session.outcome is None
+True</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="shared.EvolMetrics" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">EvolMetrics</span>
+
+
+<a href="#shared.EvolMetrics" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="EvolMetrics (shared.EvolMetrics)" href="#shared.EvolMetrics" id="mermaid-link-shared.EvolMetrics"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.EvolMetrics">
+              flowchart TD
+              shared.EvolMetrics[EvolMetrics]
+
+              
+
+              click shared.EvolMetrics href "" "shared.EvolMetrics"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.EvolMetrics');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>Evolution evaluation metrics for an adapter.</p>
+<p>Captures the performance and fitness measurements used by the
+evolution service to decide which adapters to keep, mutate, or retire.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.EvolMetrics.adapter_id">adapter_id</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UUID of the adapter being evaluated.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.EvolMetrics.pass_rate">pass_rate</span></code></td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pass rate on benchmark tasks (0.0 to 1.0).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.EvolMetrics.fitness_score">fitness_score</span></code></td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Overall evolutionary fitness score.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.EvolMetrics.generalization_delta">generalization_delta</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Difference between in-distribution and OOD performance.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>metrics = EvolMetrics(
+...     adapter_id="adapter-001",
+...     pass_rate=0.85,
+...     fitness_score=0.9,
+... )
+metrics.generalization_delta is None
+True</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+<h3 id="shared-functions">Functions<a href="#shared-functions" class="headerlink" title="Permanent link">&para;</a></h3>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="shared.get_prompts_dir" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">get_prompts_dir</span>
+
+
+<a href="#shared.get_prompts_dir" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_prompts_dir</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><span title="pathlib.Path">Path</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return the path to the shared prompt templates directory (Jinja2 .j2 files).</p>
+<p>Use this as prompts_dir when calling inference.factory helpers so agents
+use the same templates with different prompt_vars (DRY). No duplicate
+template files in services.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pathlib.Path">Path</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to libs/shared/src/shared/templates/ (package data).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>libs/shared/src/shared/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">10</span>
+<span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_prompts_dir</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the path to the shared prompt templates directory (Jinja2 .j2 files).</span>
+
+<span class="sd">    Use this as prompts_dir when calling inference.factory helpers so agents</span>
+<span class="sd">    use the same templates with different prompt_vars (DRY). No duplicate</span>
+<span class="sd">    template files in services.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Path to libs/shared/src/shared/templates/ (package data).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;templates&quot;</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+<h3 id="shared-modules">Modules<a href="#shared-modules" class="headerlink" title="Permanent link">&para;</a></h3>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h4 id="shared.lazy_cache" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">lazy_cache</span>
+
+
+<a href="#shared.lazy_cache" class="headerlink" title="Permanent link">&para;</a></h4>
+
+    <div class="doc doc-contents ">
+
+        <p>Lazy singleton decorator for expensive initializations.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+<h5 id="shared.lazy_cache-functions">Functions<a href="#shared.lazy_cache-functions" class="headerlink" title="Permanent link">&para;</a></h5>
+
+<div class="doc doc-object doc-function">
+
+
+<h6 id="shared.lazy_cache.lazy_singleton" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">lazy_singleton</span>
+
+
+<a href="#shared.lazy_cache.lazy_singleton" class="headerlink" title="Permanent link">&para;</a></h6>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">lazy_singleton</span><span class="p">(</span><span class="n">func</span><span class="p">:</span> <span class="n"><span title="typing.Callable">Callable</span></span><span class="p">[[],</span> <span class="n"><span title="shared.lazy_cache.T">T</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Callable">Callable</span></span><span class="p">[[],</span> <span class="n"><span title="shared.lazy_cache.T">T</span></span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Decorator to lazily evaluate and cache a function result (singleton).</p>
+<p>Thread-safe implementation using a lock to prevent race conditions
+in concurrent environments.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>libs/shared/src/shared/lazy_cache.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">lazy_singleton</span><span class="p">(</span><span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="n">T</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="n">T</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decorator to lazily evaluate and cache a function result (singleton).</span>
+
+<span class="sd">    Thread-safe implementation using a lock to prevent race conditions</span>
+<span class="sd">    in concurrent environments.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_instance</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">nonlocal</span> <span class="n">_instance</span>
+        <span class="k">with</span> <span class="n">_lock</span><span class="p">:</span>
+            <span class="n">_instance</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">T</span><span class="p">:</span>
+        <span class="k">nonlocal</span> <span class="n">_instance</span>
+        <span class="k">if</span> <span class="n">_instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">_lock</span><span class="p">:</span>
+                <span class="c1"># Double-checked locking pattern</span>
+                <span class="k">if</span> <span class="n">_instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">_instance</span> <span class="o">=</span> <span class="n">func</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">_instance</span>
+
+    <span class="c1"># Register this singleton&#39;s reset function</span>
+    <span class="n">_singleton_registry</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">reset</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">wrapper</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h4 id="shared.models" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">models</span>
+
+
+<a href="#shared.models" class="headerlink" title="Permanent link">&para;</a></h4>
+
+    <div class="doc doc-contents ">
+
+        <p>Shared data models for the application.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<h5 id="shared.models-classes">Classes<a href="#shared.models-classes" class="headerlink" title="Permanent link">&para;</a></h5>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h6 id="shared.models.Entity" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">Entity</span>
+
+
+<a href="#shared.models.Entity" class="headerlink" title="Permanent link">&para;</a></h6>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="sqlmodel.SQLModel">SQLModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="Entity (shared.models.Entity)" href="#shared.models.Entity" id="mermaid-link-shared.models.Entity"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.models.Entity">
+              flowchart TD
+              shared.models.Entity[Entity]
+
+              
+
+              click shared.models.Entity href "" "shared.models.Entity"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.models.Entity');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>Generic entity processed by agents.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h6 id="shared.models.Task" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">Task</span>
+
+
+<a href="#shared.models.Task" class="headerlink" title="Permanent link">&para;</a></h6>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="sqlmodel.SQLModel">SQLModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="Task (shared.models.Task)" href="#shared.models.Task" id="mermaid-link-shared.models.Task"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.models.Task">
+              flowchart TD
+              shared.models.Task[Task]
+
+              
+
+              click shared.models.Task href "" "shared.models.Task"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.models.Task');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>Generic task flowing through the pipeline.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h4 id="shared.rune_models" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">rune_models</span>
+
+
+<a href="#shared.rune_models" class="headerlink" title="Permanent link">&para;</a></h4>
+
+    <div class="doc doc-contents ">
+
+        <p>Rune-specific Pydantic models for cross-service data contracts.</p>
+<p>Defines the shared data shapes for coding sessions, adapter references,
+and evolutionary fitness metrics used across all Rune services.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<h5 id="shared.rune_models-classes">Classes<a href="#shared.rune_models-classes" class="headerlink" title="Permanent link">&para;</a></h5>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h6 id="shared.rune_models.AdapterRef" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">AdapterRef</span>
+
+
+<a href="#shared.rune_models.AdapterRef" class="headerlink" title="Permanent link">&para;</a></h6>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="AdapterRef (shared.rune_models.AdapterRef)" href="#shared.rune_models.AdapterRef" id="mermaid-link-shared.rune_models.AdapterRef"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.rune_models.AdapterRef">
+              flowchart TD
+              shared.rune_models.AdapterRef[AdapterRef]
+
+              
+
+              click shared.rune_models.AdapterRef href "" "shared.rune_models.AdapterRef"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.rune_models.AdapterRef');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>Reference to a stored LoRA adapter.</p>
+<p>Used within CodingSession to track which adapters were loaded
+during an agent coding session.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.AdapterRef.adapter_id">adapter_id</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UUID of the adapter in the registry.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.AdapterRef.task_type">task_type</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Task category this adapter was trained on (e.g. 'bug-fix').</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.AdapterRef.fitness_score">fitness_score</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Evolutionary fitness score, if evaluated.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>ref = AdapterRef(adapter_id="abc-123", task_type="bug-fix")
+ref.adapter_id
+'abc-123'
+ref.fitness_score is None
+True</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h6 id="shared.rune_models.CodingSession" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">CodingSession</span>
+
+
+<a href="#shared.rune_models.CodingSession" class="headerlink" title="Permanent link">&para;</a></h6>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="CodingSession (shared.rune_models.CodingSession)" href="#shared.rune_models.CodingSession" id="mermaid-link-shared.rune_models.CodingSession"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.rune_models.CodingSession">
+              flowchart TD
+              shared.rune_models.CodingSession[CodingSession]
+
+              
+
+              click shared.rune_models.CodingSession href "" "shared.rune_models.CodingSession"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.rune_models.CodingSession');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>A complete agent coding session record.</p>
+<p>Tracks the full lifecycle of a Rune agent session including which
+adapters were used, how many generate-execute-reflect cycles occurred,
+and the final outcome.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.CodingSession.session_id">session_id</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Unique session identifier.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.CodingSession.task_description">task_description</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Human-readable description of the coding task.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.CodingSession.task_type">task_type</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Task category (e.g. 'bug-fix', 'feature-impl').</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.CodingSession.adapter_refs">adapter_refs</span></code></td>
+            <td>
+                  <code><span title="list">list</span>[<a class="autorefs autorefs-internal" title="AdapterRef (shared.rune_models.AdapterRef)" href="#shared.rune_models.AdapterRef">AdapterRef</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of adapters loaded during this session.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.CodingSession.attempt_count">attempt_count</span></code></td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of generate-execute-reflect cycles completed.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.CodingSession.outcome">outcome</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="str">str</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Final session result ('success', 'exhausted', or None if in progress).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>session = CodingSession(
+...     session_id="sess-001",
+...     task_description="Fix import error",
+...     task_type="bug-fix",
+... )
+session.adapter_refs
+[]
+session.attempt_count
+0
+session.outcome is None
+True</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h6 id="shared.rune_models.EvolMetrics" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">EvolMetrics</span>
+
+
+<a href="#shared.rune_models.EvolMetrics" class="headerlink" title="Permanent link">&para;</a></h6>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+            <div style="display: none">
+              <a class="autorefs autorefs-internal" title="EvolMetrics (shared.rune_models.EvolMetrics)" href="#shared.rune_models.EvolMetrics" id="mermaid-link-shared.rune_models.EvolMetrics"></a>
+            </div>
+            <pre class="mermaid"><code id="mermaid-diagram-shared.rune_models.EvolMetrics">
+              flowchart TD
+              shared.rune_models.EvolMetrics[EvolMetrics]
+
+              
+
+              click shared.rune_models.EvolMetrics href "" "shared.rune_models.EvolMetrics"
+            </code></pre>
+            <script>
+              var diagram = document.getElementById('mermaid-diagram-shared.rune_models.EvolMetrics');
+              diagram.innerHTML = diagram.innerHTML.replace(/click ([\w.]+) href "" "\1"/g, function(match, nodeID, offset) {
+                try {
+                  const link = document.getElementById("mermaid-link-" + nodeID).href;
+                  return `click ${nodeID} href "${link}" "${nodeID}"`
+                } catch (e) {
+                  return '';
+                }
+              });
+            </script>
+
+
+        <p>Evolution evaluation metrics for an adapter.</p>
+<p>Captures the performance and fitness measurements used by the
+evolution service to decide which adapters to keep, mutate, or retire.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.EvolMetrics.adapter_id">adapter_id</span></code></td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UUID of the adapter being evaluated.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.EvolMetrics.pass_rate">pass_rate</span></code></td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pass rate on benchmark tasks (0.0 to 1.0).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.EvolMetrics.fitness_score">fitness_score</span></code></td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Overall evolutionary fitness score.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="shared.rune_models.EvolMetrics.generalization_delta">generalization_delta</span></code></td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="float">float</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Difference between in-distribution and OOD performance.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <blockquote>
+<blockquote>
+<blockquote>
+<p>metrics = EvolMetrics(
+...     adapter_id="adapter-001",
+...     pass_rate=0.85,
+...     fitness_score=0.9,
+... )
+metrics.generalization_delta is None
+True</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+  </div>
+
+    </div>
+
+</div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+        <script src="../../assets/mermaid-init.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

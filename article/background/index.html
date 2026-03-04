@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Background - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../architecture/recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/multi-gpu-strategy/" class="dropdown-item">Multi-GPU Strategy</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Background</a>
+</li>
+                                    
+<li>
+    <a href="../methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../abstract/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../methods/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="2"><a href="#background" class="nav-link">Background</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#memory-approaches-for-language-model-agents" class="nav-link">Memory Approaches for Language Model Agents</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#lora-low-rank-adaptation" class="nav-link">LoRA: Low-Rank Adaptation</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#qlora-quantized-low-rank-adaptation" class="nav-link">QLoRA: Quantized Low-Rank Adaptation</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#multi-adapter-serving-s-lora" class="nav-link">Multi-Adapter Serving: S-LoRA</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#hypernetwork-architectures" class="nav-link">Hypernetwork Architectures</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#lora-composition-methods" class="nav-link">LoRA Composition Methods</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#programming-by-backprop-code-as-procedural-abstraction" class="nav-link">Programming by Backprop: Code as Procedural Abstraction</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#concurrent-hypernetwork-work-and-the-trajectory-modality-argument" class="nav-link">Concurrent Hypernetwork Work and the Trajectory Modality Argument</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h2 id="background">Background<a class="headerlink" href="#background" title="Permanent link">&para;</a></h2>
+<h3 id="memory-approaches-for-language-model-agents">Memory Approaches for Language Model Agents<a class="headerlink" href="#memory-approaches-for-language-model-agents" title="Permanent link">&para;</a></h3>
+<p>Local coding agents — Aider, Cursor, Claude Code — operate within fixed context windows.
+As projects grow, agents lose access to earlier interactions: patterns discovered, bugs
+solved, architectural decisions made. Each new session begins without knowledge of prior
+sessions. The agent re-encounters the same failure modes, re-derives the same solutions,
+and cannot accumulate project-specific expertise over time.</p>
+<p>Memory approaches for LLM agents fall into three broad categories that differ in where
+and how knowledge is stored:</p>
+<p><strong>Token-space memory</strong> (retrieval-augmented generation, long-context prompting, vector
+databases) retrieves text snippets and injects them into the context window before
+inference. Retrieval quality determines what the agent can recall, but every retrieved
+chunk consumes the same scarce resource — context tokens — that the agent needs for
+new instructions and code. Scaling memory capacity in this category means scaling
+context window size, which remains bounded and costly.</p>
+<p><strong>Destructive weight-space memory</strong> (model editing via ROME or MEMIT, full fine-tuning)
+modifies base model weights directly. Each modification risks overwriting previously
+stored knowledge — a phenomenon known as catastrophic forgetting. Knowledge is entangled
+in shared parameters: storing new facts can corrupt existing capabilities because the
+same weights that encode one concept participate in encoding others.</p>
+<p><strong>Composable weight-space memory</strong> (LoRA adapters, adapter libraries) stores knowledge
+as discrete, composable parameter deltas that augment the base model without modifying
+it. Each adapter can be loaded, removed, or replaced independently. The base model
+remains a stable reference point. Multiple adapters can coexist in a library, each
+encoding knowledge from a distinct session or task.</p>
+<p>Rune occupies the composable weight-space category. Each coding trajectory is distilled
+into a LoRA adapter that encodes the procedural knowledge from that session — patterns,
+fixes, architectural decisions — as parameter deltas. Adapters are write-once, immutable,
+and independently retrievable by task similarity.</p>
+<p>Pink et al. argue that episodic memory — single-shot learning of instance-specific
+contexts, retrievable and composable — is the missing capability for long-term LLM
+agents.<sup id="fnref:pink2025episodic"><a class="footnote-ref" href="#fn:pink2025episodic">1</a></sup> Rune's adapter-per-session design maps directly onto this
+framework: each adapter is an episode, stored independently, and retrieved when a
+subsequent task resembles the original.</p>
+<hr />
+<h3 id="lora-low-rank-adaptation">LoRA: Low-Rank Adaptation<a class="headerlink" href="#lora-low-rank-adaptation" title="Permanent link">&para;</a></h3>
+<p>LoRA decomposes the weight update for a pre-trained weight matrix as a product of two
+low-rank matrices.<sup id="fnref:hu2021lora"><a class="footnote-ref" href="#fn:hu2021lora">2</a></sup> Rather than updating the full weight matrix <span class="arithmatex">\(W_0 \in
+\mathbb{R}^{d \times k}\)</span> directly, LoRA reparameterizes the update as:</p>
+<div class="arithmatex">\[
+\Delta W = BA, \quad B \in \mathbb{R}^{d \times r}, \; A \in \mathbb{R}^{r \times k}
+\]</div>
+<p>where rank <span class="arithmatex">\(r \ll \min(d, k)\)</span>. The trainable parameter count drops from <span class="arithmatex">\(dk\)</span> to
+<span class="arithmatex">\(r(d + k)\)</span>, which is approximately <span class="arithmatex">\(2rd\)</span> when <span class="arithmatex">\(d \approx k\)</span>. For a 7B-parameter
+model with typical hidden dimensions, rank 16–64 LoRA adapters require only a few
+million parameters — small enough to store hundreds of adapters on disk and load them
+on demand.</p>
+<p>During inference, the output becomes <span class="arithmatex">\(h = W_0 x + BAx\)</span>, where <span class="arithmatex">\(W_0\)</span> is frozen.
+The adapter's contribution is additive and reversible: removing the adapter (setting
+<span class="arithmatex">\(\Delta W = 0\)</span>) restores the original model behavior exactly. No modification to
+the base model is required.</p>
+<p>This reversibility is what makes LoRA viable as a memory substrate rather than merely
+a fine-tuning technique. Knowledge stored in one adapter does not interfere with
+knowledge stored in other adapters or in the base model — each adapter is a self-contained
+parameter delta that augments a stable foundation.</p>
+<hr />
+<h3 id="qlora-quantized-low-rank-adaptation">QLoRA: Quantized Low-Rank Adaptation<a class="headerlink" href="#qlora-quantized-low-rank-adaptation" title="Permanent link">&para;</a></h3>
+<p>QLoRA extends LoRA with 4-bit NormalFloat (NF4) quantization of the frozen base model
+weights, combined with double quantization (quantizing the quantization constants
+themselves) and paged optimizers for memory spill management.<sup id="fnref:dettmers2023qlora"><a class="footnote-ref" href="#fn:dettmers2023qlora">3</a></sup></p>
+<p>The hardware relevance is significant. NF4 quantization reduces the memory footprint
+of a 7B-parameter base model from approximately 14 GB (bfloat16) to approximately 4 GB,
+enabling LoRA training and inference on consumer GPUs with 24 GB VRAM. For Rune's
+target hardware (dual RTX 4090, 24 GB per GPU), QLoRA makes it feasible to keep the
+base model loaded continuously while training or serving LoRA adapters without exceeding
+VRAM capacity.</p>
+<p>QLoRA is an efficiency layer in Rune's design, not a core algorithmic contribution.
+Rune's architecture does not depend on QLoRA specifically — any quantization scheme
+that fits the base model into available VRAM while preserving LoRA training quality
+would suffice. QLoRA is the practical default given current consumer hardware constraints.</p>
+<hr />
+<h3 id="multi-adapter-serving-s-lora">Multi-Adapter Serving: S-LoRA<a class="headerlink" href="#multi-adapter-serving-s-lora" title="Permanent link">&para;</a></h3>
+<p>If each coding session produces an adapter, an agent accumulating hundreds of sessions
+needs a mechanism to serve the appropriate adapter at inference time without maintaining
+separate model copies for each one.</p>
+<p>S-LoRA introduces Unified Paging — a unified memory pool that manages adapter weights
+and KV cache tensors together in a shared memory space, enabling thousands of concurrent
+LoRA adapters to be served from a single base model instance.<sup id="fnref:sheng2023slora"><a class="footnote-ref" href="#fn:sheng2023slora">4</a></sup> Adapters
+are loaded and swapped dynamically without reloading the base model. S-LoRA also
+introduces batched LoRA computation that amortizes the overhead of applying different
+adapters to different requests in the same batch.</p>
+<p>S-LoRA validates a core architectural assumption of Rune: that adapter-per-session
+memory is servable at scale from a single model instance. Rune's adapter library design
+— write-once adapters retrieved by task similarity — maps directly onto S-LoRA's
+concurrent serving model. The base model remains loaded; the appropriate adapter is
+swapped in per request based on retrieval results.</p>
+<hr />
+<h3 id="hypernetwork-architectures">Hypernetwork Architectures<a class="headerlink" href="#hypernetwork-architectures" title="Permanent link">&para;</a></h3>
+<p>Hypernetworks — networks that generate the weights of another network — were introduced
+by Ha et al. as a relaxed form of weight-sharing.<sup id="fnref:ha2016hypernetworks"><a class="footnote-ref" href="#fn:ha2016hypernetworks">5</a></sup> Rather than
+learning fixed weights, a smaller meta-network learns to produce weights conditioned
+on some input signal. This decouples <em>what</em> is learned (the target network's behavior)
+from <em>how</em> it is parameterized (the meta-network's learned generation function).
+The paradigm enables instant adaptation: given a new conditioning input, the
+hypernetwork produces a new set of weights in a single forward pass.</p>
+<p><strong>Doc-to-LoRA</strong> applies the hypernetwork paradigm to LoRA adapter generation.
+A hypernetwork takes a document as input and produces LoRA adapter weights in a single
+forward pass — no gradient-based fine-tuning required at inference time. The generated
+adapter encodes the document's content into the base model's parameter space, enabling
+needle-in-a-haystack question answering that outperforms RAG baselines on long
+documents.<sup id="fnref:charakorn2026doc2lora"><a class="footnote-ref" href="#fn:charakorn2026doc2lora">6</a></sup></p>
+<p>Doc-to-LoRA validates the hypernetwork-to-LoRA mechanism on textual documents and
+document QA tasks — retrieving specific facts from long textual inputs. It was not
+validated on coding trajectories, procedural knowledge, or code execution traces.
+Whether the same mechanism can encode the richer structure of code execution
+trajectories — sequential, causal, procedural — is the hypothesis Rune proposes to
+test. The transfer to a structurally different input type is the core open research
+question.</p>
+<p><strong>SHINE</strong> is a concurrent hypernetwork system that maps in-context examples (few-shot
+demonstrations) to LoRA adapters in a single pass.<sup id="fnref:liu2026shine"><a class="footnote-ref" href="#fn:liu2026shine">7</a></sup> SHINE's input
+modality is demonstration examples — input-output pairs the LLM would otherwise process
+in-context. The hypernetwork converts this "in-context knowledge" to "in-parameter
+knowledge," eliminating the context cost of few-shot prompting at inference time.
+SHINE uses structured examples, not execution traces or documents — a distinction
+that becomes central to the trajectory modality argument in the final subsection.</p>
+<hr />
+<h3 id="lora-composition-methods">LoRA Composition Methods<a class="headerlink" href="#lora-composition-methods" title="Permanent link">&para;</a></h3>
+<p>LoRA's additive structure (<span class="arithmatex">\(\Delta W = BA\)</span>) suggests that multiple adapters could
+be combined — summed, concatenated, or interpolated — to merge skills from different
+training episodes into a single set of weights.</p>
+<p>Prabhakar et al. demonstrate that concatenation of LoRA adapters (the CAT method)
+outperforms data mixing for binary skill composition tasks.<sup id="fnref:prabhakar2024lorasoups"><a class="footnote-ref" href="#fn:prabhakar2024lorasoups">8</a></sup>
+This is the first empirical evidence that model merging can exceed training-data-level
+composition for skill acquisition — suggesting that adapters encode skills in
+structures that are, at least partially, combinable.</p>
+<p>However, composition is not straightforward. Zhang et al. show that orthogonality
+between merged LoRA modules does NOT guarantee semantic disentanglement.<sup id="fnref:zhang2025orthogonality"><a class="footnote-ref" href="#fn:zhang2025orthogonality">9</a></sup>
+Enforcing orthogonal adapter subspaces prevents direct parameter interference, but
+cannot ensure that composed adapters produce semantically coherent behavior. Two
+adapters can occupy orthogonal subspaces yet still produce conflicting behavioral
+outputs when applied together.</p>
+<p>Additional evidence from Zou demonstrates that merging adapters can cause unwanted
+re-emergence of latent reasoning traces due to partially misaligned update
+directions.<sup id="fnref:zou2026merging"><a class="footnote-ref" href="#fn:zou2026merging">10</a></sup> Composition can reactivate behaviors from individual
+adapters that were not intended to surface in the merged result.</p>
+<p>These interference results inform Rune's design choice: the default retrieval mode
+is single-adapter selection — the most relevant adapter loaded alone, not composed
+with others. Multi-adapter composition is an experimental extension. Rune's Evolution
+Operator (described in Methods) addresses composition through fitness-driven selection
+rather than naive merging, allowing the system to discover which adapter combinations
+produce beneficial behavior rather than assuming composition is safe by default.</p>
+<hr />
+<h3 id="programming-by-backprop-code-as-procedural-abstraction">Programming by Backprop: Code as Procedural Abstraction<a class="headerlink" href="#programming-by-backprop-code-as-procedural-abstraction" title="Permanent link">&para;</a></h3>
+<p>Cook et al. demonstrate that declarative instructions — including code — can substitute
+for up to 100 execution examples when fine-tuning LLMs.<sup id="fnref:cook2025pbb"><a class="footnote-ref" href="#fn:cook2025pbb">11</a></sup> A single
+well-structured instruction achieves comparable weight updates to training on dozens
+of input-output pairs. This result establishes that the format of training signal
+matters: procedural, instruction-like representations are more information-dense than
+equivalent example sets.</p>
+<p>This finding provides independent empirical support for Rune's core premise: that code
+execution trajectories — structured, procedural, and instruction-like — may be an
+efficient substrate for adapter training. If instructions can substitute for examples,
+then trajectories, which contain both the instructions (the code) and the procedural
+context (execution results, error messages, corrections), may encode knowledge more
+efficiently than input-output pair datasets of equivalent size.</p>
+<p>PBB also finds, however, that in-context instruction execution remains more reliable
+than weight-based procedural knowledge for the tasks they tested. This means the
+approach is promising but not guaranteed: there is a gap between what can be encoded
+in weights via backpropagation and what can be reliably executed from those weights.
+Rune must empirically validate whether trajectory-trained adapters close this gap for
+coding tasks specifically.</p>
+<hr />
+<h3 id="concurrent-hypernetwork-work-and-the-trajectory-modality-argument">Concurrent Hypernetwork Work and the Trajectory Modality Argument<a class="headerlink" href="#concurrent-hypernetwork-work-and-the-trajectory-modality-argument" title="Permanent link">&para;</a></h3>
+<p>Multiple hypernetwork systems now exist for generating LoRA adapters from different
+input types. The key differentiator across these systems is the input modality — what
+goes in determines what kind of knowledge is encoded. Rune's proposed input modality,
+code execution trajectories, is structurally distinct from all existing systems.</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>Input Modality</th>
+<th>Knowledge Encoded</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Text-to-LoRA (Charakorn et al., 2025)<sup id="fnref:charakorn2025t2l"><a class="footnote-ref" href="#fn:charakorn2025t2l">12</a></sup></td>
+<td>Natural language task descriptions</td>
+<td>Declarative task specification — static, instructional</td>
+</tr>
+<tr>
+<td>Doc-to-LoRA (Charakorn et al., 2026)</td>
+<td>Long documents</td>
+<td>Factual content — informational, unstructured</td>
+</tr>
+<tr>
+<td>SHINE (Liu et al., 2026)</td>
+<td>In-context examples (few-shot demos)</td>
+<td>Demonstrated patterns — exemplary, structured pairs</td>
+</tr>
+<tr>
+<td>Rune (proposed)</td>
+<td>Code execution trajectories</td>
+<td>Procedural knowledge — sequential, causal, self-correcting</td>
+</tr>
+</tbody>
+</table>
+<p>Code execution trajectories differ from the other three modalities in three structural
+ways:</p>
+<p><strong>Temporal ordering.</strong> Steps in a trajectory have a meaningful causal sequence: code
+generation precedes execution, execution precedes error, error precedes diagnosis,
+diagnosis precedes fix. This temporal structure carries information about causality
+that is absent from documents (which present facts without an ordering obligation)
+and from examples (which present correct input-output pairs without the process that
+generated them).</p>
+<p><strong>Procedural abstraction.</strong> A trajectory encodes a procedure — how to solve a problem
+step by step — rather than a fact (what is true), an instruction (what to do), or an
+example (what a correct pair looks like). Procedural knowledge is action-oriented:
+it specifies operations, their preconditions, and their effects.</p>
+<p><strong>Self-correcting structure.</strong> Trajectories naturally contain failure-recovery patterns:
+attempt → error → diagnosis → fix. These patterns are absent from documents, instructions,
+and demonstrations. A trajectory that includes a bug and its correction encodes both
+the error pattern and its resolution in the same training signal.</p>
+<p>PBB's finding that instructions substitute for examples supports this argument from an
+independent direction: if procedural representations are efficient for weight-based
+learning, then trajectories — which are the richest procedural representation, containing
+both the procedure and its full execution context — may be the most efficient input
+modality for hypernetwork-based adapter generation. Whether this theoretical efficiency
+advantage holds in practice is a central empirical question for Rune. PBB validated
+instructions on a different task distribution; trajectories have not yet been tested
+as hypernetwork input.</p>
+<hr />
+<div class="footnote">
+<hr />
+<ol>
+<li id="fn:pink2025episodic">
+<p>Pink, M., et al. (2025). Position: Episodic Memory is the Missing Piece for Long-Term LLM Agents. <em>arXiv:2502.06975</em>. <a href="../references/#pink2025episodic">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:pink2025episodic" title="Jump back to footnote 1 in the text">&#8617;</a></p>
+</li>
+<li id="fn:hu2021lora">
+<p>Hu, E. J., et al. (2021). LoRA: Low-Rank Adaptation of Large Language Models. <em>arXiv:2106.09685</em>. <a href="../references/#hu2021lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:hu2021lora" title="Jump back to footnote 2 in the text">&#8617;</a></p>
+</li>
+<li id="fn:dettmers2023qlora">
+<p>Dettmers, T., et al. (2023). QLoRA: Efficient Finetuning of Quantized LLMs. <em>arXiv:2305.14314</em>. <a href="../references/#dettmers2023qlora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:dettmers2023qlora" title="Jump back to footnote 3 in the text">&#8617;</a></p>
+</li>
+<li id="fn:sheng2023slora">
+<p>Sheng, Y., et al. (2023). S-LoRA: Serving Thousands of Concurrent LoRA Adapters. <em>arXiv:2311.03285</em>. <a href="../references/#sheng2023slora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:sheng2023slora" title="Jump back to footnote 4 in the text">&#8617;</a></p>
+</li>
+<li id="fn:ha2016hypernetworks">
+<p>Ha, D., Dai, A., &amp; Le, Q. V. (2016). HyperNetworks. <em>arXiv:1609.09106</em>. <a href="../references/#ha2016hypernetworks">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:ha2016hypernetworks" title="Jump back to footnote 5 in the text">&#8617;</a></p>
+</li>
+<li id="fn:charakorn2026doc2lora">
+<p>Charakorn, R., et al. (2026). Doc-to-LoRA: Learning to Instantly Internalize Contexts. <em>arXiv:2602.15902</em>. <a href="../references/#charakorn2026doc2lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:charakorn2026doc2lora" title="Jump back to footnote 6 in the text">&#8617;</a></p>
+</li>
+<li id="fn:liu2026shine">
+<p>Liu, Y., et al. (2026). SHINE: A Scalable In-Context Hypernetwork for Mapping Context to LoRA in a Single Pass. <em>arXiv:2602.06358</em>. <a href="../references/#liu2026shine">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:liu2026shine" title="Jump back to footnote 7 in the text">&#8617;</a></p>
+</li>
+<li id="fn:prabhakar2024lorasoups">
+<p>Prabhakar, A., et al. (2024). LoRA Soups: Merging LoRAs for Practical Skill Composition Tasks. <em>arXiv:2410.13025</em>. <a href="../references/#prabhakar2024lorasoups">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:prabhakar2024lorasoups" title="Jump back to footnote 8 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zhang2025orthogonality">
+<p>Zhang, A., et al. (2025). Rethinking Inter-LoRA Orthogonality in Adapter Merging. <em>arXiv:2510.03262</em>. <a href="../references/#zhang2025orthogonality">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zhang2025orthogonality" title="Jump back to footnote 9 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zou2026merging">
+<p>Zou, J. (2026). Adapter Merging Reactivates Latent Reasoning Traces. <em>arXiv:2601.18350</em>. <a href="../references/#zou2026merging">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zou2026merging" title="Jump back to footnote 10 in the text">&#8617;</a></p>
+</li>
+<li id="fn:cook2025pbb">
+<p>Cook, J., et al. (2025). Programming by Backprop: An Instruction is Worth 100 Examples When Finetuning LLMs. <em>arXiv:2506.18777</em>. <a href="../references/#cook2025pbb">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:cook2025pbb" title="Jump back to footnote 11 in the text">&#8617;</a></p>
+</li>
+<li id="fn:charakorn2025t2l">
+<p>Charakorn, R., et al. (2025). Text-to-LoRA: Instant Transformer Adaption. <em>arXiv:2506.06105</em>. <a href="../references/#charakorn2025t2l">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:charakorn2025t2l" title="Jump back to footnote 12 in the text">&#8617;</a></p>
+</li>
+</ol>
+</div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+        <script src="../../assets/mermaid-init.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
