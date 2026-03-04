@@ -1,4 +1,5 @@
 """Pytest configuration for services/evolution-svc."""
+
 from typing import Generator
 
 import pytest

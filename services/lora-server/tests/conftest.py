@@ -3,6 +3,7 @@
 lora-server is a Dockerfile-only service (not a uv workspace member).
 We add its src directory to sys.path so tests can import directly.
 """
+
 import sys
 from pathlib import Path
 

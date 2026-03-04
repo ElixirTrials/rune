@@ -1,9 +1,9 @@
 """TDD tests for shared.rune_models — field types, defaults, and serialization."""
 
-
 from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
 
 # --- AdapterRef tests ---
+
 
 def test_adapter_ref_required_fields(make_adapter_ref) -> None:
     """AdapterRef has adapter_id and task_type as required fields."""
@@ -29,6 +29,7 @@ def test_adapter_ref_round_trip_serialization(make_adapter_ref) -> None:
 
 
 # --- CodingSession tests ---
+
 
 def test_coding_session_required_fields(make_coding_session) -> None:
     """CodingSession has session_id, task_description, and task_type as required."""
@@ -57,6 +58,7 @@ def test_coding_session_round_trip_serialization(make_coding_session) -> None:
 
 
 # --- EvolMetrics tests ---
+
 
 def test_evol_metrics_required_fields(make_evol_metrics) -> None:
     """EvolMetrics has adapter_id, pass_rate, and fitness_score as required."""

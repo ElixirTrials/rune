@@ -3,6 +3,7 @@
 Provides a mock vLLM client fixture for testing inference functions
 without a running vLLM server.
 """
+
 from typing import Generator
 from unittest.mock import MagicMock
 

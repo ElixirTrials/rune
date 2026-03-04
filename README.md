@@ -214,3 +214,9 @@ Rune is at the research stage — there is no working code to contribute to yet.
 Open a thread in [GitHub Discussions](../../discussions) or reach out directly. The architecture documentation, design decisions, and open questions are available in the project documentation.
 
 The most useful form of collaboration at this stage is critique: identifying flaws in the architectural reasoning, pointing to prior work that addresses the open questions, or sharing results from related experiments. Code contributions will become relevant once the core hypothesis is validated and implementation begins.
+
+---
+
+## License
+
+This project is licensed under the **PolyForm Noncommercial License 1.0.0** (see `LICENSE`), which **does not allow commercial use**.
