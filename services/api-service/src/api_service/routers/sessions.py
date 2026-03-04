@@ -7,7 +7,7 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.get("")
-async def list_sessions():
+async def list_sessions() -> JSONResponse:
     """List coding sessions.
 
     Returns:
@@ -29,7 +29,7 @@ async def list_sessions():
 
 
 @router.get("/{session_id}")
-async def get_session(session_id: str):
+async def get_session(session_id: str) -> JSONResponse:
     """Get coding session by ID.
 
     Args:
@@ -53,7 +53,7 @@ async def get_session(session_id: str):
 
 
 @router.post("")
-async def create_session():
+async def create_session() -> JSONResponse:
     """Create a new coding session.
 
     Returns:

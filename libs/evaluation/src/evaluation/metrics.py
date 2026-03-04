@@ -148,7 +148,7 @@ def compare_adapters(
         >>> results = compare_adapters(["adapter-001", "adapter-002"])
         >>> results["best_adapter"] in ["adapter-001", "adapter-002"]
         True
-        >>> results["rankings"][0] == results["best_adapter"]
+        >>> results["best_adapter"] in results["rankings"]
         True
     """
     raise NotImplementedError("compare_adapters is not yet implemented.")

@@ -78,8 +78,8 @@ def format_for_sft(trajectory: dict[str, Any]) -> list[dict[str, str]]:
 
     Example:
         >>> messages = format_for_sft(trajectory)
-        >>> messages[0]["role"]  # Returns 'user' or 'assistant' when implemented
-        'user'
+        >>> all("role" in m for m in messages)
+        True
     """
     raise NotImplementedError(
         "format_for_sft is not yet implemented. "

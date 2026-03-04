@@ -7,7 +7,7 @@ router = APIRouter(prefix="/adapters", tags=["adapters"])
 
 
 @router.get("")
-async def list_adapters():
+async def list_adapters() -> JSONResponse:
     """List all stored adapters.
 
     Returns:
@@ -29,7 +29,7 @@ async def list_adapters():
 
 
 @router.get("/{adapter_id}")
-async def get_adapter(adapter_id: str):
+async def get_adapter(adapter_id: str) -> JSONResponse:
     """Get adapter by ID.
 
     Args:
@@ -53,7 +53,7 @@ async def get_adapter(adapter_id: str):
 
 
 @router.post("")
-async def create_adapter():
+async def create_adapter() -> JSONResponse:
     """Store a new adapter.
 
     Returns:
