@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "a3cf448d20b5",
+  "session_id": "d28c89b1-7ca9-4ec9-8a6f-7ba81022f238",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-04T15:04:56.573834Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/appendices/build-order.md",
+    "docs/architecture/multi-gpu-strategy.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "2572d8b96bed",
+  "checkpoint_transcript_start": 175,
+  "transcript_lines_at_start": 175,
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 16371,
+    "cache_read_tokens": 786198,
+    "output_tokens": 2502,
+    "api_call_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-04T15:04:56.483422Z",
+    "agent_lines": 14,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 14,
+    "agent_percentage": 100
+  }
+}

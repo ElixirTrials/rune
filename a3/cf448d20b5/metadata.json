@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "a3cf448d20b5",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/appendices/build-order.md",
+    "docs/architecture/multi-gpu-strategy.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a3/cf448d20b5/0/metadata.json",
+      "transcript": "/a3/cf448d20b5/0/full.jsonl",
+      "context": "/a3/cf448d20b5/0/context.md",
+      "content_hash": "/a3/cf448d20b5/0/content_hash.txt",
+      "prompt": "/a3/cf448d20b5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 16371,
+    "cache_read_tokens": 786198,
+    "output_tokens": 2502,
+    "api_call_count": 11
+  }
+}

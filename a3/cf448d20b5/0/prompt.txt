@@ -1,0 +1,77 @@
+<objective>
+Check project progress, summarize recent work and what's ahead, then intelligently route to the next action - either executing an existing plan or creating the next one.
+
+Provides situational awareness before continuing work.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/progress.md
+</execution_context>
+
+<process>
+Execute the progress workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/progress.md end-to-end.
+Preserve all routing logic (Routes A through F) and edge case handling.
+</process>
+
+---
+
+Can you fix these make docs-build warnings: WARNING -  griffe: services/api-service/src/api_service/routers/adapters.py:14: No type or annotation for returned value 1
+WARNING -  griffe: services/api-service/src/api_service/routers/adapters.py:39: No type or annotation for returned value 1
+WARNING -  griffe: services/api-service/src/api_service/routers/adapters.py:60: No type or annotation for returned value 1
+WARNING -  griffe: services/api-service/src/api_service/routers/sessions.py:14: No type or annotation for returned value 1
+WARNING -  griffe: services/api-service/src/api_service/routers/sessions.py:39: No type or annotation for returned value 1
+WARNING -  griffe: services/api-service/src/api_service/routers/sessions.py:60: No type or annotation for returned value 1
+WARNING -  mkdocs_autorefs: evaluation/api/index.md: from /Users/noahdolevelixir/Code/rune/libs/evaluation/src/evaluation/metrics.py:125:
+           (evaluation.compare_adapters) Could not find cross-reference target '0'
+WARNING -  mkdocs_autorefs: evaluation/api/index.md: from /Users/noahdolevelixir/Code/rune/libs/evaluation/src/evaluation/metrics.py:125:
+           (evaluation.metrics.compare_adapters) Could not find cross-reference target '0'
+WARNING -  mkdocs_autorefs: model-training/api/index.md: from
+           /Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/trajectory.py:65: (model_training.trajectory.format_for_sft)
+           Could not find cross-reference target '"role"'
+INFO    -  Documentation built in 1.54 seconds
+
+---
+
+Double check that Phase 03 was properly completed.
+
+---
+
+<objective>
+Create executable phase prompts (PLAN.md files) for a roadmap phase with integrated research and verification.
+
+**Default flow:** Research (if needed) → Plan → Verify → Done
+
+**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn gsd-planner, verify with gsd-plan-checker, iterate until pass or max iterations, present results.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase number: 18 (optional — auto-detects next unplanned phase if omitted)
+
+**Flags:**
+- `--research` — Force re-research even if RESEARCH.md exists
+- `--skip-research` — Skip research, go straight to planning
+- `--gaps` — Gap closure mode (reads VERIFICATION.md, skips research)
+- `--skip-verify` — Skip verification loop
+- `--prd <file>` — Use a PRD/acceptance criteria file instead of discuss-phase. Parses requirements into CONTEXT.md automatically. Skips discuss-phase entirely.
+
+Normalize phase input in step 2 before any directory lookups.
+</context>
+
+<process>
+Execute the plan-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/plan-phase.md end-to-end.
+Preserve all workflow gates (validation, research, planning, verification loop, routing).
+</process>
+
+---
+
+In your progress report you wrote "Phase 17 of 18 complete. 17/18 phases done.
+  One anomaly: Phase 03 (Architecture Docs) has a summary but no plan files — likely completed outside the GSD workflow early in the project."
+
+---
+
+Some of the mermaid plots in the docs are failing to render with a syntax error.
