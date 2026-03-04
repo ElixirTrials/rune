@@ -5,7 +5,7 @@
 - [x] **v1.0 Documentation & Implementation Plan** - Phases 1-3 (shipped 2026-03-02)
 - [x] **v2.0 Repo Restructuring & Scaffold** - Phases 4-7 (shipped 2026-03-03)
 - [x] **v3.0 Scientific Article Documentation** - Phases 8-12 (shipped 2026-03-03)
-- [ ] **v4.0 API Wireframes & TDD Foundation** - Phases 13-17 (in progress)
+- [x] **v4.0 API Wireframes & TDD Foundation** - Phases 13-17 (shipped 2026-03-04)
 
 ## Phases
 
@@ -289,8 +289,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 15-01-PLAN.md — Rework libs/inference: remove template code (loaders.py, factory.py); expand adapter_loader.py; add completion.py; write failing TDD tests for all 6 functions
-- [ ] 15-02-PLAN.md — Wireframe libs/evaluation from scratch: scaffold module, 6 public functions with Google-style docstrings and NotImplementedError; write failing TDD tests
+- [x] 15-01-PLAN.md — Rework libs/inference: remove template code (loaders.py, factory.py); expand adapter_loader.py; add completion.py; write failing TDD tests for all 6 functions
+- [x] 15-02-PLAN.md — Wireframe libs/evaluation from scratch: scaffold module, 6 public functions with Google-style docstrings and NotImplementedError; write failing TDD tests
 
 ### Phase 16: Service Wireframes
 **Goal**: All five services have complete API wireframes — every endpoint handler, node function, and client method has a Google-style docstring with Args, Returns, Raises sections, and every function has a failing TDD test asserting the expected response schema and status code (for HTTP endpoints) or return type (for internal functions)
@@ -304,10 +304,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 16-01-PLAN.md — Upgrade services/api-service: Google-style docstrings on 6 endpoints; write failing TestClient tests for each
-- [ ] 16-02-PLAN.md — Upgrade services/evolution-svc and services/training-svc: Google-style docstrings on all endpoints; write failing TestClient tests
+- [x] 16-01-PLAN.md — Upgrade services/api-service: Google-style docstrings on 6 endpoints; write failing TestClient tests for each
+- [x] 16-02-PLAN.md — Upgrade services/evolution-svc and services/training-svc: Google-style docstrings on all endpoints; write failing TestClient tests
 - [x] 16-03-PLAN.md — Upgrade services/rune-agent: Google-style docstrings on 4 nodes + 2 graph functions; write failing tests for node state mutations and should_retry branches
-- [ ] 16-04-PLAN.md — Upgrade services/lora-server: Google-style docstrings on check_vllm_ready and VLLMClient methods; write failing tests (direct Python, no TestClient)
+- [x] 16-04-PLAN.md — Upgrade services/lora-server: Google-style docstrings on check_vllm_ready and VLLMClient methods; write failing tests (direct Python, no TestClient)
 
 ### Phase 17: Quality Gate
 **Goal**: The TDD red phase is verified — every new test fails with the correct failure mode (NotImplementedError or assertion failure, never unexpected pass), every public method across all 11 components has a complete Google-style docstring, and the full workspace passes ruff and mypy cleanly
@@ -320,8 +320,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 17-01-PLAN.md — Run full pytest suite; verify all TDD tests fail with NotImplementedError or assertion failure; fix any unexpected passes; confirm red-phase pattern
-- [ ] 17-02-PLAN.md — Docstring coverage audit across all 11 components; fix any missing or incomplete Google-style docstrings; run ruff + mypy gate to completion
+- [x] 17-01-PLAN.md — Run full pytest suite; verify all TDD tests fail with NotImplementedError or assertion failure; fix any unexpected passes; confirm red-phase pattern
+- [x] 17-02-PLAN.md — Docstring coverage audit across all 11 components; fix any missing or incomplete Google-style docstrings; run ruff + mypy gate to completion
 
 ## Progress
 
@@ -347,4 +347,4 @@ Phases execute in numeric order: 13 → 14 → 15 → 16 → 17
 | 14. Core Library Wireframes | v4.0 | Complete    | 2026-03-03 | 2026-03-03 |
 | 15. New & Reworked Library Wireframes | 2/2 | Complete    | 2026-03-03 | - |
 | 16. Service Wireframes | 4/4 | Complete   | 2026-03-03 | - |
-| 17. Quality Gate | 1/2 | In Progress|  | - |
+| 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |

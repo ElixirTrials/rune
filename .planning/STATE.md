@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: API Wireframes & TDD Foundation
 status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-03-04T06:48:52.856Z"
-last_activity: 2026-03-03 — completed 15-01; libs/inference cleaned of Vertex AI/LangChain code; 4 adapter + 3 completion stubs; 9 TDD tests passing; LIB-07 satisfied
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-03-04T07:03:56Z"
+last_activity: 2026-03-04 — completed 17-02; docstring audit + ruff/mypy clean exit across all 11 components
 progress:
   total_phases: 18
-  completed_phases: 16
-  total_plans: 40
-  completed_plans: 40
-  percent: 5
+  completed_phases: 17
+  total_plans: 42
+  completed_plans: 42
+  percent: 100
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 17 of 18 (Quality Gate)
-Plan: 1 of 2 in current phase (17-01 complete, 17-02 next)
-Status: In progress — plan 17-01 complete; verified clean red-phase TDD pattern across 87 tests
-Last activity: 2026-03-04 — completed 17-01; verified 74 pass + 13 expected failures, zero errors/unexpected results
+Phase: 17 of 18 (Quality Gate) -- COMPLETE
+Plan: 2 of 2 in current phase (17-01 complete, 17-02 complete)
+Status: Phase 17 complete -- all static analysis gates pass (ruff + mypy + docstring coverage)
+Last activity: 2026-03-04 -- completed 17-02; docstring audit + ruff config consolidation + mypy clean exit
 
 Progress: [██████████] 100% of v4.0 (v1.0 complete; v2.0 complete; v3.0 complete)
 
@@ -72,6 +72,7 @@ Progress: [██████████] 100% of v4.0 (v1.0 complete; v2.0 com
 | Phase 16 P01 | 2 | 2 tasks | 5 files |
 | Phase 16 P03 | 2 min | 2 tasks | 5 files |
 | Phase 17 P01 | 1 | 2 tasks | 0 files |
+| Phase 17 P02 | 11 min | 2 tasks | 41 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Recent decisions affecting current work:
 - [Phase 16]: Factory fixtures duplicated in api-service conftest.py because pytest rootdir isolation (local pyproject.toml) prevents root conftest.py discovery
 - [16-03]: Component pyproject.toml needs asyncio_mode=auto and pytest-asyncio for standalone test runs — root config alone is insufficient when pytest picks up component config
 - [Phase 17]: No test fixes needed - all 87 tests have correct behavior (zero unexpected failures or passes)
+- [Phase 17-02]: Centralized ruff config in root pyproject.toml; removed per-component [tool.ruff] sections to fix broken dotted-key format
+- [Phase 17-02]: Per-file-ignores exempt tests/conftest/scripts from D/C901/E501 rules
 
 ### Pending Todos
 
@@ -110,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T06:48:52.854Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-03-04T07:03:56Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None

@@ -132,8 +132,8 @@ Requirements for milestone v4.0 — API Wireframes & TDD Foundation.
 ### Quality Gate
 
 - [x] **QA-05**: Every new TDD test fails with either NotImplementedError or assertion failure (TDD red phase verified — `uv run pytest` reports expected test failures, zero unexpected passes)
-- [ ] **QA-06**: Every public method/function across all 11 components has a Google-style docstring with at minimum Args, Returns, and Raises sections
-- [ ] **QA-07**: `uv run ruff check .` passes cleanly; `uv run mypy services/*/src libs/*/src` passes cleanly; no new lint or type errors introduced
+- [x] **QA-06**: Every public method/function across all 11 components has a Google-style docstring with at minimum Args, Returns, and Raises sections
+- [x] **QA-07**: `uv run ruff check .` passes cleanly; `uv run mypy services/*/src libs/*/src` passes cleanly; no new lint or type errors introduced
 
 ## Future Requirements (Deferred)
 
@@ -256,8 +256,8 @@ Which phases cover which requirements.
 | SVC-09 | Phase 16 | Complete |
 | SVC-10 | Phase 16 | Complete |
 | QA-05 | Phase 17 | Complete |
-| QA-06 | Phase 17 | Pending |
-| QA-07 | Phase 17 | Pending |
+| QA-06 | Phase 17 | Complete |
+| QA-07 | Phase 17 | Complete |
 
 **v4 Coverage:**
 - v4 requirements: 17 total
