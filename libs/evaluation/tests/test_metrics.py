@@ -1,10 +1,12 @@
 """Tests for evaluation.metrics module.
 
-Green-phase tests for calculate_pass_at_k and run_kill_switch_gate.
-Wireframe NotImplementedError tests retained for still-unimplemented stubs.
+Green-phase tests for calculate_pass_at_k, run_kill_switch_gate, and
+run_humaneval_subset. Wireframe NotImplementedError tests retained for
+still-unimplemented stubs.
 """
 
-import math
+import json
+from pathlib import Path
 
 import pytest
 from evaluation.metrics import (
@@ -125,12 +127,101 @@ def test_evaluate_fitness_raises_not_implemented() -> None:
 
 
 # ---------------------------------------------------------------------------
-# run_humaneval_subset — green-phase tests (placeholder until Task 2)
-# These will be replaced in Task 2 with full implementation tests.
+# run_humaneval_subset — green-phase tests
 # ---------------------------------------------------------------------------
 
+HUMANEVAL_JSON = (
+    Path(__file__).parent.parent
+    / "src"
+    / "evaluation"
+    / "data"
+    / "humaneval_subset.json"
+)
 
-def test_run_humaneval_subset_raises_not_implemented() -> None:
-    """run_humaneval_subset raises NotImplementedError with function name."""
-    with pytest.raises(NotImplementedError, match="run_humaneval_subset"):
-        run_humaneval_subset(adapter_id=None)
+
+def test_humaneval_json_exists() -> None:
+    """humaneval_subset.json file exists in the data directory."""
+    assert HUMANEVAL_JSON.exists(), f"Expected JSON at {HUMANEVAL_JSON}"
+
+
+def test_humaneval_json_has_20_tasks() -> None:
+    """humaneval_subset.json contains exactly 20 tasks."""
+    with HUMANEVAL_JSON.open() as f:
+        tasks = json.load(f)
+    assert len(tasks) == 20, f"Expected 20 tasks, got {len(tasks)}"
+
+
+def test_humaneval_json_task_fields() -> None:
+    """Each task has required fields: task_id, prompt, canonical_solution, test, entry_point."""
+    with HUMANEVAL_JSON.open() as f:
+        tasks = json.load(f)
+    required = {"task_id", "prompt", "canonical_solution", "test", "entry_point"}
+    for task in tasks:
+        missing = required - task.keys()
+        assert not missing, f"Task {task.get('task_id', '?')} missing fields: {missing}"
+
+
+def test_humaneval_json_contains_task_0() -> None:
+    """humaneval_subset.json contains HumanEval/0."""
+    with HUMANEVAL_JSON.open() as f:
+        tasks = json.load(f)
+    task_ids = {t["task_id"] for t in tasks}
+    assert "HumanEval/0" in task_ids
+
+
+def test_run_humaneval_subset_baseline_returns_expected_keys() -> None:
+    """run_humaneval_subset returns dict with pass_count, fail_count, pass_rate, task_results."""
+    # Use canonical solutions as completions for a subset
+    with HUMANEVAL_JSON.open() as f:
+        tasks = json.load(f)
+    # Just pass one task via completions
+    first_task = tasks[0]
+    completions = {first_task["task_id"]: first_task["canonical_solution"]}
+    result = run_humaneval_subset(adapter_id=None, completions=completions)
+    assert "pass_count" in result
+    assert "fail_count" in result
+    assert "pass_rate" in result
+    assert "task_results" in result
+
+
+def test_run_humaneval_subset_task_results_structure() -> None:
+    """task_results has one entry per task with task_id and passed boolean."""
+    with HUMANEVAL_JSON.open() as f:
+        tasks = json.load(f)
+    first_task = tasks[0]
+    completions = {first_task["task_id"]: first_task["canonical_solution"]}
+    result = run_humaneval_subset(adapter_id=None, completions=completions)
+    assert len(result["task_results"]) == 1
+    tr = result["task_results"][0]
+    assert "task_id" in tr
+    assert "passed" in tr
+    assert isinstance(tr["passed"], bool)
+
+
+def test_run_humaneval_subset_canonical_solution_passes() -> None:
+    """A task with correct canonical_solution passes the execution pipeline."""
+    with HUMANEVAL_JSON.open() as f:
+        tasks = json.load(f)
+    # HumanEval/0: has_close_elements — canonical solution should pass
+    task = next(t for t in tasks if t["task_id"] == "HumanEval/0")
+    completions = {task["task_id"]: task["canonical_solution"]}
+    result = run_humaneval_subset(adapter_id=None, completions=completions)
+    assert result["pass_count"] >= 1
+    passed_task = next(
+        t for t in result["task_results"] if t["task_id"] == "HumanEval/0"
+    )
+    assert passed_task["passed"] is True
+
+
+def test_run_humaneval_subset_wrong_completion_fails() -> None:
+    """An intentionally wrong completion results in a failed task."""
+    with HUMANEVAL_JSON.open() as f:
+        tasks = json.load(f)
+    task = tasks[0]
+    # Deliberately wrong: always returns empty list
+    completions = {task["task_id"]: "    return []"}
+    result = run_humaneval_subset(adapter_id=None, completions=completions)
+    failed_task = next(
+        t for t in result["task_results"] if t["task_id"] == task["task_id"]
+    )
+    assert failed_task["passed"] is False
