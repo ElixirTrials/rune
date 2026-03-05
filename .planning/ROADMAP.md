@@ -58,7 +58,7 @@
 
 - [x] **Phase 18: Adapter Registry** — SQLite-backed CRUD hub that all other components read from and write to (2/2 plans complete)
 - [x] **Phase 19: Inference Provider Abstraction** — Abstract InferenceProvider interface with vLLM and Ollama implementations, provider factory, and lora-server configuration (3/3 plans complete)
-- [ ] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence
+- [ ] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence (2 plans)
 - [ ] **Phase 21: QLoRA Training Pipeline** — Full gradient-descent training path from trajectory to PEFT adapter stored in registry, with training-svc HTTP dispatch
 - [ ] **Phase 22: Kill-Switch Gate** — Doc-to-LoRA hypernetwork + evaluation lib measuring the 5% Pass@1 improvement threshold
 
@@ -108,7 +108,11 @@ Plans:
   3. reflect_node accumulates attempt count and trajectory data without making any LLM call
   4. save_trajectory_node writes a structured JSON trajectory file (session_id, steps, outcome) readable after the session ends
   5. Agent loop closes end-to-end: retries on failure up to max_attempts, then terminates with either success or exhausted outcome; RuneState includes session_id field
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 20-01-PLAN.md — Trajectory library (record, load, format_for_sft) + RuneState session_id + model-training workspace dep
+- [ ] 20-02-PLAN.md — All 4 node implementations (generate, execute, reflect, save_trajectory) + green-phase test rewrites
 
 ### Phase 21: QLoRA Training Pipeline
 **Goal**: Users can trigger end-to-end QLoRA training from a recorded trajectory, producing a PEFT safetensors adapter stored in the registry and accessible for loading via the inference provider
@@ -157,10 +161,10 @@ Plans:
 | 16. Service Wireframes | v4.0 | 4/4 | Complete | 2026-03-03 |
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 19. Inference Provider Abstraction | v5.0 | 3/3 | Complete | 2026-03-05 |
-| 20. Agent Loop | v5.0 | 0/TBD | Not started | - |
+| 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
+| 20. Agent Loop | v5.0 | 0/2 | Planned | - |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after 19-03 complete (Phase 19 fully done — inference provider abstraction)*
+*Last updated: 2026-03-05 after Phase 20 planning complete (2 plans in 2 waves)*
