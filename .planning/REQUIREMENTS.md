@@ -102,11 +102,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AREG-01 | Phase 18 | Pending |
-| AREG-02 | Phase 18 | Pending |
-| AREG-03 | Phase 18 | Pending |
-| AREG-04 | Phase 18 | Pending |
-| AREG-05 | Phase 18 | Pending |
+| AREG-01 | Phase 18 | Complete |
+| AREG-02 | Phase 18 | Complete |
+| AREG-03 | Phase 18 | Complete |
+| AREG-04 | Phase 18 | Complete |
+| AREG-05 | Phase 18 | Complete |
 | INF-01 | Phase 19 | Pending |
 | INF-02 | Phase 19 | Pending |
 | INF-03 | Phase 19 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: in-progress
-stopped_at: Completed 18-01-PLAN.md
-last_updated: "2026-03-05T10:36:00.000Z"
-last_activity: "2026-03-05 — 18-01 complete: AdapterRegistry implemented (Engine constructor, WAL hook, 4 CRUD methods, 11 tests, mypy+ruff clean)"
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-03-05T10:37:10Z"
+last_activity: "2026-03-05 — 18-02 complete: Green-phase test suite with conftest fixtures, WAL mode verification, 5-thread concurrent write test; 16 tests all passing"
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 1
-  completed_plans: 1
-  percent: 5
+  total_plans: 2
+  completed_plans: 2
+  percent: 10
 ---
 
 # Project State
@@ -21,29 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Phase 18 — Adapter Registry (Plan 01 complete)
+**Current focus:** Phase 18 — Adapter Registry (Plans 01 and 02 complete — Phase 18 DONE)
 
 ## Current Position
 
-Phase: 18 of 22 (Adapter Registry)
-Plan: 01 complete (18-01-PLAN.md done)
-Status: In progress — ready for next plan
-Last activity: 2026-03-05 — 18-01 complete: AdapterRegistry implemented (Engine constructor, WAL hook, 4 CRUD methods, 11 tests, mypy+ruff clean)
+Phase: 18 of 22 (Adapter Registry) — COMPLETE
+Plan: 02 complete (18-02-PLAN.md done)
+Status: In progress — Phase 18 complete, ready for Phase 19
+Last activity: 2026-03-05 — 18-02 complete: Green-phase test suite with conftest fixtures, WAL mode verification, 5-thread concurrent write test; 16 tests all passing
 
-Progress: [█░░░░░░░░░] 5%
+Progress: [██░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1 (v5.0)
-- Average duration: 12 min
-- Total execution time: 12 min
+- Total plans completed: 2 (v5.0)
+- Average duration: 8.5 min
+- Total execution time: 17 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 18-adapter-registry | 1 | 12 min | 12 min |
+| 18-adapter-registry | 2 | 17 min | 8.5 min |
 
 *Updated after each plan completion*
 
@@ -62,8 +62,10 @@ Recent decisions affecting v5.0:
 - evolution-svc explicitly out of scope for v5.0 (deferred to v6+)
 - bfloat16 hardcoded in build_qlora_config (float16 causes silent NaN loss at 7B scale)
 - max_loras=2, max_lora_rank=64, gpu_memory_utilization=0.80 to avoid VRAM OOM at startup
-- Engine from sqlalchemy.engine not sqlmodel — SQLModel does not re-export Engine (discovered 18-01)
+- Engine from sqlalchemy.engine not sqlmodel — SQLModel does not re-export Engine (discovered 18-01, confirmed 18-02)
 - Session-per-method pattern with expire_on_commit=False + expunge() — required to prevent DetachedInstanceError when returning records from closed sessions (established 18-01)
+- WAL test must use file-based engine (tmp_path), not :memory: — WAL has no practical effect on in-memory SQLite
+- memory_engine fixture: create_engine("sqlite:///:memory:") with function scope gives per-test isolation at zero cleanup cost
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T10:36:00.000Z
-Stopped at: Completed 18-01-PLAN.md
-Resume file: .planning/phases/18-adapter-registry/18-01-SUMMARY.md
+Last session: 2026-03-05T10:37:10Z
+Stopped at: Completed 18-02-PLAN.md
+Resume file: .planning/phases/18-adapter-registry/18-02-SUMMARY.md

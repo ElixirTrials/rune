@@ -56,7 +56,7 @@
 
 **Milestone Goal:** Transform wireframe stubs into a working end-to-end system — adapter registry to provider-agnostic inference to agent loop to QLoRA training to Doc-to-LoRA kill-switch gate — running entirely on local hardware.
 
-- [x] **Phase 18: Adapter Registry** — SQLite-backed CRUD hub that all other components read from and write to (Plan 01 complete)
+- [x] **Phase 18: Adapter Registry** — SQLite-backed CRUD hub that all other components read from and write to (2/2 plans complete)
 - [ ] **Phase 19: Inference Provider Abstraction** — Abstract InferenceProvider interface with vLLM and Ollama implementations, provider factory, and lora-server configuration
 - [ ] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence
 - [ ] **Phase 21: QLoRA Training Pipeline** — Full gradient-descent training path from trajectory to PEFT adapter stored in registry, with training-svc HTTP dispatch
@@ -78,7 +78,7 @@
 
 Plans:
 - [x] 18-01-PLAN.md — Implement AdapterRegistry: constructor (Engine + WAL hook + create_all) and 4 CRUD methods — DONE 2026-03-05
-- [ ] 18-02-PLAN.md — Pivot tests from red to green: update conftest fixtures, replace NotImplementedError assertions, add WAL and concurrency integration tests
+- [x] 18-02-PLAN.md — Pivot tests from red to green: update conftest fixtures, replace NotImplementedError assertions, add WAL and concurrency integration tests — DONE 2026-03-05
 
 ### Phase 19: Inference Provider Abstraction
 **Goal**: Users can generate completions and hot-load/unload LoRA adapters through a provider-agnostic interface, with vLLM and Ollama backends selectable by configuration and a correctly configured lora-server
@@ -151,11 +151,11 @@ Plans:
 | 15. New & Reworked Library Wireframes | v4.0 | 2/2 | Complete | 2026-03-03 |
 | 16. Service Wireframes | v4.0 | 4/4 | Complete | 2026-03-03 |
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
-| 18. Adapter Registry | v5.0 | 1/2 | In progress | - |
+| 18. Adapter Registry | v5.0 | 2/2 | Complete | 2026-03-05 |
 | 19. Inference Provider Abstraction | v5.0 | 0/TBD | Not started | - |
 | 20. Agent Loop | v5.0 | 0/TBD | Not started | - |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after Phase 18 Plan 01 execution (AdapterRegistry implemented)*
+*Last updated: 2026-03-05 after Phase 18 Plan 02 execution (Phase 18 complete — 16 tests green, WAL + concurrency verified)*
