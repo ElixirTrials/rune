@@ -137,3 +137,48 @@ def test_list_all_returns_empty_when_all_archived(
     registry.store(make_adapter_record(id="archived", is_archived=True))
     results = registry.list_all()
     assert results == []
+
+
+# --- WAL mode integration ---
+
+
+def test_wal_mode_enabled(tmp_path) -> None:
+    """AdapterRegistry enables WAL journal mode on file-based SQLite engine."""
+    from sqlalchemy import text
+
+    db_path = tmp_path / "test.db"
+    wal_engine = create_engine(f"sqlite:///{db_path}")
+    AdapterRegistry(engine=wal_engine)
+    with wal_engine.connect() as conn:
+        result = conn.execute(text("PRAGMA journal_mode")).scalar()
+    assert result == "wal"
+
+
+# --- Concurrent writes integration ---
+
+
+def test_concurrent_writes_no_deadlock(tmp_path, make_adapter_record) -> None:
+    """Five concurrent writes complete without deadlock or errors."""
+    import threading
+
+    db_path = tmp_path / "concurrent.db"
+    conc_engine = create_engine(f"sqlite:///{db_path}")
+    conc_registry = AdapterRegistry(engine=conc_engine)
+    errors: list[Exception] = []
+
+    def write(adapter_id: str) -> None:
+        try:
+            conc_registry.store(make_adapter_record(id=adapter_id))
+        except Exception as e:
+            errors.append(e)
+
+    threads = [
+        threading.Thread(target=write, args=(f"t-{i}",)) for i in range(5)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == [], f"Concurrent writes produced errors: {errors}"
+    assert len(conc_registry.list_all()) == 5
