@@ -128,7 +128,7 @@ Plans:
 
 Plans:
 - [x] 21-01-PLAN.md — Implement model-training library: peft_utils, config, train_qlora orchestrator, GPU deps, mypy overrides — DONE 2026-03-05
-- [ ] 21-02-PLAN.md — Wire training-svc endpoints: POST /train/lora + GET /jobs/{job_id} with background job dispatch
+- [x] 21-02-PLAN.md — Wire training-svc endpoints: POST /train/lora + GET /jobs/{job_id} with background job dispatch — DONE 2026-03-05
 
 ### Phase 22: Kill-Switch Gate
 **Goal**: Users can measure whether Doc-to-LoRA-generated adapters improve Pass@1 on a HumanEval subset by at least 5% relative to the base model, validating the core hypothesis
@@ -140,7 +140,12 @@ Plans:
   3. User can call run_humaneval_subset() and receive pass/fail results for each task in the 20-task subset
   4. User can call calculate_pass_at_k() and receive a Pass@1 score for both baseline and adapter-enhanced configurations
   5. Kill-switch gate comparison prints a clear verdict: PASS (>=5% improvement) or FAIL (hypothesis rejected), with both baseline and adapter Pass@1 scores shown
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 22-01-PLAN.md — DocToLoraHypernetwork Perceiver module with rank-8 LoRA weight generation and PEFT serialization
+- [ ] 22-02-PLAN.md — Evaluation lib: calculate_pass_at_k, run_humaneval_subset with bundled 20-task data, run_kill_switch_gate verdict
+- [ ] 22-03-PLAN.md — Wire POST /train/hypernetwork endpoint with background task dispatch
 
 ## Progress
 
@@ -167,8 +172,8 @@ Plans:
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 21. QLoRA Training Pipeline | 2/2 | Complete   | 2026-03-05 | - |
-| 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
+| 21. QLoRA Training Pipeline | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
+| 22. Kill-Switch Gate | v5.0 | 0/3 | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after Phase 21-01 complete (peft_utils, config, train_qlora, train_and_register)*
+*Last updated: 2026-03-05 after Phase 22 planning complete (3 plans in 2 waves)*
