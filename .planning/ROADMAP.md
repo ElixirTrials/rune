@@ -57,7 +57,7 @@
 **Milestone Goal:** Transform wireframe stubs into a working end-to-end system — adapter registry to provider-agnostic inference to agent loop to QLoRA training to Doc-to-LoRA kill-switch gate — running entirely on local hardware.
 
 - [x] **Phase 18: Adapter Registry** — SQLite-backed CRUD hub that all other components read from and write to (2/2 plans complete)
-- [ ] **Phase 19: Inference Provider Abstraction** — Abstract InferenceProvider interface with vLLM and Ollama implementations, provider factory, and lora-server configuration
+- [x] **Phase 19: Inference Provider Abstraction** — Abstract InferenceProvider interface with vLLM and Ollama implementations, provider factory, and lora-server configuration (3/3 plans complete)
 - [ ] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence
 - [ ] **Phase 21: QLoRA Training Pipeline** — Full gradient-descent training path from trajectory to PEFT adapter stored in registry, with training-svc HTTP dispatch
 - [ ] **Phase 22: Kill-Switch Gate** — Doc-to-LoRA hypernetwork + evaluation lib measuring the 5% Pass@1 improvement threshold
@@ -94,9 +94,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 19-01-PLAN.md — InferenceProvider ABC + GenerationResult + VLLMProvider + OllamaProvider with full test coverage
+- [x] 19-01-PLAN.md — InferenceProvider ABC + GenerationResult + VLLMProvider + OllamaProvider with full test coverage — DONE 2026-03-05
 - [x] 19-02-PLAN.md — lora-server Dockerfile update (vLLM base image + runtime LoRA env) and docker-compose port conflict fix — DONE 2026-03-05
-- [ ] 19-03-PLAN.md — Provider factory with instance cache + per-step config + __init__.py exports + delete old stubs
+- [x] 19-03-PLAN.md — Provider factory with instance cache + per-step config + __init__.py exports + delete old stubs — DONE 2026-03-05
 
 ### Phase 20: Agent Loop
 **Goal**: Users can invoke the Rune agent on a coding task and observe a complete generate → execute → reflect → save_trajectory cycle through the InferenceProvider interface, with trajectory data persisted to disk
@@ -157,10 +157,10 @@ Plans:
 | 16. Service Wireframes | v4.0 | 4/4 | Complete | 2026-03-03 |
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 19. Inference Provider Abstraction | 2/3 | In Progress|  | - |
+| 19. Inference Provider Abstraction | v5.0 | 3/3 | Complete | 2026-03-05 |
 | 20. Agent Loop | v5.0 | 0/TBD | Not started | - |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after 19-02 complete (lora-server infra update)*
+*Last updated: 2026-03-05 after 19-03 complete (Phase 19 fully done — inference provider abstraction)*

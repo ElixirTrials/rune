@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Completed 19-01-PLAN.md
-last_updated: "2026-03-05T14:23:53.152Z"
-last_activity: "2026-03-05 — 19-02 complete: vLLM Dockerfile (v0.16.0), VLLM_ALLOW_RUNTIME_LORA_UPDATING env, max_lora_rank/gpu_memory_utilization config fields, port conflict fixed (8100:8000), shared rune_data SQLite volume; 4 tests passing"
+stopped_at: Completed 19-03-PLAN.md
+last_updated: "2026-03-05T14:33:48Z"
+last_activity: "2026-03-05 — 19-03 complete: factory.py (get_provider, get_provider_for_step, (type,url) cache), updated __init__.py (7 provider exports), deleted adapter_loader.py + completion.py + vllm_client.py, replaced old stub tests with smoke tests; 34+3 tests passing, mypy+ruff clean"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 5
-  completed_plans: 4
-  percent: 10
+  completed_plans: 5
+  percent: 13
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Phase 19 — Inference Provider Abstraction (Plan 02 complete)
+**Current focus:** Phase 19 — Inference Provider Abstraction (Plan 03 complete — phase done)
 
 ## Current Position
 
 Phase: 19 of 22 (Inference Provider Abstraction)
-Plan: 02 complete (19-02-PLAN.md done)
-Status: In progress — 19-02 complete, ready for next 19 plan
-Last activity: 2026-03-05 — 19-02 complete: vLLM Dockerfile (v0.16.0), VLLM_ALLOW_RUNTIME_LORA_UPDATING env, max_lora_rank/gpu_memory_utilization config fields, port conflict fixed (8100:8000), shared rune_data SQLite volume; 4 tests passing
+Plan: 03 complete (19-03-PLAN.md done — all Phase 19 plans complete)
+Status: In progress — Phase 19 complete, ready for Phase 20
+Last activity: 2026-03-05 — 19-03 complete: factory.py (get_provider, get_provider_for_step, (type,url) cache), updated __init__.py (7 provider exports), deleted adapter_loader.py + completion.py + vllm_client.py, replaced old stub tests with smoke tests; 34+3 tests passing, mypy+ruff clean
 
 Progress: [██░░░░░░░░] 10%
 
@@ -44,10 +44,11 @@ Progress: [██░░░░░░░░] 10%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 18-adapter-registry | 2 | 17 min | 8.5 min |
-| 19-inference-provider-abstraction | 1 | 8 min | 8 min |
+| 19-inference-provider-abstraction | 3 | 13 min | 4.3 min |
 
 *Updated after each plan completion*
 | Phase 19-inference-provider-abstraction P01 | 18 | 3 tasks | 8 files |
+| Phase 19-inference-provider-abstraction P03 | 5 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Recent decisions affecting v5.0:
 - [Phase 19-01]: asyncio_mode=auto added to inference lib pyproject.toml — lib-scoped pytest overrides root config
 - [Phase 19-01]: VLLMProvider.generate() passes adapter_id as model param — vLLM LoRA routing mechanism requires lora_name in the model field
 - [Phase 19-01]: VLLM_BASE_URL default set to port 8100 (api-service owns port 8000)
+- [Phase 19-03]: os.environ.get() used in factory.py instead of os.getenv() — mypy cannot narrow os.getenv(key, str_default) return type to str; explicit variable annotations resolve the issue
+- [Phase 19-03]: Env var reads placed inside get_provider() function body (not module level) — allows monkeypatch.setenv() to work in tests; module-level reads captured at import time
 
 ### Pending Todos
 
@@ -86,6 +89,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T14:23:53.150Z
-Stopped at: Completed 19-01-PLAN.md
+Last session: 2026-03-05T14:33:48Z
+Stopped at: Completed 19-03-PLAN.md
 Resume file: None
