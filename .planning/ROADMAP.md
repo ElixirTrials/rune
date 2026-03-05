@@ -127,7 +127,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 21-01-PLAN.md — Implement model-training library: peft_utils, config, train_qlora orchestrator, GPU deps, mypy overrides
+- [x] 21-01-PLAN.md — Implement model-training library: peft_utils, config, train_qlora orchestrator, GPU deps, mypy overrides — DONE 2026-03-05
 - [ ] 21-02-PLAN.md — Wire training-svc endpoints: POST /train/lora + GET /jobs/{job_id} with background job dispatch
 
 ### Phase 22: Kill-Switch Gate
@@ -167,8 +167,8 @@ Plans:
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 21. QLoRA Training Pipeline | v5.0 | 0/2 | Not started | - |
+| 21. QLoRA Training Pipeline | v5.0 | 1/2 | In progress | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after Phase 21 planning complete (2 plans created)*
+*Last updated: 2026-03-05 after Phase 21-01 complete (peft_utils, config, train_qlora, train_and_register)*

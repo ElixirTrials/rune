@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Completed 20-02-PLAN.md
-last_updated: "2026-03-05T16:11:55.454Z"
-last_activity: "2026-03-05 — 20-02 complete: implemented all 4 node functions (generate_node, execute_node, reflect_node, save_trajectory_node), 11 behavior tests green, mypy+ruff clean, py.typed markers added to inference+model-training libs; 30 combined tests passing"
+stopped_at: "Completed 21-01-PLAN.md"
+last_updated: "2026-03-05T20:30:00Z"
+last_activity: "2026-03-05 — 21-01 complete: implemented QLoRA training pipeline (peft_utils, config, trainer), train_qlora + train_and_register orchestrators, GPU deps in pyproject.toml, mypy overrides for bitsandbytes/trl; 23 tests pass, 2 xfail"
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 10
+  total_plans: 8
+  completed_plans: 8
+  percent: 12
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Phase 20 — Agent Loop (Plan 02 complete — phase done)
+**Current focus:** Phase 21 — QLoRA Training Pipeline (Plan 01 complete)
 
 ## Current Position
 
-Phase: 20 of 22 (Agent Loop)
-Plan: 02 complete (20-02-PLAN.md done — all Phase 20 plans complete)
-Status: In progress — Phase 20 complete, ready for Phase 21
-Last activity: 2026-03-05 — 20-02 complete: implemented all 4 node functions (generate_node, execute_node, reflect_node, save_trajectory_node), 11 behavior tests green, mypy+ruff clean, py.typed markers added to inference+model-training libs; 30 combined tests passing
+Phase: 21 of 22 (QLoRA Training Pipeline)
+Plan: 01 complete (21-01-PLAN.md done)
+Status: In progress — 21-01 complete, ready for Phase 21 next plans or Phase 22
+Last activity: 2026-03-05 — 21-01 complete: implemented QLoRA training pipeline (peft_utils, config, trainer), train_qlora + train_and_register orchestrators, GPU deps in pyproject.toml, mypy overrides for bitsandbytes/trl; 23 tests pass, 2 xfail
 
-Progress: [██░░░░░░░░] 10%
+Progress: [███░░░░░░░] 12%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2 (v5.0)
-- Average duration: 8.5 min
-- Total execution time: 17 min
+- Total plans completed: 8 (v5.0)
+- Average duration: ~10 min
+- Total execution time: ~42 min
 
 **By Phase:**
 
@@ -45,12 +45,15 @@ Progress: [██░░░░░░░░] 10%
 |-------|-------|-------|----------|
 | 18-adapter-registry | 2 | 17 min | 8.5 min |
 | 19-inference-provider-abstraction | 3 | 13 min | 4.3 min |
+| 20-agent-loop | 2 | 10 min | 5 min |
+| 21-qlora-training-pipeline | 1 | 25 min | 25 min |
 
 *Updated after each plan completion*
 | Phase 19-inference-provider-abstraction P01 | 18 | 3 tasks | 8 files |
 | Phase 19-inference-provider-abstraction P03 | 5 | 2 tasks | 10 files |
 | Phase 20-agent-loop P01 | 3 | 2 tasks | 5 files |
 | Phase 20-agent-loop P02 | 7 | 2 tasks | 4 files |
+| Phase 21-qlora-training-pipeline P01 | 25 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -85,6 +88,10 @@ Recent decisions affecting v5.0:
 - [Phase 20-02]: RUNE_MODEL and RUNE_EXEC_TIMEOUT env vars read inside function bodies for monkeypatch testability — same pattern as Phase 19 factory.py
 - [Phase 20-02]: py.typed markers added to inference and model-training libs — correct PEP 561 solution for mypy strict import-untyped compliance
 - [Phase 20-02]: reflect_node uses list concatenation (state["trajectory"] + [step]) not .append() — LangGraph requires immutable state updates
+- [Phase 21-01]: bfloat16 compute dtype set in BitsAndBytesConfig, NOT LoraConfig — LoraConfig is purely about LoRA layer structure
+- [Phase 21-01]: No modules_to_save in LoraConfig — would break vLLM adapter loading (include embed_tokens/lm_head in saved PEFT artifact)
+- [Phase 21-01]: sys.modules injection pattern for mocking deferred GPU imports in CPU CI — unittest.mock.patch("peft.X") fails when peft is not installed
+- [Phase 21-01]: RUNE_ADAPTER_DIR/RUNE_BASE_MODEL/RUNE_DATABASE_URL env vars read inside function bodies for monkeypatch testability
 
 ### Pending Todos
 
@@ -97,6 +104,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T17:10:00.000Z
-Stopped at: Completed 20-02-PLAN.md
-Resume file: None
+Last session: 2026-03-05T20:30:00Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: .planning/phases/21-qlora-training-pipeline/21-01-SUMMARY.md
