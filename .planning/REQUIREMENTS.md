@@ -9,11 +9,11 @@ Requirements for first working implementation. Each maps to roadmap phases.
 
 ### Adapter Registry
 
-- [ ] **AREG-01**: User can store a new adapter record with metadata (task_type, base_model_id, rank, file_path, file_hash, source) via AdapterRegistry.store()
-- [ ] **AREG-02**: User can retrieve an adapter record by ID via AdapterRegistry.retrieve_by_id()
-- [ ] **AREG-03**: User can query adapters by task_type via AdapterRegistry.query_by_task_type()
-- [ ] **AREG-04**: User can list all non-archived adapters via AdapterRegistry.list_all()
-- [ ] **AREG-05**: AdapterRegistry uses SQLite with WAL mode and engine-parameterized constructor for shared database access
+- [x] **AREG-01**: User can store a new adapter record with metadata (task_type, base_model_id, rank, file_path, file_hash, source) via AdapterRegistry.store()
+- [x] **AREG-02**: User can retrieve an adapter record by ID via AdapterRegistry.retrieve_by_id()
+- [x] **AREG-03**: User can query adapters by task_type via AdapterRegistry.query_by_task_type()
+- [x] **AREG-04**: User can list all non-archived adapters via AdapterRegistry.list_all()
+- [x] **AREG-05**: AdapterRegistry uses SQLite with WAL mode and engine-parameterized constructor for shared database access
 
 ### Inference
 
