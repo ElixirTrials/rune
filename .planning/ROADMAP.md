@@ -124,7 +124,11 @@ Plans:
   3. POST /train/lora with a session_id runs the full trajectory → SFT format → PEFT train → save safetensors → registry.store() pipeline and returns a job_id
   4. Trained adapter files are in standard PEFT safetensors format (no embed_tokens keys) compatible with vLLM dynamic loading via InferenceProvider.load_adapter()
   5. GPU imports (peft, bitsandbytes, transformers, trl, datasets) are deferred inside function bodies and do not cause ImportError in CPU-only CI
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 21-01-PLAN.md — Implement model-training library: peft_utils, config, train_qlora orchestrator, GPU deps, mypy overrides
+- [ ] 21-02-PLAN.md — Wire training-svc endpoints: POST /train/lora + GET /jobs/{job_id} with background job dispatch
 
 ### Phase 22: Kill-Switch Gate
 **Goal**: Users can measure whether Doc-to-LoRA-generated adapters improve Pass@1 on a HumanEval subset by at least 5% relative to the base model, validating the core hypothesis
@@ -163,8 +167,8 @@ Plans:
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
+| 21. QLoRA Training Pipeline | v5.0 | 0/2 | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after Phase 20 complete (agent loop fully operational, 30 tests passing)*
+*Last updated: 2026-03-05 after Phase 21 planning complete (2 plans created)*
