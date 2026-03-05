@@ -1,0 +1,429 @@
+<objective>
+Start a new milestone: questioning → research (optional) → requirements → roadmap.
+
+Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Gathers "what's next", updates PROJECT.md, then runs requirements → roadmap cycle.
+
+**Creates/Updates:**
+- `.planning/PROJECT.md` — updated with new milestone goals
+- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/REQUIREMENTS.md` — scoped requirements for this milestone
+- `.planning/ROADMAP.md` — phase structure (continues numbering)
+- `.planning/STATE.md` — reset for new milestone
+
+**After:** `/gsd:plan-phase [N]` to start execution.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/questioning.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/project.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/requirements.md
+</execution_context>
+
+<context>
+Milestone name:  (optional - will prompt if not provided)
+
+Project and milestone context files are resolved inside the workflow (`init new-milestone`) and delegated via `<files_to_read>` blocks where subagents are used.
+</context>
+
+<process>
+Execute the new-milestone workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md end-to-end.
+Preserve all workflow gates (validation, questioning, research, requirements, roadmap approval, commits).
+</process>
+
+---
+
+<objective>
+Start a new milestone: questioning → research (optional) → requirements → roadmap.
+
+Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Gathers "what's next", updates PROJECT.md, then runs requirements → roadmap cycle.
+
+**Creates/Updates:**
+- `.planning/PROJECT.md` — updated with new milestone goals
+- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/REQUIREMENTS.md` — scoped requirements for this milestone
+- `.planning/ROADMAP.md` — phase structure (continues numbering)
+- `.planning/STATE.md` — reset for new milestone
+
+**After:** `/gsd:plan-phase [N]` to start execution.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/questioning.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/project.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/requirements.md
+</execution_context>
+
+<context>
+Milestone name: "We have wireframe stubs. Go over the documentation, research thoroughly, and make our first stage of implementation. We now go from wireframe to working repo.Consider carefully the right order" (optional - will prompt if not provided)
+
+Project and milestone context files are resolved inside the workflow (`init new-milestone`) and delegated via `<files_to_read>` blocks where subagents are used.
+</context>
+
+<process>
+Execute the new-milestone workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md end-to-end.
+Preserve all workflow gates (validation, questioning, research, requirements, roadmap approval, commits).
+</process>
+
+---
+
+<task-notification>
+<task-id>aa0df179b5c14a41b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "Features research" completed</summary>
+<result>The file is complete and well-formed. Here is the structured return:
+
+---
+
+## RESEARCH COMPLETE
+
+**Project:** Rune v5.0 — First Working Implementation
+**Mode:** Ecosystem / Feasibility
+**Confidence:** HIGH for vLLM and LangGraph domains; MEDIUM for Doc-to-LoRA adaptation and hardware validation
+
+### Key Findings
+
+- **vLLM PP=2 + LoRA is confirmed feasible** — Bug #7253 (LoRA + pipeline parallelism crash) was fixed in PR #7292 (August 2024) and is present in all current vLLM releases. Phase 0 hardware validation must confirm it works with the specific Qwen2.5-Coder-7B + AWQ + dual RTX 4090 combination before any implementation work starts.
+
+- **AdapterRegistry is the critical dependency hub** — every other feature either writes to or reads from the registry. It should be implemented first, completely, before touching any agent loop or training pipeline code.
+
+- **The agent loop graph is already correct** — `graph.py` has the correct topology and `should_retry()` is already a real implementation. Only the four node functions (`generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`) are stubs. The model-training lib functions (`record_trajectory`, `format_for_sft`) are blockers for the loop to close end-to-end.
+
+- **vLLM hot-loading API pattern is clear** — POST to `/v1/load_lora_adapter` with `VLLM_ALLOW_RUNTIME_LORA_UPDATING=True`; use adapter name as `model` parameter in chat completions. `startup.sh` already has the correct vLLM flags.
+
+- **Doc-to-LoRA is MEDIUM confidence for Rune's use case** — the paper (arXiv:2602.15902) is verified: Perceiver-based hypernetwork, rank-8, <1s forward pass, distillation objective. The adaptation to coding trajectories (sequential, procedural, causal) rather than documents (static, declarative) is the novel research claim and is not yet validated. This is the kill-switch gate.
+
+- **Evolution operator is firmly out of scope for v5.0** — no dependencies on it; `evolution-svc` stubs can remain 501. Implementing it in v5.0 would add VERY HIGH complexity with no contribution to hypothesis validation.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/FEATURES.md` | Complete feature landscape for v5.0 implementation — table stakes, differentiators, anti-features, dependency graph, MVP definition, and how each feature works in practice |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| vLLM multi-LoRA serving | HIGH | Official docs verified; existing `startup.sh` and `LoraServerConfig` already encode correct patterns; bug #7253 fix confirmed |
+| LangGraph recursive loop | HIGH | Official docs + direct codebase inspection; graph topology already correct; only node stubs need filling |
+| Adapter registry CRUD | HIGH | SQLModel patterns are standard; `AdapterRecord` model and error classes already exist; implementation is straightforward |
+| QLoRA training pipeline | HIGH | Well-established PEFT + bitsandbytes + HF Trainer pipeline; existing `peft_utils.py` stubs clearly describe what's needed |
+| Doc-to-LoRA hypernetwork | MEDIUM | Paper architecture verified; Rune's trajectory-modality adaptation is novel and unvalidated — the kill-switch gate is appropriate |
+| Hardware validation | MEDIUM | Standard PyTorch CUDA checks are HIGH confidence; CXL P2P behavior and PP=2+LoRA+AWQ interaction on RTX 4090 is LOW confidence until validated |
+
+### Roadmap Implications
+
+Build order should follow the dependency graph strictly:
+
+1. **Phase 0: Hardware validation** — gates everything; write and run the validation script before touching implementation
+2. **Phase 1: AdapterRegistry** — the hub; implement fully (all 4 methods) with SQLite integration tests
+3. **Phase 2: model-training lib** — `record_trajectory()` and `format_for_sft()` are blockers for the agent loop; implement next
+4. **Phase 3: vLLM client** — `VLLMClient.generate()`, `load_adapter()`, `unload_adapter()`; requires running vLLM server for integration tests
+5. **Phase 4: Agent loop nodes** — `generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`; close the end-to-end loop
+6. **Phase 5: QLoRA training pipeline** — `build_qlora_config()`, `apply_lora_adapter()`, full training flow; produces adapters in registry
+7. **Phase 6: Kill-switch gate** — `run_humaneval_subset()`, `calculate_pass_at_k()`; evaluate adapters; go/no-go on Doc-to-LoRA
+8. **Phase 7 (conditional): Doc-to-LoRA hypernetwork** — only if kill-switch passes with QLoRA adapters
+
+### Open Questions
+
+- Whether PP=2 + LoRA + AWQ quantization works cleanly on RTX 4090 with the specific vLLM + CUDA version in the Docker container — must be answered by Phase 0 before any implementation starts
+- Whether the pre-trained Doc-to-LoRA checkpoint (Sakana AI) is publicly available for download — if not, the hypernetwork must be trained from scratch on coding trajectory data, significantly increasing Phase 7 complexity
+- Whether `state["session_id"]` needs to be added to `RuneState` — `save_trajectory_node` needs it; minor schema addition but affects existing tests
+
+Sources:
+- [vLLM LoRA Adapters Documentation](https://docs.vllm.ai/en/stable/features/lora/)
+- [vLLM Bug #7253 — LoRA + PP fix](https://github.com/vllm-project/vllm/issues/7253)
+- [Doc-to-LoRA: arXiv:2602.15902](https://arxiv.org/abs/2602.15902)
+- [Sakana AI Doc-to-LoRA](https://pub.sakana.ai/doc-to-lora/)
+- [LangChain Reflection Agents](https://blog.langchain.com/reflection-agents/)
+- [QLoRA paper: arXiv:2305.14314](https://arxiv.org/abs/2305.14314)
+- [vLLM Parallelism and Scaling](https://docs.vllm.ai/en/stable/serving/parallelism_scaling/)
+- [SHINE: arXiv:2602.06358](https://arxiv.org/abs/2602.06358)</result>
+<usage><total_tokens>91799</total_tokens><tool_uses>45</tool_uses><duration_ms>372198</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/aa0df179b5c14a41b.output
+
+---
+
+<task-notification>
+<task-id>ae00bef4ad89f8404</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "Architecture research" completed</summary>
+<result>625 lines written successfully. Here is the structured result:
+
+---
+
+## RESEARCH COMPLETE
+
+**Project:** Rune v5.0 — First Working Implementation
+**Mode:** Ecosystem / Integration Architecture
+**Confidence:** HIGH
+
+### Key Findings
+
+- **Two vLLM client implementations exist in parallel** — `libs/inference/adapter_loader.py` and `services/lora-server/vllm_client.py` both wrap `AsyncOpenAI`. These stay separate (lora-server cannot import workspace libs) but must implement the same HTTP calls consistently.
+
+- **Critical docker-compose port conflict** — both `api-service` and `lora-server` are currently mapped to host port 8000. This must be fixed before any local deployment works.
+
+- **`VLLM_ALLOW_RUNTIME_LORA_UPDATING=True` is required but missing** from lora-server's Dockerfile/startup. Without it, the `/v1/load_lora_adapter` endpoint returns an error — the entire LoRA hot-loading feature is gated on this env var.
+
+- **`training-svc` does not declare `model-training` as a dependency** — v4.0 tech debt. The `pyproject.toml` must add it before training logic can be wired in.
+
+- **AdapterRegistry needs an `__init__(engine)` parameter** — otherwise each service creates its own SQLite connection to potentially different files, splitting the registry across services. All services must share one SQLite file.
+
+- **Doc-to-LoRA hypernetwork belongs in `model-training` lib** (new file `hypernetwork.py`), not a new service. Both GPUs are occupied by vLLM PP=2; no GPU budget exists for a separate hypernetwork server.
+
+### File Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/ARCHITECTURE.md` | Integration points, build order, new vs. modified files, data flows |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Component boundaries | HIGH | Direct source inspection of all 11 components |
+| vLLM API contracts | HIGH | Verified against official vllm docs v0.8.1 |
+| Build order | HIGH | Derived from declared pyproject.toml deps + startup dependency graph |
+| Hypernetwork integration | MEDIUM | Placement decision (model-training lib) is opinionated; cold-start problem is known but solution is not empirically validated |
+
+### Roadmap Implications
+
+1. **Phase 0 (hardware)** — validate lora-server startup with PP=2, AWQ, `VLLM_ALLOW_RUNTIME_LORA_UPDATING=True` before writing any application code
+2. **Phase 1 (adapter-registry + inference)** — implement CRUD and vLLM client; these are the foundation everything else reads/writes
+3. **Phase 2 (rune-agent loop + trajectory recording)** — implement 4 node stubs; this is the observable unit of work that produces training data
+4. **Phase 3 (training pipeline)** — wire model-training into training-svc; produces first real LoRA adapters
+5. **Phase 4 (kill-switch gate)** — implement hypernetwork forward pass; validate 5% Pass@1 improvement hypothesis
+6. **Phase 5 (evolution, api-service)** — deferred past the kill-switch gate; only proceed if hypothesis validated
+
+### Open Questions
+
+- AWQ vs bitsandbytes quantization: `Qwen2.5-Coder-7B-Instruct-AWQ` may not exist on HuggingFace — needs verification before lora-server startup. If unavailable, switch to `--quantization bitsandbytes` (4-bit NF4).
+- SQLite single-file strategy: whether to use a shared `/data/rune.db` volume mount or keep separate per-service files with api-service as the canonical read proxy needs an explicit decision before Step 1.
+- Cold-start for hypernetwork training: the meta-learning phase needs reference fine-tuned adapters as targets. How many are needed and how to generate them is unresolved.</result>
+<usage><total_tokens>93174</total_tokens><tool_uses>55</tool_uses><duration_ms>382439</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/ae00bef4ad89f8404.output
+
+---
+
+<task-notification>
+<task-id>a6c6d0023accfe1a4</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "Stack research" completed</summary>
+<result>The file looks correct. Let me provide the structured return to the orchestrator.
+
+---
+
+## RESEARCH COMPLETE
+
+**Project:** Rune v5.0 First Implementation
+**Mode:** Ecosystem — Stack additions for working implementation
+**Confidence:** HIGH
+
+### Key Findings
+
+- **vLLM 0.16.0** (released 2026-02-26) is the target version. PP+LoRA bug (issue #7253) was fixed in PR #7292 — `pipeline-parallel-size 2` with `--enable-lora` is confirmed working. The existing `startup.sh` is structurally correct; add `VLLM_ALLOW_RUNTIME_LORA_UPDATING=True` env var for dynamic loading.
+
+- **AWQ + LoRA compatibility confirmed**: vLLM supports serving an AWQ-quantized base model (`Qwen/Qwen2.5-Coder-7B-Instruct-AWQ`) with dynamic unquantized LoRA adapter switching. Critical constraint: saved adapter safetensors must NOT include `embed_tokens` or `lm_head` weights — PEFT's default `save_pretrained` is safe.
+
+- **QLoRA training stack**: `transformers 5.3.0` + `peft 0.18.1` + `bitsandbytes 0.49.2` + `trl 0.29.0`. Qwen2.5-Coder-7B-Instruct in BF16 requires ~17GB VRAM — fits in 24GB with headroom. `SFTTrainer` directly consumes `format_for_sft` chat output via `datasets.Dataset.from_dict()`.
+
+- **SQLite registry is synchronous**: The `adapter-registry` lib should stay synchronous (`create_engine("sqlite:///...")` + `Session`). Async wrapping belongs in service layer only if needed. In-memory SQLite (`sqlite:///:memory:`) is the test pattern.
+
+- **No new agent loop dependencies**: `rune-agent` needs `adapter-registry` added to its deps (`save_trajectory_node` calls registry). All sandbox execution via stdlib `asyncio.create_subprocess_exec`. `RuneState` TypedDict already implemented — nodes return partial dicts.
+
+- **Use official vLLM Docker image** (`vllm/vllm-openai:v0.16.0`) — do NOT build from source. Current lora-server Dockerfile uses `python:3.12-slim` which doesn't include vLLM's compiled CUDA kernels.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/STACK.md` | Technology recommendations for v5.0 implementation — versions, integration patterns, critical constraints |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| vLLM version + API | HIGH | PyPI confirmed 0.16.0; LoRA API endpoints confirmed from official v0.8.1 docs |
+| PP+LoRA compatibility | HIGH | GitHub issue #7253 confirmed resolved; PR #7292 merged |
+| AWQ+LoRA serving | MEDIUM-HIGH | Forum-verified + official docs pattern; tested in community; no official "compatibility matrix" page |
+| PEFT/QLoRA training | HIGH | Official HuggingFace docs; all versions confirmed on PyPI |
+| SQLite/SQLModel patterns | HIGH | Official SQLModel docs + multiple verified examples |
+| LangGraph patterns | HIGH | Already partially implemented; `graph.py` is real code, not a stub |
+
+### Roadmap Implications
+
+1. **Change lora-server Dockerfile first** — swap `python:3.12-slim` for `vllm/vllm-openai:v0.16.0` before hardware validation; this is a build-time change with no code impact
+2. **adapter-registry CRUD is straightforward** — sync SQLModel, no new libraries, just implement the `NotImplementedError` stubs
+3. **model-training lib needs 6 new deps** — add to `libs/model-training/pyproject.toml`; keep TYPE_CHECKING guards on all GPU imports
+4. **rune-agent needs adapter-registry dep** — `save_trajectory_node` calls the registry; add to service deps
+5. **Add `VLLM_ALLOW_RUNTIME_LORA_UPDATING=True` to startup.sh** — required for `load_adapter` / `unload_adapter` endpoints to work at runtime
+
+### Open Questions
+
+- TRL 0.29.0 confirmed via GitHub search but PyPI page returned 403. Pin loosely (`>=0.29.0`) and verify on first `uv sync` on GPU host.
+- `accelerate` version compatibility with transformers 5.3.0 needs runtime verification; `>=1.0.0` is a safe lower bound.
+- Doc-to-LoRA hypernetwork architecture (the custom neural network that generates LoRA weights from document embeddings) has no off-the-shelf library — it's novel research code requiring `torch.nn.Module` implementation; no stack addition needed, just GPU-capable PyTorch already in the baseline.
+
+Sources:
+- [vLLM LoRA Adapters docs](https://docs.vllm.ai/en/latest/features/lora/)
+- [vLLM LoRA Adapters v0.8.1](https://docs.vllm.ai/en/v0.8.1/features/lora.html)
+- [vLLM Issue #7253 — LoRA + Pipeline Parallel](https://github.com/vllm-project/vllm/issues/7253)
+- [vLLM Multi-LoRA Blog 2026](https://blog.vllm.ai/2026/02/26/multi-lora.html)
+- [PEFT Documentation](https://huggingface.co/docs/peft/en/developer_guides/quantization)
+- [TRL SFT Trainer](https://huggingface.co/docs/trl/main/en/sft_trainer)
+- [bitsandbytes PyPI](https://pypi.org/project/bitsandbytes/)
+- [HuggingFace Transformers PyPI](https://pypi.org/project/transformers/)
+- [vLLM AWQ + LoRA forum discussion](https://discuss.vllm.ai/t/support-for-deploying-4-bit-fine-tuned-model-with-vllm/1186)</result>
+<usage><total_tokens>76601</total_tokens><tool_uses>73</tool_uses><duration_ms>412203</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a6c6d0023accfe1a4.output
+
+---
+
+<task-notification>
+<task-id>ab766ca1712efe632</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<status>completed</status>
+<summary>Agent "Pitfalls research" completed</summary>
+<result>All 12 pitfalls are documented. Here is the structured research result:
+
+---
+
+## RESEARCH COMPLETE
+
+**Project:** Rune v5.0 — First Implementation
+**Mode:** Ecosystem (pitfalls-focused, subsequent milestone)
+**Confidence:** HIGH
+
+### Key Findings
+
+- **PP=2 + LoRA is UNVERIFIED**: vLLM bug #7253 (PP+LoRA crash) was fixed for Llama in 2024, but regressions appear in v0.12.0. The combination with Qwen2.5-Coder must be validated empirically before any implementation begins. This is the highest-severity blocker.
+- **VLLM_ALLOW_RUNTIME_LORA_UPDATING env var is mandatory**: The `/v1/load_lora_adapter` dynamic endpoint is disabled by default and does not appear in the existing codebase's Dockerfile or startup configuration.
+- **QLoRA training must use bfloat16, not float16**: Using float16 as `bnb_4bit_compute_dtype` produces NaN losses after ~50 steps. The adapter saves successfully but generates garbage at inference — the failure is silent until deployment.
+- **AWQ serving + QLoRA training are separate quantization systems**: Adapters trained with QLoRA (NF4/bitsandbytes) are standard PEFT files compatible with AWQ-base-model vLLM serving via dynamic loading. The conceptual confusion between these is a common source of broken integrations.
+- **Doc-to-LoRA meta-training costs "days to weeks on multiple GPUs"**: Confirmed from the Sakana AI paper. The kill-switch gate must define a compute budget and relative-improvement criterion, not absolute performance.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/PITFALLS.md` | 12 critical pitfalls, integration gotchas, performance traps, "looks done but isn't" checklist, recovery strategies, pitfall-to-phase mapping |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| vLLM LoRA hot-loading pitfalls | HIGH | Verified against official docs, multiple GitHub issues with confirmed reproduction |
+| QLoRA training pitfalls | HIGH | Verified against HuggingFace official bitsandbytes docs and PEFT documentation |
+| SQLite concurrency pitfalls | HIGH | Verified against SQLite WAL docs and SQLAlchemy event pattern |
+| LangGraph pitfalls | HIGH | Verified against official LangGraph error documentation |
+| Doc-to-LoRA training cost | HIGH | Verified against Sakana AI official paper page ("days to weeks") |
+| Wireframe-to-implementation integration pitfalls | MEDIUM | Based on codebase inspection + FastAPI patterns; specific integration bugs emerge at runtime |
+
+### Roadmap Implications
+
+**Phase 0 (Hardware Validation) must gate on two independent tests:**
+1. `PP=2 + LoRA` — server starts AND generates correct Qwen2.5 output
+2. `max_loras=2 + max_lora_rank=64` — server starts without OOM on 24GB GPU
+
+**Phase 1 sequencing constraints:**
+- `model-training lib` must define `target_modules` explicitly before `training-svc` calls it (prevents format incompatibility)
+- `schemas.py` must be written before any POST router implementation (prevents 422 errors)
+- `make_initial_state()` factory must exist before any agent loop node is implemented (prevents KeyError)
+- WAL mode must be set in storage.py files before any router logic is added (prevents deadlocks)
+
+### Open Questions
+
+1. Whether PP=2 + LoRA works specifically with Qwen2.5-Coder in current vLLM — must be answered empirically in Phase 0
+2. Whether Sakana AI has released pre-trained Doc-to-LoRA hypernetwork weights that could be adapted to Qwen2.5-Coder (would dramatically reduce Phase 1 kill-switch gate compute cost)
+3. Whether the CXL interconnect between the dual RTX 4090s is recognized by vLLM's PP implementation (CXL is not NVLink; PP communication patterns differ)</result>
+<usage><total_tokens>85970</total_tokens><tool_uses>65</tool_uses><duration_ms>515545</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/ab766ca1712efe632.output
+
+---
+
+<objective>
+Extract implementation decisions that downstream agents need — researcher and planner will use CONTEXT.md to know what to investigate and what choices are locked.
+
+**How it works:**
+1. Load prior context (PROJECT.md, REQUIREMENTS.md, STATE.md, prior CONTEXT.md files)
+2. Scout codebase for reusable assets and patterns
+3. Analyze phase — skip gray areas already decided in prior phases
+4. Present remaining gray areas — user selects which to discuss
+5. Deep-dive each selected area until satisfied
+6. Create CONTEXT.md with decisions that guide research and planning
+
+**Output:** `{phase_num}-CONTEXT.md` — decisions clear enough that downstream agents can act without asking the user again
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/discuss-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/context.md
+</execution_context>
+
+<context>
+Phase number: 18 (required)
+
+Context files are resolved in-workflow using `init phase-op` and roadmap/state tool calls.
+</context>
+
+<process>
+1. Validate phase number (error if missing or not in roadmap)
+2. Check if CONTEXT.md exists (offer update/view/skip if yes)
+3. **Load prior context** — Read PROJECT.md, REQUIREMENTS.md, STATE.md, and all prior CONTEXT.md files
+4. **Scout codebase** — Find reusable assets, patterns, and integration points
+5. **Analyze phase** — Check prior decisions, skip already-decided areas, generate remaining gray areas
+6. **Present gray areas** — Multi-select: which to discuss? Annotate with prior decisions + code context
+7. **Deep-dive each area** — 4 questions per area, code-informed options, Context7 for library choices
+8. **Write CONTEXT.md** — Sections match areas discussed + code_context section
+9. Offer next steps (research or plan)
+
+**CRITICAL: Scope guardrail**
+- Phase boundary from ROADMAP.md is FIXED
+- Discussion clarifies HOW to implement, not WHETHER to add more
+- If user suggests new capabilities: "That's its own phase. I'll note it for later."
+- Capture deferred ideas — don't lose them, don't act on them
+
+**Domain-aware gray areas:**
+Gray areas depend on what's being built. Analyze the phase goal:
+- Something users SEE → layout, density, interactions, states
+- Something users CALL → responses, errors, auth, versioning
+- Something users RUN → output format, flags, modes, error handling
+- Something users READ → structure, tone, depth, flow
+- Something being ORGANIZED → criteria, grouping, naming, exceptions
+
+Generate 3-4 **phase-specific** gray areas, not generic categories.
+
+**Probing depth:**
+- Ask 4 questions per area before checking
+- "More questions about [area], or move to next?"
+- If more → ask 4 more, check again
+- After all areas → "Ready to create context?"
+
+**Do NOT ask about (Claude handles these):**
+- Technical implementation
+- Architecture choices
+- Performance concerns
+- Scope expansion
+</process>
+
+<success_criteria>
+- Prior context loaded and applied (no re-asking decided questions)
+- Gray areas identified through intelligent analysis
+- User chose which areas to discuss
+- Each selected area explored until satisfied
+- Scope creep redirected to deferred ideas
+- CONTEXT.md captures decisions, not vague vision
+- User knows next steps
+</success_criteria>
