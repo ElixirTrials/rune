@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "1d5edf8d5175",
+  "session_id": "8061bb6b-e546-41c3-80b7-cf36816074f0",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-05T10:27:38.763429Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/adapter-registry/tests/test_registry.py",
+    "libs/adapter-registry/src/adapter_registry/registry.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "f573db9943ff",
+  "token_usage": {
+    "input_tokens": 5,
+    "cache_creation_tokens": 27446,
+    "cache_read_tokens": 122698,
+    "output_tokens": 1403,
+    "api_call_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-05T10:27:38.713884Z",
+    "agent_lines": 0,
+    "human_added": 139,
+    "human_modified": 58,
+    "human_removed": 0,
+    "total_committed": 139,
+    "agent_percentage": 0
+  }
+}
