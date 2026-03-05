@@ -17,15 +17,17 @@ Requirements for first working implementation. Each maps to roadmap phases.
 
 ### Inference
 
-- [ ] **INF-01**: User can generate code completions via VLLMClient.generate() using the vLLM OpenAI-compatible API
-- [ ] **INF-02**: User can hot-load a LoRA adapter into vLLM via VLLMClient.load_adapter() (POST /v1/load_lora_adapter)
-- [ ] **INF-03**: User can unload a LoRA adapter from vLLM via VLLMClient.unload_adapter() (POST /v1/unload_lora_adapter)
-- [ ] **INF-04**: User can generate with a specific loaded adapter by passing adapter name as model parameter
-- [ ] **INF-05**: User can load multiple adapters simultaneously for composition (multi-adapter serving)
+- [ ] **INF-01**: Abstract InferenceProvider interface with generate(), load_adapter(), unload_adapter(), list_adapters() methods
+- [ ] **INF-02**: VLLMProvider implementation with full LoRA hot-loading support (POST /v1/load_lora_adapter, /v1/unload_lora_adapter)
+- [ ] **INF-03**: OllamaProvider implementation for inference via Ollama API (LoRA support where Ollama supports it)
+- [ ] **INF-04**: Provider factory/registry for selecting backend by configuration (env var or config file)
+- [ ] **INF-05**: User can generate with a specific loaded adapter by passing adapter name as model parameter
+- [ ] **INF-06**: User can load multiple adapters simultaneously for composition (provider-dependent, graceful degradation)
+- [ ] **INF-07**: Per-step model/provider configuration — agent can use different models or providers for different steps (e.g., one model for generation, another for reflection)
 
 ### Agent Loop
 
-- [ ] **AGENT-01**: generate_node calls VLLMClient.generate() with task description and optional adapter, returning generated code
+- [ ] **AGENT-01**: generate_node calls InferenceProvider.generate() with task description and optional adapter, returning generated code (backend-agnostic)
 - [ ] **AGENT-02**: execute_node runs generated code in a sandboxed subprocess with timeout, returning stdout/stderr/exit_code/tests_passed
 - [ ] **AGENT-03**: reflect_node accumulates trajectory data (attempt count, code, results) without LLM call
 - [ ] **AGENT-04**: save_trajectory_node persists trajectory via record_trajectory() and sets outcome
@@ -88,7 +90,7 @@ Explicitly excluded. Documented to prevent scope creep.
 | Hardware validation phase | User deferred — will validate hardware separately |
 | Tensor parallelism (TP=2) | vLLM bug #21471 — corrupted output on PCIe GPUs without NVLink |
 | Adapter merging into base weights | Loses hot-swap composability; vLLM Punica kernels handle LoRA with near-zero overhead |
-| Cloud API inference | Hard constraint: local-first, no cloud dependencies for inference |
+| Cloud API inference | Hard constraint: local-first, no cloud dependencies for inference. Provider abstraction supports local backends (vLLM, Ollama) only |
 | Concurrent training + inference | CUDA OOM — must schedule sequentially |
 | Streaming responses in agent loop | Agent needs complete code, not token stream; add to API layer separately if needed |
 | Multi-tenant isolation | Single-user local system; session_id provides sufficient organization |
@@ -100,47 +102,49 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AREG-01 | — | Pending |
-| AREG-02 | — | Pending |
-| AREG-03 | — | Pending |
-| AREG-04 | — | Pending |
-| AREG-05 | — | Pending |
-| INF-01 | — | Pending |
-| INF-02 | — | Pending |
-| INF-03 | — | Pending |
-| INF-04 | — | Pending |
-| INF-05 | — | Pending |
-| AGENT-01 | — | Pending |
-| AGENT-02 | — | Pending |
-| AGENT-03 | — | Pending |
-| AGENT-04 | — | Pending |
-| AGENT-05 | — | Pending |
-| AGENT-06 | — | Pending |
-| TRAIN-01 | — | Pending |
-| TRAIN-02 | — | Pending |
-| TRAIN-03 | — | Pending |
-| TRAIN-04 | — | Pending |
-| TRAIN-05 | — | Pending |
-| TRAIN-06 | — | Pending |
-| TRAIN-07 | — | Pending |
-| DTOL-01 | — | Pending |
-| DTOL-02 | — | Pending |
-| DTOL-03 | — | Pending |
-| DTOL-04 | — | Pending |
-| EVAL-01 | — | Pending |
-| EVAL-02 | — | Pending |
-| EVAL-03 | — | Pending |
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
+| AREG-01 | Phase 18 | Pending |
+| AREG-02 | Phase 18 | Pending |
+| AREG-03 | Phase 18 | Pending |
+| AREG-04 | Phase 18 | Pending |
+| AREG-05 | Phase 18 | Pending |
+| INF-01 | Phase 19 | Pending |
+| INF-02 | Phase 19 | Pending |
+| INF-03 | Phase 19 | Pending |
+| INF-04 | Phase 19 | Pending |
+| INF-05 | Phase 19 | Pending |
+| INF-06 | Phase 19 | Pending |
+| INF-07 | Phase 19 | Pending |
+| INFRA-01 | Phase 19 | Pending |
+| INFRA-02 | Phase 19 | Pending |
+| INFRA-03 | Phase 19 | Pending |
+| AGENT-01 | Phase 20 | Pending |
+| AGENT-02 | Phase 20 | Pending |
+| AGENT-03 | Phase 20 | Pending |
+| AGENT-04 | Phase 20 | Pending |
+| AGENT-05 | Phase 20 | Pending |
+| AGENT-06 | Phase 20 | Pending |
+| TRAIN-01 | Phase 20 | Pending |
+| TRAIN-02 | Phase 20 | Pending |
+| TRAIN-03 | Phase 21 | Pending |
+| TRAIN-04 | Phase 21 | Pending |
+| TRAIN-05 | Phase 21 | Pending |
+| TRAIN-06 | Phase 21 | Pending |
+| TRAIN-07 | Phase 21 | Pending |
+| INFRA-04 | Phase 21 | Pending |
+| INFRA-05 | Phase 21 | Pending |
+| DTOL-01 | Phase 22 | Pending |
+| DTOL-02 | Phase 22 | Pending |
+| DTOL-03 | Phase 22 | Pending |
+| DTOL-04 | Phase 22 | Pending |
+| EVAL-01 | Phase 22 | Pending |
+| EVAL-02 | Phase 22 | Pending |
+| EVAL-03 | Phase 22 | Pending |
 
 **Coverage:**
-- v5.0 requirements: 35 total
-- Mapped to phases: 0
-- Unmapped: 35 ⚠️
+- v5.0 requirements: 37 total
+- Mapped to phases: 37
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-05*
-*Last updated: 2026-03-05 after initial definition*
+*Last updated: 2026-03-05 after v5.0 roadmap revision (provider abstraction)*
