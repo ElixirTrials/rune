@@ -151,7 +151,7 @@ Plans:
 | 15. New & Reworked Library Wireframes | v4.0 | 2/2 | Complete | 2026-03-03 |
 | 16. Service Wireframes | v4.0 | 4/4 | Complete | 2026-03-03 |
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
-| 18. Adapter Registry | v5.0 | 2/2 | Complete | 2026-03-05 |
+| 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 19. Inference Provider Abstraction | v5.0 | 0/TBD | Not started | - |
 | 20. Agent Loop | v5.0 | 0/TBD | Not started | - |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
