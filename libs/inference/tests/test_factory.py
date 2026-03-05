@@ -25,7 +25,7 @@ def test_get_provider_ollama_returns_ollama_provider() -> None:
 
 
 def test_get_provider_uses_env_var_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """get_provider() with no args reads INFERENCE_PROVIDER env var, defaulting to vllm."""
+    """get_provider() with no args reads INFERENCE_PROVIDER env var (default: vllm)."""
     monkeypatch.setenv("INFERENCE_PROVIDER", "ollama")
     provider = get_provider()
     assert isinstance(provider, OllamaProvider)

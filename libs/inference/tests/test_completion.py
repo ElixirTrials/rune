@@ -1,30 +1,18 @@
-"""TDD wireframe tests for inference.completion module.
+"""Smoke tests verifying inference provider exports after refactor.
 
-All three functions are stubs that raise NotImplementedError.
-Tests assert the TDD red-phase contract.
+Replaces old completion.py TDD stub tests. Real provider tests are in
+test_vllm_provider.py and test_ollama_provider.py.
 """
 
-import pytest
-from inference.completion import (
-    batch_generate,
-    generate_completion,
-    generate_with_adapter,
+from inference import (
+    OllamaProvider,
+    UnsupportedOperationError,
+    get_provider_for_step,
 )
 
 
-def test_generate_completion_raises_not_implemented() -> None:
-    """generate_completion raises NotImplementedError with function name in message."""
-    with pytest.raises(NotImplementedError, match="generate_completion"):
-        generate_completion("def hello():")
-
-
-def test_generate_with_adapter_raises_not_implemented() -> None:
-    """generate_with_adapter raises NotImplementedError."""
-    with pytest.raises(NotImplementedError, match="generate_with_adapter"):
-        generate_with_adapter("def hello():", "adapter-001")
-
-
-def test_batch_generate_raises_not_implemented() -> None:
-    """batch_generate raises NotImplementedError with function name in message."""
-    with pytest.raises(NotImplementedError, match="batch_generate"):
-        batch_generate(["def foo():", "def bar():"])
+def test_inference_exports_ollama_and_factory() -> None:
+    """Verify OllamaProvider and factory are importable from inference package."""
+    assert OllamaProvider is not None
+    assert UnsupportedOperationError is not None
+    assert get_provider_for_step is not None

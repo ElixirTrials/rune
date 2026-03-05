@@ -1,24 +1,13 @@
-"""TDD tests for lora-server vllm_client.py VLLMClient methods.
+"""Smoke test verifying VLLMProvider is importable from inference lib.
 
-Tests assert NotImplementedError is raised for stub methods.
-Imports directly from Python source via conftest.py sys.path setup.
+VLLMClient has been absorbed into VLLMProvider in libs/inference/.
+Full provider tests live in libs/inference/tests/test_vllm_provider.py.
 """
 
-import pytest
-from vllm_client import VLLMClient
+from inference.vllm_provider import VLLMProvider
 
 
-@pytest.mark.asyncio
-async def test_load_adapter_raises_not_implemented():
-    """Test VLLMClient.load_adapter raises NotImplementedError."""
-    client = VLLMClient()
-    with pytest.raises(NotImplementedError, match="load_adapter"):
-        await client.load_adapter("adapter-1", "Qwen/Qwen2.5-Coder-7B-Instruct")
-
-
-@pytest.mark.asyncio
-async def test_generate_raises_not_implemented():
-    """Test VLLMClient.generate raises NotImplementedError."""
-    client = VLLMClient()
-    with pytest.raises(NotImplementedError, match="generate"):
-        await client.generate("Write hello world", "Qwen/Qwen2.5-Coder-7B-Instruct")
+def test_vllm_provider_importable_from_inference() -> None:
+    """VLLMProvider is importable as the replacement for VLLMClient."""
+    provider = VLLMProvider(base_url="http://localhost:8100/v1")
+    assert provider is not None

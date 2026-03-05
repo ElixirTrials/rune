@@ -56,29 +56,35 @@ def get_provider(
         True
     """
     ptype = (
-        provider_type or os.getenv("INFERENCE_PROVIDER", _DEFAULT_INFERENCE_PROVIDER)
+        provider_type
+        or os.environ.get("INFERENCE_PROVIDER", _DEFAULT_INFERENCE_PROVIDER)
     ).lower()
 
+    resolved_url: str
     if ptype == "vllm":
-        url = base_url or os.getenv("VLLM_BASE_URL", _DEFAULT_VLLM_BASE_URL)
+        resolved_url = (
+            base_url or os.environ.get("VLLM_BASE_URL", _DEFAULT_VLLM_BASE_URL)
+        )
     elif ptype == "ollama":
-        url = base_url or os.getenv("OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL)
+        resolved_url = (
+            base_url or os.environ.get("OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL)
+        )
     else:
         raise ValueError(
             f"Unknown provider type: '{ptype}'. "
             "Supported values: 'vllm', 'ollama'."
         )
 
-    cache_key = (ptype, url)
+    cache_key = (ptype, resolved_url)
     if cache_key not in _provider_cache:
         if ptype == "vllm":
             from inference.vllm_provider import VLLMProvider
 
-            _provider_cache[cache_key] = VLLMProvider(base_url=url)
+            _provider_cache[cache_key] = VLLMProvider(base_url=resolved_url)
         else:
             from inference.ollama_provider import OllamaProvider
 
-            _provider_cache[cache_key] = OllamaProvider(base_url=url)
+            _provider_cache[cache_key] = OllamaProvider(base_url=resolved_url)
 
     return _provider_cache[cache_key]
 
