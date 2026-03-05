@@ -1,0 +1,146 @@
+# Requirements: Rune
+
+**Defined:** 2026-03-05
+**Core Value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
+
+## v5.0 Requirements
+
+Requirements for first working implementation. Each maps to roadmap phases.
+
+### Adapter Registry
+
+- [ ] **AREG-01**: User can store a new adapter record with metadata (task_type, base_model_id, rank, file_path, file_hash, source) via AdapterRegistry.store()
+- [ ] **AREG-02**: User can retrieve an adapter record by ID via AdapterRegistry.retrieve_by_id()
+- [ ] **AREG-03**: User can query adapters by task_type via AdapterRegistry.query_by_task_type()
+- [ ] **AREG-04**: User can list all non-archived adapters via AdapterRegistry.list_all()
+- [ ] **AREG-05**: AdapterRegistry uses SQLite with WAL mode and engine-parameterized constructor for shared database access
+
+### Inference
+
+- [ ] **INF-01**: User can generate code completions via VLLMClient.generate() using the vLLM OpenAI-compatible API
+- [ ] **INF-02**: User can hot-load a LoRA adapter into vLLM via VLLMClient.load_adapter() (POST /v1/load_lora_adapter)
+- [ ] **INF-03**: User can unload a LoRA adapter from vLLM via VLLMClient.unload_adapter() (POST /v1/unload_lora_adapter)
+- [ ] **INF-04**: User can generate with a specific loaded adapter by passing adapter name as model parameter
+- [ ] **INF-05**: User can load multiple adapters simultaneously for composition (multi-adapter serving)
+
+### Agent Loop
+
+- [ ] **AGENT-01**: generate_node calls VLLMClient.generate() with task description and optional adapter, returning generated code
+- [ ] **AGENT-02**: execute_node runs generated code in a sandboxed subprocess with timeout, returning stdout/stderr/exit_code/tests_passed
+- [ ] **AGENT-03**: reflect_node accumulates trajectory data (attempt count, code, results) without LLM call
+- [ ] **AGENT-04**: save_trajectory_node persists trajectory via record_trajectory() and sets outcome
+- [ ] **AGENT-05**: RuneState includes session_id field for trajectory persistence
+- [ ] **AGENT-06**: Agent loop closes end-to-end: generate → execute → reflect → retry/save with should_retry routing
+
+### Training Pipeline
+
+- [ ] **TRAIN-01**: User can record a coding trajectory as structured JSON via record_trajectory(session_id, steps, outcome)
+- [ ] **TRAIN-02**: User can convert trajectory data to SFT chat format via format_for_sft()
+- [ ] **TRAIN-03**: User can create a QLoRA config with NF4 quantization and bfloat16 compute dtype via build_qlora_config()
+- [ ] **TRAIN-04**: User can apply a LoRA adapter to a base model via apply_lora_adapter()
+- [ ] **TRAIN-05**: QLoRA training pipeline runs end-to-end: trajectory → SFT format → PEFT train → save safetensors → store in registry
+- [ ] **TRAIN-06**: training-svc exposes POST /train/lora endpoint with async background job tracking
+- [ ] **TRAIN-07**: training-svc pyproject.toml declares model-training as workspace dependency
+
+### Doc-to-LoRA Hypernetwork
+
+- [ ] **DTOL-01**: DocToLoraHypernetwork module exists in model-training lib with Perceiver-based architecture
+- [ ] **DTOL-02**: Hypernetwork generates rank-8 LoRA adapter weights from coding trajectory in a single forward pass (<1s)
+- [ ] **DTOL-03**: Generated adapters are compatible with vLLM dynamic LoRA loading (standard PEFT safetensors format)
+- [ ] **DTOL-04**: training-svc exposes POST /train/hypernetwork endpoint for Doc-to-LoRA training
+
+### Evaluation & Kill-Switch
+
+- [ ] **EVAL-01**: User can run a HumanEval subset benchmark via run_humaneval_subset()
+- [ ] **EVAL-02**: User can calculate Pass@k metrics via calculate_pass_at_k()
+- [ ] **EVAL-03**: Kill-switch gate compares baseline vs adapter-enhanced Pass@1 (5% improvement threshold)
+
+### Infrastructure
+
+- [ ] **INFRA-01**: lora-server Dockerfile uses vllm/vllm-openai:v0.16.0 base image (not python:3.12-slim)
+- [ ] **INFRA-02**: lora-server sets VLLM_ALLOW_RUNTIME_LORA_UPDATING=True environment variable
+- [ ] **INFRA-03**: docker-compose resolves port conflict (api-service and lora-server on different host ports)
+- [ ] **INFRA-04**: model-training pyproject.toml adds GPU dependencies (peft, bitsandbytes, transformers, trl, datasets) with TYPE_CHECKING guards
+- [ ] **INFRA-05**: All GPU imports deferred inside function bodies (not top-level) for CPU-only CI compatibility
+
+## Future Requirements
+
+Deferred to v6+. Tracked but not in current roadmap.
+
+### Evolution
+
+- **EVOL-01**: Evolution operator scores adapter fitness based on HumanEval pass rate
+- **EVOL-02**: Evolution operator performs adapter crossover via weight interpolation
+- **EVOL-03**: Evolution operator archives low-fitness adapters
+
+### Advanced Features
+
+- **ADV-01**: Embedding-based automatic adapter selection via vector similarity search
+- **ADV-02**: HITL UI with session monitoring, adapter library browser, trajectory viewer
+- **ADV-03**: Docker container isolation for code execution (replace subprocess sandbox)
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| Hardware validation phase | User deferred — will validate hardware separately |
+| Tensor parallelism (TP=2) | vLLM bug #21471 — corrupted output on PCIe GPUs without NVLink |
+| Adapter merging into base weights | Loses hot-swap composability; vLLM Punica kernels handle LoRA with near-zero overhead |
+| Cloud API inference | Hard constraint: local-first, no cloud dependencies for inference |
+| Concurrent training + inference | CUDA OOM — must schedule sequentially |
+| Streaming responses in agent loop | Agent needs complete code, not token stream; add to API layer separately if needed |
+| Multi-tenant isolation | Single-user local system; session_id provides sufficient organization |
+| evolution-svc implementation | Depends on populated adapter library from multiple sessions; v6+ |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AREG-01 | — | Pending |
+| AREG-02 | — | Pending |
+| AREG-03 | — | Pending |
+| AREG-04 | — | Pending |
+| AREG-05 | — | Pending |
+| INF-01 | — | Pending |
+| INF-02 | — | Pending |
+| INF-03 | — | Pending |
+| INF-04 | — | Pending |
+| INF-05 | — | Pending |
+| AGENT-01 | — | Pending |
+| AGENT-02 | — | Pending |
+| AGENT-03 | — | Pending |
+| AGENT-04 | — | Pending |
+| AGENT-05 | — | Pending |
+| AGENT-06 | — | Pending |
+| TRAIN-01 | — | Pending |
+| TRAIN-02 | — | Pending |
+| TRAIN-03 | — | Pending |
+| TRAIN-04 | — | Pending |
+| TRAIN-05 | — | Pending |
+| TRAIN-06 | — | Pending |
+| TRAIN-07 | — | Pending |
+| DTOL-01 | — | Pending |
+| DTOL-02 | — | Pending |
+| DTOL-03 | — | Pending |
+| DTOL-04 | — | Pending |
+| EVAL-01 | — | Pending |
+| EVAL-02 | — | Pending |
+| EVAL-03 | — | Pending |
+| INFRA-01 | — | Pending |
+| INFRA-02 | — | Pending |
+| INFRA-03 | — | Pending |
+| INFRA-04 | — | Pending |
+| INFRA-05 | — | Pending |
+
+**Coverage:**
+- v5.0 requirements: 35 total
+- Mapped to phases: 0
+- Unmapped: 35 ⚠️
+
+---
+*Requirements defined: 2026-03-05*
+*Last updated: 2026-03-05 after initial definition*
