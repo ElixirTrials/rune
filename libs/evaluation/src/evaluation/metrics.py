@@ -7,8 +7,15 @@ and computing evolutionary fitness for the evolution operator.
 
 from __future__ import annotations
 
+import json
 import math
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 from typing import Any, Optional
+
+_DATA_DIR = Path(__file__).parent / "data"
 
 
 def calculate_pass_at_k(n_samples: int, n_correct: int, k: int = 1) -> float:
@@ -104,34 +111,95 @@ def run_humaneval_subset(
     """Run a HumanEval benchmark subset to evaluate an adapter.
 
     Loads tasks from the bundled 20-task HumanEval subset JSON and evaluates
-    them using the provided completions (or raises NotImplementedError if
-    no completions are provided, as model inference is out of scope here).
+    them using the provided completions. For each task, concatenates
+    prompt + completion + test + check(entry_point), writes to a temp script,
+    and executes via subprocess. Exit code 0 = passed.
 
     Args:
         adapter_id: UUID of the adapter to test (None = baseline, no adapter).
+            Currently informational; inference wiring happens at a higher level.
         subset_size: Ignored — always uses the fixed 20-task bundled subset.
         model: Base model name (informational only, not used for inference here).
-        completions: Optional dict mapping task_id -> completion string.
-            If provided, these completions are used for evaluation.
-            If None, raises NotImplementedError (model inference not wired here).
+        completions: Dict mapping task_id -> completion string. Only tasks with
+            an entry in this dict are evaluated. If None or empty, returns empty
+            results.
 
     Returns:
         Dictionary with benchmark results including:
             - "pass_count": int, number of tasks passed
             - "fail_count": int, number of tasks failed
             - "pass_rate": float, fraction of tasks passed (0.0 to 1.0)
-            - "task_results": list of per-task result dicts
+            - "task_results": list of per-task result dicts with task_id, passed
             - "summary": str, human-readable summary
 
     Raises:
         NotImplementedError: If completions are not provided (inference not wired).
 
     Example:
-        >>> results = run_humaneval_subset(adapter_id=None, completions={"HumanEval/0": "    return ..."})
+        >>> completions = {"HumanEval/0": "    return []"}
+        >>> results = run_humaneval_subset(adapter_id=None, completions=completions)
         >>> results["pass_count"]
-        1
+        0
     """
-    raise NotImplementedError("run_humaneval_subset is not yet implemented.")
+    if completions is None:
+        raise NotImplementedError("run_humaneval_subset is not yet implemented.")
+
+    # Load bundled task data
+    subset_path = _DATA_DIR / "humaneval_subset.json"
+    with subset_path.open() as f:
+        all_tasks: list[dict[str, str]] = json.load(f)
+
+    # Build lookup by task_id
+    task_map = {t["task_id"]: t for t in all_tasks}
+
+    task_results: list[dict[str, Any]] = []
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for task_id, completion in completions.items():
+            task = task_map.get(task_id)
+            if task is None:
+                continue
+
+            # Build executable script: prompt + completion + test + check(entry_point)
+            script = (
+                task["prompt"]
+                + completion
+                + "\n"
+                + task["test"]
+                + f"\ncheck({task['entry_point']})\n"
+            )
+
+            script_path = Path(tmpdir) / f"{task_id.replace('/', '_')}.py"
+            script_path.write_text(script)
+
+            proc = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=tmpdir,
+            )
+            passed = proc.returncode == 0
+            task_results.append({"task_id": task_id, "passed": passed})
+
+    pass_count = sum(1 for r in task_results if r["passed"])
+    fail_count = len(task_results) - pass_count
+    total = len(task_results)
+    pass_rate = pass_count / total if total > 0 else 0.0
+
+    summary = (
+        f"HumanEval subset: {pass_count}/{total} passed "
+        f"(pass_rate={pass_rate:.2%}, adapter_id={adapter_id})"
+    )
+    print(summary)
+
+    return {
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "pass_rate": pass_rate,
+        "task_results": task_results,
+        "summary": summary,
+    }
 
 
 def score_adapter_quality(
