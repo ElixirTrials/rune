@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "shared",
     "inference",
+    "langgraph>=1.0.6",
 ]
 
 [build-system]

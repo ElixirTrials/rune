@@ -18,7 +18,7 @@ def test_get_adapter(test_client):
     response = test_client.get("/adapters/test-adapter-123")
     assert response.status_code == 200
     data = response.json()
-    assert "adapter_id" in data
+    assert "id" in data
 
 
 def test_create_adapter(test_client, make_adapter_record):
@@ -27,4 +27,4 @@ def test_create_adapter(test_client, make_adapter_record):
     response = test_client.post("/adapters", json=record.model_dump())
     assert response.status_code in (200, 201)
     data = response.json()
-    assert "adapter_id" in data
+    assert "id" in data
