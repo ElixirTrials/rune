@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "45ca6e5dca07",
+  "session_id": "b2ff80d3-aad5-420c-b5c8-990821b038c2",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-05T05:36:35.368763Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/shared/tests/conftest.py",
+    "services/api-service/tests/test_adapters.py",
+    "services/rune-agent/pyproject.toml"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "ce7187b93482",
+  "token_usage": {
+    "input_tokens": 131,
+    "cache_creation_tokens": 314326,
+    "cache_read_tokens": 5658646,
+    "output_tokens": 25032,
+    "api_call_count": 54
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-05T05:36:34.82736Z",
+    "agent_lines": 10,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 10,
+    "agent_percentage": 100
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "45ca6e5dca07",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/shared/tests/conftest.py",
+    "services/api-service/tests/test_adapters.py",
+    "services/rune-agent/pyproject.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/45/ca6e5dca07/0/metadata.json",
+      "transcript": "/45/ca6e5dca07/0/full.jsonl",
+      "context": "/45/ca6e5dca07/0/context.md",
+      "content_hash": "/45/ca6e5dca07/0/content_hash.txt",
+      "prompt": "/45/ca6e5dca07/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 131,
+    "cache_creation_tokens": 314326,
+    "cache_read_tokens": 5658646,
+    "output_tokens": 25032,
+    "api_call_count": 54
+  }
+}
