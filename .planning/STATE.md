@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-03-05T15:56:14.279Z"
-last_activity: "2026-03-05 — 19-03 complete: factory.py (get_provider, get_provider_for_step, (type,url) cache), updated __init__.py (7 provider exports), deleted adapter_loader.py + completion.py + vllm_client.py, replaced old stub tests with smoke tests; 34+3 tests passing, mypy+ruff clean"
+stopped_at: Completed 20-02-PLAN.md
+last_updated: "2026-03-05T17:10:00.000Z"
+last_activity: "2026-03-05 — 20-02 complete: implemented all 4 node functions (generate_node, execute_node, reflect_node, save_trajectory_node), 11 behavior tests green, mypy+ruff clean, py.typed markers added to inference+model-training libs; 30 combined tests passing"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 10
+  completed_plans: 7
+  percent: 12
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Phase 19 — Inference Provider Abstraction (Plan 03 complete — phase done)
+**Current focus:** Phase 20 — Agent Loop (Plan 02 complete — phase done)
 
 ## Current Position
 
-Phase: 19 of 22 (Inference Provider Abstraction)
-Plan: 03 complete (19-03-PLAN.md done — all Phase 19 plans complete)
-Status: In progress — Phase 19 complete, ready for Phase 20
-Last activity: 2026-03-05 — 19-03 complete: factory.py (get_provider, get_provider_for_step, (type,url) cache), updated __init__.py (7 provider exports), deleted adapter_loader.py + completion.py + vllm_client.py, replaced old stub tests with smoke tests; 34+3 tests passing, mypy+ruff clean
+Phase: 20 of 22 (Agent Loop)
+Plan: 02 complete (20-02-PLAN.md done — all Phase 20 plans complete)
+Status: In progress — Phase 20 complete, ready for Phase 21
+Last activity: 2026-03-05 — 20-02 complete: implemented all 4 node functions (generate_node, execute_node, reflect_node, save_trajectory_node), 11 behavior tests green, mypy+ruff clean, py.typed markers added to inference+model-training libs; 30 combined tests passing
 
 Progress: [██░░░░░░░░] 10%
 
@@ -50,6 +50,7 @@ Progress: [██░░░░░░░░] 10%
 | Phase 19-inference-provider-abstraction P01 | 18 | 3 tasks | 8 files |
 | Phase 19-inference-provider-abstraction P03 | 5 | 2 tasks | 10 files |
 | Phase 20-agent-loop P01 | 3 | 2 tasks | 5 files |
+| Phase 20-agent-loop P02 | 7 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Recent decisions affecting v5.0:
 - [Phase 20-agent-loop]: RUNE_TRAJECTORY_DIR read inside function body for monkeypatch testability (same pattern as Phase 19 factory.py)
 - [Phase 20-agent-loop]: record_trajectory() extended with keyword-only task_description/task_type/adapter_ids args for save_trajectory_node compatibility
 - [Phase 20-agent-loop]: format_for_sft() uses reversed(steps) to find last tests_passed=True step as assistant content
+- [Phase 20-02]: RUNE_MODEL and RUNE_EXEC_TIMEOUT env vars read inside function bodies for monkeypatch testability — same pattern as Phase 19 factory.py
+- [Phase 20-02]: py.typed markers added to inference and model-training libs — correct PEP 561 solution for mypy strict import-untyped compliance
+- [Phase 20-02]: reflect_node uses list concatenation (state["trajectory"] + [step]) not .append() — LangGraph requires immutable state updates
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T15:56:14.277Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-03-05T17:10:00.000Z
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None

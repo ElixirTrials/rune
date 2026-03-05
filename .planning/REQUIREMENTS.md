@@ -27,17 +27,17 @@ Requirements for first working implementation. Each maps to roadmap phases.
 
 ### Agent Loop
 
-- [ ] **AGENT-01**: generate_node calls InferenceProvider.generate() with task description and optional adapter, returning generated code (backend-agnostic)
-- [ ] **AGENT-02**: execute_node runs generated code in a sandboxed subprocess with timeout, returning stdout/stderr/exit_code/tests_passed
-- [ ] **AGENT-03**: reflect_node accumulates trajectory data (attempt count, code, results) without LLM call
-- [ ] **AGENT-04**: save_trajectory_node persists trajectory via record_trajectory() and sets outcome
-- [ ] **AGENT-05**: RuneState includes session_id field for trajectory persistence
-- [ ] **AGENT-06**: Agent loop closes end-to-end: generate → execute → reflect → retry/save with should_retry routing
+- [x] **AGENT-01**: generate_node calls InferenceProvider.generate() with task description and optional adapter, returning generated code (backend-agnostic)
+- [x] **AGENT-02**: execute_node runs generated code in a sandboxed subprocess with timeout, returning stdout/stderr/exit_code/tests_passed
+- [x] **AGENT-03**: reflect_node accumulates trajectory data (attempt count, code, results) without LLM call
+- [x] **AGENT-04**: save_trajectory_node persists trajectory via record_trajectory() and sets outcome
+- [x] **AGENT-05**: RuneState includes session_id field for trajectory persistence
+- [x] **AGENT-06**: Agent loop closes end-to-end: generate → execute → reflect → retry/save with should_retry routing
 
 ### Training Pipeline
 
-- [ ] **TRAIN-01**: User can record a coding trajectory as structured JSON via record_trajectory(session_id, steps, outcome)
-- [ ] **TRAIN-02**: User can convert trajectory data to SFT chat format via format_for_sft()
+- [x] **TRAIN-01**: User can record a coding trajectory as structured JSON via record_trajectory(session_id, steps, outcome)
+- [x] **TRAIN-02**: User can convert trajectory data to SFT chat format via format_for_sft()
 - [ ] **TRAIN-03**: User can create a QLoRA config with NF4 quantization and bfloat16 compute dtype via build_qlora_config()
 - [ ] **TRAIN-04**: User can apply a LoRA adapter to a base model via apply_lora_adapter()
 - [ ] **TRAIN-05**: QLoRA training pipeline runs end-to-end: trajectory → SFT format → PEFT train → save safetensors → store in registry
@@ -117,14 +117,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 19 | Complete |
 | INFRA-02 | Phase 19 | Complete |
 | INFRA-03 | Phase 19 | Complete |
-| AGENT-01 | Phase 20 | Pending |
-| AGENT-02 | Phase 20 | Pending |
-| AGENT-03 | Phase 20 | Pending |
-| AGENT-04 | Phase 20 | Pending |
-| AGENT-05 | Phase 20 | Pending |
-| AGENT-06 | Phase 20 | Pending |
-| TRAIN-01 | Phase 20 | Pending |
-| TRAIN-02 | Phase 20 | Pending |
+| AGENT-01 | Phase 20 | Complete |
+| AGENT-02 | Phase 20 | Complete |
+| AGENT-03 | Phase 20 | Complete |
+| AGENT-04 | Phase 20 | Complete |
+| AGENT-05 | Phase 20 | Complete |
+| AGENT-06 | Phase 20 | Complete |
+| TRAIN-01 | Phase 20 | Complete |
+| TRAIN-02 | Phase 20 | Complete |
 | TRAIN-03 | Phase 21 | Pending |
 | TRAIN-04 | Phase 21 | Pending |
 | TRAIN-05 | Phase 21 | Pending |

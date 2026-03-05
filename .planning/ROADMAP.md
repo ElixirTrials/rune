@@ -58,7 +58,7 @@
 
 - [x] **Phase 18: Adapter Registry** — SQLite-backed CRUD hub that all other components read from and write to (2/2 plans complete)
 - [x] **Phase 19: Inference Provider Abstraction** — Abstract InferenceProvider interface with vLLM and Ollama implementations, provider factory, and lora-server configuration (3/3 plans complete)
-- [ ] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence (2 plans)
+- [x] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence (2/2 plans complete)
 - [ ] **Phase 21: QLoRA Training Pipeline** — Full gradient-descent training path from trajectory to PEFT adapter stored in registry, with training-svc HTTP dispatch
 - [ ] **Phase 22: Kill-Switch Gate** — Doc-to-LoRA hypernetwork + evaluation lib measuring the 5% Pass@1 improvement threshold
 
@@ -111,8 +111,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 20-01-PLAN.md — Trajectory library (record, load, format_for_sft) + RuneState session_id + model-training workspace dep
-- [ ] 20-02-PLAN.md — All 4 node implementations (generate, execute, reflect, save_trajectory) + green-phase test rewrites
+- [x] 20-01-PLAN.md — Trajectory library (record, load, format_for_sft) + RuneState session_id + model-training workspace dep — DONE 2026-03-05
+- [x] 20-02-PLAN.md — All 4 node implementations (generate, execute, reflect, save_trajectory) + green-phase test rewrites — DONE 2026-03-05
 
 ### Phase 21: QLoRA Training Pipeline
 **Goal**: Users can trigger end-to-end QLoRA training from a recorded trajectory, producing a PEFT safetensors adapter stored in the registry and accessible for loading via the inference provider
@@ -162,9 +162,9 @@ Plans:
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 20. Agent Loop | 1/2 | In Progress|  | - |
+| 20. Agent Loop | v5.0 | 2/2 | Complete | 2026-03-05 |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after Phase 20 planning complete (2 plans in 2 waves)*
+*Last updated: 2026-03-05 after Phase 20 complete (agent loop fully operational, 30 tests passing)*
