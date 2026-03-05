@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "shared",
     "inference",
+    "model-training",
     "langgraph>=1.0.6",
 ]
 
@@ -28,10 +29,10 @@ packages = ["src/rune_agent"]
 strict = true
 exclude = ["venv", ".venv", "docs"]
 plugins = []
-mypy_path = ["../shared/src", "../inference/src"]
+mypy_path = ["../shared/src", "../inference/src", "../model-training/src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "../shared/src", "../inference/src"]
+pythonpath = ["src", "../shared/src", "../inference/src", "../model-training/src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--cov=rune_agent --cov-branch --cov-report=term-missing"
@@ -39,3 +40,4 @@ addopts = "--cov=rune_agent --cov-branch --cov-report=term-missing"
 [tool.uv.sources]
 shared = { workspace = true }
 inference = { workspace = true }
+model-training = { workspace = true }

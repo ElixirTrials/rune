@@ -15,6 +15,7 @@ class RuneState(TypedDict):
         task_type: Category of task (e.g. 'function', 'class', 'refactor').
         test_suite: Test code that the generated solution must pass.
         adapter_ids: LoRA adapter IDs to load for parametric memory.
+        session_id: Unique identifier for trajectory persistence (UUID4).
         attempt_count: Current attempt number (0-indexed, incremented by reflect).
         max_attempts: Maximum number of generation attempts allowed.
         generated_code: Code produced by the generate node.
@@ -32,6 +33,7 @@ class RuneState(TypedDict):
     test_suite: str
     adapter_ids: list[str]
     # Loop tracking
+    session_id: str
     attempt_count: int
     max_attempts: int
     # Per-attempt results
