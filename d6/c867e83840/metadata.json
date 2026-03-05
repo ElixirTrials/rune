@@ -3,9 +3,15 @@
   "checkpoint_id": "d6c867e83840",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 3,
   "files_touched": [
-    "libs/adapter-registry/src/adapter_registry/registry.py"
+    "libs/adapter-registry/src/adapter_registry/registry.py",
+    "libs/inference/tests/test_ollama_provider.py",
+    "libs/inference/tests/test_provider.py",
+    "libs/inference/tests/test_vllm_provider.py",
+    "libs/model-training/tests/test_trajectory.py",
+    "services/lora-server/config.py",
+    "services/rune-agent/tests/test_nodes.py"
   ],
   "sessions": [
     {
@@ -14,13 +20,20 @@
       "context": "/d6/c867e83840/0/context.md",
       "content_hash": "/d6/c867e83840/0/content_hash.txt",
       "prompt": "/d6/c867e83840/0/prompt.txt"
+    },
+    {
+      "metadata": "/d6/c867e83840/1/metadata.json",
+      "transcript": "/d6/c867e83840/1/full.jsonl",
+      "context": "/d6/c867e83840/1/context.md",
+      "content_hash": "/d6/c867e83840/1/content_hash.txt",
+      "prompt": "/d6/c867e83840/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 81,
-    "cache_creation_tokens": 212413,
-    "cache_read_tokens": 6280837,
-    "output_tokens": 26393,
-    "api_call_count": 72
+    "input_tokens": 821,
+    "cache_creation_tokens": 397498,
+    "cache_read_tokens": 13408091,
+    "output_tokens": 48739,
+    "api_call_count": 157
   }
 }

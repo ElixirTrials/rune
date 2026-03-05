@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "d6c867e83840",
+  "session_id": "9e3b4cbc-c9e5-4f50-9178-4b3fddad0832",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-05T16:54:05.035085Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/inference/tests/test_ollama_provider.py",
+    "libs/inference/tests/test_provider.py",
+    "libs/inference/tests/test_vllm_provider.py",
+    "libs/model-training/tests/test_trajectory.py",
+    "services/lora-server/config.py",
+    "services/rune-agent/tests/test_nodes.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "aece9dce9de7",
+  "token_usage": {
+    "input_tokens": 740,
+    "cache_creation_tokens": 185085,
+    "cache_read_tokens": 7127254,
+    "output_tokens": 22346,
+    "api_call_count": 85
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-05T16:54:04.368373Z",
+    "agent_lines": 88,
+    "human_added": 195,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 283,
+    "agent_percentage": 31.09540636042403
+  }
+}
