@@ -5,14 +5,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from inference.exceptions import UnsupportedOperationError
 from inference.ollama_provider import OllamaProvider
 from inference.provider import GenerationResult, InferenceProvider
 
 
-def _make_openai_response(text: str, model: str, token_count: int = 8, finish_reason: str = "stop") -> Any:
-    """Build a minimal mock chat completion response matching OpenAI SDK shape."""
+def _make_openai_response(
+    text: str,
+    model: str,
+    token_count: int = 8,
+    finish_reason: str = "stop",
+) -> Any:
+    """Build a minimal mock chat completion response."""
     choice = MagicMock()
     choice.message.content = text
     choice.finish_reason = finish_reason
@@ -63,7 +67,7 @@ class TestOllamaProviderGenerate:
         assert result.text == "def hello(): pass"
 
     async def test_generate_calls_openai_with_correct_model(self) -> None:
-        """Test 3: generate() calls AsyncOpenAI chat.completions.create with correct model param."""
+        """Test 3: generate() calls chat.completions.create with correct model."""
         provider = OllamaProvider()
         mock_response = _make_openai_response(text="output", model="qwen2.5-coder:7b")
         captured_calls: list[dict[str, Any]] = []
@@ -82,7 +86,7 @@ class TestOllamaProviderGenerate:
         assert captured_calls[0]["model"] == "qwen2.5-coder:7b"
 
     async def test_generate_ignores_adapter_id_and_logs_warning(self) -> None:
-        """Test 8: generate() ignores adapter_id parameter (logs warning, does not fail)."""
+        """Test 8: generate() ignores adapter_id (logs warning, does not fail)."""
         provider = OllamaProvider()
         mock_response = _make_openai_response(text="output", model="qwen2.5-coder:7b")
         captured_calls: list[dict[str, Any]] = []
@@ -109,10 +113,10 @@ class TestOllamaProviderGenerate:
 
 
 class TestOllamaProviderAdapterOps:
-    """Tests for OllamaProvider adapter operations (all should raise UnsupportedOperationError)."""
+    """Tests for OllamaProvider adapter operations (raise UnsupportedOperationError)."""
 
     async def test_load_adapter_raises_unsupported_operation_error(self) -> None:
-        """Test 4: load_adapter() raises UnsupportedOperationError with descriptive message."""
+        """Test 4: load_adapter() raises UnsupportedOperationError."""
         provider = OllamaProvider()
         with pytest.raises(UnsupportedOperationError):
             await provider.load_adapter("adapter-001", "/models/adapter-001")

@@ -250,7 +250,10 @@ async def test_save_trajectory_node_success(
     }
 
     with patch("rune_agent.nodes.record_trajectory") as mock_record:
-        mock_record.return_value = {"session_id": "test-session-001", "file_path": "/tmp/x.json"}
+        mock_record.return_value = {
+            "session_id": "test-session-001",
+            "file_path": "/tmp/x.json",
+        }
         result = await save_trajectory_node(state)
 
     assert result["outcome"] == "success"
@@ -280,7 +283,10 @@ async def test_save_trajectory_node_exhausted(
     }
 
     with patch("rune_agent.nodes.record_trajectory") as mock_record:
-        mock_record.return_value = {"session_id": "test-session-002", "file_path": "/tmp/y.json"}
+        mock_record.return_value = {
+            "session_id": "test-session-002",
+            "file_path": "/tmp/y.json",
+        }
         result = await save_trajectory_node(state)
 
     assert result["outcome"] == "exhausted"

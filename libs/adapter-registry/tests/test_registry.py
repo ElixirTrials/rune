@@ -65,9 +65,7 @@ def test_store_returns_none(registry, make_adapter_record) -> None:
 # --- retrieve_by_id() ---
 
 
-def test_retrieve_by_id_returns_matching_record(
-    registry, make_adapter_record
-) -> None:
+def test_retrieve_by_id_returns_matching_record(registry, make_adapter_record) -> None:
     """retrieve_by_id() returns the stored AdapterRecord."""
     record = make_adapter_record(id="unique-adapter-xyz")
     registry.store(record)
@@ -172,9 +170,7 @@ def test_concurrent_writes_no_deadlock(tmp_path, make_adapter_record) -> None:
         except Exception as e:
             errors.append(e)
 
-    threads = [
-        threading.Thread(target=write, args=(f"t-{i}",)) for i in range(5)
-    ]
+    threads = [threading.Thread(target=write, args=(f"t-{i}",)) for i in range(5)]
     for t in threads:
         t.start()
     for t in threads:

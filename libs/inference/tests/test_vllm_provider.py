@@ -4,14 +4,17 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from inference.provider import GenerationResult, InferenceProvider
 from inference.vllm_provider import VLLMProvider
 
 
-def _make_openai_response(text: str, model: str, token_count: int = 10, finish_reason: str = "stop") -> Any:
-    """Build a minimal mock chat completion response matching OpenAI SDK shape."""
+def _make_openai_response(
+    text: str,
+    model: str,
+    token_count: int = 10,
+    finish_reason: str = "stop",
+) -> Any:
+    """Build a minimal mock chat completion response."""
     choice = MagicMock()
     choice.message.content = text
     choice.finish_reason = finish_reason
@@ -39,7 +42,7 @@ class TestVLLMProviderGenerate:
     """Tests for VLLMProvider.generate()."""
 
     async def test_generate_returns_generation_result(self) -> None:
-        """Test 2: generate() returns GenerationResult with correct fields from mocked response."""
+        """Test 2: generate() returns GenerationResult with correct fields."""
         provider = VLLMProvider()
         mock_response = _make_openai_response(
             text="def hello(): pass",
@@ -64,7 +67,7 @@ class TestVLLMProviderGenerate:
         assert result.finish_reason == "stop"
 
     async def test_generate_with_adapter_passes_adapter_id_as_model(self) -> None:
-        """Test 3: generate() with adapter_id passes adapter_id as model parameter."""
+        """Test 3: generate() with adapter_id passes adapter_id as model."""
         provider = VLLMProvider()
         mock_response = _make_openai_response(
             text="output", model="adapter-001", token_count=5
@@ -87,7 +90,7 @@ class TestVLLMProviderGenerate:
         assert captured_calls[0]["model"] == "adapter-001"
 
     async def test_generate_without_adapter_passes_model_as_is(self) -> None:
-        """Test 4: generate() without adapter_id passes the model parameter as-is."""
+        """Test 4: generate() without adapter_id passes model parameter as-is."""
         provider = VLLMProvider()
         mock_response = _make_openai_response(text="out", model="Qwen2.5-Coder-7B")
         captured_calls: list[dict[str, Any]] = []
@@ -108,7 +111,7 @@ class TestVLLMProviderAdapterLifecycle:
     """Tests for VLLMProvider adapter load/unload/list operations."""
 
     async def test_load_adapter_posts_to_correct_endpoint(self) -> None:
-        """Test 5: load_adapter() makes POST to /v1/load_lora_adapter with correct body and tracks adapter."""
+        """Test 5: load_adapter() POSTs to /v1/load_lora_adapter and tracks adapter."""
         provider = VLLMProvider(base_url="http://localhost:8100/v1")
 
         mock_response = MagicMock()
@@ -116,13 +119,18 @@ class TestVLLMProviderAdapterLifecycle:
 
         async def mock_post(url: str, json: dict[str, Any]) -> Any:
             assert url == "http://localhost:8100/v1/load_lora_adapter"
-            assert json == {"lora_name": "adapter-001", "lora_path": "/models/adapter-001"}
+            assert json == {
+                "lora_name": "adapter-001",
+                "lora_path": "/models/adapter-001",
+            }
             return mock_response
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_http = AsyncMock()
             mock_http.post = mock_post
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http
+            )
             mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
 
             await provider.load_adapter("adapter-001", "/models/adapter-001")
@@ -130,7 +138,7 @@ class TestVLLMProviderAdapterLifecycle:
         assert "adapter-001" in provider._loaded_adapters
 
     async def test_unload_adapter_posts_to_correct_endpoint(self) -> None:
-        """Test 6: unload_adapter() makes POST to /v1/unload_lora_adapter and removes from tracking."""
+        """Test 6: unload_adapter() POSTs to /v1/unload_lora_adapter and removes it."""
         provider = VLLMProvider(base_url="http://localhost:8100/v1")
         provider._loaded_adapters.add("adapter-001")
 
@@ -145,7 +153,9 @@ class TestVLLMProviderAdapterLifecycle:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_http = AsyncMock()
             mock_http.post = mock_post
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http
+            )
             mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
 
             await provider.unload_adapter("adapter-001")
@@ -170,7 +180,9 @@ class TestVLLMProviderAdapterLifecycle:
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_http = AsyncMock()
             mock_http.post = AsyncMock(return_value=mock_response)
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_client_class.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http
+            )
             mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
 
             await provider.load_adapter("adapter-001", "/models/adapter-001")

@@ -1,7 +1,6 @@
-"""Tests for InferenceProvider ABC, GenerationResult dataclass, and UnsupportedOperationError."""
+"""Tests for InferenceProvider ABC, GenerationResult, and UnsupportedOperationError."""
 
 import pytest
-
 from inference.exceptions import UnsupportedOperationError
 from inference.provider import GenerationResult, InferenceProvider
 
@@ -10,15 +9,21 @@ class TestInferenceProviderABC:
     """Tests for InferenceProvider abstract base class."""
 
     def test_cannot_instantiate_directly(self) -> None:
-        """Test 1: InferenceProvider cannot be instantiated directly (TypeError from ABC)."""
+        """Test 1: InferenceProvider cannot be instantiated directly."""
         with pytest.raises(TypeError):
             InferenceProvider()  # type: ignore[abstract]
 
     def test_concrete_subclass_missing_method_cannot_be_instantiated(self) -> None:
-        """Test 2: A concrete subclass missing any abstract method cannot be instantiated."""
+        """Test 2: Subclass missing abstract method cannot be instantiated."""
 
         class IncompleteProvider(InferenceProvider):
-            async def generate(self, prompt: str, model: str, adapter_id: str | None = None, max_tokens: int = 1024) -> GenerationResult:  # type: ignore[override]
+            async def generate(  # type: ignore[override]
+                self,
+                prompt: str,
+                model: str,
+                adapter_id: str | None = None,
+                max_tokens: int = 1024,
+            ) -> GenerationResult:
                 raise NotImplementedError
 
             # Missing load_adapter, unload_adapter, list_adapters
@@ -31,7 +36,7 @@ class TestGenerationResult:
     """Tests for GenerationResult dataclass."""
 
     def test_can_be_constructed_with_all_fields(self) -> None:
-        """Test 3: GenerationResult dataclass can be constructed with all required fields."""
+        """Test 3: GenerationResult can be constructed with all fields."""
         result = GenerationResult(
             text="def hello(): pass",
             model="Qwen/Qwen2.5-Coder-7B",
@@ -61,7 +66,7 @@ class TestUnsupportedOperationError:
     """Tests for UnsupportedOperationError exception."""
 
     def test_is_subclass_of_exception(self) -> None:
-        """Test 5: UnsupportedOperationError is a subclass of Exception and carries message."""
+        """Test 5: UnsupportedOperationError is a subclass of Exception."""
         err = UnsupportedOperationError("operation not supported")
         assert isinstance(err, Exception)
         assert str(err) == "operation not supported"

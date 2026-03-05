@@ -14,10 +14,7 @@ from .state import RuneState
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = (
-    "You are a Python code generator. "
-    "Output only code, no explanation."
-)
+SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanation."
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B"
 

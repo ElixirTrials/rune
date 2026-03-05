@@ -25,8 +25,9 @@ class LoraServerConfig:
         port: Port for the vLLM inference server.
         health_port: Port for the health sidecar.
         max_loras: Maximum number of concurrent LoRA adapters.
-        max_lora_rank: Maximum rank for LoRA adapters (capped at 64 to avoid VRAM OOM).
-        gpu_memory_utilization: Fraction of GPU VRAM reserved for the model (0.80 leaves headroom for LoRA).
+        max_lora_rank: Maximum rank for LoRA adapters (capped at 64 to avoid OOM).
+        gpu_memory_utilization: Fraction of GPU VRAM for the model (0.80 leaves
+            headroom for LoRA).
 
     Example:
         >>> config = LoraServerConfig()

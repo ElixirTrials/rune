@@ -95,9 +95,7 @@ class AdapterRegistry:
         with Session(self._engine, expire_on_commit=False) as session:
             record = session.get(AdapterRecord, adapter_id)
             if record is None:
-                raise AdapterNotFoundError(
-                    f"No adapter with id '{adapter_id}'."
-                )
+                raise AdapterNotFoundError(f"No adapter with id '{adapter_id}'.")
             session.expunge(record)
             return record
 

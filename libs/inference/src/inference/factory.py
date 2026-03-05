@@ -62,17 +62,16 @@ def get_provider(
 
     resolved_url: str
     if ptype == "vllm":
-        resolved_url = (
-            base_url or os.environ.get("VLLM_BASE_URL", _DEFAULT_VLLM_BASE_URL)
+        resolved_url = base_url or os.environ.get(
+            "VLLM_BASE_URL", _DEFAULT_VLLM_BASE_URL
         )
     elif ptype == "ollama":
-        resolved_url = (
-            base_url or os.environ.get("OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL)
+        resolved_url = base_url or os.environ.get(
+            "OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL
         )
     else:
         raise ValueError(
-            f"Unknown provider type: '{ptype}'. "
-            "Supported values: 'vllm', 'ollama'."
+            f"Unknown provider type: '{ptype}'. Supported values: 'vllm', 'ollama'."
         )
 
     cache_key = (ptype, resolved_url)
