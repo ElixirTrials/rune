@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "6e9596408da0",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/adapter-registry/tests/test_registry.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6e/9596408da0/0/metadata.json",
+      "transcript": "/6e/9596408da0/0/full.jsonl",
+      "context": "/6e/9596408da0/0/context.md",
+      "content_hash": "/6e/9596408da0/0/content_hash.txt",
+      "prompt": "/6e/9596408da0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 2064,
+    "cache_read_tokens": 78396,
+    "output_tokens": 1447,
+    "api_call_count": 2
+  }
+}
