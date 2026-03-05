@@ -59,9 +59,9 @@ Requirements for first working implementation. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: lora-server Dockerfile uses vllm/vllm-openai:v0.16.0 base image (not python:3.12-slim)
-- [ ] **INFRA-02**: lora-server sets VLLM_ALLOW_RUNTIME_LORA_UPDATING=True environment variable
-- [ ] **INFRA-03**: docker-compose resolves port conflict (api-service and lora-server on different host ports)
+- [x] **INFRA-01**: lora-server Dockerfile uses vllm/vllm-openai:v0.16.0 base image (not python:3.12-slim)
+- [x] **INFRA-02**: lora-server sets VLLM_ALLOW_RUNTIME_LORA_UPDATING=True environment variable
+- [x] **INFRA-03**: docker-compose resolves port conflict (api-service and lora-server on different host ports)
 - [ ] **INFRA-04**: model-training pyproject.toml adds GPU dependencies (peft, bitsandbytes, transformers, trl, datasets) with TYPE_CHECKING guards
 - [ ] **INFRA-05**: All GPU imports deferred inside function bodies (not top-level) for CPU-only CI compatibility
 
@@ -114,9 +114,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INF-05 | Phase 19 | Pending |
 | INF-06 | Phase 19 | Pending |
 | INF-07 | Phase 19 | Pending |
-| INFRA-01 | Phase 19 | Pending |
-| INFRA-02 | Phase 19 | Pending |
-| INFRA-03 | Phase 19 | Pending |
+| INFRA-01 | Phase 19 | Complete |
+| INFRA-02 | Phase 19 | Complete |
+| INFRA-03 | Phase 19 | Complete |
 | AGENT-01 | Phase 20 | Pending |
 | AGENT-02 | Phase 20 | Pending |
 | AGENT-03 | Phase 20 | Pending |
@@ -147,4 +147,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-05*
-*Last updated: 2026-03-05 after v5.0 roadmap revision (provider abstraction)*
+*Last updated: 2026-03-05 after 19-02 complete (INFRA-01, INFRA-02, INFRA-03 completed)*

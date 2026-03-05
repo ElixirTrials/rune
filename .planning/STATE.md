@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-03-05T10:45:33.773Z"
-last_activity: "2026-03-05 — 18-02 complete: Green-phase test suite with conftest fixtures, WAL mode verification, 5-thread concurrent write test; 16 tests all passing"
+stopped_at: Completed 19-02-PLAN.md (lora-server infra update)
+last_updated: "2026-03-05T11:23:00.000Z"
+last_activity: "2026-03-05 — 19-02 complete: vLLM Dockerfile (v0.16.0), VLLM_ALLOW_RUNTIME_LORA_UPDATING env, max_lora_rank/gpu_memory_utilization config fields, port conflict fixed (8100:8000), shared rune_data SQLite volume; 4 tests passing"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 3
+  completed_plans: 3
   percent: 10
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Phase 18 — Adapter Registry (Plans 01 and 02 complete — Phase 18 DONE)
+**Current focus:** Phase 19 — Inference Provider Abstraction (Plan 02 complete)
 
 ## Current Position
 
-Phase: 18 of 22 (Adapter Registry) — COMPLETE
-Plan: 02 complete (18-02-PLAN.md done)
-Status: In progress — Phase 18 complete, ready for Phase 19
-Last activity: 2026-03-05 — 18-02 complete: Green-phase test suite with conftest fixtures, WAL mode verification, 5-thread concurrent write test; 16 tests all passing
+Phase: 19 of 22 (Inference Provider Abstraction)
+Plan: 02 complete (19-02-PLAN.md done)
+Status: In progress — 19-02 complete, ready for next 19 plan
+Last activity: 2026-03-05 — 19-02 complete: vLLM Dockerfile (v0.16.0), VLLM_ALLOW_RUNTIME_LORA_UPDATING env, max_lora_rank/gpu_memory_utilization config fields, port conflict fixed (8100:8000), shared rune_data SQLite volume; 4 tests passing
 
 Progress: [██░░░░░░░░] 10%
 
@@ -44,6 +44,7 @@ Progress: [██░░░░░░░░] 10%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 18-adapter-registry | 2 | 17 min | 8.5 min |
+| 19-inference-provider-abstraction | 1 | 8 min | 8 min |
 
 *Updated after each plan completion*
 
@@ -54,6 +55,9 @@ Progress: [██░░░░░░░░] 10%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting v5.0:
 
+- vllm/vllm-openai:v0.16.0 base image used; openai removed from pip install (bundled in vLLM image); VLLM_ALLOW_RUNTIME_LORA_UPDATING=True enables runtime adapter loading
+- lora-server host port changed from 8000 to 8100 in docker-compose; container-internal port stays 8000 (startup.sh unchanged)
+- rune_data:/data shared volume added to api and lora-server in docker-compose for cross-service SQLite access
 - Hardware validation deferred — user will validate hardware separately; not a roadmap phase
 - Provider abstraction added — InferenceProvider interface (INF-01) with VLLMProvider (INF-02), OllamaProvider (INF-03), factory (INF-04), per-step model/provider config (INF-07)
 - AGENT-01 is backend-agnostic — calls InferenceProvider.generate(), not VLLMClient directly
@@ -78,6 +82,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T10:37:10Z
-Stopped at: Completed 18-02-PLAN.md
-Resume file: .planning/phases/18-adapter-registry/18-02-SUMMARY.md
+Last session: 2026-03-05T11:23:00.000Z
+Stopped at: Completed 19-02-PLAN.md (lora-server infra update)
+Resume file: .planning/phases/19-inference-provider-abstraction/19-02-SUMMARY.md
