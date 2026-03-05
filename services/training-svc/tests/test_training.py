@@ -7,7 +7,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def clear_job_store():
-    """Clear JOB_STORE before and after each test to prevent cross-test contamination."""
+    """Clear JOB_STORE before/after each test to prevent cross-test contamination."""
     from training_svc.jobs import JOB_STORE
 
     JOB_STORE.clear()

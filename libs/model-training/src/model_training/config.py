@@ -78,26 +78,18 @@ def validate_config(config: dict[str, Any]) -> bool:
     """
     missing = _REQUIRED_KEYS - set(config.keys())
     if missing:
-        raise ValueError(
-            f"Missing required config keys: {sorted(missing)}"
-        )
+        raise ValueError(f"Missing required config keys: {sorted(missing)}")
 
     rank = config["rank"]
     if not (isinstance(rank, int) and rank > 0 and rank <= 256):
-        raise ValueError(
-            f"rank must be an integer in range (0, 256], got {rank!r}"
-        )
+        raise ValueError(f"rank must be an integer in range (0, 256], got {rank!r}")
 
     epochs = config["epochs"]
     if not (isinstance(epochs, int) and epochs > 0 and epochs <= 100):
-        raise ValueError(
-            f"epochs must be an integer in range (0, 100], got {epochs!r}"
-        )
+        raise ValueError(f"epochs must be an integer in range (0, 100], got {epochs!r}")
 
     lr = config["learning_rate"]
     if not (isinstance(lr, float) and lr > 0.0 and lr < 1.0):
-        raise ValueError(
-            f"learning_rate must be a float in range (0, 1), got {lr!r}"
-        )
+        raise ValueError(f"learning_rate must be a float in range (0, 1), got {lr!r}")
 
     return True

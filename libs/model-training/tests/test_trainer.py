@@ -80,9 +80,7 @@ def test_train_qlora_rejects_unsuccessful_trajectory(
         _remove_fake_gpu_modules()
 
 
-@pytest.mark.xfail(
-    reason="Full GPU mocking chain is fragile in CPU CI", strict=False
-)
+@pytest.mark.xfail(reason="Full GPU mocking chain is fragile in CPU CI", strict=False)
 def test_train_and_register_creates_adapter_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -3,6 +3,7 @@
 Module-level JOB_STORE dict shared across all request handlers.
 State is lost on service restart — acceptable for single-user local MVP.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
