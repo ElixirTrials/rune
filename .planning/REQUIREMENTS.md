@@ -41,8 +41,8 @@ Requirements for first working implementation. Each maps to roadmap phases.
 - [x] **TRAIN-03**: User can create a QLoRA config with NF4 quantization and bfloat16 compute dtype via build_qlora_config()
 - [x] **TRAIN-04**: User can apply a LoRA adapter to a base model via apply_lora_adapter()
 - [x] **TRAIN-05**: QLoRA training pipeline runs end-to-end: trajectory → SFT format → PEFT train → save safetensors → store in registry
-- [ ] **TRAIN-06**: training-svc exposes POST /train/lora endpoint with async background job tracking
-- [ ] **TRAIN-07**: training-svc pyproject.toml declares model-training as workspace dependency
+- [x] **TRAIN-06**: training-svc exposes POST /train/lora endpoint with async background job tracking
+- [x] **TRAIN-07**: training-svc pyproject.toml declares model-training as workspace dependency
 
 ### Doc-to-LoRA Hypernetwork
 
@@ -128,8 +128,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAIN-03 | Phase 21 | Complete |
 | TRAIN-04 | Phase 21 | Complete |
 | TRAIN-05 | Phase 21 | Complete |
-| TRAIN-06 | Phase 21 | Pending |
-| TRAIN-07 | Phase 21 | Pending |
+| TRAIN-06 | Phase 21 | Complete |
+| TRAIN-07 | Phase 21 | Complete |
 | INFRA-04 | Phase 21 | Complete |
 | INFRA-05 | Phase 21 | Complete |
 | DTOL-01 | Phase 22 | Pending |
