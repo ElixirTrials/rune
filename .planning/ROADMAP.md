@@ -52,7 +52,7 @@
 
 </details>
 
-### 🚧 v5.0 First Implementation (In Progress)
+### v5.0 First Implementation (In Progress)
 
 **Milestone Goal:** Transform wireframe stubs into a working end-to-end system — adapter registry to provider-agnostic inference to agent loop to QLoRA training to Doc-to-LoRA kill-switch gate — running entirely on local hardware.
 
@@ -91,7 +91,12 @@ Plans:
   4. User can load two adapters simultaneously via VLLMProvider and generate from each by name without collision
   5. Agent can configure different models or providers per step (e.g., VLLMProvider for generation, OllamaProvider for reflection) without changing agent graph structure
   6. lora-server starts without error with VLLM_ALLOW_RUNTIME_LORA_UPDATING=True set, and docker-compose runs all services without port conflict
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 19-01-PLAN.md — InferenceProvider ABC + GenerationResult + VLLMProvider + OllamaProvider with full test coverage
+- [ ] 19-02-PLAN.md — lora-server Dockerfile update (vLLM base image + runtime LoRA env) and docker-compose port conflict fix
+- [ ] 19-03-PLAN.md — Provider factory with instance cache + per-step config + __init__.py exports + delete old stubs
 
 ### Phase 20: Agent Loop
 **Goal**: Users can invoke the Rune agent on a coding task and observe a complete generate → execute → reflect → save_trajectory cycle through the InferenceProvider interface, with trajectory data persisted to disk
@@ -152,10 +157,10 @@ Plans:
 | 16. Service Wireframes | v4.0 | 4/4 | Complete | 2026-03-03 |
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 19. Inference Provider Abstraction | v5.0 | 0/TBD | Not started | - |
+| 19. Inference Provider Abstraction | v5.0 | 0/3 | Planned | - |
 | 20. Agent Loop | v5.0 | 0/TBD | Not started | - |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after Phase 18 Plan 02 execution (Phase 18 complete — 16 tests green, WAL + concurrency verified)*
+*Last updated: 2026-03-05 after Phase 19 planning (3 plans created in 2 waves)*
