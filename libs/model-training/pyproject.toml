@@ -7,6 +7,11 @@ requires-python = ">=3.12"
 dependencies = [
     "shared",
     "torch>=2.0.0",
+    "peft>=0.18.0",
+    "bitsandbytes>=0.45.0",
+    "transformers>=4.47.0",
+    "trl>=0.16.0",
+    "datasets>=3.0.0",
 ]
 
 [build-system]
