@@ -17,12 +17,12 @@ Requirements for first working implementation. Each maps to roadmap phases.
 
 ### Inference
 
-- [ ] **INF-01**: Abstract InferenceProvider interface with generate(), load_adapter(), unload_adapter(), list_adapters() methods
-- [ ] **INF-02**: VLLMProvider implementation with full LoRA hot-loading support (POST /v1/load_lora_adapter, /v1/unload_lora_adapter)
-- [ ] **INF-03**: OllamaProvider implementation for inference via Ollama API (LoRA support where Ollama supports it)
+- [x] **INF-01**: Abstract InferenceProvider interface with generate(), load_adapter(), unload_adapter(), list_adapters() methods
+- [x] **INF-02**: VLLMProvider implementation with full LoRA hot-loading support (POST /v1/load_lora_adapter, /v1/unload_lora_adapter)
+- [x] **INF-03**: OllamaProvider implementation for inference via Ollama API (LoRA support where Ollama supports it)
 - [ ] **INF-04**: Provider factory/registry for selecting backend by configuration (env var or config file)
-- [ ] **INF-05**: User can generate with a specific loaded adapter by passing adapter name as model parameter
-- [ ] **INF-06**: User can load multiple adapters simultaneously for composition (provider-dependent, graceful degradation)
+- [x] **INF-05**: User can generate with a specific loaded adapter by passing adapter name as model parameter
+- [x] **INF-06**: User can load multiple adapters simultaneously for composition (provider-dependent, graceful degradation)
 - [ ] **INF-07**: Per-step model/provider configuration — agent can use different models or providers for different steps (e.g., one model for generation, another for reflection)
 
 ### Agent Loop
@@ -107,12 +107,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AREG-03 | Phase 18 | Complete |
 | AREG-04 | Phase 18 | Complete |
 | AREG-05 | Phase 18 | Complete |
-| INF-01 | Phase 19 | Pending |
-| INF-02 | Phase 19 | Pending |
-| INF-03 | Phase 19 | Pending |
+| INF-01 | Phase 19 | Complete |
+| INF-02 | Phase 19 | Complete |
+| INF-03 | Phase 19 | Complete |
 | INF-04 | Phase 19 | Pending |
-| INF-05 | Phase 19 | Pending |
-| INF-06 | Phase 19 | Pending |
+| INF-05 | Phase 19 | Complete |
+| INF-06 | Phase 19 | Complete |
 | INF-07 | Phase 19 | Pending |
 | INFRA-01 | Phase 19 | Complete |
 | INFRA-02 | Phase 19 | Complete |

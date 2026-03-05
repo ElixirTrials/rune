@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Completed 19-02-PLAN.md (lora-server infra update)
-last_updated: "2026-03-05T11:23:00.000Z"
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-03-05T14:23:53.152Z"
 last_activity: "2026-03-05 — 19-02 complete: vLLM Dockerfile (v0.16.0), VLLM_ALLOW_RUNTIME_LORA_UPDATING env, max_lora_rank/gpu_memory_utilization config fields, port conflict fixed (8100:8000), shared rune_data SQLite volume; 4 tests passing"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
   percent: 10
 ---
 
@@ -47,6 +47,7 @@ Progress: [██░░░░░░░░] 10%
 | 19-inference-provider-abstraction | 1 | 8 min | 8 min |
 
 *Updated after each plan completion*
+| Phase 19-inference-provider-abstraction P01 | 18 | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Recent decisions affecting v5.0:
 - Session-per-method pattern with expire_on_commit=False + expunge() — required to prevent DetachedInstanceError when returning records from closed sessions (established 18-01)
 - WAL test must use file-based engine (tmp_path), not :memory: — WAL has no practical effect on in-memory SQLite
 - memory_engine fixture: create_engine("sqlite:///:memory:") with function scope gives per-test isolation at zero cleanup cost
+- [Phase 19-01]: asyncio_mode=auto added to inference lib pyproject.toml — lib-scoped pytest overrides root config
+- [Phase 19-01]: VLLMProvider.generate() passes adapter_id as model param — vLLM LoRA routing mechanism requires lora_name in the model field
+- [Phase 19-01]: VLLM_BASE_URL default set to port 8100 (api-service owns port 8000)
 
 ### Pending Todos
 
@@ -82,6 +86,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T11:23:00.000Z
-Stopped at: Completed 19-02-PLAN.md (lora-server infra update)
-Resume file: .planning/phases/19-inference-provider-abstraction/19-02-SUMMARY.md
+Last session: 2026-03-05T14:23:53.150Z
+Stopped at: Completed 19-01-PLAN.md
+Resume file: None
