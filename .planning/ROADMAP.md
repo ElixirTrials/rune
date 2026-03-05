@@ -162,7 +162,7 @@ Plans:
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
 | 18. Adapter Registry | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 20. Agent Loop | v5.0 | 0/2 | Planned | - |
+| 20. Agent Loop | 1/2 | In Progress|  | - |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 

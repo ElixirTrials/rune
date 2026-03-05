@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Phase 20 context gathered
-last_updated: "2026-03-05T15:39:02.239Z"
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-03-05T15:56:14.279Z"
 last_activity: "2026-03-05 — 19-03 complete: factory.py (get_provider, get_provider_for_step, (type,url) cache), updated __init__.py (7 provider exports), deleted adapter_loader.py + completion.py + vllm_client.py, replaced old stub tests with smoke tests; 34+3 tests passing, mypy+ruff clean"
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
   percent: 10
 ---
 
@@ -49,6 +49,7 @@ Progress: [██░░░░░░░░] 10%
 *Updated after each plan completion*
 | Phase 19-inference-provider-abstraction P01 | 18 | 3 tasks | 8 files |
 | Phase 19-inference-provider-abstraction P03 | 5 | 2 tasks | 10 files |
+| Phase 20-agent-loop P01 | 3 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Recent decisions affecting v5.0:
 - [Phase 19-01]: VLLM_BASE_URL default set to port 8100 (api-service owns port 8000)
 - [Phase 19-03]: os.environ.get() used in factory.py instead of os.getenv() — mypy cannot narrow os.getenv(key, str_default) return type to str; explicit variable annotations resolve the issue
 - [Phase 19-03]: Env var reads placed inside get_provider() function body (not module level) — allows monkeypatch.setenv() to work in tests; module-level reads captured at import time
+- [Phase 20-agent-loop]: RUNE_TRAJECTORY_DIR read inside function body for monkeypatch testability (same pattern as Phase 19 factory.py)
+- [Phase 20-agent-loop]: record_trajectory() extended with keyword-only task_description/task_type/adapter_ids args for save_trajectory_node compatibility
+- [Phase 20-agent-loop]: format_for_sft() uses reversed(steps) to find last tests_passed=True step as assistant content
 
 ### Pending Todos
 
@@ -89,6 +93,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T15:39:02.237Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-agent-loop/20-CONTEXT.md
+Last session: 2026-03-05T15:56:14.277Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None
