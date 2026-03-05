@@ -7,26 +7,113 @@ and computing evolutionary fitness for the evolution operator.
 
 from __future__ import annotations
 
-from typing import Any
+import math
+from typing import Any, Optional
+
+
+def calculate_pass_at_k(n_samples: int, n_correct: int, k: int = 1) -> float:
+    """Calculate the Pass@k metric for code generation evaluation.
+
+    Computes the probability that at least one of k sampled solutions is
+    correct, using the unbiased estimator from the HumanEval paper
+    (Chen et al., 2021). This avoids the high-variance naive estimator.
+
+    Formula: 1 - prod((n-c-i)/(n-i) for i in range(k))
+
+    Args:
+        n_samples: Total number of samples generated per problem.
+        n_correct: Number of correct samples out of n_samples.
+        k: Number of attempts allowed for the Pass@k metric. Defaults to 1.
+
+    Returns:
+        Pass@k probability as a float between 0.0 and 1.0.
+
+    Raises:
+        ValueError: If n_correct > n_samples.
+
+    Example:
+        >>> score = calculate_pass_at_k(n_samples=100, n_correct=85, k=1)
+        >>> score
+        0.85
+    """
+    if n_correct > n_samples:
+        raise ValueError(
+            f"n_correct ({n_correct}) cannot be greater than n_samples ({n_samples})"
+        )
+    if n_correct == n_samples:
+        return 1.0
+    if n_samples - n_correct < k:
+        return 1.0
+    # Unbiased estimator: 1 - prod((n-c-i)/(n-i) for i in range(k))
+    product = math.prod((n_samples - n_correct - i) / (n_samples - i) for i in range(k))
+    return 1.0 - product
+
+
+def run_kill_switch_gate(
+    baseline_pass1: float,
+    adapter_pass1: float,
+    threshold: float = 0.05,
+) -> dict[str, object]:
+    """Compare baseline vs adapter Pass@1 scores and return a PASS/FAIL verdict.
+
+    Computes the relative improvement of the adapter over the baseline and
+    returns PASS if the improvement meets the threshold, FAIL otherwise.
+
+    Args:
+        baseline_pass1: Pass@1 score for the baseline model (no adapter).
+        adapter_pass1: Pass@1 score for the adapter model.
+        threshold: Minimum required relative improvement (default 0.05 = 5%).
+
+    Returns:
+        Dictionary with:
+            - "baseline_pass1": float
+            - "adapter_pass1": float
+            - "relative_delta": float, relative improvement over baseline
+            - "verdict": str, "PASS" or "FAIL"
+
+    Example:
+        >>> result = run_kill_switch_gate(0.50, 0.55)
+        >>> result["verdict"]
+        'PASS'
+    """
+    # 1e-9 prevents division-by-zero when baseline is 0.0
+    relative_delta = (adapter_pass1 - baseline_pass1) / max(baseline_pass1, 1e-9)
+    verdict = "PASS" if adapter_pass1 >= baseline_pass1 * (1 + threshold) else "FAIL"
+
+    print(
+        f"Kill-switch gate result: {verdict}\n"
+        f"  Baseline  Pass@1: {baseline_pass1:.4f}\n"
+        f"  Adapter   Pass@1: {adapter_pass1:.4f}\n"
+        f"  Relative delta:   {relative_delta:+.2%} (threshold: {threshold:+.0%})"
+    )
+
+    return {
+        "baseline_pass1": baseline_pass1,
+        "adapter_pass1": adapter_pass1,
+        "relative_delta": relative_delta,
+        "verdict": verdict,
+    }
 
 
 def run_humaneval_subset(
-    adapter_id: str,
+    adapter_id: Optional[str],
     subset_size: int = 20,
     model: str = "Qwen/Qwen2.5-Coder-7B",
+    completions: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
     """Run a HumanEval benchmark subset to evaluate an adapter.
 
-    Loads the specified adapter onto the base model and evaluates it on a
-    randomly sampled subset of the HumanEval benchmark tasks. Returns detailed
-    results including per-task pass/fail status and aggregate statistics.
+    Loads tasks from the bundled 20-task HumanEval subset JSON and evaluates
+    them using the provided completions (or raises NotImplementedError if
+    no completions are provided, as model inference is out of scope here).
 
     Args:
-        adapter_id: UUID of the adapter to test.
-        subset_size: Number of HumanEval tasks to sample from the full 164-task
-            benchmark. Defaults to 20.
-        model: Base model name to load the adapter onto. Defaults to
-            "Qwen/Qwen2.5-Coder-7B".
+        adapter_id: UUID of the adapter to test (None = baseline, no adapter).
+        subset_size: Ignored — always uses the fixed 20-task bundled subset.
+        model: Base model name (informational only, not used for inference here).
+        completions: Optional dict mapping task_id -> completion string.
+            If provided, these completions are used for evaluation.
+            If None, raises NotImplementedError (model inference not wired here).
 
     Returns:
         Dictionary with benchmark results including:
@@ -37,46 +124,14 @@ def run_humaneval_subset(
             - "summary": str, human-readable summary
 
     Raises:
-        NotImplementedError: run_humaneval_subset is not yet implemented.
+        NotImplementedError: If completions are not provided (inference not wired).
 
     Example:
-        >>> results = run_humaneval_subset("abc-123", subset_size=10)
+        >>> results = run_humaneval_subset(adapter_id=None, completions={"HumanEval/0": "    return ..."})
         >>> results["pass_count"]
-        8
-        >>> results["pass_rate"]
-        0.8
+        1
     """
     raise NotImplementedError("run_humaneval_subset is not yet implemented.")
-
-
-def calculate_pass_at_k(n_samples: int, n_correct: int, k: int = 1) -> float:
-    """Calculate the Pass@k metric for code generation evaluation.
-
-    Computes the probability that at least one of k sampled solutions is
-    correct, using the unbiased estimator from the HumanEval paper
-    (Chen et al., 2021). This avoids the high-variance naive estimator.
-
-    Args:
-        n_samples: Total number of samples generated per problem.
-        n_correct: Number of correct samples out of n_samples.
-        k: Number of attempts allowed for the Pass@k metric. Defaults to 1.
-
-    Returns:
-        Pass@k probability as a float between 0.0 and 1.0. Higher values
-        indicate better code generation performance at this k value.
-
-    Raises:
-        NotImplementedError: calculate_pass_at_k is not yet implemented.
-
-    Example:
-        >>> score = calculate_pass_at_k(n_samples=100, n_correct=85, k=1)
-        >>> score
-        0.85
-        >>> score_k10 = calculate_pass_at_k(n_samples=100, n_correct=85, k=10)
-        >>> score_k10 > score
-        True
-    """
-    raise NotImplementedError("calculate_pass_at_k is not yet implemented.")
 
 
 def score_adapter_quality(

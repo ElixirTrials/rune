@@ -10,6 +10,7 @@ from evaluation.metrics import (
     compare_adapters,
     evaluate_fitness,
     run_humaneval_subset,
+    run_kill_switch_gate,
     score_adapter_quality,
     test_generalization,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "compare_adapters",
     "evaluate_fitness",
     "run_humaneval_subset",
+    "run_kill_switch_gate",
     "score_adapter_quality",
     "test_generalization",
 ]
