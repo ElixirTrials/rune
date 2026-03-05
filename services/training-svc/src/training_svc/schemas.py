@@ -6,10 +6,12 @@ from pydantic import BaseModel
 class LoraTrainingRequest(BaseModel):
     """Request to train a LoRA adapter."""
 
-    task_type: str
+    session_id: str  # required — identifies trajectory to train on
+    task_type: str = "code-gen"
     adapter_id: str | None = None
     rank: int = 64
     epochs: int = 3
+    learning_rate: float = 2e-4  # optional override
 
 
 class HypernetworkTrainingRequest(BaseModel):
@@ -25,3 +27,4 @@ class JobStatusResponse(BaseModel):
     job_id: str
     status: str
     adapter_id: str | None = None
+    error: str | None = None  # error message on failure
