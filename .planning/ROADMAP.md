@@ -74,7 +74,11 @@
   3. User can call AdapterRegistry.list_all() and receive all non-archived records (archived records excluded)
   4. Multiple FastAPI requests can read and write concurrently without deadlock (WAL mode confirmed via PRAGMA)
   5. AdapterRegistry constructor accepts an explicit engine parameter so all services share one SQLite file via DATABASE_URL
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 18-01-PLAN.md — Implement AdapterRegistry: constructor (Engine + WAL hook + create_all) and 4 CRUD methods
+- [ ] 18-02-PLAN.md — Pivot tests from red to green: update conftest fixtures, replace NotImplementedError assertions, add WAL and concurrency integration tests
 
 ### Phase 19: Inference Provider Abstraction
 **Goal**: Users can generate completions and hot-load/unload LoRA adapters through a provider-agnostic interface, with vLLM and Ollama backends selectable by configuration and a correctly configured lora-server
@@ -147,11 +151,11 @@
 | 15. New & Reworked Library Wireframes | v4.0 | 2/2 | Complete | 2026-03-03 |
 | 16. Service Wireframes | v4.0 | 4/4 | Complete | 2026-03-03 |
 | 17. Quality Gate | v4.0 | 2/2 | Complete | 2026-03-04 |
-| 18. Adapter Registry | v5.0 | 0/TBD | Not started | - |
+| 18. Adapter Registry | v5.0 | 0/2 | Not started | - |
 | 19. Inference Provider Abstraction | v5.0 | 0/TBD | Not started | - |
 | 20. Agent Loop | v5.0 | 0/TBD | Not started | - |
 | 21. QLoRA Training Pipeline | v5.0 | 0/TBD | Not started | - |
 | 22. Kill-Switch Gate | v5.0 | 0/TBD | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after v5.0 roadmap revision (provider abstraction)*
+*Last updated: 2026-03-05 after Phase 18 planning (2 plans created)*
