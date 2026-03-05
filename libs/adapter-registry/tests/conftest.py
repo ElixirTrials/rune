@@ -7,7 +7,10 @@ this component's tests. These mirror the root conftest.py factories.
 from typing import Any, Callable
 
 import pytest
+from adapter_registry import AdapterRegistry
 from adapter_registry.models import AdapterRecord
+from sqlalchemy.engine import Engine
+from sqlmodel import create_engine
 
 
 @pytest.fixture
@@ -34,3 +37,15 @@ def make_adapter_record() -> Callable[..., AdapterRecord]:
         return AdapterRecord(**{**defaults, **kwargs})
 
     return _factory
+
+
+@pytest.fixture
+def memory_engine() -> Engine:
+    """In-memory SQLite engine — isolated per test, zero cleanup needed."""
+    return create_engine("sqlite:///:memory:")
+
+
+@pytest.fixture
+def registry(memory_engine: Engine) -> AdapterRegistry:
+    """AdapterRegistry backed by in-memory SQLite."""
+    return AdapterRegistry(engine=memory_engine)
