@@ -210,7 +210,7 @@ async def reflect_node(state: RuneState) -> dict[str, Any]:
         "tests_passed": state["tests_passed"],
     }
 
-    # Use list concatenation (not .append()) — LangGraph requires immutable state updates
+    # Use list concatenation (not .append()) — LangGraph requires immutable state
     new_trajectory: list[dict[str, Any]] = state["trajectory"] + [step]
     new_attempt_count = state["attempt_count"] + 1
 
