@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Completed 22-02-PLAN.md
-last_updated: "2026-03-06T06:45:48.953Z"
+stopped_at: Completed 22-03-PLAN.md
+last_updated: "2026-03-06T06:51:23.811Z"
 last_activity: "2026-03-05 — 22-01 complete: DocToLoraHypernetwork Perceiver module implemented in model-training lib; lazy proxy pattern for CPU-only importability; 7 tests pass; ruff+mypy clean"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
   percent: 12
 ---
 
@@ -58,6 +58,7 @@ Progress: [███░░░░░░░] 12%
 | Phase 21-qlora-training-pipeline P02 | 12 | 2 tasks | 5 files |
 | Phase 22-kill-switch-gate P01 | ~18 | 1 task | 3 files |
 | Phase 22-kill-switch-gate P02 | 12 | 2 tasks | 5 files |
+| Phase 22-kill-switch-gate P03 | 8 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,7 @@ Recent decisions affecting v5.0:
 - [Phase 22-kill-switch-gate]: run_humaneval_subset accepts Optional completions dict — None raises NotImplementedError; inference wiring deferred to orchestration level
 - [Phase 22-kill-switch-gate]: data/ directory un-ignored via local .gitignore in evaluation/src/evaluation/ — root .gitignore has global data/ exclusion
 - [Phase 22-kill-switch-gate]: sys.executable used in subprocess (not hardcoded python) — matches current venv Python in all execution environments
+- [Phase 22-kill-switch-gate]: _run_hypernetwork_job uses first trajectory_id from request.trajectory_ids — single trajectory drives the hypernetwork forward pass
 
 ### Pending Todos
 
@@ -118,6 +120,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06T06:45:37.729Z
-Stopped at: Completed 22-02-PLAN.md
+Last session: 2026-03-06T06:51:23.809Z
+Stopped at: Completed 22-03-PLAN.md
 Resume file: None

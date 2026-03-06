@@ -60,7 +60,7 @@
 - [x] **Phase 19: Inference Provider Abstraction** — Abstract InferenceProvider interface with vLLM and Ollama implementations, provider factory, and lora-server configuration (3/3 plans complete)
 - [x] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence (2/2 plans complete)
 - [x] **Phase 21: QLoRA Training Pipeline** — Full gradient-descent training path from trajectory to PEFT adapter stored in registry, with training-svc HTTP dispatch (completed 2026-03-05)
-- [ ] **Phase 22: Kill-Switch Gate** — Doc-to-LoRA hypernetwork + evaluation lib measuring the 5% Pass@1 improvement threshold
+- [x] **Phase 22: Kill-Switch Gate** — Doc-to-LoRA hypernetwork + evaluation lib measuring the 5% Pass@1 improvement threshold (completed 2026-03-06)
 
 ## Phase Details
 
@@ -173,7 +173,7 @@ Plans:
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 21. QLoRA Training Pipeline | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 22. Kill-Switch Gate | 2/3 | In Progress|  | - |
+| 22. Kill-Switch Gate | 3/3 | Complete   | 2026-03-06 | - |
 
 ---
 *Last updated: 2026-03-05 after 22-01 complete (DocToLoraHypernetwork implemented)*
