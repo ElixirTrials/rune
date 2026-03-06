@@ -119,6 +119,8 @@ module = [
     "adapter_registry.*",
     "evolution_svc",
     "evolution_svc.*",
+    "model_training",
+    "model_training.*",
     "rune_agent",
     "rune_agent.*",
     "shared",

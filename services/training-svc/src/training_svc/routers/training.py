@@ -162,6 +162,35 @@ def _run_hypernetwork_job(job_id: str, trajectory_id: str, task_type: str) -> No
             base_model_id=base_model_id,
         )
 
+        # Register adapter in registry (reuse service engine for DB consistency)
+        import hashlib  # noqa: PLC0415
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        from adapter_registry.models import AdapterRecord  # noqa: PLC0415
+        from adapter_registry.registry import AdapterRegistry  # noqa: PLC0415
+
+        from training_svc.storage import engine as svc_engine  # noqa: PLC0415
+
+        safetensors_path = Path(adapter_dir) / "adapter_model.safetensors"
+        file_hash = hashlib.sha256(safetensors_path.read_bytes()).hexdigest()
+        file_size_bytes = safetensors_path.stat().st_size
+
+        registry = AdapterRegistry(engine=svc_engine)
+        record = AdapterRecord(
+            id=adapter_id,
+            version=1,
+            task_type=task_type,
+            base_model_id=base_model_id,
+            rank=8,
+            created_at=datetime.now(tz=timezone.utc).isoformat(),
+            file_path=adapter_dir,
+            file_hash=file_hash,
+            file_size_bytes=file_size_bytes,
+            source="hypernetwork",
+            session_id=trajectory_id,
+        )
+        registry.store(record)
+
         JOB_STORE[job_id].status = "completed"
         JOB_STORE[job_id].adapter_id = adapter_id
     except Exception as e:  # noqa: BLE001

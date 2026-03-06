@@ -61,6 +61,7 @@
 - [x] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence (2/2 plans complete)
 - [x] **Phase 21: QLoRA Training Pipeline** — Full gradient-descent training path from trajectory to PEFT adapter stored in registry, with training-svc HTTP dispatch (completed 2026-03-05)
 - [x] **Phase 22: Kill-Switch Gate** — Doc-to-LoRA hypernetwork + evaluation lib measuring the 5% Pass@1 improvement threshold (completed 2026-03-06)
+- [ ] **Phase 23: Integration Fix & Quality Gate** — Fix hypernetwork→registry gap (DTOL-04), xdist race, mypy strict errors, ruff violations (gap closure from audit)
 
 ## Phase Details
 
@@ -115,7 +116,7 @@ Plans:
 - [x] 20-02-PLAN.md — All 4 node implementations (generate, execute, reflect, save_trajectory) + green-phase test rewrites — DONE 2026-03-05
 
 ### Phase 21: QLoRA Training Pipeline
-**Goal**: Users can trigger end-to-end QLoRA training from a recorded trajectory, producing a PEFT safetensors adapter stored in the registry and accessible for loading via the inference provider
+**Goal**: Users can trigger end-to-end QLoRA training from a recorded trajectory, producing a PEFT adapter stored in the registry and accessible for loading via the inference provider
 **Depends on**: Phase 18, Phase 20
 **Requirements**: TRAIN-03, TRAIN-04, TRAIN-05, TRAIN-06, TRAIN-07, INFRA-04, INFRA-05
 **Success Criteria** (what must be TRUE):
@@ -147,6 +148,21 @@ Plans:
 - [ ] 22-02-PLAN.md — Evaluation lib: calculate_pass_at_k, run_humaneval_subset with bundled 20-task data, run_kill_switch_gate verdict
 - [ ] 22-03-PLAN.md — Wire POST /train/hypernetwork endpoint with background task dispatch
 
+### Phase 23: Integration Fix & Quality Gate
+**Goal**: Close audit gaps — wire hypernetwork adapter registration and fix mypy strict errors (xdist race and ruff violations already resolved)
+**Depends on**: Phase 22
+**Requirements**: DTOL-04 (integration fix)
+**Gap Closure**: Closes gaps from v5.0-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. `_run_hypernetwork_job` calls `AdapterRegistry.store()` after saving adapter to disk — hypernetwork adapters discoverable via `retrieve_by_id`/`list_all`
+  2. training-svc tests pass under xdist parallel execution (`uv run pytest -x` with default workers) with zero SQLite race conditions
+  3. `uv run mypy services/training-svc/src/` exits 0 with no attr-defined/operator errors on DocToLoraHypernetwork usage
+  4. `uv run ruff check libs/model-training/tests/ libs/evaluation/tests/` exits 0 with zero violations
+**Plans**: 1 plan
+
+Plans:
+- [ ] 23-01-PLAN.md — Wire AdapterRegistry.store() into _run_hypernetwork_job, fix mypy model_training overrides, add integration test
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -173,7 +189,8 @@ Plans:
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 21. QLoRA Training Pipeline | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 22. Kill-Switch Gate | 3/3 | Complete   | 2026-03-06 | - |
+| 22. Kill-Switch Gate | v5.0 | 3/3 | Complete | 2026-03-06 |
+| 23. Integration Fix & Quality Gate | v5.0 | 0/1 | Not started | - |
 
 ---
-*Last updated: 2026-03-05 after 22-01 complete (DocToLoraHypernetwork implemented)*
+*Last updated: 2026-03-06 after phase 23 plan created*
