@@ -3,11 +3,12 @@
   "checkpoint_id": "48dc288c8b5d",
   "strategy": "manual-commit",
   "branch": "feat/v5-first-implementation",
-  "checkpoints_count": 2,
+  "checkpoints_count": 7,
   "files_touched": [
     "libs/evaluation/tests/test_metrics.py",
     "libs/model-training/src/model_training/hypernetwork.py",
     "libs/model-training/tests/test_hypernetwork.py",
+    "scripts/e2e_smoke.py",
     "services/training-svc/tests/conftest.py"
   ],
   "sessions": [
@@ -17,13 +18,20 @@
       "context": "/48/dc288c8b5d/0/context.md",
       "content_hash": "/48/dc288c8b5d/0/content_hash.txt",
       "prompt": "/48/dc288c8b5d/0/prompt.txt"
+    },
+    {
+      "metadata": "/48/dc288c8b5d/1/metadata.json",
+      "transcript": "/48/dc288c8b5d/1/full.jsonl",
+      "context": "/48/dc288c8b5d/1/context.md",
+      "content_hash": "/48/dc288c8b5d/1/content_hash.txt",
+      "prompt": "/48/dc288c8b5d/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 49,
-    "cache_creation_tokens": 52838,
-    "cache_read_tokens": 2240924,
-    "output_tokens": 8445,
-    "api_call_count": 43
+    "input_tokens": 176,
+    "cache_creation_tokens": 185819,
+    "cache_read_tokens": 10165790,
+    "output_tokens": 38008,
+    "api_call_count": 118
   }
 }
