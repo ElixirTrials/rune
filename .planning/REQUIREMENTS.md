@@ -46,9 +46,9 @@ Requirements for first working implementation. Each maps to roadmap phases.
 
 ### Doc-to-LoRA Hypernetwork
 
-- [ ] **DTOL-01**: DocToLoraHypernetwork module exists in model-training lib with Perceiver-based architecture
-- [ ] **DTOL-02**: Hypernetwork generates rank-8 LoRA adapter weights from coding trajectory in a single forward pass (<1s)
-- [ ] **DTOL-03**: Generated adapters are compatible with vLLM dynamic LoRA loading (standard PEFT safetensors format)
+- [x] **DTOL-01**: DocToLoraHypernetwork module exists in model-training lib with Perceiver-based architecture
+- [x] **DTOL-02**: Hypernetwork generates rank-8 LoRA adapter weights from coding trajectory in a single forward pass (<1s)
+- [x] **DTOL-03**: Generated adapters are compatible with vLLM dynamic LoRA loading (standard PEFT safetensors format)
 - [ ] **DTOL-04**: training-svc exposes POST /train/hypernetwork endpoint for Doc-to-LoRA training
 
 ### Evaluation & Kill-Switch
@@ -132,9 +132,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAIN-07 | Phase 21 | Complete |
 | INFRA-04 | Phase 21 | Complete |
 | INFRA-05 | Phase 21 | Complete |
-| DTOL-01 | Phase 22 | Pending |
-| DTOL-02 | Phase 22 | Pending |
-| DTOL-03 | Phase 22 | Pending |
+| DTOL-01 | Phase 22 | Complete (22-01) |
+| DTOL-02 | Phase 22 | Complete (22-01) |
+| DTOL-03 | Phase 22 | Complete (22-01) |
 | DTOL-04 | Phase 22 | Pending |
 | EVAL-01 | Phase 22 | Pending |
 | EVAL-02 | Phase 22 | Pending |

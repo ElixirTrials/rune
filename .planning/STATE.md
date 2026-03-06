@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: "Completed 21-02-PLAN.md"
-last_updated: "2026-03-05T20:30:00Z"
-last_activity: "2026-03-05 — 21-02 complete: wired training-svc HTTP API to model-training library — POST /train/lora dispatches background QLoRA training, GET /jobs/{id} returns status; model-training added as workspace dep; 29 tests pass, 3 xfail"
+stopped_at: "Completed 22-01-PLAN.md"
+last_updated: "2026-03-05T22:08:00.000Z"
+last_activity: "2026-03-05 — 22-01 complete: DocToLoraHypernetwork Perceiver module implemented in model-training lib; lazy proxy pattern for CPU-only importability; 7 tests pass; ruff+mypy clean"
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
-  percent: 13
+  completed_phases: 4
+  total_plans: 10
+  completed_plans: 10
+  percent: 14
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Phase 21 — QLoRA Training Pipeline (Plans 01-02 complete, phase done)
+**Current focus:** Phase 22 — Kill-Switch Gate (Plan 01 complete)
 
 ## Current Position
 
-Phase: 21 of 22 (QLoRA Training Pipeline)
-Plan: 02 complete (21-02-PLAN.md done) — Phase 21 fully complete
-Status: In progress — Phase 21 complete, ready for Phase 22 (kill-switch gate)
-Last activity: 2026-03-05 — 21-02 complete: wired training-svc HTTP API to model-training library — POST /train/lora dispatches background QLoRA training, GET /jobs/{id} returns status; model-training added as workspace dep; 29 tests pass, 3 xfail
+Phase: 22 of 22 (Kill-Switch Gate)
+Plan: 01 complete (22-01-PLAN.md done) — DocToLoraHypernetwork implemented
+Status: In progress — Phase 22 Plan 01 complete
+Last activity: 2026-03-05 — 22-01 complete: DocToLoraHypernetwork Perceiver module implemented in model-training lib; lazy proxy pattern for CPU-only importability; 7 tests pass; ruff+mypy clean
 
 Progress: [███░░░░░░░] 12%
 
@@ -47,6 +47,7 @@ Progress: [███░░░░░░░] 12%
 | 19-inference-provider-abstraction | 3 | 13 min | 4.3 min |
 | 20-agent-loop | 2 | 10 min | 5 min |
 | 21-qlora-training-pipeline | 2 | 37 min | 18.5 min |
+| 22-kill-switch-gate | 1 | ~18 min | ~18 min |
 
 *Updated after each plan completion*
 | Phase 19-inference-provider-abstraction P01 | 18 | 3 tasks | 8 files |
@@ -55,6 +56,7 @@ Progress: [███░░░░░░░] 12%
 | Phase 20-agent-loop P02 | 7 | 2 tasks | 4 files |
 | Phase 21-qlora-training-pipeline P01 | 25 | 2 tasks | 9 files |
 | Phase 21-qlora-training-pipeline P02 | 12 | 2 tasks | 5 files |
+| Phase 22-kill-switch-gate P01 | ~18 | 1 task | 3 files |
 
 ## Accumulated Context
 
@@ -97,6 +99,9 @@ Recent decisions affecting v5.0:
 - [Phase 21-02]: JOB_STORE as module-level dict — state is lost on restart, acceptable for single-user local MVP
 - [Phase 21-02]: _run_training_job is a regular (non-async) function — FastAPI BackgroundTasks runs it in thread pool executor
 - [Phase 21-02]: Mock pattern: patch training_svc.routers.training._run_training_job in tests to prevent model_training.trainer GPU import
+- [Phase 22-01]: DocToLoraHypernetwork uses _LazyHypernetworkProxy — real nn.Module subclass built on first instantiation to keep module importable without torch (INFRA-05)
+- [Phase 22-01]: save_hypernetwork_adapter: modules_to_save=None — vLLM rejects embed_tokens/lm_head in adapter artifacts (consistent with Phase 21-01 decision)
+- [Phase 22-01]: Torch tests use hidden_dim=32, num_layers=1-2 to keep CPU CI fast — large linear weight_head (8192 x 3.67M) hangs indefinitely on CPU with default 7B params
 
 ### Pending Todos
 
@@ -109,6 +114,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T20:30:00Z
-Stopped at: Completed 21-02-PLAN.md
-Resume file: .planning/phases/21-qlora-training-pipeline/21-02-SUMMARY.md
+Last session: 2026-03-05T22:08:00.000Z
+Stopped at: Completed 22-01-PLAN.md
+Resume file: .planning/phases/22-kill-switch-gate/22-01-SUMMARY.md

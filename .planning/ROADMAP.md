@@ -143,7 +143,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 22-01-PLAN.md — DocToLoraHypernetwork Perceiver module with rank-8 LoRA weight generation and PEFT serialization
+- [x] 22-01-PLAN.md — DocToLoraHypernetwork Perceiver module with rank-8 LoRA weight generation and PEFT serialization — DONE 2026-03-05
 - [ ] 22-02-PLAN.md — Evaluation lib: calculate_pass_at_k, run_humaneval_subset with bundled 20-task data, run_kill_switch_gate verdict
 - [ ] 22-03-PLAN.md — Wire POST /train/hypernetwork endpoint with background task dispatch
 
@@ -173,7 +173,7 @@ Plans:
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 21. QLoRA Training Pipeline | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 22. Kill-Switch Gate | v5.0 | 0/3 | Not started | - |
+| 22. Kill-Switch Gate | v5.0 | 1/3 | In progress | - |
 
 ---
-*Last updated: 2026-03-05 after Phase 22 planning complete (3 plans in 2 waves)*
+*Last updated: 2026-03-05 after 22-01 complete (DocToLoraHypernetwork implemented)*
