@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: "Completed 22-01-PLAN.md"
-last_updated: "2026-03-05T22:08:00.000Z"
+stopped_at: Completed 22-02-PLAN.md
+last_updated: "2026-03-06T06:45:48.953Z"
 last_activity: "2026-03-05 — 22-01 complete: DocToLoraHypernetwork Perceiver module implemented in model-training lib; lazy proxy pattern for CPU-only importability; 7 tests pass; ruff+mypy clean"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
-  percent: 14
+  total_plans: 12
+  completed_plans: 11
+  percent: 12
 ---
 
 # Project State
@@ -57,6 +57,7 @@ Progress: [███░░░░░░░] 12%
 | Phase 21-qlora-training-pipeline P01 | 25 | 2 tasks | 9 files |
 | Phase 21-qlora-training-pipeline P02 | 12 | 2 tasks | 5 files |
 | Phase 22-kill-switch-gate P01 | ~18 | 1 task | 3 files |
+| Phase 22-kill-switch-gate P02 | 12 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,9 @@ Recent decisions affecting v5.0:
 - [Phase 22-01]: DocToLoraHypernetwork uses _LazyHypernetworkProxy — real nn.Module subclass built on first instantiation to keep module importable without torch (INFRA-05)
 - [Phase 22-01]: save_hypernetwork_adapter: modules_to_save=None — vLLM rejects embed_tokens/lm_head in adapter artifacts (consistent with Phase 21-01 decision)
 - [Phase 22-01]: Torch tests use hidden_dim=32, num_layers=1-2 to keep CPU CI fast — large linear weight_head (8192 x 3.67M) hangs indefinitely on CPU with default 7B params
+- [Phase 22-kill-switch-gate]: run_humaneval_subset accepts Optional completions dict — None raises NotImplementedError; inference wiring deferred to orchestration level
+- [Phase 22-kill-switch-gate]: data/ directory un-ignored via local .gitignore in evaluation/src/evaluation/ — root .gitignore has global data/ exclusion
+- [Phase 22-kill-switch-gate]: sys.executable used in subprocess (not hardcoded python) — matches current venv Python in all execution environments
 
 ### Pending Todos
 
@@ -114,6 +118,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05T22:08:00.000Z
-Stopped at: Completed 22-01-PLAN.md
-Resume file: .planning/phases/22-kill-switch-gate/22-01-SUMMARY.md
+Last session: 2026-03-06T06:45:37.729Z
+Stopped at: Completed 22-02-PLAN.md
+Resume file: None

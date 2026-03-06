@@ -173,7 +173,7 @@ Plans:
 | 19. Inference Provider Abstraction | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 21. QLoRA Training Pipeline | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
-| 22. Kill-Switch Gate | v5.0 | 1/3 | In progress | - |
+| 22. Kill-Switch Gate | 2/3 | In Progress|  | - |
 
 ---
 *Last updated: 2026-03-05 after 22-01 complete (DocToLoraHypernetwork implemented)*

@@ -53,9 +53,9 @@ Requirements for first working implementation. Each maps to roadmap phases.
 
 ### Evaluation & Kill-Switch
 
-- [ ] **EVAL-01**: User can run a HumanEval subset benchmark via run_humaneval_subset()
-- [ ] **EVAL-02**: User can calculate Pass@k metrics via calculate_pass_at_k()
-- [ ] **EVAL-03**: Kill-switch gate compares baseline vs adapter-enhanced Pass@1 (5% improvement threshold)
+- [x] **EVAL-01**: User can run a HumanEval subset benchmark via run_humaneval_subset()
+- [x] **EVAL-02**: User can calculate Pass@k metrics via calculate_pass_at_k()
+- [x] **EVAL-03**: Kill-switch gate compares baseline vs adapter-enhanced Pass@1 (5% improvement threshold)
 
 ### Infrastructure
 
@@ -136,9 +136,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DTOL-02 | Phase 22 | Complete (22-01) |
 | DTOL-03 | Phase 22 | Complete (22-01) |
 | DTOL-04 | Phase 22 | Pending |
-| EVAL-01 | Phase 22 | Pending |
-| EVAL-02 | Phase 22 | Pending |
-| EVAL-03 | Phase 22 | Pending |
+| EVAL-01 | Phase 22 | Complete |
+| EVAL-02 | Phase 22 | Complete |
+| EVAL-03 | Phase 22 | Complete |
 
 **Coverage:**
 - v5.0 requirements: 37 total
