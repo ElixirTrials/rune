@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "12a427451293",
+  "strategy": "manual-commit",
+  "branch": "feat/v5-first-implementation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "services/training-svc/tests/test_training.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/12/a427451293/0/metadata.json",
+      "transcript": "/12/a427451293/0/full.jsonl",
+      "context": "/12/a427451293/0/context.md",
+      "content_hash": "/12/a427451293/0/content_hash.txt",
+      "prompt": "/12/a427451293/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 72,
+    "cache_creation_tokens": 214643,
+    "cache_read_tokens": 4511911,
+    "output_tokens": 19762,
+    "api_call_count": 62
+  }
+}
