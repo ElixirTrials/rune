@@ -72,11 +72,42 @@ def test_get_job_status_not_found(test_client):
     assert response.status_code == 404
 
 
-@pytest.mark.xfail(reason="hypernetwork endpoint is Phase 22 stub", strict=True)
-def test_train_hypernetwork_still_501(test_client):
-    """POST /train/hypernetwork returns 501 (Phase 22 stub — xfail expected)."""
+def test_train_hypernetwork_returns_job_id(test_client):
+    """POST /train/hypernetwork returns 200 with job_id and status=queued."""
+    with patch("training_svc.routers.training._run_hypernetwork_job") as mock_run:
+        mock_run.return_value = None
+        response = test_client.post(
+            "/train/hypernetwork",
+            json={"task_type": "gen", "trajectory_ids": ["t-1"]},
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert "job_id" in data
+    assert data["status"] == "queued"
+
+
+def test_train_hypernetwork_requires_trajectory_ids(test_client):
+    """POST /train/hypernetwork without trajectory_ids returns 422 validation error."""
     response = test_client.post(
         "/train/hypernetwork",
-        json={"task_type": "gen", "trajectory_ids": ["t-1"]},
+        json={"task_type": "gen"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 422
+
+
+def test_train_hypernetwork_job_pollable(test_client):
+    """After POST /train/hypernetwork, GET /jobs/{job_id} returns the job status."""
+    with patch("training_svc.routers.training._run_hypernetwork_job") as mock_run:
+        mock_run.return_value = None
+        post_response = test_client.post(
+            "/train/hypernetwork",
+            json={"task_type": "gen", "trajectory_ids": ["t-1"]},
+        )
+    assert post_response.status_code == 200
+    job_id = post_response.json()["job_id"]
+
+    get_response = test_client.get(f"/jobs/{job_id}")
+    assert get_response.status_code == 200
+    data = get_response.json()
+    assert data["job_id"] == job_id
+    assert data["status"] == "queued"
