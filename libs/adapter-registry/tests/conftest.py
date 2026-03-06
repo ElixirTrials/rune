@@ -4,12 +4,14 @@ Shared factories (make_adapter_record, etc.) are defined here for use within
 this component's tests. These mirror the root conftest.py factories.
 """
 
+from collections.abc import Generator
 from typing import Any, Callable
 
 import pytest
 from adapter_registry import AdapterRegistry
 from adapter_registry.models import AdapterRecord
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
 
 
@@ -40,9 +42,15 @@ def make_adapter_record() -> Callable[..., AdapterRecord]:
 
 
 @pytest.fixture
-def memory_engine() -> Engine:
-    """In-memory SQLite engine — isolated per test, zero cleanup needed."""
-    return create_engine("sqlite:///:memory:")
+def memory_engine() -> Generator[Engine, None, None]:
+    """In-memory SQLite engine — disposed after each test."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture
