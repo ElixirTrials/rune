@@ -175,6 +175,7 @@ filterwarnings = [
     "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
     "ignore:unclosed database:ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
     "ignore:No data was collected:coverage.exceptions.CoverageWarning",
     "ignore:Use 'content=<...>' to upload raw bytes:DeprecationWarning:httpx",
 ]
