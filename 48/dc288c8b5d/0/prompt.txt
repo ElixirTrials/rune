@@ -1,0 +1,48 @@
+<objective>
+Execute small, ad-hoc tasks with GSD guarantees (atomic commits, STATE.md tracking).
+
+Quick mode is the same system with a shorter path:
+- Spawns gsd-planner (quick mode) + gsd-executor(s)
+- Quick tasks live in `.planning/quick/` separate from planned phases
+- Updates STATE.md "Quick Tasks Completed" table (NOT ROADMAP.md)
+
+**Default:** Skips research, plan-checker, verifier. Use when you know exactly what to do.
+
+**`--full` flag:** Enables plan-checking (max 2 iterations) and post-execution verification. Use when you want quality guarantees without full milestone ceremony.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/quick.md
+</execution_context>
+
+<context>
+"Remove all the hardware requirements that we baked in. The goal of the repo is not to run on a particular hardware set but to run in general on a local setup. Make sure all the docs are fully updated to reflect this"
+
+Context files are resolved inside the workflow (`init quick`) and delegated via `<files_to_read>` blocks.
+</context>
+
+<process>
+Execute the quick workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/quick.md end-to-end.
+Preserve all workflow gates (validation, task description, planning, execution, state updates, commits).
+</process>
+
+---
+
+<objective>
+Check project progress, summarize recent work and what's ahead, then intelligently route to the next action - either executing an existing plan or creating the next one.
+
+Provides situational awareness before continuing work.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/progress.md
+</execution_context>
+
+<process>
+Execute the progress workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/progress.md end-to-end.
+Preserve all routing logic (Routes A through F) and edge case handling.
+</process>
+
+---
+
+Remember not to commit the .planning directories. Make sure we still pass ruff, ruff formatting, mypy and pytests and then let's open a PR with gh. Then let's look at the CI/CD to see that everything passes and respond to the comments.

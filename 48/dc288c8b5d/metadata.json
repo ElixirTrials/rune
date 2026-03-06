@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "48dc288c8b5d",
+  "strategy": "manual-commit",
+  "branch": "feat/v5-first-implementation",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/evaluation/tests/test_metrics.py",
+    "libs/model-training/src/model_training/hypernetwork.py",
+    "libs/model-training/tests/test_hypernetwork.py",
+    "services/training-svc/tests/conftest.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/48/dc288c8b5d/0/metadata.json",
+      "transcript": "/48/dc288c8b5d/0/full.jsonl",
+      "context": "/48/dc288c8b5d/0/context.md",
+      "content_hash": "/48/dc288c8b5d/0/content_hash.txt",
+      "prompt": "/48/dc288c8b5d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 49,
+    "cache_creation_tokens": 52838,
+    "cache_read_tokens": 2240924,
+    "output_tokens": 8445,
+    "api_call_count": 43
+  }
+}
