@@ -15,7 +15,7 @@ For the component build order and dependency chain, see [Build Order](../appendi
 | Rune Service | Path | Extends / Runs Alongside | Integration Points |
 |-------------|------|--------------------------|-------------------|
 | `rune-agent` | `services/rune-agent/` | Runs alongside existing services | Consumes `libs/adapter-registry` for adapter selection; calls `lora-server` for inference; uses `libs/events-py` for event publishing; manages Docker sandbox containers |
-| `lora-server` | `services/lora-server/` | Runs alongside `services/inference` (existing) | Wraps vLLM subprocess (PP=2, TP=1, `--enable-lora`); exposes adapter loading API; coordinates GPU lease with `training-svc` |
+| `lora-server` | `services/lora-server/` | Runs alongside `services/inference` (existing) | Wraps vLLM subprocess with dynamic LoRA loading; exposes adapter loading API; coordinates GPU lease with `training-svc` |
 | `training-svc` | `services/training-svc/` | Extends `libs/model-training` | Consumes PEFT utilities from `model-training`; reads adapter corpus from `adapter-registry`; acquires GPU lease from `lora-server` for training jobs |
 | `evolution-svc` | `services/evolution-svc/` | Runs alongside `services/evaluation` (existing) | Reads adapter metadata from `adapter-registry`; evaluates adapter fitness using held-out test sets; writes promotion/pruning events via `libs/events-py` |
 
@@ -56,14 +56,14 @@ The lora-server and training-svc share the same two GPUs. They coordinate via a 
 flowchart LR
     TrainReq([Training Job Request]) --> Lease[Request GPU Lease]
     Lease --> Check{lora-server idle?}
-    Check -->|yes| Yield[lora-server yields GPU 1]
+    Check -->|yes| Yield[lora-server yields secondary GPU]
     Check -->|no| Queue[Queue until idle]
-    Yield --> Train[training-svc runs on GPU 1]
+    Yield --> Train[training-svc runs on leased GPU]
     Train --> Release[Release lease]
-    Release --> Resume[lora-server resumes PP=2]
+    Release --> Resume[lora-server resumes full config]
 ```
 
-See [Multi-GPU Strategy](multi-gpu-strategy.md) for the full GPU lease protocol.
+See [GPU Strategy](multi-gpu-strategy.md) for the full GPU lease protocol.
 
 ### rune-agent <-> lora-server (inference)
 

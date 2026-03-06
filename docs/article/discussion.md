@@ -26,7 +26,7 @@
 
 As of this writing, no training runs have been executed, no adapters have been generated, and no Pass@1 measurements have been taken. This article presents a research proposal, not a completed study.
 
-The system has not been implemented at the component level. All architectural decisions are **specified** but untested. Phase 0 hardware validation (PP=2 + QLoRA + vLLM compatibility on dual RTX 4090) has not been confirmed. The kill-switch gate outcome is unknown. Every **expected** claim in this article depends on Phase 1 passing. The experimental design in [Results](results.md) describes planned measurements; the Discussion interprets those planned measurements in terms of their implications — but neither the measurements nor the implications have been empirically grounded.
+The system has not been implemented at the component level. All architectural decisions are **specified** but untested. Phase 0 environment validation (vLLM + QLoRA compatibility) has not been confirmed. The kill-switch gate outcome is unknown. Every **expected** claim in this article depends on Phase 1 passing. The experimental design in [Results](results.md) describes planned measurements; the Discussion interprets those planned measurements in terms of their implications — but neither the measurements nor the implications have been empirically grounded.
 
 #### Adapter Interference Risk
 

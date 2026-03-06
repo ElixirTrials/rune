@@ -50,7 +50,7 @@ Rune's core mechanism is a Doc-to-LoRA hypernetwork [1] adapted for coding traje
 
 **3. Compositional memory through the Evolution Operator.** Doc-to-LoRA produces a single adapter intended to replace context for a given document. Rune builds a library: each solved task produces an adapter, and a hierarchical composition mechanism (the Evolution Operator) allows adapters to be merged, pruned, and promoted based on empirical fitness scores. Memory accumulates and compounds rather than being replaced.
 
-The weight update for a single LoRA adapter follows `ΔW = BA`, where `B` and `A` are low-rank matrices (rank `r << d`). This structure makes adapters parameter-efficient: at rank 64 on a 7B model, a full set of adapter weights is approximately 50-200 MB depending on which weight matrices are targeted. This is small enough to store, version, and load hundreds of adapters without approaching filesystem or VRAM limits.
+The weight update for a single LoRA adapter follows `ΔW = BA`, where `B` and `A` are low-rank matrices (rank `r << d`). This structure makes adapters parameter-efficient: at rank 64 on a 7B model, a full set of adapter weights is approximately 50-200 MB depending on which weight matrices are targeted. This is small enough to store, version, and load hundreds of adapters without approaching filesystem limits.
 
 ---
 
@@ -95,18 +95,18 @@ The Evolution Operator manages this hierarchy: periodically evaluating adapter f
 
 ### The Serving Architecture
 
-The base Small Language Model (SLM) runs in a vLLM server configured for pipeline parallelism across two GPUs. The adapter router queries the adapter registry — a SQLite metadata store — selects the relevant adapters for the current task, and loads them dynamically into the vLLM serving process. This design follows S-LoRA's unified paging approach [2], which manages adapter weights and KV cache tensors in a shared GPU memory pool, enabling concurrent serving of many adapters from a single base model without reloading weights.
+The base Small Language Model (SLM) runs in a vLLM server with dynamic LoRA adapter loading. The adapter router queries the adapter registry — a SQLite metadata store — selects the relevant adapters for the current task, and loads them dynamically into the vLLM serving process. This design follows S-LoRA's unified paging approach [2], which manages adapter weights and KV cache tensors in a shared GPU memory pool, enabling concurrent serving of many adapters from a single base model without reloading weights.
 
 ```mermaid
 flowchart LR
     Request([Coding Request]) --> Router[Adapter Router]
     Registry[(Adapter Registry\nSQLite + Filesystem)] --> Router
-    Router --> Server[vLLM Server\nPP=2]
+    Router --> Server[vLLM Server]
     BaseModel[Base SLM\nQwen2.5-Coder-7B] --> Server
     Server --> Response([Generated Code])
 ```
 
-The serving layer is intentionally separated from training: when the hypernetwork or fine-tuning jobs require GPU resources, the serving process yields GPUs via a lease mechanism rather than competing for VRAM. Pipeline parallelism splits the model layers across both GPUs and passes activations at layer boundaries — the correct strategy for GPUs connected via PCIe rather than NVLink.
+The serving layer is intentionally separated from training: when the hypernetwork or fine-tuning jobs require GPU resources, the serving process yields GPUs via a lease mechanism rather than competing for VRAM. Multi-GPU setups can use pipeline parallelism, which splits model layers across GPUs and passes activations at layer boundaries — the recommended strategy for GPUs connected via PCIe rather than NVLink.
 
 ---
 
@@ -118,7 +118,7 @@ Rune's architecture is a synthesis of three published approaches, extended for t
 
 **S-LoRA** [2] addresses the serving challenge: a single base model must efficiently serve many different LoRA adapters concurrently, without loading and unloading adapters between requests. S-LoRA's Unified Paging mechanism manages adapter weights alongside KV cache tensors in a single GPU memory pool, and custom CUDA kernels handle heterogeneous batch LoRA computation — computing different adapter transforms for different items in the same batch. S-LoRA demonstrated "orders of magnitude" more concurrent adapters per GPU than naive PEFT loading. These techniques have been absorbed into vLLM's adapter serving infrastructure, which Rune uses directly rather than implementing from scratch.
 
-**QLoRA** [3] addresses the training constraint imposed by 24 GB per-GPU VRAM. By quantizing the base model to 4-bit NF4 and backpropagating gradients through the frozen quantized weights into bf16 LoRA adapters, QLoRA demonstrated fine-tuning of 65B models on a single consumer GPU with minimal quality loss. For Rune, QLoRA is essential: without it, a 7B base model in bf16 (~14 GB) leaves insufficient headroom for adapter weights, optimizer states, and activation memory on a 24 GB GPU during training. The NF4 data type (which is information-theoretically optimal for normally distributed weights) and double quantization (which quantizes the quantization constants themselves) are not optional — they are required for the hardware configuration to be viable.
+**QLoRA** [3] addresses training memory constraints on consumer GPUs. By quantizing the base model to 4-bit NF4 and backpropagating gradients through the frozen quantized weights into bf16 LoRA adapters, QLoRA demonstrated fine-tuning of 65B models on a single consumer GPU with minimal quality loss. For Rune, QLoRA is essential: without it, a 7B base model in bf16 (~14 GB) leaves insufficient headroom for adapter weights, optimizer states, and activation memory on a typical consumer GPU during training. The NF4 data type (which is information-theoretically optimal for normally distributed weights) and double quantization (which quantizes the quantization constants themselves) significantly reduce the VRAM requirements for training.
 
 ---
 
@@ -133,24 +133,15 @@ Rune's architecture is a synthesis of three published approaches, extended for t
 
 ---
 
-## Hardware Requirements
+## Hardware
 
-Rune targets the following local hardware configuration:
+Rune runs on any local machine with a CUDA-capable GPU. The system is designed for local-first operation; no cloud APIs or specialized hardware are required.
 
-| Component | Specification |
-|-----------|--------------|
-| GPU | 2x NVIDIA RTX 4090 (24 GB VRAM each, 48 GB total) |
-| GPU Interconnect | CXL (cache-coherent memory pooling) |
-| CPU | AMD Threadripper 7960X |
-| CUDA | 12.8+ (cu128) |
-| PyTorch | 2.9+ (nightly, cu128 wheels) |
-| Quantization | QLoRA (NF4 4-bit) — required for 7B+ models on 24 GB |
+**Minimum:** A single CUDA-capable GPU with sufficient VRAM for the chosen base model (for example, approximately 4 GB for a 7B model with QLoRA NF4 quantization). QLoRA is used by default to reduce VRAM requirements, making 7B models practical on consumer GPUs.
 
-A single RTX 4090 is sufficient to evaluate inference-only workloads. Simultaneously training the hypernetwork and serving adapters requires both GPUs. Pipeline parallelism (`--pipeline-parallel-size 2`, `--tensor-parallel-size 1`) is the required multi-GPU configuration: the RTX 4090 lacks NVLink, and tensor parallelism requires all-reduce operations at every transformer layer — prohibitively expensive over a PCIe interconnect. CXL provides cache-coherent memory pooling across the two GPUs, which is relevant for the adapter registry and coordination between serving and training processes.
+**Multi-GPU:** If you have multiple GPUs, Rune supports pipeline parallelism to improve serving throughput. For GPUs connected via PCIe (most consumer setups), pipeline parallelism (`--pipeline-parallel-size N`) is recommended over tensor parallelism. Tensor parallelism requires all-reduce synchronization at every transformer layer — efficient over NVLink (~112 GB/s per direction) but a bottleneck over PCIe (~32 GB/s bidirectional). Additionally, vLLM issue [#21471](https://github.com/vllm-project/vllm/issues/21471) documents TP + LoRA output corruption on consumer GPUs without NVLink; pipeline parallelism is the confirmed working configuration.
 
-Hardware validation is the first project milestone: before any hypothesis testing, both GPUs must be recognized by CUDA, PyTorch nightly cu128 must complete a forward and backward pass without segfault, and vLLM must serve the base model via pipeline parallelism without tensor parallelism corruption.
-
-Note on tensor parallelism: the `--tensor-parallel-size 2` option is explicitly excluded. Tensor parallelism requires all-reduce operations across GPUs at every transformer layer boundary. Without NVLink or a high-bandwidth interconnect, this becomes a severe bottleneck over PCIe (~32 GB/s vs NVLink's ~112 GB/s per direction) and can cause NCCL errors or OOM failures. Pipeline parallelism is the correct choice for this hardware configuration.
+The lora-server defaults to single-GPU operation and can be configured for multi-GPU via `pipeline_parallel_size` in `services/lora-server/config.yaml`.
 
 ---
 
@@ -164,7 +155,7 @@ Rune is a documented architecture proposal, not a working system. As of 2026-03-
 - The core hypothesis — that Doc-to-LoRA can encode coding trajectories into reusable LoRA adapters — has not been empirically validated
 - The architecture synthesizes prior work (Doc-to-LoRA, S-LoRA, QLoRA) but adapter composition has not been demonstrated for coding tasks
 
-The project is structured so that early phases validate the hypothesis before infrastructure is built. Phase 0 validates the hardware environment and confirms vLLM pipeline parallelism works correctly. Phase 1 tests the core hypothesis with a measurable gate: if the Doc-to-LoRA approach does not produce adapters that improve Pass@1 on held-out coding tasks by at least 5%, the approach is revised before the serving infrastructure is built. If the hypothesis fails, the architecture documentation still stands as a concrete proposal that others can test, extend, or refute.
+The project is structured so that early phases validate the hypothesis before infrastructure is built. Phase 0 validates the software environment — confirming vLLM, PEFT, and the quantization toolchain work correctly on the target machine. Phase 1 tests the core hypothesis with a measurable gate: if the Doc-to-LoRA approach does not produce adapters that improve Pass@1 on held-out coding tasks by at least 5%, the approach is revised before the serving infrastructure is built. If the hypothesis fails, the architecture documentation still stands as a concrete proposal that others can test, extend, or refute.
 
 The architecture is detailed enough to implement. The open question is whether the hypothesis holds.
 
