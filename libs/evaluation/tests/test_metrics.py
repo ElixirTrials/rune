@@ -13,14 +13,13 @@ from evaluation.metrics import (
     calculate_pass_at_k,
     compare_adapters,
     evaluate_fitness,
-    run_kill_switch_gate,
     run_humaneval_subset,
+    run_kill_switch_gate,
     score_adapter_quality,
 )
 from evaluation.metrics import (
     test_generalization as _test_generalization,
 )
-
 
 # ---------------------------------------------------------------------------
 # calculate_pass_at_k — green-phase tests
@@ -152,7 +151,7 @@ def test_humaneval_json_has_20_tasks() -> None:
 
 
 def test_humaneval_json_task_fields() -> None:
-    """Each task has required fields: task_id, prompt, canonical_solution, test, entry_point."""
+    """Each task has required fields: task_id, prompt, etc."""
     with HUMANEVAL_JSON.open() as f:
         tasks = json.load(f)
     required = {"task_id", "prompt", "canonical_solution", "test", "entry_point"}
@@ -170,7 +169,7 @@ def test_humaneval_json_contains_task_0() -> None:
 
 
 def test_run_humaneval_subset_baseline_returns_expected_keys() -> None:
-    """run_humaneval_subset returns dict with pass_count, fail_count, pass_rate, task_results."""
+    """run_humaneval_subset returns dict with expected keys."""
     # Use canonical solutions as completions for a subset
     with HUMANEVAL_JSON.open() as f:
         tasks = json.load(f)

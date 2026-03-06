@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Test 1: CPU-only importability
 # ---------------------------------------------------------------------------
@@ -50,12 +49,9 @@ _FAKE_HN_MODULES = [
 def _inject_fake_hn_modules() -> None:
     """Inject torch and safetensors fakes for hypernetwork CPU tests."""
     import torch  # noqa: PLC0415  # imported here intentionally — may be real
-    import torch.nn as nn  # noqa: PLC0415
 
     # If real torch is available, no need to inject fakes
-    if hasattr(torch, "Tensor") and not isinstance(
-        getattr(torch, "Tensor"), MagicMock
-    ):
+    if hasattr(torch, "Tensor") and not isinstance(getattr(torch, "Tensor"), MagicMock):
         return  # real torch is available — tests will use it directly
 
     fake_torch = ModuleType("torch")
@@ -91,9 +87,7 @@ try:
     import torch  # noqa: PLC0415
     import torch.nn  # noqa: PLC0415
 
-    _TORCH_AVAILABLE = not isinstance(torch, MagicMock) and hasattr(
-        torch.nn, "Module"
-    )
+    _TORCH_AVAILABLE = not isinstance(torch, MagicMock) and hasattr(torch.nn, "Module")
 except ImportError:
     _TORCH_AVAILABLE = False
 
@@ -111,15 +105,12 @@ requires_torch = pytest.mark.skipif(
 def test_hypernetwork_latents_shape() -> None:
     """DocToLoraHypernetwork.__init__ creates latents param with shape (32, 256)."""
     import torch  # noqa: PLC0415
-
     from model_training.hypernetwork import DocToLoraHypernetwork  # noqa: PLC0415
 
     # Use small hidden_dim and num_layers to keep construction fast on CPU
     model = DocToLoraHypernetwork(input_dim=1000, num_layers=1, hidden_dim=32)
     assert hasattr(model, "latents"), "model must have latents attribute"
-    assert isinstance(
-        model.latents, torch.nn.Parameter
-    ), "latents must be nn.Parameter"
+    assert isinstance(model.latents, torch.nn.Parameter), "latents must be nn.Parameter"
     # Default num_latents=32, latent_dim=256 — shape must always be (32, 256)
     assert model.latents.shape == (32, 256), (
         f"Expected (32, 256) but got {model.latents.shape}"
@@ -135,7 +126,6 @@ def test_hypernetwork_latents_shape() -> None:
 def test_hypernetwork_forward_peft_keys() -> None:
     """forward() returns dict with PEFT-compatible state_dict key pattern."""
     import torch  # noqa: PLC0415
-
     from model_training.hypernetwork import DocToLoraHypernetwork  # noqa: PLC0415
 
     # Use small hidden_dim and few layers to keep the test fast on CPU
@@ -151,8 +141,9 @@ def test_hypernetwork_forward_peft_keys() -> None:
     for i in range(2):  # num_layers=2
         for module in ("q_proj", "v_proj"):
             for ab in ("A", "B"):
-                key = f"base_model.model.model.layers.{i}.self_attn.{module}.lora_{ab}.weight"
-                assert key in result, f"Missing PEFT key: {key}"
+                prefix = "base_model.model.model.layers"
+                key = f"{prefix}.{i}.self_attn.{module}.lora_{ab}.weight"
+                assert key in result, f"Missing key: {key}"
 
 
 # ---------------------------------------------------------------------------
@@ -162,9 +153,8 @@ def test_hypernetwork_forward_peft_keys() -> None:
 
 @requires_torch
 def test_hypernetwork_forward_lora_shapes() -> None:
-    """forward() output lora_A has shape (rank, hidden_dim) and lora_B (hidden_dim, rank)."""
+    """forward() lora_A is (rank, hidden) and lora_B is (hidden, rank)."""
     import torch  # noqa: PLC0415
-
     from model_training.hypernetwork import DocToLoraHypernetwork  # noqa: PLC0415
 
     rank = 8
@@ -179,10 +169,10 @@ def test_hypernetwork_forward_lora_shapes() -> None:
         key_a = f"base_model.model.model.layers.0.self_attn.{module}.lora_A.weight"
         key_b = f"base_model.model.model.layers.0.self_attn.{module}.lora_B.weight"
         assert result[key_a].shape == (rank, hidden_dim), (
-            f"lora_A shape mismatch: expected ({rank}, {hidden_dim}), got {result[key_a].shape}"
+            f"lora_A mismatch: got {result[key_a].shape}"
         )
         assert result[key_b].shape == (hidden_dim, rank), (
-            f"lora_B shape mismatch: expected ({hidden_dim}, {rank}), got {result[key_b].shape}"
+            f"lora_B mismatch: got {result[key_b].shape}"
         )
 
 
@@ -192,14 +182,13 @@ def test_hypernetwork_forward_lora_shapes() -> None:
 
 
 def test_save_hypernetwork_adapter_writes_files() -> None:
-    """save_hypernetwork_adapter() writes adapter_model.safetensors and adapter_config.json."""
+    """save_hypernetwork_adapter() writes safetensors and config."""
     with tempfile.TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir)
 
         # Mock weights dict
-        mock_weights: dict[str, MagicMock] = {
-            "base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight": MagicMock(),
-        }
+        lora_key = "base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight"
+        mock_weights: dict[str, MagicMock] = {lora_key: MagicMock()}
 
         with patch("safetensors.torch.save_file") as mock_save:
             from model_training.hypernetwork import (  # noqa: PLC0415
@@ -228,7 +217,7 @@ def test_save_hypernetwork_adapter_writes_files() -> None:
 
 
 def test_save_hypernetwork_adapter_config_fields() -> None:
-    """adapter_config.json has correct PEFT fields; modules_to_save must be absent/null."""
+    """adapter_config.json has correct PEFT fields."""
     with tempfile.TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir)
         mock_weights: dict[str, MagicMock] = {}
@@ -271,7 +260,6 @@ def test_hypernetwork_forward_no_base_model() -> None:
     import time  # noqa: PLC0415
 
     import torch  # noqa: PLC0415
-
     from model_training.hypernetwork import DocToLoraHypernetwork  # noqa: PLC0415
 
     # Tiny config for fast CPU test

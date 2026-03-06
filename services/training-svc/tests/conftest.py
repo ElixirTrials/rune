@@ -1,13 +1,13 @@
 """Pytest configuration for services/training-svc."""
 
-from typing import Generator
+from collections.abc import Generator
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel
+from sqlmodel import Session, SQLModel
 
 
 @pytest.fixture(scope="function")
@@ -26,17 +26,12 @@ def db_engine():
 
 @pytest.fixture(scope="function")
 def db_session(db_engine) -> Generator[Session, None, None]:
-    session_local = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
-    session = session_local()
-    try:
+    with Session(db_engine) as session:
         yield session
-    finally:
-        session.rollback()
-        session.close()
 
 
 @pytest.fixture(scope="function")
-def test_client(db_session) -> Generator[TestClient, None, None]:
+def test_client(db_engine, db_session) -> Generator[TestClient, None, None]:
     from training_svc.dependencies import get_db
     from training_svc.main import app
 
@@ -47,6 +42,8 @@ def test_client(db_session) -> Generator[TestClient, None, None]:
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as client:
-        yield client
+
+    with patch("training_svc.storage.engine", db_engine):
+        with TestClient(app) as client:
+            yield client
     app.dependency_overrides.clear()

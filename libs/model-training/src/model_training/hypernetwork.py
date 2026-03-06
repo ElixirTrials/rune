@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 if TYPE_CHECKING:
     import torch
@@ -99,22 +99,16 @@ def _build_hypernetwork_class() -> type:
             encoder_layer = nn.TransformerEncoderLayer(
                 latent_dim, heads, batch_first=True
             )
-            self.self_attend = nn.TransformerEncoder(
-                encoder_layer, num_layers=depth
-            )
+            self.self_attend = nn.TransformerEncoder(encoder_layer, num_layers=depth)
 
             # Project flattened latents to all LoRA weight parameters.
             # Each (layer, module) needs:
             #   lora_A: rank * hidden_dim params
             #   lora_B: hidden_dim * rank params
-            total_params = (
-                len(target_modules) * num_layers * 2 * rank * hidden_dim
-            )
+            total_params = len(target_modules) * num_layers * 2 * rank * hidden_dim
             self.weight_head = nn.Linear(latent_dim * num_latents, total_params)
 
-        def forward(
-            self, token_ids: torch.Tensor
-        ) -> dict[str, torch.Tensor]:
+        def forward(self, token_ids: torch.Tensor) -> dict[str, torch.Tensor]:
             """Generate PEFT-compatible LoRA adapter weights from token IDs.
 
             Args:
@@ -165,9 +159,9 @@ def _build_hypernetwork_class() -> type:
                         f"base_model.model.model.layers.{i}"
                         f".self_attn.{module}.lora_A.weight"
                     )
-                    state_dict[key_a] = weights[
-                        0, offset : offset + a_size
-                    ].reshape(self.rank, self.hidden_dim)
+                    state_dict[key_a] = weights[0, offset : offset + a_size].reshape(
+                        self.rank, self.hidden_dim
+                    )
                     offset += a_size
 
                     # lora_B: shape (hidden_dim, rank)
@@ -175,9 +169,9 @@ def _build_hypernetwork_class() -> type:
                         f"base_model.model.model.layers.{i}"
                         f".self_attn.{module}.lora_B.weight"
                     )
-                    state_dict[key_b] = weights[
-                        0, offset : offset + b_size
-                    ].reshape(self.hidden_dim, self.rank)
+                    state_dict[key_b] = weights[0, offset : offset + b_size].reshape(
+                        self.hidden_dim, self.rank
+                    )
                     offset += b_size
 
             return state_dict
@@ -190,6 +184,7 @@ def _build_hypernetwork_class() -> type:
 # first instantiation. This keeps the module importable without torch.
 # ---------------------------------------------------------------------------
 
+
 class _LazyHypernetworkProxy:
     """Lazy proxy for DocToLoraHypernetwork.
 
@@ -200,7 +195,7 @@ class _LazyHypernetworkProxy:
 
     _real_class: type | None = None
 
-    def __call__(self, *args: object, **kwargs: object) -> object:
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self._real_class is None:
             self.__class__._real_class = _build_hypernetwork_class()
         return self._real_class(*args, **kwargs)  # type: ignore[misc]
