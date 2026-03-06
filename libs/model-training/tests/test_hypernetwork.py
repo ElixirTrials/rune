@@ -181,8 +181,20 @@ def test_hypernetwork_forward_lora_shapes() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _ensure_safetensors_module() -> None:
+    """Ensure safetensors.torch is in sys.modules so patch() can target it."""
+    if "safetensors" not in sys.modules:
+        fake_st = ModuleType("safetensors")
+        fake_st_torch = ModuleType("safetensors.torch")
+        fake_st_torch.save_file = MagicMock()  # type: ignore[attr-defined]
+        fake_st.torch = fake_st_torch  # type: ignore[attr-defined]
+        sys.modules["safetensors"] = fake_st
+        sys.modules["safetensors.torch"] = fake_st_torch
+
+
 def test_save_hypernetwork_adapter_writes_files() -> None:
     """save_hypernetwork_adapter() writes safetensors and config."""
+    _ensure_safetensors_module()
     with tempfile.TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir)
 
@@ -218,6 +230,7 @@ def test_save_hypernetwork_adapter_writes_files() -> None:
 
 def test_save_hypernetwork_adapter_config_fields() -> None:
     """adapter_config.json has correct PEFT fields."""
+    _ensure_safetensors_module()
     with tempfile.TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir)
         mock_weights: dict[str, MagicMock] = {}

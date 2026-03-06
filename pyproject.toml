@@ -27,6 +27,7 @@ dependencies = [
     "python-multipart>=0.0.21",
     "alembic>=1.13.0",
     "pymdown-extensions>=10.21",
+    "openai>=1.0.0",
 ]
 
 [dependency-groups]
