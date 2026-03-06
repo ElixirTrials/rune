@@ -1,0 +1,3 @@
+# Un-ignore the bundled HumanEval data directory — this is static reference JSON,
+# not generated ML data, and must be committed as part of the library package.
+!data/

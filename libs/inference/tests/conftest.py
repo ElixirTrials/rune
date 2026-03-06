@@ -1,24 +1,21 @@
 """Pytest configuration for libs/inference.
 
-Provides a mock vLLM client fixture for testing inference functions
-without a running vLLM server.
+Provides an autouse fixture that clears the provider instance cache between
+tests, preventing state leaks across test cases.
 """
-
-from typing import Generator
-from unittest.mock import MagicMock
 
 import pytest
 
 
-@pytest.fixture
-def mock_vllm_client() -> Generator[MagicMock, None, None]:
-    """Return a MagicMock standing in for the vLLM OpenAI client.
+@pytest.fixture(autouse=True)
+def clear_provider_cache() -> None:  # type: ignore[return]
+    """Clear the provider factory cache before and after each test.
 
-    The mock has .chat.completions.create pre-configured to return a stub
-    response object with choices[0].message.content = "mock response".
+    Prevents provider instances cached in one test from appearing in another,
+    which would break cache-identity and cache-key isolation tests.
     """
-    client = MagicMock()
-    mock_choice = MagicMock()
-    mock_choice.message.content = "mock response"
-    client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
-    yield client
+    from inference import factory
+
+    factory._provider_cache.clear()
+    yield
+    factory._provider_cache.clear()

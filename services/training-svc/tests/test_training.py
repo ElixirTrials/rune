@@ -1,32 +1,113 @@
-"""TDD tests for training-svc endpoint routes (red phase — stubs return 501)."""
+"""Tests for training-svc endpoint routes."""
+
+from unittest.mock import patch
+
+import pytest
 
 
-def test_train_lora(test_client):
-    """Test POST /train/lora returns training job info."""
+@pytest.fixture(autouse=True)
+def clear_job_store():
+    """Clear JOB_STORE before/after each test to prevent cross-test contamination."""
+    from training_svc.jobs import JOB_STORE
+
+    JOB_STORE.clear()
+    yield
+    JOB_STORE.clear()
+
+
+def test_train_lora_returns_job_id(test_client):
+    """POST /train/lora returns 200 with job_id and status=queued."""
+    with patch("training_svc.routers.training._run_training_job") as mock_run:
+        mock_run.return_value = None
+        response = test_client.post(
+            "/train/lora",
+            json={
+                "session_id": "test-session",
+                "task_type": "code-gen",
+                "rank": 64,
+                "epochs": 3,
+            },
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert "job_id" in data
+    assert data["status"] == "queued"
+
+
+def test_train_lora_requires_session_id(test_client):
+    """POST /train/lora without session_id returns 422 validation error."""
     response = test_client.post(
         "/train/lora",
-        json={"task_type": "code-gen", "rank": 64, "epochs": 3},
+        json={"task_type": "code-gen"},
     )
+    assert response.status_code == 422
+
+
+def test_get_job_status_found(test_client):
+    """GET /jobs/{job_id} returns status for an existing job."""
+    with patch("training_svc.routers.training._run_training_job") as mock_run:
+        mock_run.return_value = None
+        post_response = test_client.post(
+            "/train/lora",
+            json={
+                "session_id": "test-session",
+                "task_type": "code-gen",
+                "rank": 64,
+                "epochs": 3,
+            },
+        )
+    assert post_response.status_code == 200
+    job_id = post_response.json()["job_id"]
+
+    get_response = test_client.get(f"/jobs/{job_id}")
+    assert get_response.status_code == 200
+    data = get_response.json()
+    assert data["job_id"] == job_id
+    assert data["status"] == "queued"
+
+
+def test_get_job_status_not_found(test_client):
+    """GET /jobs/{nonexistent-id} returns 404."""
+    response = test_client.get("/jobs/nonexistent-id")
+    assert response.status_code == 404
+
+
+def test_train_hypernetwork_returns_job_id(test_client):
+    """POST /train/hypernetwork returns 200 with job_id and status=queued."""
+    with patch("training_svc.routers.training._run_hypernetwork_job") as mock_run:
+        mock_run.return_value = None
+        response = test_client.post(
+            "/train/hypernetwork",
+            json={"task_type": "gen", "trajectory_ids": ["t-1"]},
+        )
     assert response.status_code == 200
     data = response.json()
     assert "job_id" in data
+    assert data["status"] == "queued"
 
 
-def test_train_hypernetwork(test_client):
-    """Test POST /train/hypernetwork returns training job info."""
+def test_train_hypernetwork_requires_trajectory_ids(test_client):
+    """POST /train/hypernetwork without trajectory_ids returns 422 validation error."""
     response = test_client.post(
         "/train/hypernetwork",
-        json={"task_type": "code-gen", "trajectory_ids": ["t-1", "t-2"]},
+        json={"task_type": "gen"},
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert "job_id" in data
+    assert response.status_code == 422
 
 
-def test_get_job_status(test_client):
-    """Test GET /jobs/{job_id} returns job status."""
-    response = test_client.get("/jobs/job-123")
-    assert response.status_code == 200
-    data = response.json()
-    assert "status" in data
-    assert "job_id" in data
+def test_train_hypernetwork_job_pollable(test_client):
+    """After POST /train/hypernetwork, GET /jobs/{job_id} returns the job status."""
+    with patch("training_svc.routers.training._run_hypernetwork_job") as mock_run:
+        mock_run.return_value = None
+        post_response = test_client.post(
+            "/train/hypernetwork",
+            json={"task_type": "gen", "trajectory_ids": ["t-1"]},
+        )
+    assert post_response.status_code == 200
+    job_id = post_response.json()["job_id"]
+
+    get_response = test_client.get(f"/jobs/{job_id}")
+    assert get_response.status_code == 200
+    data = get_response.json()
+    assert data["job_id"] == job_id
+    assert data["status"] == "queued"

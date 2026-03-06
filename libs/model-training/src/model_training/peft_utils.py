@@ -1,15 +1,12 @@
-"""QLoRA PEFT configuration and adapter management stubs.
+"""QLoRA PEFT configuration and adapter management.
 
-All functions raise NotImplementedError. GPU library imports are
-deferred behind TYPE_CHECKING guards to ensure CPU-only importability.
+All GPU library imports (peft, transformers, torch) are deferred inside
+function bodies to ensure CPU-only importability (INFRA-05).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass  # Future: from peft import LoraConfig
+from typing import Any
 
 
 def build_qlora_config(
@@ -29,16 +26,18 @@ def build_qlora_config(
     Returns:
         A peft LoraConfig instance configured for QLoRA.
 
-    Raises:
-        NotImplementedError: Method is not yet implemented.
-
     Example:
         >>> config = build_qlora_config(rank=64, alpha=128, target_modules=["q_proj"])
-        # Returns peft.LoraConfig when implemented
     """
-    raise NotImplementedError(
-        "build_qlora_config is not yet implemented. "
-        "It will instantiate peft.LoraConfig with QLoRA quantization settings."
+    from peft import LoraConfig  # deferred — GPU/peft not available in CPU CI
+
+    return LoraConfig(
+        r=rank,
+        lora_alpha=alpha,
+        target_modules=target_modules,
+        lora_dropout=dropout,
+        bias="none",
+        task_type="CAUSAL_LM",
     )
 
 
@@ -52,17 +51,12 @@ def apply_lora_adapter(model: Any, config: Any) -> Any:
     Returns:
         The model wrapped with a LoRA adapter via peft.get_peft_model.
 
-    Raises:
-        NotImplementedError: Method is not yet implemented.
-
     Example:
         >>> adapted_model = apply_lora_adapter(base_model, lora_config)
-        # Returns PEFT-wrapped model when implemented
     """
-    raise NotImplementedError(
-        "apply_lora_adapter is not yet implemented. "
-        "It will wrap the base model with a LoRA adapter using peft.get_peft_model."
-    )
+    from peft import get_peft_model  # deferred — GPU/peft not available in CPU CI
+
+    return get_peft_model(model, config)
 
 
 def merge_adapter(model: Any) -> Any:
@@ -75,11 +69,10 @@ def merge_adapter(model: Any) -> Any:
         The base model with LoRA weights merged in.
 
     Raises:
-        NotImplementedError: Method is not yet implemented.
+        NotImplementedError: Adapter merging is out of scope for Phase 21.
 
     Example:
         >>> merged = merge_adapter(peft_model)
-        # Returns base model with LoRA weights merged when implemented
     """
     raise NotImplementedError(
         "merge_adapter is not yet implemented. "

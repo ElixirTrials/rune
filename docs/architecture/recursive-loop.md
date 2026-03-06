@@ -4,7 +4,7 @@
 
 The recursive loop is Rune's central execution mechanism: a task enters, code is generated, executed, evaluated, and — if tests fail — the trajectory feeds back into generation. When the loop terminates (tests pass or max attempts reached), the complete trajectory is distilled into a LoRA adapter. This document specifies the data flow at each step, retry logic, and termination conditions.
 
-For the serving architecture that supports this loop, see [Multi-GPU Strategy](multi-gpu-strategy.md). For where the resulting adapters are stored, see [Adapter Storage](adapter-storage.md).
+For the serving architecture that supports this loop, see [GPU Strategy](multi-gpu-strategy.md). For where the resulting adapters are stored, see [Adapter Storage](adapter-storage.md).
 
 ---
 
@@ -42,7 +42,7 @@ The adapter router queries the [adapter registry](adapter-storage.md) by task me
 |-------|-------------|
 | **Input** | Task description + trajectory so far (empty on first attempt) |
 | **Output** | Generated code (candidate solution) |
-| **Model** | Base SLM + loaded LoRA adapters, served via vLLM PP=2 |
+| **Model** | Base SLM + loaded LoRA adapters, served via vLLM |
 
 On the first attempt, the prompt contains only the task description and test signatures. On subsequent attempts, the prompt includes the full trajectory: prior code attempts, execution outputs, error messages, and reflection notes. The trajectory grows monotonically — nothing is discarded between attempts.
 
@@ -125,6 +125,6 @@ Each trajectory is a structured record passed to the distillation step:
 ## Integration Points
 
 - **Adapter Registry** ([Adapter Storage](adapter-storage.md)): Queried at task intake for adapter selection; written to at Store step
-- **vLLM lora-server** ([Multi-GPU Strategy](multi-gpu-strategy.md)): Serves base model + adapters during Generate step
+- **vLLM lora-server** ([GPU Strategy](multi-gpu-strategy.md)): Serves base model + adapters during Generate step
 - **Sandbox**: Docker container managed by rune-agent, isolated from host
 - **model-training lib**: Provides PEFT utilities for the distillation step

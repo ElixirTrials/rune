@@ -1,27 +1,43 @@
-"""Inference library for vLLM-based code generation and adapter management.
+"""Inference provider library for LLM generation and LoRA adapter management.
 
-Provides functions for managing LoRA adapters on a running vLLM server
-and generating code completions via the OpenAI-compatible API.
+Provides a provider-agnostic interface (InferenceProvider) with vLLM and
+Ollama backends, a factory for backend selection by configuration, and
+structured generation results.
+
+Provider classes (OllamaProvider, VLLMProvider) are lazily imported to avoid
+hard failures when the ``openai`` package is not installed (e.g. in CI).
 """
 
-from inference.adapter_loader import (
-    get_vllm_client,
-    list_loaded_adapters,
-    load_adapter,
-    unload_adapter,
-)
-from inference.completion import (
-    batch_generate,
-    generate_completion,
-    generate_with_adapter,
-)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from inference.exceptions import UnsupportedOperationError
+from inference.factory import get_provider, get_provider_for_step
+from inference.provider import GenerationResult, InferenceProvider
+
+if TYPE_CHECKING:
+    from inference.ollama_provider import OllamaProvider
+    from inference.vllm_provider import VLLMProvider
 
 __all__ = [
-    "batch_generate",
-    "generate_completion",
-    "generate_with_adapter",
-    "get_vllm_client",
-    "list_loaded_adapters",
-    "load_adapter",
-    "unload_adapter",
+    "GenerationResult",
+    "InferenceProvider",
+    "OllamaProvider",
+    "UnsupportedOperationError",
+    "VLLMProvider",
+    "get_provider",
+    "get_provider_for_step",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name == "OllamaProvider":
+        from inference.ollama_provider import OllamaProvider
+
+        return OllamaProvider
+    if name == "VLLMProvider":
+        from inference.vllm_provider import VLLMProvider
+
+        return VLLMProvider
+    raise AttributeError(f"module 'inference' has no attribute {name!r}")

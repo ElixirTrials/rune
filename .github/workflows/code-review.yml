@@ -1,0 +1,49 @@
+# .github/workflows/code-review.yml
+name: Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Review this pull request for:
+            - Code quality and Python best practices
+            - Potential bugs, edge cases, or logical errors
+            - Performance considerations
+            - Security concerns (OWASP top 10)
+            - Test coverage gaps
+
+            This is a Python monorepo using FastAPI, SQLModel, and uv.
+            Focus on substantive issues, not style (ruff handles that).
+
+  copilot-review:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Request Copilot review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} \
+            --add-reviewer "copilot" || echo "Copilot review not available — enable in repo settings"

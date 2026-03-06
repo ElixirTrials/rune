@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "adapter-registry",
+    "model-training",
     "shared",
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
@@ -23,4 +24,5 @@ packages = ["src/training_svc"]
 
 [tool.uv.sources]
 adapter-registry = { workspace = true }
+model-training = { workspace = true }
 shared = { workspace = true }

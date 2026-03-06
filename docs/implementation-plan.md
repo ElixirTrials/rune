@@ -8,7 +8,7 @@ Rune proposes to validate and implement a system that encodes coding trajectorie
 
 | Phase | Goal | Gate |
 |-------|------|------|
-| Phase 0 | Hardware and environment validation | Precondition (all binary pass/fail) |
+| Phase 0 | Environment validation | Precondition (all binary pass/fail) |
 | Phase 1 | Core hypothesis validation — Doc-to-LoRA on coding tasks | **Kill-switch** (5% Pass@1 threshold) |
 | Phase 2 | Adapter library and serving infrastructure | Success criteria (checklist + metrics) |
 | Phase 3 | Recursive agent loop and sandbox integration | Success criteria (checklists) |
@@ -30,7 +30,7 @@ The recommended component build sequence is detailed in [Build Order](appendices
 
 ```mermaid
 flowchart TD
-    P0["Phase 0<br>Hardware Validation"] --> P1
+    P0["Phase 0<br>Environment Validation"] --> P1
     P1{"Phase 1<br>Hypothesis Gate"} -->|passes| P2
     P1 -->|fails| Stop([Stop and Reassess])
     P2["Phase 2<br>Adapter Library<br>+ Serving"] --> P3
@@ -44,53 +44,51 @@ This plan is structured for a research-stage system: the phases after the kill-s
 
 ---
 
-## Phase 0: Hardware and Environment Validation
+## Phase 0: Environment Validation
 
 **Depends on:** Nothing — this is the first phase.
 
-Phase 0 confirms that the hardware and software environment is ready for GPU-dependent work. This is a precondition gate, not a research gate: none of the hypothesis testing in Phase 1 is possible without a validated environment. The success criteria are entirely binary — each check either passes or fails, with no partial credit.
+Phase 0 confirms that the software environment is ready for GPU-dependent work. This is a precondition gate, not a research gate: none of the hypothesis testing in Phase 1 is possible without a validated environment. The success criteria are entirely binary — each check either passes or fails, with no partial credit.
 
 ### Why This Phase Comes First
 
-GPU-dependent workloads fail in hardware-specific, non-obvious ways: CUDA version mismatches cause segfaults during backward passes, vLLM may require compilation from source for newer pipeline-parallelism features, and the TP+LoRA corruption bug (vLLM issue #21471) can produce silently wrong outputs rather than crashes. Discovering any of these mid-experiment invalidates results and forces a debugging detour. Phase 0 establishes a clean baseline before any research work begins.
+GPU-dependent workloads fail in non-obvious ways: CUDA version mismatches cause segfaults during backward passes, vLLM may require compilation from source for newer features, and the TP+LoRA corruption bug (vLLM issue #21471) can produce silently wrong outputs rather than crashes. Discovering any of these mid-experiment invalidates results and forces a debugging detour. Phase 0 establishes a clean baseline before any research work begins.
 
 The distinction between Phase 0 and an installation guide is intentional. Phase 0 validates that the environment works correctly — the pass/fail tests confirm behavior, not installation. The steps required to achieve a passing environment (installing drivers, compiling vLLM, configuring CUDA paths) are pre-conditions that precede this phase.
 
-### Hardware Constraints
+### Environment Requirements
 
-| Component | Specification |
-|-----------|---------------|
-| GPU | 2x NVIDIA RTX 4090 (Ada Lovelace, sm_89), 24 GB VRAM each, 48 GB total |
-| GPU Interconnect | CXL (cache-coherent memory pooling) |
-| Multi-GPU Strategy | Pipeline parallelism: `--pipeline-parallel-size 2 --tensor-parallel-size 1` |
-| CUDA | 12.8+ (cu128) |
-| PyTorch | 2.9+ (nightly, cu128 wheels) |
+| Component | Requirement |
+|-----------|-------------|
+| GPU | Any CUDA-capable GPU with sufficient VRAM for the chosen base model |
+| Multi-GPU (optional) | Pipeline parallelism recommended for PCIe-connected GPUs; configurable via `pipeline_parallel_size` |
+| CUDA | Compatible with your PyTorch installation |
 | Quantization toolchain | PEFT + bitsandbytes (QLoRA, NF4 4-bit) |
 
-**Note on tensor parallelism:** `--tensor-parallel-size 2` is explicitly excluded. All-reduce operations over PCIe (~32 GB/s) are prohibitively expensive compared to NVLink (~112 GB/s per direction). Pipeline parallelism passes activations only at layer boundaries and is the correct strategy for this interconnect. The TP+LoRA corruption bug (vLLM #21471) applies to this hardware configuration and is confirmed absent under PP=2.
+**Note on tensor parallelism:** For consumer GPUs connected via PCIe, tensor parallelism is not recommended. All-reduce operations over PCIe (~32 GB/s) are a significant bottleneck compared to NVLink (~112 GB/s per direction). Pipeline parallelism passes activations only at layer boundaries and is the correct strategy for PCIe-connected GPUs. Additionally, vLLM issue #21471 documents TP + LoRA output corruption on GPUs without NVLink — be aware of this if enabling tensor parallelism.
 
 ### Deliverables
 
-- [ ] Both RTX 4090 GPUs recognized by CUDA (`nvidia-smi` lists both; `torch.cuda.device_count() == 2`)
-- [ ] PyTorch nightly cu128 forward pass and backward pass complete without segfault on both GPUs
-- [ ] vLLM serves Qwen2.5-Coder-7B-Instruct with `--pipeline-parallel-size 2 --tensor-parallel-size 1` without crash
-- [ ] vLLM serves a known-good LoRA adapter and produces correct output (regression test confirming TP+LoRA corruption is absent under PP=2)
+- [ ] CUDA-capable GPU(s) recognized (`nvidia-smi` shows devices; `torch.cuda.device_count() >= 1`)
+- [ ] PyTorch forward pass and backward pass complete without error on the target GPU(s)
+- [ ] vLLM serves Qwen2.5-Coder-7B-Instruct with configured parallelism settings without crash
+- [ ] vLLM serves a known-good LoRA adapter and produces correct output (regression test confirming the serving configuration is functional)
 - [ ] PEFT + bitsandbytes QLoRA fine-tune runs 1 training step without error (confirming quantization toolchain is functional)
 
 ### Risk Callouts
 
-> **Driver/CUDA version mismatch:** PyTorch nightly cu128 requires CUDA 12.8+. Mismatched driver and toolkit versions produce cryptic errors at import time or during the first CUDA operation. Verify `nvidia-smi` reports CUDA 12.8+ and that `torch.version.cuda` matches.
+> **Driver/CUDA version mismatch:** Mismatched driver and toolkit versions produce cryptic errors at import time or during the first CUDA operation. Verify `nvidia-smi` reports your installed CUDA version and that `torch.version.cuda` matches.
 
-> **vLLM build from source:** Depending on the vLLM release at execution time, pipeline-parallel-size 2 support may require building vLLM from source. Confirm the installed vLLM version supports PP=2 before running the serving validation step.
+> **vLLM build from source:** Depending on the vLLM release at execution time, certain pipeline-parallelism features may require building vLLM from source. Confirm the installed vLLM version supports your configured parallelism settings before running the serving validation step.
 
 ### Success Criteria
 
 | Criterion | Type | Target |
 |-----------|------|--------|
-| Both GPUs recognized by CUDA | Checklist | Pass (both in `nvidia-smi`; `device_count() == 2`) |
-| PyTorch forward+backward pass without segfault | Checklist | Pass (both GPUs) |
-| vLLM PP=2 serving without crash | Checklist | Pass |
-| TP+LoRA corruption absent under PP=2 | Checklist | Pass (known-good adapter produces correct output) |
+| GPU(s) recognized by CUDA | Checklist | Pass (`nvidia-smi` shows device(s); `device_count() >= 1`) |
+| PyTorch forward+backward pass without error | Checklist | Pass |
+| vLLM serving without crash | Checklist | Pass |
+| LoRA adapter serving produces correct output | Checklist | Pass (known-good adapter produces correct output) |
 | QLoRA 1-step fine-tune without error | Checklist | Pass |
 
 ---
@@ -122,7 +120,7 @@ Rune's kill-switch gate is the operational expression of hypothesis-first orderi
 >
 > **If the gate fails:** Stop and document what was learned. There is no predefined fallback strategy. The failure narrows the design space — it is a research finding, not a project failure. The specific failure mode (mode collapse, no adapter transfer, training instability, insufficient trajectory signal) determines what comes next. Prescribing a fallback now would be speculative.
 
-**Hardware note for Phase 1:** Run the baseline in bfloat16 — not QLoRA. This isolates the hypothesis variable (does Doc-to-LoRA on coding trajectories work?) from the quantization variable (does NF4 quantization degrade adapter quality?). QLoRA is introduced in Phase 2 after the bfloat16 baseline passes.
+**Compute note for Phase 1:** Run the baseline in bfloat16 — not QLoRA. This isolates the hypothesis variable (does Doc-to-LoRA on coding trajectories work?) from the quantization variable (does NF4 quantization degrade adapter quality?). QLoRA is introduced in Phase 2 after the bfloat16 baseline passes.
 
 ### Secondary Diagnostic Signals
 
@@ -151,7 +149,7 @@ These are tracked via MLflow and inform the written assessment, but do not gate 
 
 **Dataset:** 50-100 real coding trajectory pairs from HumanEval or SWE-bench-lite. Each trajectory consists of: task description, attempt sequence (code + error messages + corrections), final passing code. Trajectories sourced from existing evaluation runs or synthetically generated via a prompted base model.
 
-**Baseline:** Qwen2.5-Coder-7B-Instruct with no adapter — raw model Pass@1 on the held-out task subset (5 samples per task, bfloat16, PP=2 serving).
+**Baseline:** Qwen2.5-Coder-7B-Instruct with no adapter — raw model Pass@1 on the held-out task subset (5 samples per task, bfloat16 serving).
 
 **Evaluation method:** Pass@1 on 20-30 held-out HumanEval tasks. Five samples per task. Tasks held out from the training trajectory corpus to test generalization, not memorization.
 
@@ -176,7 +174,7 @@ QLoRA is introduced in this phase (not Phase 1) to isolate variables. The Phase 
 ### Deliverables
 
 - [ ] `libs/adapter-registry`: SQLModel schema, write-once enforcement at the storage API level, `.safetensors` path resolution, adapter metadata queryable without loading weights into GPU memory
-- [ ] `services/lora-server`: vLLM Dockerfile, startup script (`PP=2, TP=1, --enable-lora`), dynamic LoRA loading via vLLM's adapter API, health check endpoint
+- [ ] `services/lora-server`: vLLM Dockerfile, startup script (configurable pipeline parallelism, `--enable-lora`), dynamic LoRA loading via vLLM's adapter API, health check endpoint
 - [ ] `services/api-service` extensions: `/adapters` and `/sessions` routes, SQLModel tables, REST interface for adapter registry queries
 - [ ] QLoRA integration: bfloat16 baseline → NF4 QLoRA transition with quality comparison logged to MLflow
 
@@ -193,7 +191,6 @@ QLoRA is introduced in this phase (not Phase 1) to isolate variables. The Phase 
 | Adapter registry stores and retrieves by session ID and metadata | Checklist | Pass |
 | Write-once semantics enforced (no overwrite code path exists) | Checklist | Pass |
 | vLLM lora-server starts and serves with dynamic LoRA loading | Checklist | Pass |
-| No `--tensor-parallel-size 2` flag anywhere in config | Checklist | Pass |
 | QLoRA Pass@1 vs bfloat16 baseline degradation | Metric | < 10% degradation (logged in MLflow) |
 
 ### Experiment Sketch

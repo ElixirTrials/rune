@@ -79,10 +79,9 @@ themselves) and paged optimizers for memory spill management.[^dettmers2023qlora
 
 The hardware relevance is significant. NF4 quantization reduces the memory footprint
 of a 7B-parameter base model from approximately 14 GB (bfloat16) to approximately 4 GB,
-enabling LoRA training and inference on consumer GPUs with 24 GB VRAM. For Rune's
-target hardware (dual RTX 4090, 24 GB per GPU), QLoRA makes it feasible to keep the
-base model loaded continuously while training or serving LoRA adapters without exceeding
-VRAM capacity.
+enabling LoRA training and inference on consumer GPUs with limited VRAM. QLoRA makes it
+feasible to keep the base model loaded continuously while training or serving LoRA adapters
+within the VRAM budget of a typical consumer GPU.
 
 QLoRA is an efficiency layer in Rune's design, not a core algorithmic contribution.
 Rune's architecture does not depend on QLoRA specifically — any quantization scheme

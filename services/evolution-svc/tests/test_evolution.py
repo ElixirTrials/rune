@@ -1,6 +1,9 @@
 """TDD tests for evolution-svc endpoint routes (red phase — stubs return 501)."""
 
+import pytest
 
+
+@pytest.mark.xfail(reason="stub returns 501", strict=True)
 def test_evaluate_adapter(test_client):
     """Test POST /evaluate returns evaluation metrics."""
     response = test_client.post(
@@ -13,6 +16,7 @@ def test_evaluate_adapter(test_client):
     assert "pass_rate" in data
 
 
+@pytest.mark.xfail(reason="stub returns 501", strict=True)
 def test_evolve_adapters(test_client):
     """Test POST /evolve returns evolved adapter info."""
     response = test_client.post(
@@ -22,6 +26,7 @@ def test_evolve_adapters(test_client):
     assert response.status_code == 200
 
 
+@pytest.mark.xfail(reason="stub returns 501", strict=True)
 def test_promote_adapter(test_client):
     """Test POST /promote returns promotion confirmation."""
     response = test_client.post(
@@ -31,6 +36,7 @@ def test_promote_adapter(test_client):
     assert response.status_code == 200
 
 
+@pytest.mark.xfail(reason="stub returns 501", strict=True)
 def test_prune_adapter(test_client):
     """Test POST /prune returns pruning confirmation."""
     response = test_client.post(

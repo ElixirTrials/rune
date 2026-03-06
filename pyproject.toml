@@ -27,6 +27,7 @@ dependencies = [
     "python-multipart>=0.0.21",
     "alembic>=1.13.0",
     "pymdown-extensions>=10.21",
+    "openai>=1.0.0",
 ]
 
 [dependency-groups]
@@ -149,6 +150,19 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = [
+    "bitsandbytes",
+    "bitsandbytes.*",
+    "openai",
+    "openai.*",
+    "safetensors",
+    "safetensors.*",
+    "trl",
+    "trl.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["services", "libs", "tests"]
 norecursedirs = ["site", "docs", ".venv", "venv", ".uv_cache", "node_modules", ".git"]
@@ -161,6 +175,7 @@ filterwarnings = [
     "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
     "ignore:unclosed database:ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
     "ignore:No data was collected:coverage.exceptions.CoverageWarning",
     "ignore:Use 'content=<...>' to upload raw bytes:DeprecationWarning:httpx",
 ]

@@ -1,8 +1,13 @@
-"""Training router with stub 501 endpoints."""
+"""Training router — POST /train/lora, POST /train/hypernetwork, GET /jobs/{id}."""
 
-from fastapi import APIRouter
+import os
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 
+from training_svc.jobs import JOB_STORE, JobStatus
 from training_svc.schemas import (
     HypernetworkTrainingRequest,
     LoraTrainingRequest,
@@ -11,54 +16,201 @@ from training_svc.schemas import (
 router = APIRouter(tags=["training"])
 
 
+def _run_training_job(
+    job_id: str,
+    session_id: str,
+    adapter_id: str,
+    task_type: str,
+    rank: int,
+    epochs: int,
+    learning_rate: float,
+) -> None:
+    """Background worker: runs train_and_register and updates JOB_STORE.
+
+    Import is deferred inside the function body per INFRA-05 (GPU deps
+    should not be imported at service startup in non-GPU environments).
+    """
+    JOB_STORE[job_id].status = "running"
+    try:
+        from model_training.trainer import train_and_register  # noqa: PLC0415
+
+        train_and_register(
+            session_id=session_id,
+            adapter_id=adapter_id,
+            task_type=task_type,
+            rank=rank,
+            epochs=epochs,
+            learning_rate=learning_rate,
+        )
+        JOB_STORE[job_id].status = "completed"
+    except Exception as e:  # noqa: BLE001
+        JOB_STORE[job_id].status = "failed"
+        JOB_STORE[job_id].error = str(e)
+
+
 @router.post("/train/lora")
-async def train_lora(request: LoraTrainingRequest) -> JSONResponse:
-    """Train a LoRA adapter.
+async def train_lora(
+    request: LoraTrainingRequest,
+    background_tasks: BackgroundTasks,
+) -> JSONResponse:
+    """Dispatch a QLoRA training job as a background task.
 
     Args:
-        request: LoRA training parameters including task_type, optional adapter_id,
-            rank, and epochs.
+        request: LoRA training parameters — session_id is required.
+        background_tasks: FastAPI background task runner.
 
     Returns:
-        JSONResponse with training job information including job_id and status.
-
-    Raises:
-        HTTPException: 501 while not yet implemented.
+        JSONResponse with job_id and status="queued".
 
     Example:
-        >>> body = {"task_type": "code-gen", "rank": 64, "epochs": 3}
+        >>> body = {"session_id": "s-1", "task_type": "code-gen", "epochs": 3}
         >>> response = client.post("/train/lora", json=body)
         >>> response.status_code
         200
-        >>> 'job_id' in response.json()
-        True
+        >>> response.json()["status"]
+        'queued'
     """
-    return JSONResponse(status_code=501, content={"detail": "Not Implemented"})
+    job_id = str(uuid.uuid4())
+    adapter_id = request.adapter_id or str(uuid.uuid4())
+
+    JOB_STORE[job_id] = JobStatus(
+        job_id=job_id,
+        status="queued",
+        adapter_id=adapter_id,
+    )
+
+    background_tasks.add_task(
+        _run_training_job,
+        job_id,
+        request.session_id,
+        adapter_id,
+        request.task_type,
+        request.rank,
+        request.epochs,
+        request.learning_rate,
+    )
+
+    return JSONResponse(content={"job_id": job_id, "status": "queued"}, status_code=200)
+
+
+def _run_hypernetwork_job(job_id: str, trajectory_id: str, task_type: str) -> None:
+    """Background worker: runs DocToLoraHypernetwork forward pass and saves adapter.
+
+    Import is deferred inside the function body per INFRA-05 (GPU deps
+    should not be imported at service startup in non-GPU environments).
+
+    Args:
+        job_id: Unique job identifier used to update JOB_STORE.
+        trajectory_id: Trajectory ID to load and tokenize.
+        task_type: Task type string (stored for context, not used in forward pass).
+    """
+    JOB_STORE[job_id].status = "running"
+    try:
+        import torch  # noqa: PLC0415
+        from model_training.hypernetwork import (  # noqa: PLC0415
+            DocToLoraHypernetwork,
+            save_hypernetwork_adapter,
+        )
+        from model_training.trajectory import (  # noqa: PLC0415
+            format_for_sft,
+            load_trajectory,
+        )
+        from transformers import AutoTokenizer  # noqa: PLC0415
+
+        # Load and tokenize trajectory
+        trajectory = load_trajectory(trajectory_id)
+        messages = format_for_sft(trajectory)
+        # Concatenate messages into a single text for tokenization
+        text = " ".join(m["content"] for m in messages)
+
+        # Resolve env vars inside function body for testability
+        base_model_id = os.environ.get(
+            "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
+        )
+        hypernetwork_weights_path = os.environ.get(
+            "RUNE_HYPERNETWORK_WEIGHTS_PATH",
+            str(Path.home() / ".rune" / "hypernetwork.pt"),
+        )
+        adapter_base = os.environ.get("RUNE_ADAPTER_DIR")
+
+        # Tokenize using base model tokenizer (lightweight, no 7B model loading)
+        tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+        token_ids = tokenizer.encode(text, return_tensors="pt")
+
+        # Load hypernetwork and generate adapter
+        hypernetwork = DocToLoraHypernetwork(
+            input_dim=tokenizer.vocab_size,
+        )
+        hypernetwork.load_state_dict(
+            torch.load(hypernetwork_weights_path, map_location="cpu")
+        )
+        hypernetwork.eval()
+
+        with torch.no_grad():
+            weights = hypernetwork(token_ids)
+
+        # Save adapter
+        adapter_id = JOB_STORE[job_id].adapter_id or str(uuid.uuid4())
+        if adapter_base:
+            adapter_dir = str(Path(adapter_base) / adapter_id)
+        else:
+            adapter_dir = str(Path.home() / ".rune" / "adapters" / adapter_id)
+
+        save_hypernetwork_adapter(
+            weights=weights,
+            output_dir=adapter_dir,
+            base_model_id=base_model_id,
+        )
+
+        JOB_STORE[job_id].status = "completed"
+        JOB_STORE[job_id].adapter_id = adapter_id
+    except Exception as e:  # noqa: BLE001
+        JOB_STORE[job_id].status = "failed"
+        JOB_STORE[job_id].error = str(e)
 
 
 @router.post("/train/hypernetwork")
-async def train_hypernetwork(request: HypernetworkTrainingRequest) -> JSONResponse:
-    """Train via hypernetwork forward pass.
+async def train_hypernetwork(
+    request: HypernetworkTrainingRequest,
+    background_tasks: BackgroundTasks,
+) -> JSONResponse:
+    """Dispatch a hypernetwork adapter generation job as a background task.
+
+    Accepts a trajectory, runs it through the pre-trained hypernetwork in a
+    single forward pass, saves the adapter in PEFT format, and returns a
+    job_id for status polling via GET /jobs/{job_id}.
 
     Args:
         request: Hypernetwork training parameters including task_type and
-            trajectory_ids.
+            trajectory_ids (uses first trajectory_id).
+        background_tasks: FastAPI background task runner.
 
     Returns:
-        JSONResponse with training job information including job_id and status.
-
-    Raises:
-        HTTPException: 501 while not yet implemented.
+        JSONResponse with job_id and status="queued".
 
     Example:
         >>> body = {"task_type": "gen", "trajectory_ids": ["t-1"]}
         >>> response = client.post("/train/hypernetwork", json=body)
         >>> response.status_code
         200
-        >>> 'job_id' in response.json()
-        True
+        >>> response.json()["status"]
+        'queued'
     """
-    return JSONResponse(status_code=501, content={"detail": "Not Implemented"})
+    job_id = str(uuid.uuid4())
+
+    JOB_STORE[job_id] = JobStatus(
+        job_id=job_id,
+        status="queued",
+    )
+
+    background_tasks.add_task(
+        _run_hypernetwork_job,
+        job_id,
+        request.trajectory_ids[0],
+        request.task_type,
+    )
+
+    return JSONResponse(content={"job_id": job_id, "status": "queued"}, status_code=200)
 
 
 @router.get("/jobs/{job_id}")
@@ -69,19 +221,26 @@ async def get_job_status(job_id: str) -> JSONResponse:
         job_id: Unique identifier for the training job.
 
     Returns:
-        JSONResponse with job status information including job_id, status,
-        and optional adapter_id when training completes.
+        JSONResponse with job_id, status, adapter_id, and optional error.
 
     Raises:
-        HTTPException: 501 while not yet implemented.
+        HTTPException: 404 if job_id not found.
 
     Example:
         >>> response = client.get("/jobs/job-123")
         >>> response.status_code
-        200
-        >>> 'status' in response.json()
-        True
-        >>> 'job_id' in response.json()
-        True
+        404
     """
-    return JSONResponse(status_code=501, content={"detail": "Not Implemented"})
+    job = JOB_STORE.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    return JSONResponse(
+        content={
+            "job_id": job.job_id,
+            "status": job.status,
+            "adapter_id": job.adapter_id,
+            "error": job.error,
+        },
+        status_code=200,
+    )

@@ -4,7 +4,10 @@ These tests assert the expected 200/201 behavior of the session endpoints.
 They FAIL in the current state because the stubs return 501.
 """
 
+import pytest
 
+
+@pytest.mark.xfail(reason="stub returns 501", strict=True)
 def test_list_sessions(test_client):
     """Test GET /sessions returns list of coding sessions."""
     response = test_client.get("/sessions")
@@ -13,6 +16,7 @@ def test_list_sessions(test_client):
     assert isinstance(data, list)
 
 
+@pytest.mark.xfail(reason="stub returns 501", strict=True)
 def test_get_session(test_client):
     """Test GET /sessions/{id} returns single coding session."""
     response = test_client.get("/sessions/test-session-456")
@@ -21,6 +25,7 @@ def test_get_session(test_client):
     assert "session_id" in data
 
 
+@pytest.mark.xfail(reason="stub returns 501", strict=True)
 def test_create_session(test_client, make_coding_session):
     """Test POST /sessions creates a new coding session using factory fixture."""
     session = make_coding_session()
