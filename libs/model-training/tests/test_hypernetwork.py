@@ -114,11 +114,13 @@ def test_hypernetwork_latents_shape() -> None:
 
     from model_training.hypernetwork import DocToLoraHypernetwork  # noqa: PLC0415
 
-    model = DocToLoraHypernetwork(input_dim=32000)
+    # Use small hidden_dim and num_layers to keep construction fast on CPU
+    model = DocToLoraHypernetwork(input_dim=1000, num_layers=1, hidden_dim=32)
     assert hasattr(model, "latents"), "model must have latents attribute"
     assert isinstance(
         model.latents, torch.nn.Parameter
     ), "latents must be nn.Parameter"
+    # Default num_latents=32, latent_dim=256 — shape must always be (32, 256)
     assert model.latents.shape == (32, 256), (
         f"Expected (32, 256) but got {model.latents.shape}"
     )
@@ -136,7 +138,10 @@ def test_hypernetwork_forward_peft_keys() -> None:
 
     from model_training.hypernetwork import DocToLoraHypernetwork  # noqa: PLC0415
 
-    model = DocToLoraHypernetwork(input_dim=32000, num_layers=2)
+    # Use small hidden_dim and few layers to keep the test fast on CPU
+    model = DocToLoraHypernetwork(
+        input_dim=1000, num_layers=2, hidden_dim=32, num_latents=4, latent_dim=32
+    )
     token_ids = torch.zeros(1, 8, dtype=torch.long)
     result = model(token_ids)
 
