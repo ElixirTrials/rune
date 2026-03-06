@@ -153,6 +153,10 @@ ignore_missing_imports = true
 module = [
     "bitsandbytes",
     "bitsandbytes.*",
+    "openai",
+    "openai.*",
+    "safetensors",
+    "safetensors.*",
     "trl",
     "trl.*",
 ]
