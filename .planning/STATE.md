@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: First Implementation
 status: executing
-stopped_at: Completed 22-03-PLAN.md
-last_updated: "2026-03-06T06:51:23.811Z"
-last_activity: "2026-03-06 - Completed quick task 1: Remove all hardware requirements - make repo hardware-agnostic for any local setup"
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-03-06T14:37:22Z"
+last_activity: "2026-03-06 - Completed 23-01: Wire AdapterRegistry.store() into _run_hypernetwork_job, fix mypy model_training overrides, add integration test"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
-  percent: 12
+  total_plans: 13
+  completed_plans: 13
+  percent: 92
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A local coding agent that learns from its own coding trajectories, building persistent parametric memory that scales independently of context window size.
-**Current focus:** Phase 22 — Kill-Switch Gate (Plan 01 complete)
+**Current focus:** Phase 23 — Integration Fix & Quality Gate (Plan 01 complete)
 
 ## Current Position
 
-Phase: 22 of 22 (Kill-Switch Gate)
-Plan: 01 complete (22-01-PLAN.md done) — DocToLoraHypernetwork implemented
-Status: In progress — Phase 22 Plan 01 complete
-Last activity: 2026-03-06 - Completed quick task 1: Remove all hardware requirements - make repo hardware-agnostic for any local setup
+Phase: 23 of 23 (Integration Fix & Quality Gate)
+Plan: 01 complete (23-01-PLAN.md done) — hypernetwork registry wiring + mypy fix
+Status: In progress — Phase 23 Plan 01 complete
+Last activity: 2026-03-06 - Completed 23-01: Wire AdapterRegistry.store() into _run_hypernetwork_job, fix mypy model_training overrides, add integration test
 
 Progress: [███░░░░░░░] 12%
 
@@ -59,6 +59,7 @@ Progress: [███░░░░░░░] 12%
 | Phase 22-kill-switch-gate P01 | ~18 | 1 task | 3 files |
 | Phase 22-kill-switch-gate P02 | 12 | 2 tasks | 5 files |
 | Phase 22-kill-switch-gate P03 | 8 | 1 tasks | 2 files |
+| Phase 23-integration-fix-quality-gate P01 | 6 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,9 @@ Recent decisions affecting v5.0:
 - [Phase 22-kill-switch-gate]: data/ directory un-ignored via local .gitignore in evaluation/src/evaluation/ — root .gitignore has global data/ exclusion
 - [Phase 22-kill-switch-gate]: sys.executable used in subprocess (not hardcoded python) — matches current venv Python in all execution environments
 - [Phase 22-kill-switch-gate]: _run_hypernetwork_job uses first trajectory_id from request.trajectory_ids — single trajectory drives the hypernetwork forward pass
+- [Phase 23-01]: Use training_svc.storage.engine (not RUNE_DATABASE_URL) in _run_hypernetwork_job — service-level function shares service DB, ensures QLoRA and hypernetwork adapters in same database
+- [Phase 23-01]: model_training added to workspace-packages mypy override block (not GPU libs block) — it is a local workspace package, not a GPU-only library
+- [Phase 23-01]: All new imports deferred inside _run_hypernetwork_job function body per INFRA-05 — allows patch("training_svc.storage.engine", ...) in tests
 
 ### Pending Todos
 
@@ -125,6 +129,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-06T06:51:23.809Z
-Stopped at: Completed 22-03-PLAN.md
+Last session: 2026-03-06T14:37:22Z
+Stopped at: Completed 23-01-PLAN.md
 Resume file: None

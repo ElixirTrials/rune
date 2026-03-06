@@ -161,7 +161,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 23-01-PLAN.md — Wire AdapterRegistry.store() into _run_hypernetwork_job, fix mypy model_training overrides, add integration test
+- [x] 23-01-PLAN.md — Wire AdapterRegistry.store() into _run_hypernetwork_job, fix mypy model_training overrides, add integration test — DONE 2026-03-06
 
 ## Progress
 
@@ -190,7 +190,7 @@ Plans:
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 21. QLoRA Training Pipeline | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 22. Kill-Switch Gate | v5.0 | 3/3 | Complete | 2026-03-06 |
-| 23. Integration Fix & Quality Gate | v5.0 | 0/1 | Not started | - |
+| 23. Integration Fix & Quality Gate | v5.0 | 1/1 | Complete | 2026-03-06 |
 
 ---
-*Last updated: 2026-03-06 after phase 23 plan created*
+*Last updated: 2026-03-06 after phase 23-01 completed*
