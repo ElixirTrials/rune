@@ -80,6 +80,8 @@ services:
     volumes:
       - adapters_data:/adapters
       - rune_data:/data
+    # Passes through all available GPUs to the container. Adjust `count`
+    # to limit GPU access (e.g. count: 1 for single-GPU operation).
     deploy:
       resources:
         reservations:

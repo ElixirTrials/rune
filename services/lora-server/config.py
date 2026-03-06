@@ -1,4 +1,4 @@
-"""LoRA server configuration with safety constraints for multi-GPU inference."""
+"""LoRA server configuration for vLLM-based inference."""
 
 from __future__ import annotations
 
@@ -13,13 +13,25 @@ import yaml
 class LoraServerConfig:
     """Configuration for the vLLM-based LoRA inference server.
 
-    Enforces PP=2/TP=1 layout to avoid vLLM bug #21471 where TP+LoRA
-    produces corrupted outputs on consumer GPUs without NVLink.
+    Default settings target single-GPU operation; adjust
+    ``pipeline_parallel_size`` and ``tensor_parallel_size`` for multi-GPU
+    setups.
+
+    Warning:
+        Tensor parallelism (``tensor_parallel_size > 1``) combined with LoRA
+        adapter serving may produce corrupted outputs on consumer GPUs without
+        NVLink (vLLM issue #21471). If you have NVLink-equipped GPUs, TP is
+        viable — verify output correctness with a known-good adapter before
+        using in production. For PCIe-connected GPUs, pipeline parallelism
+        is the recommended multi-GPU strategy.
 
     Attributes:
         model: HuggingFace model identifier.
-        pipeline_parallel_size: Number of pipeline parallel stages.
-        tensor_parallel_size: Number of tensor parallel shards.
+        pipeline_parallel_size: Number of pipeline parallel stages. Set to 1
+            for single-GPU operation (default). Set to N for N-GPU pipeline
+            parallelism.
+        tensor_parallel_size: Number of tensor parallel shards. Defaults to 1.
+            See warning above before enabling TP with LoRA on consumer GPUs.
         enable_lora: Whether to enable LoRA adapter support.
         quantization: Quantization method (e.g. 'awq').
         port: Port for the vLLM inference server.
@@ -32,13 +44,13 @@ class LoraServerConfig:
     Example:
         >>> config = LoraServerConfig()
         >>> config.pipeline_parallel_size
-        2
+        1
         >>> config.tensor_parallel_size
         1
     """
 
     model: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
-    pipeline_parallel_size: int = 2
+    pipeline_parallel_size: int = 1
     tensor_parallel_size: int = 1
     enable_lora: bool = True
     quantization: str = "awq"
@@ -47,17 +59,6 @@ class LoraServerConfig:
     max_loras: int = 8
     max_lora_rank: int = 64
     gpu_memory_utilization: float = 0.80
-
-    def __post_init__(self) -> None:
-        """Validate configuration constraints after initialization."""
-        if self.tensor_parallel_size == 2:
-            raise ValueError(
-                "tensor_parallel_size=2 is forbidden. "
-                "vLLM bug #21471: TP+LoRA causes corrupted "
-                "outputs on consumer GPUs without NVLink. "
-                "Use pipeline_parallel_size=2 with "
-                "tensor_parallel_size=1 instead."
-            )
 
     @classmethod
     def from_yaml(cls, path: str) -> LoraServerConfig:

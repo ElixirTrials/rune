@@ -1,8 +1,22 @@
 model: "Qwen/Qwen2.5-Coder-7B-Instruct"
-pipeline_parallel_size: 2
+
+# Parallelism settings — adjust for your hardware:
+#   - Single GPU (default): pipeline_parallel_size: 1, tensor_parallel_size: 1
+#   - Multi-GPU via pipeline parallelism (recommended for PCIe-connected GPUs):
+#       pipeline_parallel_size: <number of GPUs>, tensor_parallel_size: 1
+#   - Tensor parallelism requires NVLink; see vLLM issue #21471 for TP+LoRA
+#     corruption risk on consumer GPUs without NVLink.
+pipeline_parallel_size: 1
 tensor_parallel_size: 1
+
 enable_lora: true
 quantization: "awq"
 port: 8000
 health_port: 8001
+
+# Maximum concurrent LoRA adapters in the S-LoRA unified memory pool.
 max_loras: 8
+
+# Fraction of GPU VRAM reserved for the model. 0.80 leaves headroom for
+# LoRA adapter weights and KV cache. Reduce if you see OOM at startup.
+gpu_memory_utilization: 0.80
