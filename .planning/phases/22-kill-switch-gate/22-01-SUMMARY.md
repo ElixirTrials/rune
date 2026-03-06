@@ -25,7 +25,7 @@ metrics:
   completed_date: "2026-03-05"
   tasks: 1
   files: 3
-requirements: [DTOL-01, DTOL-02, DTOL-03]
+requirements-completed: [DTOL-01, DTOL-02, DTOL-03]
 ---
 
 # Phase 22 Plan 01: DocToLoraHypernetwork Summary

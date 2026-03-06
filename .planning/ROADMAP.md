@@ -6,7 +6,7 @@
 - ✅ **v2.0 Repo Restructuring & Scaffold** — Phases 4-7 (shipped 2026-03-03)
 - ✅ **v3.0 Scientific Article Documentation** — Phases 8-12 (shipped 2026-03-03)
 - ✅ **v4.0 API Wireframes & TDD Foundation** — Phases 13-17 (shipped 2026-03-05)
-- 🚧 **v5.0 First Implementation** — Phases 18-22 (in progress)
+- 🚧 **v5.0 First Implementation** — Phases 18-24 (in progress)
 
 ## Phases
 
@@ -61,7 +61,8 @@
 - [x] **Phase 20: Agent Loop** — Backend-agnostic generate → execute → reflect → save_trajectory cycle with trajectory persistence (2/2 plans complete)
 - [x] **Phase 21: QLoRA Training Pipeline** — Full gradient-descent training path from trajectory to PEFT adapter stored in registry, with training-svc HTTP dispatch (completed 2026-03-05)
 - [x] **Phase 22: Kill-Switch Gate** — Doc-to-LoRA hypernetwork + evaluation lib measuring the 5% Pass@1 improvement threshold (completed 2026-03-06)
-- [ ] **Phase 23: Integration Fix & Quality Gate** — Fix hypernetwork→registry gap (DTOL-04), xdist race, mypy strict errors, ruff violations (gap closure from audit)
+- [x] **Phase 23: Integration Fix & Quality Gate** — Fix hypernetwork→registry gap (DTOL-04), xdist race, mypy strict errors, ruff violations (gap closure from audit) (completed 2026-03-06)
+- [ ] **Phase 24: Phase 22 Verification & Dependency Hygiene** — Create missing Phase 22 VERIFICATION.md, fix undeclared dependencies, fix SUMMARY frontmatter
 
 ## Phase Details
 
@@ -145,8 +146,8 @@ Plans:
 
 Plans:
 - [x] 22-01-PLAN.md — DocToLoraHypernetwork Perceiver module with rank-8 LoRA weight generation and PEFT serialization — DONE 2026-03-05
-- [ ] 22-02-PLAN.md — Evaluation lib: calculate_pass_at_k, run_humaneval_subset with bundled 20-task data, run_kill_switch_gate verdict
-- [ ] 22-03-PLAN.md — Wire POST /train/hypernetwork endpoint with background task dispatch
+- [x] 22-02-PLAN.md — Evaluation lib: calculate_pass_at_k, run_humaneval_subset with bundled 20-task data, run_kill_switch_gate verdict — DONE 2026-03-05
+- [x] 22-03-PLAN.md — Wire POST /train/hypernetwork endpoint with background task dispatch — DONE 2026-03-06
 
 ### Phase 23: Integration Fix & Quality Gate
 **Goal**: Close audit gaps — wire hypernetwork adapter registration and fix mypy strict errors (xdist race and ruff violations already resolved)
@@ -162,6 +163,21 @@ Plans:
 
 Plans:
 - [x] 23-01-PLAN.md — Wire AdapterRegistry.store() into _run_hypernetwork_job, fix mypy model_training overrides, add integration test — DONE 2026-03-06
+
+### Phase 24: Phase 22 Verification & Dependency Hygiene
+**Goal**: Close 6 partial requirements by adding missing dependency declarations, fixing SUMMARY frontmatter, and formally verifying Phase 22's implementations
+**Depends on**: Phase 23
+**Requirements**: DTOL-01, DTOL-02, DTOL-03, EVAL-01, EVAL-02, EVAL-03 (verification gap from audit)
+**Gap Closure**: Closes gaps from v5.0-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. `model-training/pyproject.toml` declares `adapter-registry` and `safetensors` as dependencies
+  2. 22-01-SUMMARY.md frontmatter uses `requirements-completed` field (not `requirements`)
+  3. Phase 22 has a VERIFICATION.md confirming DTOL-01/02/03 and EVAL-01/02/03 are satisfied
+  4. `uv run pytest -x` passes all tests with zero regressions
+**Plans**: 1 plan
+
+Plans:
+- [ ] 24-01-PLAN.md — Fix model-training deps (adapter-registry + safetensors), fix 22-01-SUMMARY frontmatter, create 22-VERIFICATION.md
 
 ## Progress
 
@@ -190,7 +206,8 @@ Plans:
 | 20. Agent Loop | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 21. QLoRA Training Pipeline | v5.0 | Complete    | 2026-03-05 | 2026-03-05 |
 | 22. Kill-Switch Gate | v5.0 | 3/3 | Complete | 2026-03-06 |
-| 23. Integration Fix & Quality Gate | v5.0 | 1/1 | Complete | 2026-03-06 |
+| 23. Integration Fix & Quality Gate | v5.0 | Complete    | 2026-03-06 | 2026-03-06 |
+| 24. Phase 22 Verification & Dep Hygiene | v5.0 | 0/1 | Not started | - |
 
 ---
-*Last updated: 2026-03-06 after phase 23-01 completed*
+*Last updated: 2026-03-06 after Phase 24 planning*
