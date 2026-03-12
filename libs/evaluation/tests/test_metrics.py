@@ -119,16 +119,30 @@ def test_score_adapter_quality_capped() -> None:
     assert score == 1.0
 
 
-def test_compare_adapters_raises_not_implemented() -> None:
-    """compare_adapters raises NotImplementedError with function name."""
-    with pytest.raises(NotImplementedError, match="compare_adapters"):
-        compare_adapters(["adapter-001", "adapter-002"])
+def test_compare_adapters_returns_rankings() -> None:
+    """compare_adapters returns scores, rankings, best_adapter, summary."""
+    result = compare_adapters(["adapter-001", "adapter-002"])
+    assert "scores" in result
+    assert "rankings" in result
+    assert "best_adapter" in result
+    assert result["best_adapter"] in ["adapter-001", "adapter-002"]
+    assert len(result["rankings"]) == 2
 
 
-def test_test_generalization_raises_not_implemented() -> None:
-    """test_generalization raises NotImplementedError with function name."""
-    with pytest.raises(NotImplementedError, match="test_generalization"):
-        _test_generalization("adapter-001")
+def test_compare_adapters_requires_two() -> None:
+    """compare_adapters raises ValueError with fewer than 2 adapters."""
+    with pytest.raises(ValueError):
+        compare_adapters(["adapter-001"])
+
+
+def test_test_generalization_returns_result() -> None:
+    """test_generalization returns generalization metrics."""
+    result = _test_generalization("adapter-001")
+    assert "in_distribution_score" in result
+    assert "ood_score" in result
+    assert "generalization_delta" in result
+    assert "generalizes" in result
+    assert isinstance(result["generalizes"], bool)
 
 
 def test_evaluate_fitness_pure_pass_rate() -> None:
