@@ -4,6 +4,13 @@ from pathlib import Path
 
 from shared.hardware import GPUInfo, HardwareBudget, HardwareProbe
 from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
+from shared.sandbox import (
+    NsjailBackend,
+    SandboxBackend,
+    SandboxResult,
+    SubprocessBackend,
+    get_sandbox_backend,
+)
 
 __all__ = [
     "AdapterRef",
@@ -12,7 +19,12 @@ __all__ = [
     "GPUInfo",
     "HardwareBudget",
     "HardwareProbe",
+    "NsjailBackend",
+    "SandboxBackend",
+    "SandboxResult",
+    "SubprocessBackend",
     "get_prompts_dir",
+    "get_sandbox_backend",
 ]
 
 
