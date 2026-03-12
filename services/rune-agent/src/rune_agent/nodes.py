@@ -3,12 +3,11 @@
 import logging
 import os
 import re
-import subprocess
-import tempfile
 from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
+from shared.sandbox import get_sandbox_backend
 
 from .state import RuneState
 
@@ -141,29 +140,13 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     timeout: int = int(os.environ.get("RUNE_EXEC_TIMEOUT", DEFAULT_TIMEOUT))
 
     script = state["generated_code"] + "\n\n" + state["test_suite"]
+    backend = get_sandbox_backend()
+    result = backend.run(script, timeout=timeout)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        script_path = tmpdir + "/solution.py"
-        with open(script_path, "w") as f:
-            f.write(script)
-
-        try:
-            proc = subprocess.run(
-                ["python", script_path],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=tmpdir,
-            )
-            stdout = proc.stdout
-            stderr = proc.stderr
-            exit_code = proc.returncode
-            tests_passed = proc.returncode == 0
-        except subprocess.TimeoutExpired:
-            stdout = ""
-            stderr = f"Execution timed out after {timeout}s"
-            exit_code = 1
-            tests_passed = False
+    stdout = result.stdout
+    stderr = result.stderr
+    exit_code = result.exit_code
+    tests_passed = result.exit_code == 0 and not result.timed_out
 
     logger.info(
         "execute_node: exit_code=%d, tests_passed=%s",
