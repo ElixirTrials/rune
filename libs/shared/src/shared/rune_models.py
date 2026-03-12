@@ -96,3 +96,47 @@ class EvolMetrics(BaseModel):
     pass_rate: float
     fitness_score: float
     generalization_delta: Optional[float] = None
+
+
+class SwarmConfig(BaseModel):
+    """Configuration for a swarm execution run.
+
+    Attributes:
+        db_url: SQLite database URL for the adapter registry.
+        task_source: Path to task definitions file or inline task list.
+        population_size: Number of concurrent swarm agents.
+        max_generations: Maximum evolutionary generations.
+        evolution_interval: Seconds between evolution sweeps.
+        sandbox_backend: Execution backend ('subprocess' or 'nsjail').
+        base_model_id: HuggingFace model identifier for inference.
+    """
+
+    db_url: str = "sqlite:///rune_swarm.db"
+    task_source: str = "tasks.json"
+    population_size: int = 8
+    max_generations: int = 10
+    evolution_interval: int = 7200
+    sandbox_backend: str = "subprocess"
+    base_model_id: str = "Qwen/Qwen2.5-Coder-7B"
+
+
+class SwarmCheckpoint(BaseModel):
+    """Status record for a single swarm task execution.
+
+    Attributes:
+        run_id: Unique identifier for the swarm run.
+        task_hash: Hash of the task being executed.
+        agent_id: Identifier of the agent executing the task.
+        status: Current status (pending, running, completed, failed).
+        outcome: Result description when completed.
+        started_at: ISO 8601 timestamp when execution began.
+        completed_at: ISO 8601 timestamp when execution finished.
+    """
+
+    run_id: str
+    task_hash: str
+    agent_id: str
+    status: str = "pending"
+    outcome: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None

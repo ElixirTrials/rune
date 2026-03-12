@@ -16,7 +16,13 @@ from typing import Any, Callable
 import pytest
 from adapter_registry.models import AdapterRecord
 from evolution_svc.models import EvolutionJob
-from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
+from shared.rune_models import (
+    AdapterRef,
+    CodingSession,
+    EvolMetrics,
+    SwarmCheckpoint,
+    SwarmConfig,
+)
 from training_svc.models import TrainingJob
 
 
@@ -129,5 +135,43 @@ def make_evol_metrics() -> Callable[..., EvolMetrics]:
             "generalization_delta": None,
         }
         return EvolMetrics(**{**defaults, **kwargs})
+
+    return _factory
+
+
+@pytest.fixture
+def make_swarm_config() -> Callable[..., SwarmConfig]:
+    """Create SwarmConfig instances with defaults."""
+
+    def _factory(**kwargs: Any) -> SwarmConfig:
+        defaults: dict[str, Any] = {
+            "db_url": "sqlite:///:memory:",
+            "task_source": "tasks.json",
+            "population_size": 4,
+            "max_generations": 2,
+            "evolution_interval": 60,
+            "sandbox_backend": "subprocess",
+            "base_model_id": "Qwen/Qwen2.5-Coder-7B",
+        }
+        return SwarmConfig(**{**defaults, **kwargs})
+
+    return _factory
+
+
+@pytest.fixture
+def make_swarm_checkpoint() -> Callable[..., SwarmCheckpoint]:
+    """Create SwarmCheckpoint instances with defaults."""
+
+    def _factory(**kwargs: Any) -> SwarmCheckpoint:
+        defaults: dict[str, Any] = {
+            "run_id": "test-run-001",
+            "task_hash": "hash-001",
+            "agent_id": "agent-001",
+            "status": "pending",
+            "outcome": None,
+            "started_at": None,
+            "completed_at": None,
+        }
+        return SwarmCheckpoint(**{**defaults, **kwargs})
 
     return _factory

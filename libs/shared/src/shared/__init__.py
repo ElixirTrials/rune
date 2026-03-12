@@ -3,7 +3,13 @@
 from pathlib import Path
 
 from shared.hardware import GPUInfo, HardwareBudget, HardwareProbe
-from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
+from shared.rune_models import (
+    AdapterRef,
+    CodingSession,
+    EvolMetrics,
+    SwarmCheckpoint,
+    SwarmConfig,
+)
 from shared.sandbox import (
     NsjailBackend,
     SandboxBackend,
@@ -23,6 +29,8 @@ __all__ = [
     "SandboxBackend",
     "SandboxResult",
     "SubprocessBackend",
+    "SwarmCheckpoint",
+    "SwarmConfig",
     "get_prompts_dir",
     "get_sandbox_backend",
 ]
