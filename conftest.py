@@ -40,6 +40,10 @@ def make_adapter_record() -> Callable[..., AdapterRecord]:
             "source": "distillation",
             "session_id": "test-session-001",
             "is_archived": False,
+            "parent_ids": None,
+            "generation": 0,
+            "training_task_hash": None,
+            "agent_id": None,
         }
         return AdapterRecord(**{**defaults, **kwargs})
 
