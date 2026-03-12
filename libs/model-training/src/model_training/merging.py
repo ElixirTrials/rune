@@ -28,10 +28,10 @@ def ties_merge(
     Returns:
         Merged state dict with same keys and shapes as inputs.
     """
-    import torch
-
     if not state_dicts:
         return {}
+
+    import torch
 
     merged: dict[str, Any] = {}
     keys = state_dicts[0].keys()
@@ -79,10 +79,10 @@ def dare_merge(
     Returns:
         Merged state dict with same keys and shapes as inputs.
     """
-    import torch
-
     if not state_dicts:
         return {}
+
+    import torch
 
     merged: dict[str, Any] = {}
     keys = state_dicts[0].keys()
