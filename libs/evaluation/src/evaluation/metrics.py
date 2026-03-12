@@ -238,7 +238,11 @@ def score_adapter_quality(
         >>> score_with_gen > score
         True
     """
-    raise NotImplementedError("score_adapter_quality is not yet implemented.")
+    if generalization_delta is not None:
+        quality = min(pass_rate + 0.1 * max(generalization_delta, 0), 1.0)
+    else:
+        quality = pass_rate
+    return quality
 
 
 def compare_adapters(
@@ -352,4 +356,5 @@ def evaluate_fitness(
         >>> low_diversity < fitness
         True
     """
-    raise NotImplementedError("evaluate_fitness is not yet implemented.")
+    fitness = 0.7 * pass_rate + 0.3 * diversity_score
+    return fitness
