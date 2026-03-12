@@ -2,9 +2,18 @@
 
 from pathlib import Path
 
+from shared.hardware import GPUInfo, HardwareBudget, HardwareProbe
 from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
 
-__all__ = ["AdapterRef", "CodingSession", "EvolMetrics", "get_prompts_dir"]
+__all__ = [
+    "AdapterRef",
+    "CodingSession",
+    "EvolMetrics",
+    "GPUInfo",
+    "HardwareBudget",
+    "HardwareProbe",
+    "get_prompts_dir",
+]
 
 
 def get_prompts_dir() -> Path:
