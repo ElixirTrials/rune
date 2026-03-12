@@ -1,0 +1,62 @@
+[
+  {
+    "task_id": "OOD/0",
+    "prompt": "def reverse_string(s: str) -> str:\n    \"\"\"Reverse the input string.\"\"\"\n",
+    "test": "assert reverse_string('hello') == 'olleh'\nassert reverse_string('') == ''\nassert reverse_string('a') == 'a'",
+    "canonical_solution": "    return s[::-1]"
+  },
+  {
+    "task_id": "OOD/1",
+    "prompt": "def is_palindrome(s: str) -> bool:\n    \"\"\"Check if a string is a palindrome.\"\"\"\n",
+    "test": "assert is_palindrome('racecar') == True\nassert is_palindrome('hello') == False\nassert is_palindrome('') == True",
+    "canonical_solution": "    return s == s[::-1]"
+  },
+  {
+    "task_id": "OOD/2",
+    "prompt": "def flatten(lst: list) -> list:\n    \"\"\"Flatten a nested list.\"\"\"\n",
+    "test": "assert flatten([1, [2, 3], [4, [5]]]) == [1, 2, 3, 4, 5]\nassert flatten([]) == []\nassert flatten([1, 2, 3]) == [1, 2, 3]",
+    "canonical_solution": "    result = []\n    for item in lst:\n        if isinstance(item, list):\n            result.extend(flatten(item))\n        else:\n            result.append(item)\n    return result"
+  },
+  {
+    "task_id": "OOD/3",
+    "prompt": "def count_vowels(s: str) -> int:\n    \"\"\"Count vowels in a string (case-insensitive).\"\"\"\n",
+    "test": "assert count_vowels('hello') == 2\nassert count_vowels('AEIOU') == 5\nassert count_vowels('xyz') == 0",
+    "canonical_solution": "    return sum(1 for c in s.lower() if c in 'aeiou')"
+  },
+  {
+    "task_id": "OOD/4",
+    "prompt": "def chunk_list(lst: list, n: int) -> list:\n    \"\"\"Split a list into chunks of size n.\"\"\"\n",
+    "test": "assert chunk_list([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]]\nassert chunk_list([], 3) == []\nassert chunk_list([1], 1) == [[1]]",
+    "canonical_solution": "    return [lst[i:i+n] for i in range(0, len(lst), n)]"
+  },
+  {
+    "task_id": "OOD/5",
+    "prompt": "def merge_dicts(a: dict, b: dict) -> dict:\n    \"\"\"Merge two dicts, preferring values from b on key conflicts.\"\"\"\n",
+    "test": "assert merge_dicts({'x': 1}, {'y': 2}) == {'x': 1, 'y': 2}\nassert merge_dicts({'x': 1}, {'x': 2}) == {'x': 2}\nassert merge_dicts({}, {}) == {}",
+    "canonical_solution": "    return {**a, **b}"
+  },
+  {
+    "task_id": "OOD/6",
+    "prompt": "def unique_elements(lst: list) -> list:\n    \"\"\"Return unique elements preserving order.\"\"\"\n",
+    "test": "assert unique_elements([1, 2, 2, 3, 1]) == [1, 2, 3]\nassert unique_elements([]) == []\nassert unique_elements([1, 1, 1]) == [1]",
+    "canonical_solution": "    seen = set()\n    result = []\n    for item in lst:\n        if item not in seen:\n            seen.add(item)\n            result.append(item)\n    return result"
+  },
+  {
+    "task_id": "OOD/7",
+    "prompt": "def caesar_cipher(text: str, shift: int) -> str:\n    \"\"\"Apply Caesar cipher to lowercase letters only.\"\"\"\n",
+    "test": "assert caesar_cipher('abc', 1) == 'bcd'\nassert caesar_cipher('xyz', 3) == 'abc'\nassert caesar_cipher('hello', 0) == 'hello'",
+    "canonical_solution": "    result = []\n    for c in text:\n        if c.islower():\n            result.append(chr((ord(c) - ord('a') + shift) % 26 + ord('a')))\n        else:\n            result.append(c)\n    return ''.join(result)"
+  },
+  {
+    "task_id": "OOD/8",
+    "prompt": "def matrix_transpose(matrix: list[list]) -> list[list]:\n    \"\"\"Transpose a 2D matrix.\"\"\"\n",
+    "test": "assert matrix_transpose([[1, 2], [3, 4]]) == [[1, 3], [2, 4]]\nassert matrix_transpose([[1]]) == [[1]]\nassert matrix_transpose([[1, 2, 3]]) == [[1], [2], [3]]",
+    "canonical_solution": "    return [list(row) for row in zip(*matrix)]"
+  },
+  {
+    "task_id": "OOD/9",
+    "prompt": "def running_average(nums: list[float]) -> list[float]:\n    \"\"\"Compute the running average of a list of numbers.\"\"\"\n",
+    "test": "assert running_average([1, 2, 3]) == [1.0, 1.5, 2.0]\nassert running_average([10]) == [10.0]\nassert running_average([]) == []",
+    "canonical_solution": "    result = []\n    total = 0.0\n    for i, n in enumerate(nums, 1):\n        total += n\n        result.append(total / i)\n    return result"
+  }
+]
