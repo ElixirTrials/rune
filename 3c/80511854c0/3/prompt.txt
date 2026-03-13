@@ -1,0 +1,293 @@
+@/Users/noahdolevelixir/Code/rune/instructions/CODE_REVIEW.md Go over this code review and fix the issues described. Make sure to make a checklist. You're not done till the problems are solved, ruff format and linting pass, mypy passes and pytest passes.
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The user requested fixing all 34 issues described in the code review at `@/Users/noahdolevelixir/Code/rune/instructions/CODE_REVIEW.md`. Requirements: create a checklist, fix every issue, and ensure `ruff format`, `ruff check`, `mypy`, and `pytest` all pass when done. The code review covered: 8 critical silent failures, 7 high DRY violations, 8 high design problems, 7 medium clean code issues, and 4 medium correctness issues.
+
+2. Key Technical Concepts:
+   - Rune monorepo: Python workspace with multiple services and libs packages managed by `uv`
+   - INFRA-05 pattern: deferred GPU imports inside method bodies for CPU-only CI compatibility
+   - SQLModel/SQLAlchemy with WAL mode for SQLite concurrent access
+   - FastAPI background tasks with threading safety
+   - Thread-safe singleton via double-checked locking with `threading.Lock`
+   - LangGraph agent workflow (generate → execute → reflect loop)
+   - PEFT/LoRA adapter management with HuggingFace Transformers
+   - llama-cpp-python for GGUF model inference
+   - Swarm orchestration with asyncio TaskGroup
+   - `TaskStatus(str, Enum)` for canonical status strings
+   - `safe_subprocess_run()` for DRY subprocess execution in benchmarks
+   - `setup_path()` via `scripts/bootstrap.py` replacing 10-line sys.path blocks
+   - `create_service_engine()` for DRY SQLAlchemy engine creation from env vars
+   - `set_wal_mode()` for DRY WAL pragma registration
+   - `get_best_device()` for cuda > mps > cpu selection
+   - `_make_factory()` helper for DRY pytest fixture factories
+
+3. Files and Code Sections:
+
+   - **`libs/shared/src/shared/storage_utils.py`** (NEW)
+     - New shared utilities for WAL mode and engine creation
+     ```python
+     def set_wal_mode(engine: Engine) -> None:
+         @event.listens_for(engine, "connect")
+         def _set_wal(dbapi_conn, _record):
+             dbapi_conn.execute("PRAGMA journal_mode=WAL")
+     
+     def create_service_engine(default_url: str) -> Engine:
+         db_url = os.getenv("DATABASE_URL", default_url)
+         connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
+         return create_engine(db_url, connect_args=connect_args, echo=False)
+     ```
+
+   - **`libs/shared/src/shared/hardware.py`**
+     - Added `VRAM_PER_LORA_MB = 100`, `MIN_TRAINING_VRAM_MB = 4096` constants
+     - Narrowed `except (ImportError, Exception): pass` to separate handlers with logging
+     - Added `get_best_device() -> str` function (cuda > mps > cpu)
+     ```python
+     def get_best_device() -> str:
+         try:
+             import torch
+             if torch.cuda.is_available():
+                 return "cuda"
+             if torch.backends.mps.is_available():
+                 return "mps"
+         except ImportError:
+             pass
+         return "cpu"
+     ```
+
+   - **`libs/shared/src/shared/rune_models.py`**
+     - Added `TaskStatus(str, Enum)` with values: PENDING, QUEUED, RUNNING, COMPLETED, FAILED, SUCCESS, EXHAUSTED
+     ```python
+     class TaskStatus(str, Enum):
+         PENDING = "pending"
+         QUEUED = "queued"
+         RUNNING = "running"
+         COMPLETED = "completed"
+         FAILED = "failed"
+         SUCCESS = "success"
+         EXHAUSTED = "exhausted"
+     ```
+
+   - **`libs/shared/src/shared/__init__.py`**
+     - Exports added: `TaskStatus`, `MIN_TRAINING_VRAM_MB`, `VRAM_PER_LORA_MB`, `get_best_device`, `create_service_engine`, `set_wal_mode`
+
+   - **`libs/evaluation/src/evaluation/utils.py`** (NEW)
+     - `safe_subprocess_run(script_path, cwd, timeout=30) -> bool` helper
+     ```python
+     def safe_subprocess_run(script_path: Path, cwd: str, timeout: int = 30) -> bool:
+         try:
+             proc = subprocess.run([sys.executable, str(script_path)], capture_output=True, text=True, timeout=timeout, cwd=cwd)
+             return proc.returncode == 0
+         except subprocess.TimeoutExpired:
+             return False
+     ```
+
+   - **`scripts/bootstrap.py`** (NEW)
+     - `setup_path()` adds all workspace src dirs to sys.path idempotently
+     ```python
+     def setup_path() -> None:
+         root = Path(__file__).resolve().parent.parent
+         for rel_src in _WORKSPACE_SRC_DIRS:
+             p = str(root / rel_src)
+             if p not in sys.path:
+                 sys.path.insert(0, p)
+     ```
+
+   - **`libs/inference/src/inference/transformers_provider.py`** (FULL REWRITE)
+     - Fixed `dtype=` → `torch_dtype=` (line 75 bug fix)
+     - Renamed `_ensure_model()` → `_load_model_if_needed()`
+     - `generate()`: raises `ValueError` if `adapter_id` provided but not in `_loaded_adapters`
+     - `_activate_adapter()`: raises `ValueError` instead of silent return
+     ```python
+     if adapter_id and adapter_id not in self._loaded_adapters:
+         raise ValueError(f"Adapter '{adapter_id}' has not been loaded. Call load_adapter() first.")
+     ```
+
+   - **`libs/inference/src/inference/llamacpp_provider.py`** (FULL REWRITE)
+     - Added `_STOP_SEQUENCES: list[str] = ["```\n", "\n\n\n"]` constant
+     - Renamed `_ensure_model()` → `_load_model_if_needed()`
+     - `generate()`: raises `ValueError` if adapter_id provided but not loaded
+     ```python
+     if adapter_id:
+         if adapter_id not in self._loaded_adapters:
+             raise ValueError(f"Adapter '{adapter_id}' has not been loaded. Call load_adapter() first.")
+         lora_path = self._loaded_adapters[adapter_id]
+     ```
+
+   - **`libs/shared/src/shared/checkpoint_db.py`** (FULL REWRITE)
+     - Added `run_id: str = "default"` constructor parameter (stored as `self._run_id`)
+     - `mark_completed` / `mark_failed` else-branch: logs warning instead of silently creating orphaned records, but still creates record for DB consistency
+     - Uses `set_wal_mode(engine)` from storage_utils
+     - Removed `from sqlalchemy import event` (now in storage_utils)
+
+   - **`libs/model-training/src/model_training/merging.py`**
+     - `ties_merge` and `dare_merge`: replaced `if not state_dicts: return {}` with `raise ValueError(...)`
+
+   - **`services/training-svc/src/training_svc/routers/training.py`** (FULL REWRITE)
+     - Added `import traceback`, `import logging`
+     - Added `_validate_adapter_id()` for path traversal prevention (rejects `/`, `\\`, `.`, `..`)
+     - Both `except Exception as e` blocks: store `traceback.format_exc()` in error field + `logger.exception()`
+     - `train_hypernetwork`: validates `request.trajectory_ids` non-empty, raises HTTPException(422)
+     - Hypernetwork job: `adapter_id` assigned at creation time, passed to worker
+     - All JOB_STORE reads/writes wrapped with `_JOB_STORE_LOCK`
+     - Imports `_JOB_STORE_LOCK` from `training_svc.jobs`
+
+   - **`services/training-svc/src/training_svc/jobs.py`** (FULL REWRITE)
+     - Added `import threading`
+     - Added `_JOB_STORE_LOCK = threading.Lock()`
+     - Both `JOB_STORE` and `_JOB_STORE_LOCK` exported
+
+   - **`services/lora-server/health.py`**
+     - Added `import logging; logger = logging.getLogger(__name__)`
+     - `check_vllm_ready` except block: `logger.debug("vLLM health check failed for %s: %s", base_url, e)` before `return False`
+
+   - **`services/lora-server/config.py`**
+     - `from_yaml`: `yaml.safe_load(...) or {}` to handle None from empty files
+
+   - **`scripts/swarm.py`**
+     - Removed `import uuid`, added `import hashlib`
+     - task_hash fallback changed from `str(uuid.uuid4())` to `hashlib.sha256(json.dumps(task, sort_keys=True).encode()).hexdigest()[:16]`
+     - Added `_MAX_BACKOFF_SECONDS = 30` constant
+     ```python
+     task_hash = task.get(
+         "task_id",
+         hashlib.sha256(json.dumps(task, sort_keys=True).encode()).hexdigest()[:16],
+     )
+     ```
+
+   - **`scripts/swarm_workers.py`**
+     - `_sleep_vllm` and `_wake_vllm` except blocks: `exc_info=True` added to warnings
+     - `memory_watchdog`: snapshot agents list before operating (`alive = list(agents)`), check `if youngest in agents:` before `agents.remove()`
+
+   - **`services/rune-agent/src/rune_agent/graph.py`**
+     - Added `import threading`
+     - Added `_graph_lock = threading.Lock()`
+     - `get_graph()`: double-checked locking pattern
+     ```python
+     _graph: Any = None
+     _graph_lock = threading.Lock()
+     def get_graph() -> Any:
+         global _graph
+         if _graph is None:
+             with _graph_lock:
+                 if _graph is None:
+                     _graph = create_graph()
+         return _graph
+     ```
+
+   - **`services/rune-agent/src/rune_agent/nodes.py`**
+     - `DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"` (was `"Qwen/Qwen2.5-Coder-7B"`)
+
+   - **`services/api-service/src/api_service/storage.py`** (REWRITE)
+     ```python
+     from shared.storage_utils import create_service_engine
+     engine = create_service_engine("sqlite:///./database.db")
+     ```
+
+   - **`services/training-svc/src/training_svc/storage.py`** (REWRITE)
+     ```python
+     from shared.storage_utils import create_service_engine
+     engine = create_service_engine("sqlite:///training_svc.db")
+     ```
+
+   - **`services/evolution-svc/src/evolution_svc/storage.py`** (REWRITE)
+     ```python
+     from shared.storage_utils import create_service_engine
+     engine = create_service_engine("sqlite:///evolution_svc.db")
+     ```
+
+   - **`libs/adapter-registry/src/adapter_registry/registry.py`** (FULL REWRITE)
+     - Uses `set_wal_mode(engine)` instead of inline event listener
+     - Added `_execute_query(stmt) -> list[AdapterRecord]` helper
+     - All 6 query methods refactored to use `_execute_query()`
+     - `is_task_solved` changed to use `_execute_query` returning bool
+
+   - **`libs/evaluation/src/evaluation/metrics.py`**
+     - Removed `import subprocess, sys`; added `from evaluation.utils import safe_subprocess_run`
+     - `run_humaneval_subset`: replaced `subprocess.run(...)` with `safe_subprocess_run(script_path, cwd=tmpdir)`
+
+   - **`libs/evaluation/src/evaluation/ood_benchmark.py`**
+     - Removed `import subprocess, sys`; added `from evaluation.utils import safe_subprocess_run`
+     - `run_ood_benchmark`: replaced `try: subprocess.run(...) except TimeoutExpired:` with `safe_subprocess_run()`
+
+   - **`scripts/demo_run.py`**, **`scripts/demo_project.py`**, **`scripts/e2e_test.py`**, **`scripts/rune_runner.py`**
+     - Replaced 10-line sys.path blocks with:
+     ```python
+     sys.path.insert(0, str(Path(__file__).resolve().parent))
+     from bootstrap import setup_path; setup_path()  # noqa: E402
+     ```
+
+   - **`scripts/e2e_test.py`**
+     - Also: `provider._ensure_model()` → `provider._load_model_if_needed()`
+     - `device="mps"` → `device=get_best_device()`
+
+   - **`scripts/e2e_sakana.py`**
+     - Added sys.path.insert for shared lib
+     - `DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"` → `DEVICE = get_best_device()`
+
+   - **`libs/model-training/src/model_training/hypernetwork.py`**
+     - Added `DEFAULT_VOCAB_SIZE: int = 32000` constant
+     - Replaced all `32000` hardcoded usages with `DEFAULT_VOCAB_SIZE`
+
+   - **`conftest.py`** — IN PROGRESS at time of summary, rewrite was attempted but got "File has not been read yet" error
+
+4. Errors and fixes:
+   - **"File has not been read yet" errors**: Multiple occurrences when trying to use `Write` or `Edit` on files not explicitly read in the current session. Fixed by reading at least 1 line of the file first before editing/writing.
+   - **`rune_runner.py` messy edit**: The first edit attempt left orphaned code (`_dummy_for_lint = [sys.path.insert(0, str(_root / _src))`). Fixed with a second Edit call to clean up the remnant.
+   - **`_ensure_model` rename missed in `e2e_test.py`**: After renaming `_ensure_model` → `_load_model_if_needed` in `transformers_provider.py`, `e2e_test.py` still called the old name. Fixed with targeted Edit.
+   - **`conftest.py` Write failed**: "File has not been read yet" error right at the end of Wave 4. The fix is to `Read` the file first (even 1 line), then `Write`.
+
+5. Problem Solving:
+   - Organized 34 issues into 5 implementation waves (shared utilities → critical fixes → DRY refactors → enum/constants → remaining)
+   - Used full rewrites for files with multiple interacting changes to avoid Edit conflicts
+   - Used targeted Edits for files with isolated changes
+   - Chose backward-compatible approach for `checkpoint_db.py` `run_id` parameter (default="default")
+   - Chose to still create orphaned records in `checkpoint_db.py` (just log warning) to maintain DB consistency
+   - Kept `_JOB_STORE_LOCK` as a module-level export from `jobs.py` so `training.py` can import it
+
+6. All user messages:
+   - `@/Users/noahdolevelixir/Code/rune/instructions/CODE_REVIEW.md Go over this code review and fix the issues described. Make sure to make a checklist. You're not done till the problems are solved, ruff format and linting pass, mypy passes and pytest passes.`
+   - (Implicitly approved the plan via ExitPlanMode approval)
+
+7. Pending Tasks:
+   - Complete Wave 4: Write new `conftest.py` with `_make_factory` helper (was blocked by "File has not been read yet")
+   - Wave 5: Read VLLMProvider and investigate lora_name vs adapter_id inconsistency (#24)
+   - Wave 5: Read service main.py files and extract FastAPI app factory (#12) if pattern exists
+   - Wave 5: SRP violations (#26-#29) if feasible without test breakage
+   - Run `uv run ruff format .`, `uv run ruff check . --fix`, `uv run mypy libs/ services/ scripts/`, `uv run pytest` and fix all failures
+   - Update MEMORY.md with project patterns learned
+
+8. Current Work:
+   Working on Wave 4 (Enum + constants + conftest). Had just completed:
+   - Added `DEFAULT_VOCAB_SIZE = 32000` to `hypernetwork.py` and replaced all 3 usages
+   - Was in the middle of rewriting `conftest.py` with the `_make_factory()` helper
+   - Got "File has not been read yet" error on the `Write` call for `conftest.py`
+
+   The intended new `conftest.py` content was a complete rewrite with:
+   ```python
+   T = TypeVar("T")
+   
+   def _make_factory(cls: type[T], defaults: dict[str, Any]) -> Callable[..., T]:
+       def _factory(**kwargs: Any) -> T:
+           return cls(**{**defaults, **kwargs})
+       return _factory
+   
+   @pytest.fixture
+   def make_adapter_record() -> Callable[..., AdapterRecord]:
+       return _make_factory(AdapterRecord, {"id": "test-adapter-001", ...})
+   # ... (7 fixtures total using _make_factory)
+   ```
+
+9. Optional Next Step:
+   Read `conftest.py` first (1 line minimum), then write the new version with `_make_factory`. This directly continues where we left off:
+   
+   > "**BB. `conftest.py`** — Add `_make_factory(cls: type[T], defaults: dict[str, Any]) -> Callable[..., T]` helper; Refactor all 7 fixtures to call `_make_factory`"
+   
+   After that, proceed to Wave 5 (read VLLMProvider for #24, check service main.py files for #12), then run the quality checks: `uv run ruff format .`, `uv run ruff check . --fix`, `uv run mypy libs/ services/ scripts/ --ignore-missing-imports`, `uv run pytest`.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude/projects/-Users-noahdolevelixir-Code-rune/7412b733-83bf-4882-8d00-38be935e2ba6.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
