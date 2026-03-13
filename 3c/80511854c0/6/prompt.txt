@@ -1,0 +1,344 @@
+Implement the following plan:
+
+# Plan: Rune E2E — Hypernetwork as Full Project State Machine
+
+## Core Concept
+
+The hypernetwork carries the ENTIRE project lifecycle state through weight-space. The prompt is just the launch trigger and never changes. Each iteration's output (plan, code, test results, errors) gets encoded into an adapter via hypernetwork, and the NEXT iteration loads that adapter. Context window stays constant because ALL accumulated context lives in adapter weights.
+
+```
+Iteration 0 (bootstrap):
+  Input to H(): methodology doc (how to plan, execute, code, validate)
+  Output: methodology_adapter
+  → model now knows HOW to work on projects
+
+Iteration 1 (planning):
+  Prompt: "Build a statistics library" (project definition — never changes)
+  Adapter: methodology_adapter
+  Model output: implementation plan (tasks, architecture, dependencies)
+  H(plan trajectory) → plan_adapter
+
+Iteration 2 (coding task 1):
+  Prompt: same project definition
+  Adapter: plan_adapter (model "knows" the plan through weights)
+  Model output: code for first task from the plan
+  Execute in sandbox → test results
+  H(code + results trajectory) → progress_adapter_v1
+
+Iteration 3 (coding task 2 or fix):
+  Prompt: same project definition
+  Adapter: progress_adapter_v1 (knows what's done, what failed)
+  Model output: next code or fix
+  H(trajectory) → progress_adapter_v2
+
+...adapters carry the heavy context. Prompts CAN be adjusted between iterations if useful, but the adapter is the primary context mechanism — the prompt doesn't need to grow to carry prior state.
+```
+
+The swarm: multiple agents work on different plan tasks simultaneously, each with their own adapter chain. Evolution merges successful adapters.
+
+---
+
+## Step 1: Add LlamaCppProvider (LoRA on Apple Silicon)
+
+Ollama stays for base inference. LlamaCpp handles adapter loading.
+
+- **NEW** `libs/inference/src/inference/llamacpp_provider.py` — InferenceProvider using `llama_cpp.Llama` with `lora_path`
+- **EDIT** `libs/inference/src/inference/factory.py` — Add "llamacpp" type, smart routing (Ollama when no adapter, LlamaCpp when adapter needed)
+- **EDIT** `pyproject.toml` — `llama-cpp-python` dep + mypy override
+
+---
+
+## Step 2: Wire Hypernetwork as Iteration State Machine
+
+The LangGraph loop becomes an OUTER iteration loop where each iteration:
+1. Generate with current adapter loaded
+2. Execute/validate output
+3. Run hypernetwork on accumulated trajectory → new adapter
+4. Next iteration loads new adapter, same prompt
+
+- **EDIT** `services/rune-agent/src/rune_agent/graph.py` — Restructure: the graph becomes one iteration. An OUTER loop in the orchestrator runs iterations, calling H() between them.
+- **EDIT** `services/rune-agent/src/rune_agent/nodes.py` — `generate_node` uses constant prompt (project def). Adapter does the contextualizing.
+- **NEW** `scripts/rune_runner.py` — The outer iteration loop:
+  1. Bootstrap: methodology doc → H() → methodology_adapter
+  2. Iteration 1: project prompt + methodology_adapter → plan output → H() → plan_adapter
+  3. Iteration 2+: project prompt + latest_adapter → code/fix → execute → H() → next_adapter
+  4. Repeat until project complete or max iterations
+- **EDIT** `libs/model-training/src/model_training/hypernetwork.py`:
+  - `load_pretrained()` for Doc-to-LoRA weights
+  - `trajectory_to_tokens()` to encode trajectory (plan text, code diffs, test results) as token IDs
+  - MPS device support
+
+---
+
+## Step 3: Write Methodology Document (Iteration 0 Input)
+
+- **NEW** `docs/rune-methodology.md` — The "how to work on projects" document:
+  - Phase 1: Decompose project into tasks with deps
+  - Phase 2: For each task, generate code with test suite
+  - Phase 3: Execute, validate, iterate on failures
+  - Phase 4: Integrate components, run full test suite
+  - Output format conventions (so model outputs are parseable)
+
+---
+
+## Step 4: Swarm Integration
+
+- **EDIT** `scripts/swarm.py` — `agent_supervisor` uses `rune_runner` iteration loop per task. After planning iteration produces task list, distribute tasks across agents. Each agent runs its own adapter chain.
+
+---
+
+## Step 5: E2E Test
+
+```bash
+uv run scripts/rune_runner.py --project "Build a Python statistics library with mean, median, mode, stdev, percentile"
+```
+
+Verify: prompt stays constant, adapters carry all context, model plans then codes then validates, each iteration produces a new adapter.
+
+---
+
+## Implementation Order
+1. Step 1 — LlamaCppProvider (unblocks adapter loading)
+2. Step 2 — Hypernetwork iteration loop (core mechanism)
+3. Step 3 — Methodology doc (bootstrap input)
+4. Step 4 — Swarm wiring
+5. Step 5 — E2E test
+
+## Dependencies
+- `llama-cpp-python` (Metal support)
+- GGUF model (qwen2.5-coder-1.5b)
+- Doc-to-LoRA pretrained checkpoint
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/3ac9671e-cac5-4332-b221-4da75866a0ec.jsonl
+
+---
+
+Show me the results and traces of the end to end test.
+
+---
+
+It didn't use the hypernetwork adapter at all so this was a complete failure. The idea of an end to end test is to test all the components of our app.
+
+---
+
+download a trained checkpoint (doc-to-lora) from hugging face and try again
+
+---
+
+No pip install. Use uv. Clear the context and execute.
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The user asked to implement a 5-step plan for "Rune E2E — Hypernetwork as Full Project State Machine" where the hypernetwork carries entire project lifecycle state through weight-space. The prompt stays constant and adapters carry all accumulated context. After implementation, the user demanded a real E2E test exercising ALL components (not just the iteration loop). After the E2E worked with random weights, the user asked to download a trained doc-to-lora checkpoint from HuggingFace (SakanaAI/doc-to-lora) and run the E2E with real trained weights.
+
+2. Key Technical Concepts:
+   - Hypernetwork as project state machine: prompt stays constant, adapters carry context through weight-space
+   - DocToLoraHypernetwork: Perceiver-based instant LoRA adapter generation
+   - GQA (Grouped Query Attention): q_proj and v_proj have different dimensions in Qwen models
+   - PEFT adapter format: safetensors + adapter_config.json
+   - TransformersProvider: HuggingFace transformers + PEFT for native adapter loading
+   - LlamaCppProvider: llama-cpp-python with LoRA (GGUF format - incompatible with PEFT safetensors)
+   - SakanaAI doc-to-lora: Different architecture using `ctx_to_lora.modeling.hypernet.ModulatedPretrainedModel`
+   - INFRA-05 pattern: GPU imports deferred inside function bodies for CPU-only CI
+   - Provider factory pattern with instance cache
+   - Single-iteration graph for outer loop (generate→execute→reflect→END)
+   - uv workspace monorepo with hatchling backends
+
+3. Files and Code Sections:
+
+   - `libs/inference/src/inference/llamacpp_provider.py` (NEW)
+     - LlamaCppProvider using llama_cpp.Llama with lora_path support
+     - Registers adapters, reloads model when adapter changes
+     - INFRA-05 pattern for llama_cpp import
+
+   - `libs/inference/src/inference/transformers_provider.py` (NEW)
+     - TransformersProvider using HuggingFace transformers + PEFT
+     - Native PEFT safetensors adapter loading via PeftModel.from_pretrained
+     - Supports adapter activation/deactivation, multiple adapters
+     - Uses `dtype=` parameter (not deprecated `torch_dtype=`)
+
+   - `libs/inference/src/inference/factory.py` (EDITED)
+     - Added "llamacpp" and "transformers" provider types
+     - Smart routing based on INFERENCE_PROVIDER env var
+     - LLAMACPP_MODEL_PATH and TRANSFORMERS_MODEL_NAME env vars
+
+   - `libs/inference/src/inference/__init__.py` (EDITED)
+     - Added LlamaCppProvider and TransformersProvider to lazy imports and __all__
+
+   - `libs/model-training/src/model_training/hypernetwork.py` (EDITED)
+     - Added `module_dims` parameter to DocToLoraHypernetwork for GQA support
+     - Per-module (in_features, out_features) instead of single hidden_dim
+     - Added `load_pretrained()` function for loading .pt checkpoints
+     - Added `trajectory_to_tokens()` for hash-based trigram tokenization
+     - Added `generate_adapter()` end-to-end function (now reads rank/target_modules/vocab from hypernetwork instance)
+
+   - `services/rune-agent/src/rune_agent/graph.py` (EDITED)
+     - Added `create_single_iteration_graph()`: generate→execute→reflect→END
+     - Used by rune_runner's outer iteration loop
+
+   - `scripts/rune_runner.py` (NEW)
+     - Outer iteration loop: bootstrap (methodology→adapter), then iterate
+     - Constant prompt, adapters carry context
+     - Uses create_single_iteration_graph for each iteration
+     - Calls hypernetwork between iterations to generate new adapter
+
+   - `scripts/swarm.py` (EDITED - from committed version, not working tree)
+     - Added `use_iteration_loop` and `hypernetwork_checkpoint` params to agent_supervisor
+     - Preserves original sandbox-based approach as default
+     - Iteration loop is opt-in via config.hypernetwork_checkpoint
+
+   - `libs/shared/src/shared/rune_models.py` (EDITED)
+     - Added `hypernetwork_checkpoint: str | None = None` to SwarmConfig
+
+   - `docs/rune-methodology.md` (NEW)
+     - Structured methodology for Phase 1-4 (decompose, implement, validate, integrate)
+
+   - `scripts/e2e_test.py` (NEW)
+     - Full E2E test with random hypernetwork weights
+     - 4 steps: create checkpoint, generate adapter, load in provider, full iteration loop
+     - Uses Qwen/Qwen2.5-Coder-0.5B with GQA-aware module_dims
+
+   - `scripts/e2e_sakana.py` (NEW - created by background agent, may be incomplete)
+     - Intended to use SakanaAI's pretrained doc-to-lora checkpoint
+     - Background agent failed during execution
+
+   - `pyproject.toml` (EDITED)
+     - Added `llama-cpp-python>=0.3.0` dependency
+     - Added `llama_cpp` and `llama_cpp.*` to mypy ignore_missing_imports
+     - Added `E402` to scripts per-file-ignores
+
+   - `trained_d2l/` (DOWNLOADED)
+     - SakanaAI/doc-to-lora checkpoints (6.1GB total)
+     - gemma_2b_d2l, gemma_demo, qwen_4b_d2l variants
+     - Uses ctx_to_lora package, NOT our DocToLoraHypernetwork
+
+4. Errors and fixes:
+   - **D107 missing __init__ docstring** in LlamaCppProvider: Added docstring
+   - **E402 module imports not at top of file** in scripts/: Added E402 to per-file-ignores in pyproject.toml
+   - **swarm.py working tree vs committed version mismatch**: Working tree had LangGraph-based agent_supervisor but committed version used simple sandbox. Tests used `task["prompt"]` not `task["task_description"]`. Rewrote from committed base.
+   - **ruff format issues**: Ran `uv run ruff format` on factory.py and llamacpp_provider.py
+   - **`torch_dtype` deprecation**: Changed to `dtype=` in TransformersProvider
+   - **First E2E test didn't exercise hypernetwork at all**: User feedback: "It didn't use the hypernetwork adapter at all so this was a complete failure." Fixed by installing torch/safetensors/transformers/peft, creating TransformersProvider, and creating a proper checkpoint.
+   - **GQA dimension mismatch**: Qwen 0.5B has q_proj (896→896) but v_proj (896→128). PEFT load failed with shape mismatch. Fixed by adding `module_dims` dict parameter to hypernetwork.
+   - **Rank mismatch**: `generate_adapter()` called `save_hypernetwork_adapter()` without passing rank (defaulted to 8 instead of 4). Fixed by reading rank from hypernetwork instance.
+   - **Vocab size mismatch (IndexError: index out of range)**: `generate_adapter()` used default vocab_size=32000 but checkpoint had input_dim=10000. Fixed by reading `token_embedding.num_embeddings` from hypernetwork instance.
+   - **SakanaAI doc-to-lora architecture incompatibility**: Their `ModulatedPretrainedModel` is completely different from our `DocToLoraHypernetwork`. Context encoding uses per-layer activations from the base model itself, not separate tokenization.
+
+5. Problem Solving:
+   - Solved: All 5 implementation steps complete with passing tests (211 tests, ruff, mypy)
+   - Solved: Full E2E with random weights exercising all components (hypernetwork→adapter→provider→generation→execution→trajectory→new adapter)
+   - Ongoing: Integration with SakanaAI's pretrained doc-to-lora checkpoint failed. Background agent was launched but failed with exit code 1.
+
+6. All user messages:
+   - "Implement the following plan: [5-step plan for Hypernetwork as Full Project State Machine]"
+   - "Show me the results and traces of the end to end test."
+   - "It didn't use the hypernetwork adapter at all so this was a complete failure. The idea of an end to end test is to test all the components of our app."
+   - "download a trained checkpoint (doc-to-lora) from hugging face and try again"
+   - "No pip install. Use uv. Clear the context and execute."
+   - [Task notification: background agent failed]
+   - [Request for conversation summary]
+
+7. Pending Tasks:
+   - Get SakanaAI's doc-to-lora working end-to-end with trained weights
+   - The background agent (a4cbf379df773b978) that was integrating SakanaAI's checkpoint failed
+   - Need to: install ctx_to_lora via `uv pip install`, load gemma_demo checkpoint, run E2E with real trained hypernetwork weights
+   - Check the background agent's output file and the e2e_sakana.py script it created
+
+8. Current Work:
+   A background agent was launched to integrate SakanaAI's pretrained doc-to-lora checkpoint for a real E2E test. The agent was tasked with:
+   1. Installing `ctx_to_lora` from SakanaAI's GitHub via `uv pip install`
+   2. Writing `scripts/e2e_sakana.py` that loads the gemma_demo checkpoint
+   3. Running the full E2E with trained weights
+
+   The agent created `scripts/e2e_sakana.py` but failed during execution (exit code 1). The output file is at `/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a4cbf379df773b978.output` (and a second task `bx7ltslol`).
+
+   The SakanaAI doc-to-lora architecture is fundamentally different from our custom hypernetwork:
+   - Uses `ModulatedPretrainedModel` from `ctx_to_lora` package
+   - Context encoder uses per-layer activations from the base model
+   - Base model: google/gemma-2-2b-it (~5GB)
+   - Target modules: down_proj (not q_proj/v_proj)
+   - Checkpoint: trained_d2l/gemma_demo/checkpoint-80000/pytorch_model.bin
+
+9. Optional Next Step:
+   Read the failed agent's output to understand the error, then fix `scripts/e2e_sakana.py` to successfully load SakanaAI's pretrained doc-to-lora checkpoint and run the E2E test with trained weights. The user's most recent explicit request was: "No pip install. Use uv. Clear the context and execute." — meaning install ctx_to_lora with `uv pip install` (not pip), and run the E2E with the pretrained checkpoint.
+
+   Check: `tail -200 /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a4cbf379df773b978.output` and read `scripts/e2e_sakana.py` to see what the agent created and where it failed.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/9175fc23-0c6c-457b-910d-2360c1a63599.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+<task-notification>
+<task-id>bk800j7py</task-id>
+<tool-use-id>toolu_01Dvn6hveBw7CYzY86iXch6n</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/bk800j7py.output</output-file>
+<status>failed</status>
+<summary>Background command "Run SakanaAI E2E test with MPS patches" failed with exit code 1</summary>
+</task-notification>
+Read the output file to retrieve the result: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/bk800j7py.output
+
+---
+
+<task-notification>
+<task-id>b6yz1dklo</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/b6yz1dklo.output</output-file>
+<status>failed</status>
+<summary>Background command "Run SakanaAI E2E test (CPU load then MPS)" failed with exit code 1</summary>
+</task-notification>
+Read the output file to retrieve the result: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/b6yz1dklo.output
+
+---
+
+<task-notification>
+<task-id>a4cbf379df773b978</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a4cbf379df773b978.output</output-file>
+<status>completed</status>
+<summary>Agent "Integrate SakanaAI doc-to-lora E2E" completed</summary>
+<result>The linter has replaced my full-model E2E script with a perceiver-only version. But the run I just did used the PREVIOUS version (the full ModulatedPretrainedModel version) and it succeeded. The current file on disk is a different version. Let me understand what happened -- the output from the successful run clearly shows the full model loading, context internalization, and text generation. That was the right test.
+
+Now I have two things to report:
+
+**Context is nearly exhausted** -- I should inform you about this, as the system reminders have warned.
+
+Here is the summary of what was accomplished:
+
+---
+
+## E2E Test Results -- SakanaAI doc-to-lora on M4 Pro
+
+**The test passed (exit code 0).** The full pipeline ran successfully:
+
+### What worked
+1. **ctx_to_lora installed** from `/tmp/doc-to-lora` using `uv pip install --no-deps` (the full install fails because `liger-kernel` requires `triton` which is Linux/CUDA-only)
+2. **6 MPS compatibility patches** applied to make the CUDA-only codebase work on Apple Silicon:
+   - Eager attention in idefics2 (no flash_attn on MPS)
+   - Eager attention forward accepts flash-only kwargs
+   - PerceiverResampler eager mode (no `unpad_input`)
+   - Disabled bitsandbytes quantization
+   - Removed `_init_model()` double-call in `load_state_dict` (saves ~5GB memory)
+   - Disabled CUDA autocast, routed device to MPS
+3. **Model loaded** in 158s -- base gemma-2-2b-it + ctx_encoder (another gemma-2-2b copy) + hypernetwork perceiver, all in float16 on MPS
+4. **Context internalized** in 51.7s -- the Rune methodology doc (1955 chars) was processed through the ctx_encoder to generate LoRA weights
+5. **Generation with context-conditioned LoRA**: 256 tokens in 21.8s (11.8 tok/s)
+6. **Baseline without context**: 256 tokens in 9.4s
+7. **Outputs differ**: The conditioned output references "Rune recursive self-improvement loop" and uses `typing.Optional[str]` and `typing.Dict[str, typing.Any]` while the baseline uses simpler `dict` return type -- confirming context influences generation
+
+### Key files modified
+- `/Users/noahdolevelixir/Code/rune/scripts/e2e_sakana.py` -- the E2E test script (note: linter has since rewritten this to a standalone perceiver-only version)
+- `/Users/noahdolevelixir/Code/rune/.venv/lib/python3.13/site-packages/ctx_to_lora/modeling/idefics2.py` -- removed flash_attention_2 assertion, added eager mode unpad bypass
+- `/Users/noahdolevelixir/Code/rune/.venv/lib/python3.13/site-packages/ctx_to_lora/modeling/hypernet.py` -- skipped double `_init_model()`, fixed CUDA autocast
+- `/Users/noahdolevelixir/Code/rune/.venv/lib/python3.13/site-packages/ctx_to_lora/data/processing.py` -- removed system role from chat template (gemma-2-2b-it doesn't support it)
+
+### Important note
+**Context is nearly exhausted (17% remaining).** You may want to pause work at the next natural stopping point. The E2E is done and the results are captured in `/tmp/e2e_stdout.txt`.</result>
+<usage><total_tokens>120971</total_tokens><tool_uses>125</tool_uses><duration_ms>3844733</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a4cbf379df773b978.output
