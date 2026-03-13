@@ -36,10 +36,8 @@ def _patch_flash_attention() -> None:
     Replaces flash attention classes and assertions with eager equivalents
     so the perceiver can run on CPU/MPS/CUDA without flash_attn installed.
     """
-    import torch  # noqa: PLC0415
-    import torch.nn as nn  # noqa: PLC0415
-
     import ctx_to_lora.modeling.idefics2 as idefics2_mod  # noqa: PLC0415
+    import torch  # noqa: PLC0415
     from ctx_to_lora.modeling.idefics2 import (  # noqa: PLC0415
         Idefics2Perceiver,
         Idefics2PerceiverAttention,
@@ -360,9 +358,7 @@ def generate_adapter_from_sakana(
     # Generate LoRA weights via perceiver
     logger.info("Generating LoRA weights via HyperLoRA perceiver...")
     with torch.no_grad():
-        lora_dict, layernorm_dict = hypernet.generate_weights(
-            features, attn_mask, None
-        )
+        lora_dict, layernorm_dict = hypernet.generate_weights(features, attn_mask, None)
 
     # Save as PEFT adapter
     _save_sakana_adapter(
@@ -402,8 +398,8 @@ def _save_sakana_adapter(
     rank = hc.lora_config.r
 
     # Convert Sakana format → PEFT flat state_dict
-    # Sakana: lora_dict[module_name]["A"] shape (batch, num_layers, rank, in_features)
-    # PEFT: base_model.model.model.layers.{i}.mlp.{module}.lora_A.weight (rank, in_features)
+    # Sakana: lora_dict[module_name]["A"] shape (batch, num_layers, rank, in)
+    # PEFT: .layers.{i}.mlp.{module}.lora_A.weight (rank, in_features)
     state_dict = {}
     for mod_name, weights in lora_dict.items():
         if mod_name not in target_modules:
@@ -439,7 +435,8 @@ def _save_sakana_adapter(
         "modules_to_save": None,
         "fan_in_fan_out": False,
     }
-    (output_path / "adapter_config.json").write_text(json.dumps(adapter_config, indent=2))
+    config_json = json.dumps(adapter_config, indent=2)
+    (output_path / "adapter_config.json").write_text(config_json)
 
     logger.info(
         "Saved PEFT adapter: %d tensors, %d layers, rank=%d, targets=%s",
