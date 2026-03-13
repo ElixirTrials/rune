@@ -35,6 +35,7 @@ dependencies = [
     "peft>=0.18.0",
     "transformers>=4.47.0",
     "huggingface-hub>=0.20.0",
+    "ctx-to-lora @ git+https://github.com/SakanaAI/doc-to-lora.git",
 ]
 
 [project.optional-dependencies]
@@ -182,6 +183,8 @@ module = [
     "trl.*",
     "llama_cpp",
     "llama_cpp.*",
+    "ctx_to_lora",
+    "ctx_to_lora.*",
 ]
 ignore_missing_imports = true
 

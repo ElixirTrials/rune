@@ -233,7 +233,8 @@ async def test_full_iteration_loop(checkpoint_path: str) -> None:
     # Configure provider
     os.environ["INFERENCE_PROVIDER"] = "transformers"
     os.environ["TRANSFORMERS_MODEL_NAME"] = MODEL_NAME
-    os.environ["TRANSFORMERS_DEVICE"] = "mps"
+    from shared.hardware import get_best_device
+    os.environ["TRANSFORMERS_DEVICE"] = get_best_device()
 
     # Clear provider cache so new env vars take effect
     from inference.factory import _clear_cache
