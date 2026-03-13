@@ -21,8 +21,12 @@ DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 def _build_prompt(state: RuneState) -> str:
     """Build the user prompt for the LLM based on current attempt.
 
-    First attempt (attempt_count == 0): includes task description and test suite.
-    Retry (attempt_count > 0): also includes prior code, stdout, stderr, exit code.
+    When ``state["phase"]`` is set, renders the corresponding Jinja2 prompt
+    template (e.g. ``prompt_code.j2``).  Retry context is intentionally
+    omitted — errors flow through the adapter weights, not the prompt.
+
+    When ``state["phase"]`` is ``None``, preserves the original behaviour
+    for backward compatibility.
 
     Args:
         state: Current agent state.
@@ -30,6 +34,13 @@ def _build_prompt(state: RuneState) -> str:
     Returns:
         Formatted prompt string.
     """
+    phase = state.get("phase")
+
+    if phase is not None:
+        from shared.template_loader import render_prompt
+
+        return render_prompt(phase, task_description=state["task_description"])
+
     task = state["task_description"]
     test_suite = state["test_suite"]
 

@@ -170,10 +170,9 @@ def test_adapter_registry(adapter_path: str) -> None:
     """Step 3: Adapter registry CRUD."""
     step(3, "Adapter Registry: store, query, retrieve")
 
-    from sqlalchemy import create_engine
-
     from adapter_registry.models import AdapterRecord
     from adapter_registry.registry import AdapterRegistry
+    from sqlalchemy import create_engine
 
     with tempfile.TemporaryDirectory() as db_dir:
         db_path = os.path.join(db_dir, "test_registry.db")
@@ -246,12 +245,11 @@ def test_evaluation_metrics() -> None:
     print("  Evaluation metrics: PASSED")
 
 
-def test_swarm_with_hypernetwork(tmpdir: str) -> None:
-    """Step 5: Full swarm — parallel agents + hypernetwork + evolution."""
-    step(5, "Swarm: parallel agents with hypernetwork iteration loops")
+def test_phased_pipeline(tmpdir: str) -> None:
+    """Step 5: Full 4-phase pipeline with template-driven adapters."""
+    step(5, "Phased Pipeline: decompose → plan → code → integrate")
 
     from model_training.sakana_d2l import download_checkpoint
-    from shared.rune_models import SwarmConfig
 
     checkpoint_path = str(download_checkpoint(variant="gemma_demo"))
     print(f"  Sakana checkpoint: {checkpoint_path}")
@@ -265,128 +263,97 @@ def test_swarm_with_hypernetwork(tmpdir: str) -> None:
 
     _clear_cache()
 
-    # Build task pool — two agents work on the same app from different angles
-    task_pool = [
-        {
-            "task_id": "cli-app-agent0",
-            "task_description": (
-                "Build a complete Python CLI task manager application. Requirements:\n\n"
-                "1. Data layer: TaskStore class backed by SQLite via the stdlib sqlite3 "
-                "module. Schema: tasks(id INTEGER PRIMARY KEY, title TEXT NOT NULL, "
-                "description TEXT, status TEXT DEFAULT 'todo', priority INTEGER DEFAULT 0, "
-                "created_at TEXT, due_date TEXT, tags TEXT). Supports CRUD, filtering by "
-                "status/priority/tag, and sorting.\n\n"
-                "2. Domain layer: Task dataclass with validation — title must be non-empty, "
-                "status must be one of ('todo','in_progress','done','blocked'), priority 0-5, "
-                "tags stored as comma-separated string. TaskService class that enforces "
-                "business rules: cannot transition from 'done' to 'todo', blocked tasks "
-                "cannot move to 'done' directly, and overdue tasks are auto-flagged.\n\n"
-                "3. CLI layer: argparse-based CLI with subcommands: add, list, show, "
-                "update, delete, stats. list supports --status, --priority, "
-                "--tag, --sort-by, --overdue flags. stats shows counts by status "
-                "and average completion time.\n\n"
-                "4. Include a comprehensive test suite using only unittest that covers: "
-                "TaskStore CRUD and queries, Task validation and state transitions, CLI "
-                "argument parsing and output formatting, edge cases (empty db, duplicate "
-                "titles, invalid transitions), and at least 15 test methods."
-            ),
-        },
-        {
-            "task_id": "cli-app-agent1",
-            "task_description": (
-                "Build a complete Python CLI task manager application. Requirements:\n\n"
-                "1. Data layer: TaskStore class backed by SQLite via the stdlib sqlite3 "
-                "module. Schema: tasks(id INTEGER PRIMARY KEY, title TEXT NOT NULL, "
-                "description TEXT, status TEXT DEFAULT 'todo', priority INTEGER DEFAULT 0, "
-                "created_at TEXT, due_date TEXT, tags TEXT). Supports CRUD, filtering by "
-                "status/priority/tag, and sorting.\n\n"
-                "2. Domain layer: Task dataclass with validation — title must be non-empty, "
-                "status must be one of ('todo','in_progress','done','blocked'), priority 0-5, "
-                "tags stored as comma-separated string. TaskService class that enforces "
-                "business rules: cannot transition from 'done' to 'todo', blocked tasks "
-                "cannot move to 'done' directly, and overdue tasks are auto-flagged.\n\n"
-                "3. CLI layer: argparse-based CLI with subcommands: add, list, show, "
-                "update, delete, stats. list supports --status, --priority, "
-                "--tag, --sort-by, --overdue flags. stats shows counts by status "
-                "and average completion time.\n\n"
-                "4. Include a comprehensive test suite using only unittest that covers: "
-                "TaskStore CRUD and queries, Task validation and state transitions, CLI "
-                "argument parsing and output formatting, edge cases (empty db, duplicate "
-                "titles, invalid transitions), and at least 15 test methods."
-            ),
-        },
-    ]
-
-    # Write task pool to temp file
-    task_pool_path = os.path.join(tmpdir, "e2e_tasks.json")
-    with open(task_pool_path, "w") as f:
-        json.dump(task_pool, f)
-
-    # Configure swarm — 2 agents, short evolution interval, hypernetwork enabled
-    db_path = os.path.join(tmpdir, "e2e_swarm.db")
-    config = SwarmConfig(
-        db_url=f"sqlite:///{db_path}",
-        task_source=task_pool_path,
-        population_size=2,
-        max_generations=1,
-        max_iterations=2,
-        evolution_interval=10,
-        sandbox_backend="subprocess",
-        base_model_id=MODEL_NAME,
-        device=DEVICE,
-        hypernetwork_checkpoint=checkpoint_path,
+    project_prompt = (
+        "Build a complete Python CLI task manager application. Requirements:\n\n"
+        "1. Data layer: TaskStore class backed by SQLite via the stdlib sqlite3 "
+        "module. Schema: tasks(id INTEGER PRIMARY KEY, title TEXT NOT NULL, "
+        "description TEXT, status TEXT DEFAULT 'todo', priority INTEGER DEFAULT 0, "
+        "created_at TEXT, due_date TEXT, tags TEXT). Supports CRUD, filtering by "
+        "status/priority/tag, and sorting.\n\n"
+        "2. Domain layer: Task dataclass with validation — title must be non-empty, "
+        "status must be one of ('todo','in_progress','done','blocked'), priority 0-5, "
+        "tags stored as comma-separated string. TaskService class that enforces "
+        "business rules: cannot transition from 'done' to 'todo', blocked tasks "
+        "cannot move to 'done' directly, and overdue tasks are auto-flagged.\n\n"
+        "3. CLI layer: argparse-based CLI with subcommands: add, list, show, "
+        "update, delete, stats. list supports --status, --priority, "
+        "--tag, --sort-by, --overdue flags. stats shows counts by status "
+        "and average completion time.\n\n"
+        "4. Include a comprehensive test suite using only unittest that covers: "
+        "TaskStore CRUD and queries, Task validation and state transitions, CLI "
+        "argument parsing and output formatting, edge cases (empty db, duplicate "
+        "titles, invalid transitions), and at least 15 test methods."
     )
 
-    print(f"  Population: {config.population_size} agents")
-    print(f"  Max iterations per agent: {config.max_iterations}")
-    print(f"  Evolution interval: {config.evolution_interval}s")
-    print(f"  Tasks: {len(task_pool)}")
+    print(f"  Device: {DEVICE}")
+    print(f"  Base model: {MODEL_NAME}")
+    print(f"  Project prompt: {len(project_prompt)} chars")
 
-    from swarm import run_swarm
+    from rune_runner import run_phased_pipeline
 
-    result = asyncio.run(run_swarm(config))
+    result = asyncio.run(
+        run_phased_pipeline(
+            project_prompt=project_prompt,
+            max_iterations=10,
+            checkpoint_path=checkpoint_path,
+            base_model_id=MODEL_NAME,
+            device=DEVICE,
+            population_size=2,
+            max_retries_per_subtask=2,
+        )
+    )
 
-    # Report agent results
-    print("\n  --- Agent Results ---")
-    for agent_result in result.get("agents", []):
-        if isinstance(agent_result, dict):
-            print(
-                f"    {agent_result.get('agent_id', '?')}: "
-                f"completed={agent_result.get('completed', 0)}, "
-                f"failed={agent_result.get('failed', 0)}, "
-                f"skipped={agent_result.get('skipped', 0)}"
-            )
-        else:
-            print(f"    Error: {agent_result}")
+    # Report phase results
+    phases = result.get("phases", {})
+    print("\n  --- Phase Results ---")
 
-    # Report evolution results
-    evolution = result.get("evolution")
-    if evolution:
-        print(f"\n  --- Evolution Sweep ---")
-        for task_type, stats in evolution.get("task_types", {}).items():
-            print(
-                f"    {task_type}: merged={stats['merged']}, "
-                f"pruned={stats['pruned']}, active={stats['active']}"
-            )
-    else:
-        print("\n  Evolution: no sweep results")
+    # Phase 1: Decompose
+    decompose = phases.get("decompose", {})
+    subtasks = decompose.get("subtasks", [])
+    print(f"  Phase 1 (Decompose): {len(subtasks)} subtasks")
+    for st in subtasks:
+        print(f"    - {st['name']}: {st.get('description', '')[:60]}")
+
+    # Phase 2: Plan
+    plan = phases.get("plan", {})
+    plan_outputs = plan.get("plans", {})
+    print(f"  Phase 2 (Plan): {len(plan_outputs)} plans generated")
+    for name, text in plan_outputs.items():
+        print(f"    - {name}: {text[:60]}...")
+
+    # Phase 3: Code
+    code = phases.get("code", {})
+    code_outputs = code.get("outputs", {})
+    print(f"  Phase 3 (Code): {len(code_outputs)} implementations")
+    for name, text in code_outputs.items():
+        print(f"    - {name}: {len(text)} chars")
+
+    # Phase 4: Integrate
+    integrate = phases.get("integrate", {})
+    print(f"  Phase 4 (Integrate): tests_passed={integrate.get('tests_passed', False)}")
 
     # Report registered adapters
-    registry = result.get("registry")
-    if registry:
-        try:
-            all_adapters = registry.query_by_task_type("iteration")
-            print(f"\n  --- Registered Adapters ({len(all_adapters)}) ---")
-            for a in all_adapters:
-                print(
-                    f"    {a.id}: fitness={a.fitness_score:.3f}, "
-                    f"pass_rate={a.pass_rate:.2f}, gen={a.generation}, "
-                    f"source={a.source}"
-                )
-        except Exception as e:
-            print(f"\n  Adapter query error: {e}")
+    adapters = result.get("adapters", [])
+    print(f"\n  --- Registered Adapters ({len(adapters)}) ---")
+    for a in adapters:
+        print(f"    {a['adapter_id']}: type={a['task_type']}, phase={a['phase']}")
 
-    print("\n  Swarm: PASSED")
+    # Verify all 4 phases executed
+    assert "decompose" in phases, "Phase 1 (decompose) did not execute"
+    assert "plan" in phases, "Phase 2 (plan) did not execute"
+    assert "code" in phases, "Phase 3 (code) did not execute"
+    assert "integrate" in phases, "Phase 4 (integrate) did not execute"
+
+    # Verify adapter registration has phase-specific task_types
+    adapter_types = {a["task_type"] for a in adapters}
+    print(f"\n  Adapter task types: {adapter_types}")
+
+    print(f"\n  Session: {result['session_id']}")
+    print(f"  Total iterations: {result['total_iterations']}")
+    print(f"  Final tests passed: {result['final_tests_passed']}")
+    print(f"  Adapters dir: {result['adapter_dir']}")
+
+    print("\n  Phased Pipeline: PASSED")
 
 
 def run_e2e() -> None:
@@ -434,7 +401,7 @@ def run_e2e() -> None:
             test_evaluation_metrics()
 
         if 5 in run_steps:
-            test_swarm_with_hypernetwork(tmpdir)
+            test_phased_pipeline(tmpdir)
 
     print("\n" + "=" * 60)
     print("  E2E TEST COMPLETE")

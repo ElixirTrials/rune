@@ -44,5 +44,7 @@ class RuneState(TypedDict):
     tests_passed: bool
     # Accumulated trajectory
     trajectory: list[dict[str, Any]]
+    # Pipeline phase
+    phase: Optional[str]  # 'decompose' | 'plan' | 'code' | 'integrate' | None
     # Terminal result
     outcome: Optional[str]  # 'success' | 'exhausted' | None

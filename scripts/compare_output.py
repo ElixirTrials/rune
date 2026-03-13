@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-import textwrap
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -57,7 +56,11 @@ def run_code(code: str) -> tuple[bool, str, str]:
 
     backend = get_sandbox_backend()
     result = backend.run(code, timeout=30)
-    return (result.exit_code == 0 and not result.timed_out, result.stdout, result.stderr)
+    return (
+        result.exit_code == 0 and not result.timed_out,
+        result.stdout,
+        result.stderr,
+    )
 
 
 async def main() -> None:
@@ -96,11 +99,11 @@ async def main() -> None:
     if stderr:
         # Show last 10 lines of stderr
         err_lines = stderr.strip().splitlines()[-10:]
-        print(f"  Stderr (last 10 lines):")
+        print("  Stderr (last 10 lines):")
         for line in err_lines:
             print(f"    {line}")
 
-    print(f"\n  --- Generated Code (first 80 lines) ---")
+    print("\n  --- Generated Code (first 80 lines) ---")
     for i, line in enumerate(base_code.splitlines()[:80], 1):
         print(f"  {i:3d} | {line}")
 
@@ -109,13 +112,18 @@ async def main() -> None:
     print("  RUN 2: gemma-2-2b-it + Sakana methodology adapter")
     print("=" * 70)
 
-    from model_training.sakana_d2l import generate_adapter_from_sakana
     import tempfile
+
+    from model_training.sakana_d2l import generate_adapter_from_sakana
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Generate methodology adapter
         methodology_path = Path(__file__).parent.parent / "docs" / "rune-methodology.md"
-        methodology = methodology_path.read_text() if methodology_path.exists() else "coding standards"
+        methodology = (
+            methodology_path.read_text()
+            if methodology_path.exists()
+            else "coding standards"
+        )
 
         bootstrap_text = (
             f"PROJECT: {SUBTASK_PROMPT[:500]}\n\n"
@@ -140,17 +148,19 @@ async def main() -> None:
         print(f"  Code length: {len(result_adapted.text)} chars")
 
         match2 = re.search(r"```python\s*(.*?)```", result_adapted.text, re.DOTALL)
-        adapted_code = match2.group(1).strip() if match2 else result_adapted.text.strip()
+        adapted_code = (
+            match2.group(1).strip() if match2 else result_adapted.text.strip()
+        )
 
         passed2, stdout2, stderr2 = run_code(adapted_code)
         print(f"  Tests passed: {passed2}")
         if stderr2:
             err_lines2 = stderr2.strip().splitlines()[-10:]
-            print(f"  Stderr (last 10 lines):")
+            print("  Stderr (last 10 lines):")
             for line in err_lines2:
                 print(f"    {line}")
 
-        print(f"\n  --- Generated Code (first 80 lines) ---")
+        print("\n  --- Generated Code (first 80 lines) ---")
         for i, line in enumerate(adapted_code.splitlines()[:80], 1):
             print(f"  {i:3d} | {line}")
 
@@ -161,7 +171,6 @@ async def main() -> None:
 
         if not passed2:
             # Build error trajectory
-            from scripts_helpers import extract_error_for_trajectory
 
             error_text = stderr2[:500] if stderr2 else "no test output"
             error_trajectory = (
@@ -190,17 +199,19 @@ async def main() -> None:
             print(f"  Code length: {len(result_retry.text)} chars")
 
             match3 = re.search(r"```python\s*(.*?)```", result_retry.text, re.DOTALL)
-            retry_code = match3.group(1).strip() if match3 else result_retry.text.strip()
+            retry_code = (
+                match3.group(1).strip() if match3 else result_retry.text.strip()
+            )
 
             passed3, stdout3, stderr3 = run_code(retry_code)
             print(f"  Tests passed: {passed3}")
             if stderr3:
                 err_lines3 = stderr3.strip().splitlines()[-10:]
-                print(f"  Stderr (last 10 lines):")
+                print("  Stderr (last 10 lines):")
                 for line in err_lines3:
                     print(f"    {line}")
 
-            print(f"\n  --- Generated Code (first 80 lines) ---")
+            print("\n  --- Generated Code (first 80 lines) ---")
             for i, line in enumerate(retry_code.splitlines()[:80], 1):
                 print(f"  {i:3d} | {line}")
         else:
@@ -210,10 +221,16 @@ async def main() -> None:
     print("\n" + "=" * 70)
     print("  COMPARISON SUMMARY")
     print("=" * 70)
-    print(f"  Base model (no adapter):     tests_passed={passed}, code_len={len(base_code)}")
-    print(f"  Methodology adapter:         tests_passed={passed2}, code_len={len(adapted_code)}")
+    print(
+        f"  Base model (no adapter):     tests_passed={passed}, code_len={len(base_code)}"
+    )
+    print(
+        f"  Methodology adapter:         tests_passed={passed2}, code_len={len(adapted_code)}"
+    )
     if not passed2:
-        print(f"  Error-conditioned adapter:   tests_passed={passed3}, code_len={len(retry_code)}")
+        print(
+            f"  Error-conditioned adapter:   tests_passed={passed3}, code_len={len(retry_code)}"
+        )
 
 
 if __name__ == "__main__":

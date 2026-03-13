@@ -4,6 +4,7 @@ import asyncio
 import sys
 from pathlib import Path
 
+from adapter_registry.registry import AdapterRegistry
 from shared.checkpoint_db import SwarmCheckpointDB
 from sqlalchemy.pool import StaticPool
 from sqlmodel import create_engine
@@ -38,6 +39,15 @@ def _make_checkpoint_db():
     return SwarmCheckpointDB(engine)
 
 
+def _make_registry():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    return AdapterRegistry(engine=engine)
+
+
 async def test_swarm_dry_run() -> None:
     checkpoint_db = _make_checkpoint_db()
     queue: asyncio.Queue[TrainingRequest] = asyncio.Queue()
@@ -46,6 +56,7 @@ async def test_swarm_dry_run() -> None:
         tasks=SAMPLE_TASKS,
         checkpoint_db=checkpoint_db,
         training_queue=queue,
+        registry=_make_registry(),
         dry_run=True,
     )
     assert result["completed"] == 2
@@ -67,6 +78,7 @@ async def test_agent_supervisor_retries_on_failure() -> None:
         tasks=bad_tasks,
         checkpoint_db=checkpoint_db,
         training_queue=queue,
+        registry=_make_registry(),
         dry_run=False,
     )
     assert result["failed"] >= 1
@@ -84,6 +96,7 @@ async def test_agent_supervisor_retires_after_max_failures() -> None:
         tasks=bad_tasks,
         checkpoint_db=checkpoint_db,
         training_queue=queue,
+        registry=_make_registry(),
         dry_run=False,
         max_failures=3,
     )
@@ -102,6 +115,7 @@ async def test_swarm_checkpoint_recovery() -> None:
         tasks=SAMPLE_TASKS,
         checkpoint_db=checkpoint_db,
         training_queue=queue,
+        registry=_make_registry(),
         dry_run=True,
     )
     assert result["skipped"] == 1

@@ -14,6 +14,7 @@ from shared.rune_models import (
     AdapterRef,
     CodingSession,
     EvolMetrics,
+    PipelinePhase,
     SwarmCheckpoint,
     SwarmConfig,
     TaskStatus,
@@ -26,6 +27,7 @@ from shared.sandbox import (
     get_sandbox_backend,
 )
 from shared.storage_utils import create_service_engine, set_wal_mode
+from shared.template_loader import render_prompt, render_trajectory
 
 __all__ = [
     "AdapterRef",
@@ -36,6 +38,7 @@ __all__ = [
     "HardwareProbe",
     "MIN_TRAINING_VRAM_MB",
     "NsjailBackend",
+    "PipelinePhase",
     "SandboxBackend",
     "SandboxResult",
     "SubprocessBackend",
@@ -47,6 +50,8 @@ __all__ = [
     "get_best_device",
     "get_prompts_dir",
     "get_sandbox_backend",
+    "render_prompt",
+    "render_trajectory",
     "set_wal_mode",
 ]
 

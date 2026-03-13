@@ -1,0 +1,18 @@
+ROLE: python-coder
+SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
+PLAN:
+{{ plan[:150] }}
+{% if existing_code %}
+EXISTING CODE:
+{{ existing_code[:100] }}
+{% endif %}
+TESTS: {{ passed }}/{{ total }} {{ "PASSING" if tests_passed else "FAILING" }}
+ERRORS:
+{{ error_summary[:150] }}
+{% if failed_tests %}
+FAILED: {{ failed_tests[:100] }}
+{% endif %}
+FIX: {{ fix_guidance }}
+{% if history %}
+HISTORY: {{ history }}
+{% endif %}

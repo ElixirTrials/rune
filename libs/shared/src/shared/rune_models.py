@@ -36,6 +36,18 @@ class TaskStatus(str, Enum):
     EXHAUSTED = "exhausted"
 
 
+class PipelinePhase(str, Enum):
+    """Pipeline phases for the multi-phase swarm pipeline.
+
+    Each phase uses a dedicated Jinja2 trajectory template and prompt template.
+    """
+
+    DECOMPOSE = "decompose"
+    PLAN = "plan"
+    CODE = "code"
+    INTEGRATE = "integrate"
+
+
 class AdapterRef(BaseModel):
     """Reference to a stored LoRA adapter.
 

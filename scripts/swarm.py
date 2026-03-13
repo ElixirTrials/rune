@@ -15,7 +15,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,6 +63,7 @@ def _register_iteration_adapter(
     agent_id: str,
     registry: "AdapterRegistry",
     base_model_id: str,
+    task_type: str = "iteration",
 ) -> None:
     """Register the final adapter from an iteration loop in the registry.
 
@@ -76,6 +76,7 @@ def _register_iteration_adapter(
         agent_id: ID of the agent that produced the adapter.
         registry: Adapter registry for storing metadata.
         base_model_id: Base model the adapter was generated for.
+        task_type: Task type for adapter registry classification.
     """
     from adapter_registry.models import AdapterRecord
 
@@ -118,7 +119,7 @@ def _register_iteration_adapter(
     record = AdapterRecord(
         id=f"{task_hash}-{agent_id}",
         version=1,
-        task_type="iteration",
+        task_type=task_type,
         base_model_id=base_model_id,
         rank=8,
         created_at=now,
@@ -145,6 +146,75 @@ def _register_iteration_adapter(
         logger.exception("Failed to register adapter %s", record.id)
 
 
+def _register_phased_adapters(
+    pipeline_result: dict[str, Any],
+    task_hash: str,
+    agent_id: str,
+    registry: "AdapterRegistry",
+    base_model_id: str,
+) -> None:
+    """Register all adapters from a phased pipeline run.
+
+    Each adapter is registered with a phase-specific task_type for
+    evolution to operate on independently.
+    """
+    from adapter_registry.models import AdapterRecord
+
+    adapter_dir = pipeline_result.get("adapter_dir", "")
+    adapters = pipeline_result.get("adapters", [])
+    if not adapters or not adapter_dir:
+        return
+
+    adapter_base = Path(adapter_dir)
+    if not adapter_base.exists():
+        return
+
+    from evaluation.metrics import evaluate_fitness
+
+    now = datetime.now(timezone.utc).isoformat()
+    final_passed = pipeline_result.get("final_tests_passed", False)
+    pass_rate = 1.0 if final_passed else 0.0
+
+    for adapter_info in adapters:
+        adapter_task_type = adapter_info.get("task_type", "unknown")
+        adapter_id = f"{task_hash}-{agent_id}-{adapter_task_type}"
+
+        fitness = evaluate_fitness(
+            adapter_id=adapter_id,
+            pass_rate=pass_rate,
+            diversity_score=0.5,
+        )
+
+        record = AdapterRecord(
+            id=adapter_id,
+            version=1,
+            task_type=adapter_task_type,
+            base_model_id=base_model_id,
+            rank=8,
+            created_at=now,
+            file_path=adapter_dir,
+            file_hash="",
+            file_size_bytes=0,
+            pass_rate=pass_rate,
+            fitness_score=fitness,
+            source="phased-pipeline",
+            session_id=pipeline_result.get("session_id", ""),
+            agent_id=agent_id,
+            generation=0,
+        )
+
+        try:
+            registry.store(record)
+            logger.info(
+                "Registered phased adapter %s (type=%s, fitness=%.3f)",
+                record.id,
+                adapter_task_type,
+                fitness,
+            )
+        except Exception:
+            logger.exception("Failed to register phased adapter %s", record.id)
+
+
 async def agent_supervisor(
     agent_id: str,
     tasks: list[dict[str, Any]],
@@ -159,15 +229,16 @@ async def agent_supervisor(
     use_iteration_loop: bool = False,
     hypernetwork_checkpoint: str | None = None,
     max_iterations: int = 5,
+    phase: str = "code",
 ) -> dict[str, Any]:
     """Tier-2 supervisor for a single swarm agent.
 
     Processes tasks from the pool, checking checkpoints for dedup,
     running code via sandbox, and queuing training requests.
 
-    When use_iteration_loop=True, uses rune_runner's hypernetwork iteration
-    loop instead of the standard sandbox approach. Each agent runs its own
-    adapter chain per task, and registers the resulting adapter in the registry.
+    When use_iteration_loop=True, uses rune_runner's phased pipeline
+    instead of the standard sandbox approach. Each agent runs its own
+    adapter chain per task, and registers the resulting adapters.
 
     Args:
         agent_id: Unique identifier for this agent.
@@ -183,6 +254,7 @@ async def agent_supervisor(
         use_iteration_loop: Use hypernetwork iteration loop per task.
         hypernetwork_checkpoint: Path to pretrained hypernetwork .pt file.
         max_iterations: Max iterations for iteration loop mode.
+        phase: Pipeline phase context for prompt template selection.
 
     Returns:
         Summary dict with completed/failed/skipped counts.
@@ -197,8 +269,6 @@ async def agent_supervisor(
         if shutdown_event and shutdown_event.is_set():
             break
 
-        # Use task_id if provided; otherwise derive a stable hash from the task
-        # content so retries do not create a new identity for the same work.
         task_hash = task.get(
             "task_id",
             hashlib.sha256(json.dumps(task, sort_keys=True).encode()).hexdigest()[:16],
@@ -218,12 +288,10 @@ async def agent_supervisor(
 
         try:
             if use_iteration_loop:
-                # Hypernetwork iteration loop — each agent gets its own
-                # adapter chain for the task
-                from rune_runner import run_project as run_iteration_project
+                from rune_runner import run_phased_pipeline
 
                 project_prompt = task.get("task_description", task.get("prompt", ""))
-                iter_result = await run_iteration_project(
+                iter_result = await run_phased_pipeline(
                     project_prompt=project_prompt,
                     max_iterations=max_iterations,
                     checkpoint_path=hypernetwork_checkpoint,
@@ -231,9 +299,9 @@ async def agent_supervisor(
                     device=device,
                 )
 
-                # Register the adapter in the registry for evolution
-                _register_iteration_adapter(
-                    iter_result=iter_result,
+                # Register all phase-specific adapters
+                _register_phased_adapters(
+                    pipeline_result=iter_result,
                     task_hash=task_hash,
                     agent_id=agent_id,
                     registry=registry,
@@ -292,6 +360,78 @@ async def agent_supervisor(
         "failed": failed,
         "skipped": skipped,
     }
+
+
+async def run_swarm_phase(
+    tasks: list[dict[str, Any]],
+    checkpoint_db: SwarmCheckpointDB,
+    registry: "AdapterRegistry",
+    training_queue: asyncio.Queue,
+    config: SwarmConfig,
+    phase: str,
+    shutdown_event: asyncio.Event,
+) -> list[dict[str, Any]]:
+    """Run a single phase's tasks through the swarm (parallel agents).
+
+    Lighter than run_swarm() — no background evolution/training workers.
+    Partitions tasks across agents and runs via agent_supervisor().
+
+    Args:
+        tasks: List of task dicts to process in this phase.
+        checkpoint_db: Checkpoint DB for dedup and recovery.
+        registry: Adapter registry for storing adapter metadata.
+        training_queue: Queue for submitting training requests.
+        config: Swarm configuration.
+        phase: Pipeline phase name (e.g. 'plan', 'code').
+        shutdown_event: Event to signal graceful shutdown.
+
+    Returns:
+        List of per-agent result dicts.
+    """
+    probe = HardwareProbe.detect()
+    budget = probe.compute_budget()
+    num_agents = min(config.population_size, budget.max_agents, len(tasks))
+    num_agents = max(1, num_agents)
+
+    # Partition tasks across agents (round-robin)
+    partitions: list[list[dict[str, Any]]] = [[] for _ in range(num_agents)]
+    for i, task in enumerate(tasks):
+        partitions[i % num_agents].append(task)
+
+    agent_results: list[dict[str, Any]] = []
+
+    async with asyncio.TaskGroup() as tg:
+        agent_tasks = []
+        for i in range(num_agents):
+            t = tg.create_task(
+                agent_supervisor(
+                    agent_id=f"phase-{phase}-agent-{i}",
+                    tasks=partitions[i],
+                    checkpoint_db=checkpoint_db,
+                    training_queue=training_queue,
+                    registry=registry,
+                    base_model_id=config.base_model_id,
+                    device=config.device,
+                    shutdown_event=shutdown_event,
+                    use_iteration_loop=bool(config.hypernetwork_checkpoint),
+                    hypernetwork_checkpoint=config.hypernetwork_checkpoint,
+                    max_iterations=config.max_iterations,
+                    phase=phase,
+                )
+            )
+            agent_tasks.append(t)
+
+        done = await asyncio.gather(*agent_tasks, return_exceptions=True)
+        for gather_result in done:
+            if isinstance(gather_result, BaseException):
+                logger.error("Phase %s agent failed: %s", phase, gather_result)
+                agent_results.append({"error": str(gather_result)})
+            elif isinstance(gather_result, dict):
+                agent_results.append(gather_result)
+            else:
+                agent_results.append({"result": str(gather_result)})
+
+    return agent_results
 
 
 async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> dict[str, Any]:
