@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "3c80511854c0",
+  "session_id": "acf18de4-875c-4b66-af39-20c0410291a7",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-13T10:48:05.3075Z",
+  "branch": "feat/e2e_with_hypernetwork",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".planning/phases/21-qlora-training-pipeline/21-01-SUMMARY.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "556ff197c7eb",
+  "token_usage": {
+    "input_tokens": 127,
+    "cache_creation_tokens": 132981,
+    "cache_read_tokens": 7924866,
+    "output_tokens": 29563,
+    "api_call_count": 75
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T10:48:04.962238Z",
+    "agent_lines": 0,
+    "human_added": 2877,
+    "human_modified": 168,
+    "human_removed": 0,
+    "total_committed": 2891,
+    "agent_percentage": 0
+  }
+}
