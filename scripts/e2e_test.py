@@ -20,7 +20,6 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bootstrap import setup_path
 
@@ -64,7 +63,7 @@ def create_hypernetwork_checkpoint(checkpoint_path: str) -> None:
     import torch
     from model_training.hypernetwork import DocToLoraHypernetwork
 
-    step(1, "Creating hypernetwork checkpoint")
+    step(1, "Creating hypernetwork checkpoint (random init)")
 
     h = DocToLoraHypernetwork(
         input_dim=H_VOCAB_SIZE,
@@ -301,7 +300,7 @@ def run_e2e() -> None:
         checkpoint_path = os.path.join(tmpdir, "hypernetwork.pt")
         adapter_dir = os.path.join(tmpdir, "test_adapter")
 
-        # Step 1: Create checkpoint
+        # Step 1: Create random hypernetwork checkpoint
         create_hypernetwork_checkpoint(checkpoint_path)
 
         # Step 2: Test hypernetwork generates adapter

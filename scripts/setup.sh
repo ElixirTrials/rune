@@ -217,25 +217,45 @@ step "Installing Python $REQUIRED_PYTHON and project dependencies"
 uv python install "$REQUIRED_PYTHON"
 info "Python $REQUIRED_PYTHON ready"
 
-uv sync
-info "All workspace dependencies installed"
+# Phase 1: core deps + all workspace packages (always succeeds — no GPU-only packages)
+uv sync --all-packages
+info "All workspace packages installed"
+
+# Phase 2: GPU-only extras (bitsandbytes, trl, datasets) — best-effort
+step "Installing GPU-only dependencies (optional)"
+
+if uv sync --all-packages --extra gpu 2>&1; then
+    info "GPU dependencies installed (bitsandbytes, trl, datasets)"
+else
+    warn "GPU-only dependencies could not be installed (bitsandbytes, trl, datasets)"
+    warn "This is fine for CPU-only machines. To install later:"
+    warn "  cd $RUNE_DIR && uv sync --all-packages --extra gpu"
+fi
 
 # ── Smoke Test ──────────────────────────────────────────────
 step "Running smoke tests"
 
 SMOKE_PASS=true
 
-if uv run python -c "from shared.rune_models import TaskStatus; print('  shared lib:', TaskStatus.PENDING.value)" 2>&1; then
+# Use the venv python directly — more reliable than 'uv run' for import checks
+VENV_PYTHON="$RUNE_DIR/.venv/bin/python"
+if [[ ! -x "$VENV_PYTHON" ]]; then
+    warn "Virtual environment not found at $RUNE_DIR/.venv — trying 'uv run' instead"
+    VENV_PYTHON="uv run python"
+fi
+
+if $VENV_PYTHON -c "from shared.rune_models import TaskStatus; print('  shared lib:', TaskStatus.PENDING.value)" 2>&1; then
     info "shared library OK"
 else
-    warn "shared library import failed (may need GPU deps)"
+    warn "shared library not importable — 'uv sync' may have failed"
+    warn "Try running: cd $RUNE_DIR && uv sync"
     SMOKE_PASS=false
 fi
 
-if uv run python -c "from inference.provider import InferenceProvider; print('  inference provider ABC loaded')" 2>&1; then
+if $VENV_PYTHON -c "from inference.provider import InferenceProvider; print('  inference provider ABC loaded')" 2>&1; then
     info "inference library OK"
 else
-    warn "inference library import failed (may need GPU deps)"
+    warn "inference library not importable — 'uv sync' may have failed"
     SMOKE_PASS=false
 fi
 

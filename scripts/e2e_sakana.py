@@ -22,17 +22,36 @@ from pathlib import Path
 import torch
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CHECKPOINT_PATH = (
-    PROJECT_ROOT
-    / "trained_d2l"
-    / "gemma_demo"
-    / "checkpoint-80000"
-    / "pytorch_model.bin"
+
+HF_REPO_ID = "SakanaAI/doc-to-lora"
+HF_FILENAME = "gemma_demo/checkpoint-80000/pytorch_model.bin"
+LOCAL_CACHE = (
+    PROJECT_ROOT / "trained_d2l" / "gemma_demo" / "checkpoint-80000" / "pytorch_model.bin"
 )
 
-if not CHECKPOINT_PATH.exists():
-    print(f"Checkpoint not found: {CHECKPOINT_PATH}")
-    sys.exit(1)
+
+def _ensure_checkpoint() -> Path:
+    """Return path to checkpoint, downloading from HF if missing."""
+    if LOCAL_CACHE.exists():
+        print(f"[setup] Using local checkpoint: {LOCAL_CACHE}")
+        return LOCAL_CACHE
+
+    print(f"[setup] Checkpoint not found locally, downloading from {HF_REPO_ID}...")
+    from huggingface_hub import hf_hub_download  # noqa: PLC0415
+
+    downloaded = Path(
+        hf_hub_download(repo_id=HF_REPO_ID, filename=HF_FILENAME)
+    )
+    # Copy to local cache so next run skips download
+    LOCAL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    import shutil  # noqa: PLC0415
+
+    shutil.copy2(downloaded, LOCAL_CACHE)
+    print(f"[setup] Downloaded and cached to: {LOCAL_CACHE}")
+    return LOCAL_CACHE
+
+
+CHECKPOINT_PATH = _ensure_checkpoint()
 
 sys.path.insert(0, str(PROJECT_ROOT / "libs" / "shared" / "src"))
 from shared.hardware import get_best_device  # noqa: E402
