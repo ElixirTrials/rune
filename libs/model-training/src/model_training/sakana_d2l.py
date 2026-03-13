@@ -36,6 +36,29 @@ def _patch_flash_attention() -> None:
     Replaces flash attention classes and assertions with eager equivalents
     so the perceiver can run on CPU/MPS/CUDA without flash_attn installed.
     """
+    import sys  # noqa: PLC0415
+    import types  # noqa: PLC0415
+
+    # Install a stub flash_attn module so transformers' import check
+    # succeeds.  The actual forward pass uses our patched eager path,
+    # so the real package is never called.
+    if "flash_attn" not in sys.modules:
+        import importlib.machinery  # noqa: PLC0415
+
+        stub = types.ModuleType("flash_attn")
+        stub.__version__ = "2.6.3"  # type: ignore[attr-defined]  # satisfies version checks
+        stub.__spec__ = importlib.machinery.ModuleSpec("flash_attn", None)
+        sys.modules["flash_attn"] = stub
+
+        # Submodule stub for flash_attn.bert_padding (imported by ctx_to_lora)
+        bert_stub = types.ModuleType("flash_attn.bert_padding")
+        bert_stub.__spec__ = importlib.machinery.ModuleSpec(
+            "flash_attn.bert_padding", None
+        )
+        bert_stub.unpad_input = lambda *a, **kw: None  # type: ignore[attr-defined]  # noqa: ARG005
+        stub.bert_padding = bert_stub  # type: ignore[attr-defined]
+        sys.modules["flash_attn.bert_padding"] = bert_stub
+
     import ctx_to_lora.modeling.idefics2 as idefics2_mod  # noqa: PLC0415
     import torch  # noqa: PLC0415
     from ctx_to_lora.modeling.idefics2 import (  # noqa: PLC0415
@@ -77,7 +100,7 @@ def _patch_flash_attention() -> None:
         if position_ids is None:
             bsz = context.shape[0]
         else:
-            bsz = torch.where(position_ids == 0, 1, 0).sum().item()
+            bsz = int(torch.where(position_ids == 0, 1, 0).sum().item())
         latents = self.latents_q.unsqueeze(0).expand((bsz, *self.latents_q.size()))
         compressed_context = latents
         for layer in self.layers:
