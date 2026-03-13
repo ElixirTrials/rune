@@ -3,7 +3,7 @@ name = "elixirtrials--template"
 version = "0.1.0"
 description = "Template Repo ElixirTrials "
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "aiohttp>=3.10.0",
     "httpx>=0.28.1",
@@ -30,19 +30,21 @@ dependencies = [
     "openai>=1.0.0",
     "psutil>=5.9.0",
     "llama-cpp-python>=0.3.0",
-    "torch>=2.0.0",
-    "safetensors>=0.4.0",
-    "peft>=0.18.0",
+    "torch>=2.10.0",
+    "safetensors>=0.7.0",
+    "peft>=0.18.1",
     "transformers>=4.47.0",
     "huggingface-hub>=0.20.0",
-    "ctx-to-lora @ git+https://github.com/SakanaAI/doc-to-lora.git",
+    "ctx-to-lora>=0.0.1",
+    "einops>=0.8.2",
+    "jaxtyping>=0.3.9",
+    "datasets>=4.6.1",
 ]
 
 [project.optional-dependencies]
 gpu = [
     "bitsandbytes>=0.45.0",
     "trl>=0.16.0",
-    "datasets>=3.0.0",
 ]
 
 [dependency-groups]
@@ -57,6 +59,14 @@ dev = [
     "pytest-xdist>=3.8.0",
     "requests-mock>=1.12.1",
 ]
+
+[tool.uv.sources]
+ctx-to-lora = { git = "https://github.com/SakanaAI/doc-to-lora.git" }
+
+[[tool.uv.dependency-metadata]]
+name = "ctx-to-lora"
+version = "0.0.1"
+requires-dist = []  # ignore Sakana's pinned deps (vllm, torch==2.6, transformers==4.51)
 
 [tool.uv.workspace]
 members = [
