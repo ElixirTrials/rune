@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import ModuleType
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -202,9 +202,9 @@ def test_generate_trajectory_dataset_returns_records_with_required_fields() -> N
     from model_training.d2l_data import generate_trajectory_dataset
 
     fake_dataset = _make_humaneval_dataset(5)
+    _inject_fake_datasets_module(fake_dataset)
 
-    with patch("model_training.d2l_data.load_dataset", return_value=fake_dataset):
-        records = generate_trajectory_dataset(source="humaneval", max_tasks=5)
+    records = generate_trajectory_dataset(source="humaneval", max_tasks=5)
 
     assert isinstance(records, list), "Expected a list"
     assert len(records) == 5, f"Expected 5 records, got {len(records)}"
@@ -224,9 +224,9 @@ def test_generate_trajectory_dataset_task_id_starts_with_humaneval() -> None:
     from model_training.d2l_data import generate_trajectory_dataset
 
     fake_dataset = _make_humaneval_dataset(3)
+    _inject_fake_datasets_module(fake_dataset)
 
-    with patch("model_training.d2l_data.load_dataset", return_value=fake_dataset):
-        records = generate_trajectory_dataset(source="humaneval", max_tasks=3)
+    records = generate_trajectory_dataset(source="humaneval", max_tasks=3)
 
     for record in records:
         assert record["task_id"].startswith("HumanEval/"), (
@@ -237,6 +237,42 @@ def test_generate_trajectory_dataset_task_id_starts_with_humaneval() -> None:
 # ---------------------------------------------------------------------------
 # Test 8: augment_trajectories returns n_variants records per input
 # ---------------------------------------------------------------------------
+
+
+import sys
+
+
+def _inject_fake_datasets_module(fake_data: list[dict[str, Any]]) -> None:
+    """Inject a fake datasets module into sys.modules for patching.
+
+    Avoids network calls to Hugging Face Hub in CI.
+    """
+    if "datasets" not in sys.modules:
+        fake_datasets = ModuleType("datasets")
+        sys.modules["datasets"] = fake_datasets
+
+    load_mock = MagicMock(return_value=fake_data)
+    sys.modules["datasets"].load_dataset = load_mock  # type: ignore[attr-defined]
+
+
+def _inject_fake_inference_modules(mock_provider_instance: MagicMock) -> None:
+    """Inject fake inference.ollama_provider into sys.modules for patching.
+
+    Avoids importing the real inference library (which may require GPU deps).
+    The fake module exposes a MockOllamaProvider class that returns the
+    provided mock instance when constructed.
+    """
+    if "inference" not in sys.modules:
+        fake_inference = ModuleType("inference")
+        sys.modules["inference"] = fake_inference
+
+    if "inference.ollama_provider" not in sys.modules:
+        fake_ollama_mod = ModuleType("inference.ollama_provider")
+        sys.modules["inference.ollama_provider"] = fake_ollama_mod
+
+    # Make OllamaProvider(base_url=...) return the mock instance
+    mock_class = MagicMock(return_value=mock_provider_instance)
+    sys.modules["inference.ollama_provider"].OllamaProvider = mock_class  # type: ignore[attr-defined]
 
 
 def _make_mock_provider() -> MagicMock:
@@ -266,11 +302,9 @@ def test_augment_trajectories_returns_n_variants_per_input() -> None:
     ]
 
     mock_provider = _make_mock_provider()
+    _inject_fake_inference_modules(mock_provider)
 
-    with patch(
-        "model_training.d2l_data.OllamaProvider", return_value=mock_provider
-    ):
-        augmented = augment_trajectories(trajectories, n_variants=3)
+    augmented = augment_trajectories(trajectories, n_variants=3)
 
     assert len(augmented) == len(trajectories) * 3, (
         f"Expected {len(trajectories) * 3} augmented records, got {len(augmented)}"
@@ -296,11 +330,9 @@ def test_augmented_records_inherit_source_task_id() -> None:
     ]
 
     mock_provider = _make_mock_provider()
+    _inject_fake_inference_modules(mock_provider)
 
-    with patch(
-        "model_training.d2l_data.OllamaProvider", return_value=mock_provider
-    ):
-        augmented = augment_trajectories(trajectories, n_variants=3)
+    augmented = augment_trajectories(trajectories, n_variants=3)
 
     assert len(augmented) == 3
     for record in augmented:
@@ -329,11 +361,9 @@ def test_augmented_and_original_records_zero_task_id_leakage() -> None:
     ]
 
     mock_provider = _make_mock_provider()
+    _inject_fake_inference_modules(mock_provider)
 
-    with patch(
-        "model_training.d2l_data.OllamaProvider", return_value=mock_provider
-    ):
-        augmented = augment_trajectories(trajectories, n_variants=3)
+    augmented = augment_trajectories(trajectories, n_variants=3)
 
     all_records: list[dict[str, Any]] = trajectories + augmented
 

@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "format_for_distillation",
     "generate_needle_dataset",
+    "generate_trajectory_dataset",
+    "augment_trajectories",
     "save_jsonl",
     "load_jsonl",
     "split_by_task_id",
@@ -380,6 +382,164 @@ def generate_needle_dataset(n: int = 20) -> list[dict[str, str]]:
         )
 
     return records
+
+
+def generate_trajectory_dataset(
+    source: str = "humaneval",
+    max_tasks: int | None = None,
+) -> list[dict[str, str]]:
+    """Generate trajectory records from a coding task dataset.
+
+    Each record has activation_text (prompt only, no solution) and teacher_text
+    (prompt + canonical solution), making it ready for KL-divergence distillation.
+
+    Args:
+        source: Dataset source identifier. Currently only "humaneval" is supported.
+        max_tasks: Maximum number of tasks to process. If None, all tasks are used.
+
+    Returns:
+        List of trajectory record dicts with task_id, activation_text, and
+        teacher_text fields.
+
+    Raises:
+        ValueError: If an unsupported source is specified.
+    """
+    from datasets import load_dataset  # noqa: PLC0415
+
+    if source == "humaneval":
+        dataset = load_dataset("openai_humaneval", split="test", trust_remote_code=True)
+    else:
+        raise ValueError(
+            f"Unsupported source: {source!r}. Only 'humaneval' is supported."
+        )
+
+    records: list[dict[str, str]] = []
+    tasks = list(dataset) if max_tasks is None else list(dataset)[:max_tasks]
+    for task in tasks:
+        task_id: str = task["task_id"]
+        prompt: str = task["prompt"]
+        canonical_solution: str = task["canonical_solution"]
+
+        # activation_text: the function signature + docstring (no solution)
+        activation_text = prompt.rstrip()
+        # teacher_text: prompt + solution (the full implementation)
+        teacher_text = prompt.rstrip() + canonical_solution
+
+        records.append(
+            {
+                "task_id": task_id,
+                "activation_text": activation_text,
+                "teacher_text": teacher_text,
+            }
+        )
+
+    logger.info("Generated %d trajectory records from %r", len(records), source)
+    return records
+
+
+def augment_trajectories(
+    trajectories: list[dict[str, Any]],
+    n_variants: int = 3,
+    model: str = "qwen2.5-coder:1.5b",
+    ollama_base_url: str | None = None,
+) -> list[dict[str, Any]]:
+    """Produce LLM-augmented variants of trajectory records.
+
+    For each input trajectory, generates up to n_variants augmented records
+    using an Ollama LLM. Augmented records always inherit the source task_id
+    to preserve split integrity when mixed with originals.
+
+    Augmentation strategies (up to n_variants selected in order):
+    1. Paraphrase the task description
+    2. Reorder/drop steps in the trajectory
+    3. Rename variables throughout the trajectory
+
+    Args:
+        trajectories: List of trajectory record dicts with task_id,
+            activation_text, and teacher_text fields.
+        n_variants: Number of augmented variants to produce per trajectory.
+            Maximum 3 (one per augmentation strategy).
+        model: Ollama model identifier to use for augmentation.
+        ollama_base_url: Ollama base URL. Defaults to "http://localhost:11434".
+
+    Returns:
+        List of augmented trajectory dicts. Each record has the same task_id
+        as its source trajectory, with LLM-generated activation_text and
+        teacher_text.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from inference.ollama_provider import OllamaProvider  # noqa: PLC0415
+
+    base_url = ollama_base_url or "http://localhost:11434"
+    provider = OllamaProvider(base_url=base_url)
+
+    augmentation_prompts = [
+        (
+            "Paraphrase the following coding task description and trajectory, "
+            "keeping the same logic but using different wording:\n\n{text}"
+        ),
+        (
+            "Rewrite the following coding trajectory by reordering and slightly "
+            "dropping some intermediate steps, while preserving the overall "
+            "outcome:\n\n{text}"
+        ),
+        (
+            "Rewrite the following code trajectory by renaming variables and "
+            "function parameters to different names, keeping the same logic:"
+            "\n\n{text}"
+        ),
+    ]
+
+    async def _augment_one(
+        trajectory: dict[str, Any],
+        prov: Any,
+        n: int,
+        mdl: str,
+    ) -> list[dict[str, Any]]:
+        task_id: str = trajectory["task_id"]
+        activation_text: str = trajectory.get("activation_text", "")
+        teacher_text: str = trajectory.get("teacher_text", "")
+
+        results: list[dict[str, Any]] = []
+        strategies = augmentation_prompts[:n]
+        for strategy_prompt in strategies:
+            augment_prompt = strategy_prompt.format(text=teacher_text)
+            result = await prov.generate(augment_prompt, mdl)
+            augmented_teacher = result.text
+
+            # Build augmented activation by stripping the solution portion
+            # Use teacher text length ratio to approximate activation
+            activation_prompt = strategy_prompt.format(text=activation_text)
+            act_result = await prov.generate(activation_prompt, mdl)
+            augmented_activation = act_result.text
+
+            results.append(
+                {
+                    "task_id": task_id,  # CRITICAL: inherit source task_id
+                    "activation_text": augmented_activation,
+                    "teacher_text": augmented_teacher,
+                }
+            )
+        return results
+
+    async def _augment_all(
+        trajs: list[dict[str, Any]],
+        n: int,
+        mdl: str,
+    ) -> list[dict[str, Any]]:
+        all_tasks = [_augment_one(t, provider, n, mdl) for t in trajs]
+        nested = await asyncio.gather(*all_tasks)
+        return [record for group in nested for record in group]
+
+    augmented = asyncio.run(_augment_all(trajectories, n_variants, model))
+    logger.info(
+        "Augmented %d trajectories into %d records (n_variants=%d)",
+        len(trajectories),
+        len(augmented),
+        n_variants,
+    )
+    return augmented
 
 
 def split_by_task_id(
