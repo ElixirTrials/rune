@@ -1,0 +1,313 @@
+Implement the following plan:
+
+# Rune v6.0 — Parallel Swarm Execution Implementation Plan
+
+## Context
+
+The swarm-execution-proposal-v2 collapses Rune's 5-service microservice architecture into a single-process "fat orchestrator" for local hardware. This plan implements the proposal across 5 phases (25–29), each on its own branch with granular commits, where every commit passes ruff, mypy, and pytest.
+
+Key design decisions:
+- **No new `libs/swarm` package** — swarm logic lives in `scripts/swarm.py` as described in the proposal. Supporting code (HardwareProbe, sandbox) goes into existing libs (`libs/shared`, `libs/model-training`).
+- All GPU/system deps (psutil, pynvml) use INFRA-05 deferred-import pattern with `sys.modules` test injection.
+- nsjail is Linux-only; macOS/CI falls back to subprocess (tested explicitly).
+- AdapterRecord schema additions use `default=` values so `create_all()` works for new DBs.
+
+---
+
+## Phase 25: HardwareProbe + nsjail Sandbox
+**Branch:** `feat/25-hardware-probe-sandbox`
+
+### Commit 25-01: Add psutil dep + mypy overrides for psutil/pynvml
+**Modified:** `pyproject.toml`
+- Add `psutil>=5.9.0` to root `[project.dependencies]`
+- Add mypy override blocks for `psutil`, `psutil.*`, `pynvml`, `pynvml.*`
+
+### Commit 25-02: Implement HardwareProbe + HardwareBudget
+**Created:** `libs/shared/src/shared/hardware.py`
+- `HardwareProbe` dataclass: `cpu_count`, `ram_total_mb`, `gpus: list[GPUInfo]`
+- `GPUInfo` dataclass: `name`, `vram_mb`
+- `HardwareProbe.detect()` classmethod — uses `psutil` (top-level import, always available), deferred `import pynvml` in try/except
+- `HardwareProbe.compute_budget(base_model_vram_mb)` → `HardwareBudget`
+- `HardwareBudget` dataclass: `max_agents`, `max_concurrent_loras`, `training_slots`, `vram_per_gpu_mb`, `single_gpu_mode`
+- **Modified:** `libs/shared/src/shared/__init__.py` — export new symbols
+
+### Commit 25-03: Tests for HardwareProbe
+**Created:** `libs/shared/tests/test_hardware.py`
+- `test_probe_returns_correct_cpu_ram()` — real psutil, assert `cpu_count > 0`
+- `test_probe_gpu_fallback_no_pynvml()` — patch pynvml import → `ImportError`, assert `gpus == []`
+- `test_probe_with_mock_gpu()` — inject fake pynvml via `sys.modules`, assert gpu detection
+- `test_compute_budget_no_gpu()` — verify `training_slots=0, single_gpu_mode=True`
+- `test_compute_budget_single_gpu()` — mock 1 GPU 24GB, verify `training_slots=1, single_gpu_mode=True`
+- `test_compute_budget_multi_gpu()` — mock 2 GPUs, verify `training_slots=1, single_gpu_mode=False`
+
+### Commit 25-04: Implement sandbox backends
+**Created:** `libs/shared/src/shared/sandbox.py`
+- `SandboxResult` dataclass: `stdout`, `stderr`, `exit_code`, `timed_out`
+- `SubprocessBackend` — current behavior extracted (writes tmpfile, runs `[sys.executable, path]`)
+- `NsjailBackend` — checks `shutil.which("nsjail")`; builds nsjail cmd with `--time_limit`, `--rlimit_as`, `--rlimit_cpu`; falls back to `SubprocessBackend` if nsjail not found
+- `get_sandbox_backend()` — reads `RUNE_EXEC_BACKEND` env var, returns appropriate backend
+
+### Commit 25-05: Tests for sandbox backends
+**Created:** `libs/shared/tests/test_sandbox.py`
+- `test_subprocess_runs_code()` — `print("hello")` → stdout="hello\n", exit_code=0
+- `test_subprocess_captures_error()` — `raise ValueError` → exit_code!=0, "ValueError" in stderr
+- `test_subprocess_timeout()` — `time.sleep(60)` with timeout=2 → `timed_out=True`
+- `test_nsjail_falls_back_when_missing()` — patch `shutil.which` → None, verify fallback works
+- `test_get_backend_default()` — returns SubprocessBackend
+- `test_get_backend_nsjail_env()` — monkeypatch env, returns NsjailBackend
+
+### Commit 25-06: Wire sandbox into execute_node
+**Modified:** `services/rune-agent/src/rune_agent/nodes.py`
+- Refactor `execute_node()` to use `get_sandbox_backend()` from `shared.sandbox`
+- Keep identical behavior (subprocess is default)
+- **Modified:** `services/rune-agent/pyproject.toml` — ensure `shared` dependency exists
+
+### Commit 25-07: Update execute_node tests for sandbox
+**Modified:** `services/rune-agent/tests/test_nodes.py`
+- Add `test_execute_node_uses_sandbox_backend()` — patch `shared.sandbox.get_sandbox_backend`, verify `.run()` called
+
+---
+
+## Phase 26: Registry Extensions + Swarm Checkpoint
+**Branch:** `feat/26-swarm-orchestrator`
+
+### Commit 26-01: Extend AdapterRecord with swarm/lineage fields
+**Modified:** `libs/adapter-registry/src/adapter_registry/models.py`
+- Add: `parent_ids: Optional[str] = Field(default=None)` — JSON list of parent adapter IDs
+- Add: `generation: int = Field(default=0)` — evolutionary generation
+- Add: `training_task_hash: Optional[str] = Field(default=None, index=True)` — dedup key
+- Add: `agent_id: Optional[str] = Field(default=None)` — which swarm agent produced this
+- **Modified:** `conftest.py` — update `make_adapter_record` factory with new field defaults
+
+### Commit 26-02: Add new registry query methods
+**Modified:** `libs/adapter-registry/src/adapter_registry/registry.py`
+- `query_best_for_task(task_type, top_k=3)` — order by `fitness_score DESC`, non-archived, limit top_k
+- `is_task_solved(task_hash, threshold=0.95)` — check if any adapter for task_hash has `pass_rate >= threshold`
+- `get_lineage(adapter_id)` — walk `parent_ids` chain
+- `query_unevaluated(task_type=None)` — where `pass_rate IS NULL`
+- `archive(adapter_id)` — set `is_archived=True`
+- `get_task_types()` — `SELECT DISTINCT task_type`
+- `update_fitness(adapter_id, pass_rate, fitness_score)` — update evaluation fields
+
+### Commit 26-03: Tests for new registry methods
+**Modified:** `libs/adapter-registry/tests/test_registry.py`
+- Tests for each new method (10+ test functions)
+- Test `query_best_for_task` ordering, archive exclusion
+- Test `is_task_solved` threshold logic
+- Test `get_lineage` chain walking
+- Test `archive` sets flag, `query_unevaluated` filters, `update_fitness` persists
+
+### Commit 26-04: Add SwarmCheckpoint + SwarmConfig models
+**Modified:** `libs/shared/src/shared/rune_models.py`
+- `SwarmConfig(BaseModel)`: `db_url`, `task_source`, `population_size`, `max_generations`, `evolution_interval`, `sandbox_backend`, `base_model_id`
+- `SwarmCheckpoint(BaseModel)`: `run_id`, `task_hash`, `agent_id`, `status` (pending/running/completed/failed), `outcome`, `started_at`, `completed_at`
+- **Modified:** `conftest.py` — add `make_swarm_config`, `make_swarm_checkpoint` factories
+
+### Commit 26-05: Implement SwarmCheckpointDB (SQLite)
+**Created:** `libs/shared/src/shared/checkpoint_db.py`
+- `SwarmCheckpointDB` class with SQLite backend
+- Methods: `mark_running(task_hash, agent_id)`, `mark_completed(task_hash, outcome)`, `mark_failed(task_hash, agent_id)`, `is_completed(task_hash)`
+- Uses SQLModel table for checkpoint records
+
+### Commit 26-06: Tests for SwarmCheckpointDB
+**Created:** `libs/shared/tests/test_checkpoint_db.py`
+- Test CRUD lifecycle: mark_running → mark_completed
+- Test `is_completed` returns True/False correctly
+- Test `mark_failed` records failure
+- Test concurrent access (threading)
+
+### Commit 26-07: Implement evaluation stubs (evaluate_fitness, score_adapter_quality)
+**Modified:** `libs/evaluation/src/evaluation/metrics.py`
+- Replace `NotImplementedError` in `evaluate_fitness()`: `fitness = 0.7 * pass_rate + 0.3 * diversity_score`
+- Replace `NotImplementedError` in `score_adapter_quality()`: `quality = min(pass_rate + 0.1 * max(gen_delta, 0), 1.0)`
+
+### Commit 26-08: Tests for evaluation functions
+**Created/modified:** `libs/evaluation/tests/test_metrics.py`
+- `test_evaluate_fitness_pure_pass_rate()` — diversity=0, fitness=0.7*pass_rate
+- `test_evaluate_fitness_with_diversity()` — verify weighted sum
+- `test_score_adapter_quality_no_delta()` — equals pass_rate
+- `test_score_adapter_quality_capped()` — verify cap at 1.0
+
+---
+
+## Phase 27: Training Workers + GPU Time-Sharing
+**Branch:** `feat/27-training-workers-gpu-timeshare`
+
+### Commit 27-01: Add max_cpu_loras to LoraServerConfig
+**Modified:** `services/lora-server/config.py` — add `max_cpu_loras: int = 16`
+**Modified:** `services/lora-server/config.yaml` — add `max_cpu_loras: 32`
+
+### Commit 27-02: Implement training_pool_manager async function
+**Created:** `scripts/swarm_workers.py` (extracted worker functions for swarm.py)
+- `training_pool_manager(training_queue, registry, hw)` — async, ProcessPoolExecutor
+- `_train_in_subprocess(session_id, task_type, adapter_dir, db_url)` — top-level picklable function
+- `_on_training_complete(future, registry)` — callback for fire-and-forget
+- Single-GPU path: `httpx.AsyncClient` calls to vLLM `/sleep` + `/wake_up`
+- Multi-GPU path: no sleep/wake, dedicated GPUs
+- `_drain_queue(queue, max_batch, timeout)` — helper to batch training requests
+- `TrainingRequest` dataclass: `session_id`, `task_type`
+- All GPU imports deferred (INFRA-05)
+
+### Commit 27-03: Tests for training pool manager
+**Created:** `tests/test_swarm_workers.py`
+- Mock `ProcessPoolExecutor` and `httpx.AsyncClient`
+- `test_drain_queue_collects_batch()` — verify batching
+- `test_train_in_subprocess_calls_train_and_register()` — mock model_training.trainer
+- `test_single_gpu_sleep_wake_cycle()` — verify sleep→train→wake sequence
+- `test_multi_gpu_skips_sleep()` — verify no sleep call when `single_gpu_mode=False`
+- `test_training_complete_callback_updates_registry()` — verify registry.update_fitness called
+
+### Commit 27-04: Implement memory_watchdog
+**Added to:** `scripts/swarm_workers.py`
+- `memory_watchdog(budget, agents)` — async, checks `psutil.virtual_memory()` every 30s
+- Cancels youngest agent if memory > 85%
+
+### Commit 27-05: Tests for memory watchdog
+**Added to:** `tests/test_swarm_workers.py`
+- Mock `psutil.virtual_memory` to return high pressure
+- Verify agent task cancelled when threshold exceeded
+- Verify no action when memory is fine
+
+---
+
+## Phase 28: Evolution Worker + Adapter Merging
+**Branch:** `feat/28-evolution-merging`
+
+### Commit 28-01: Implement TIES/DARE merge
+**Created:** `libs/model-training/src/model_training/merging.py`
+- `ties_merge(state_dicts, density=0.5)` — trim, elect sign, disjoint merge
+- `dare_merge(state_dicts, drop_rate=0.1)` — drop and rescale
+- `load_adapter_state_dict(adapter_path)` — load safetensors file
+- All torch/safetensors imports deferred inside function bodies (INFRA-05)
+- **Modified:** `libs/model-training/src/model_training/__init__.py` — export merge functions
+
+### Commit 28-02: Tests for merge functions
+**Created:** `libs/model-training/tests/test_merging.py`
+- Uses `sys.modules` injection for torch (same pattern as test_hypernetwork.py)
+- `test_ties_merge_preserves_shapes()` — verify output keys match, shapes preserved
+- `test_dare_merge_preserves_shapes()` — same
+- `test_dare_merge_zero_drop_equals_mean()` — drop_rate=0.0, output ≈ mean of inputs
+- `test_load_adapter_state_dict_calls_safetensors()` — mock safetensors.torch.load_file
+
+### Commit 28-03: Implement OOD benchmark
+**Created:** `libs/evaluation/src/evaluation/ood_benchmark.py`
+- `run_ood_benchmark(adapter_id, completions, benchmark_name)` → dict with `ood_pass_rate`, `task_results`
+- `compute_generalization_delta(in_dist_rate, ood_rate)` → float
+- **Created:** `libs/evaluation/src/evaluation/data/ood_tasks.json` — 10 OOD Python tasks
+- **Modified:** `libs/evaluation/src/evaluation/__init__.py` — export new functions
+
+### Commit 28-04: Tests for OOD benchmark
+**Created:** `libs/evaluation/tests/test_ood_benchmark.py`
+- `test_generalization_delta_positive()` — 0.9 - 0.7 = 0.2
+- `test_generalization_delta_negative()` — 0.7 - 0.9 = -0.2
+- `test_run_ood_benchmark_with_completions()` — provide simple completions, verify result structure
+
+### Commit 28-05: Implement evolution_worker + evolution_sweep
+**Created:** `scripts/swarm_evolution.py`
+- `evolution_worker(registry, interval_seconds)` — async, event-driven eval + periodic sweep
+- `evolution_sweep(registry)` — per task_type: TIES-merge top-3 when ≥5 exist, prune below 0.3
+- `evaluate_adapter(adapter, registry)` — calls evaluation functions, updates registry
+- `ties_merge_adapters(adapter_ids, task_type)` — loads state_dicts, merges, saves, registers
+- All GPU imports deferred
+
+### Commit 28-06: Tests for evolution worker
+**Created:** `tests/test_swarm_evolution.py`
+- Mock registry and merge functions
+- `test_evolution_sweep_merges_when_5_adapters()` — verify merge called
+- `test_evolution_sweep_prunes_low_fitness()` — verify archive called for fitness < 0.3
+- `test_evolution_sweep_skips_when_few_adapters()` — < 5 adapters, no merge
+- `test_evaluate_adapter_updates_registry()` — verify update_fitness called
+
+---
+
+## Phase 29: Swarm Orchestrator + Integration
+**Branch:** `feat/29-swarm-integration`
+
+### Commit 29-01: Create swarm config YAML
+**Created:** `scripts/swarm_config.yaml`
+- Default config: `population_size: 8`, `max_generations: 10`, `task_types`, `evolution_interval: 7200`, etc.
+
+### Commit 29-02: Implement swarm.py orchestrator
+**Created:** `scripts/swarm.py`
+- `run_swarm(config: SwarmConfig)` — Tier-1 orchestrator with `asyncio.TaskGroup`
+- `agent_supervisor(agent_id, task_queue, registry, checkpoint_db, graph, vllm_client, training_queue)` — Tier-2 supervisor with backoff
+- `load_task_pool(task_source)` — load tasks from file/config
+- CLI: `uv run scripts/swarm.py [--config scripts/swarm_config.yaml] [--agents N] [--hours H] [--dry-run]`
+- Wires together: HardwareProbe, AdapterRegistry, SwarmCheckpointDB, training_pool_manager, evolution_worker, agent supervisors
+
+### Commit 29-03: Integration test — dry run
+**Created:** `tests/test_swarm_integration.py`
+- `test_swarm_single_generation_dry_run()` — fully mocked inference/training/sandbox
+  - Real: AdapterRegistry (in-memory SQLite), SwarmCheckpointDB, SwarmConfig
+  - Mock: inference provider, sandbox backend, train_qlora
+  - Assert: checkpoint records created, no crashes
+- `test_agent_supervisor_retries_on_failure()` — inject failure, verify backoff + retry
+- `test_agent_supervisor_retires_after_max_failures()` — 5 consecutive failures → graceful exit
+- `test_swarm_checkpoint_recovery()` — mark some tasks completed, restart, verify skipped
+
+### Commit 29-04: Implement compare_adapters + test_generalization
+**Modified:** `libs/evaluation/src/evaluation/metrics.py`
+- Replace `NotImplementedError` in `compare_adapters()` and `test_generalization()`
+- These complete the evaluation module for the swarm
+
+### Commit 29-05: Tests for compare_adapters + test_generalization
+**Modified:** `libs/evaluation/tests/test_metrics.py`
+- Test the newly implemented functions
+
+### Commit 29-06: Add swarm architecture docs page
+**Created:** `docs/swarm-architecture.md` — architecture overview with diagrams
+**Modified:** `mkdocs.yml` — add nav entry
+
+---
+
+## Key Files Summary
+
+| File | Phase | Action |
+|------|-------|--------|
+| `pyproject.toml` | 25 | Add psutil dep, mypy overrides |
+| `libs/shared/src/shared/hardware.py` | 25 | NEW — HardwareProbe, HardwareBudget |
+| `libs/shared/src/shared/sandbox.py` | 25 | NEW — SubprocessBackend, NsjailBackend |
+| `services/rune-agent/src/rune_agent/nodes.py` | 25 | Refactor execute_node for sandbox |
+| `libs/adapter-registry/src/adapter_registry/models.py` | 26 | Add 4 fields |
+| `libs/adapter-registry/src/adapter_registry/registry.py` | 26 | Add 7 methods |
+| `libs/shared/src/shared/rune_models.py` | 26 | Add SwarmConfig, SwarmCheckpoint |
+| `libs/shared/src/shared/checkpoint_db.py` | 26 | NEW — SwarmCheckpointDB |
+| `libs/evaluation/src/evaluation/metrics.py` | 26, 29 | Implement stubs |
+| `services/lora-server/config.py` | 27 | Add max_cpu_loras |
+| `scripts/swarm_workers.py` | 27 | NEW — training pool, memory watchdog |
+| `libs/model-training/src/model_training/merging.py` | 28 | NEW — TIES/DARE merge |
+| `libs/evaluation/src/evaluation/ood_benchmark.py` | 28 | NEW — OOD benchmark |
+| `scripts/swarm_evolution.py` | 28 | NEW — evolution worker/sweep |
+| `scripts/swarm.py` | 29 | NEW — fat orchestrator entry point |
+| `scripts/swarm_config.yaml` | 29 | NEW — default config |
+
+## Verification
+
+After each phase branch, before merging:
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy services/*/src libs/*/src
+uv run pytest --tb=short
+uv run mkdocs build -f mkdocs.yml
+```
+
+Each commit within a phase must independently pass these checks.
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/noahdolevelixir/.claude-elixirtrials/projects/-Users-noahdolevelixir-Code-rune/fcfbe67c-b381-4da4-818f-456b729f8fd5.jsonl
+
+---
+
+<task-notification>
+<task-id>b8w2240w9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/b8w2240w9.output</output-file>
+<status>completed</status>
+<summary>Background command "Commit 25-04" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/b8w2240w9.output
+
+---
+
+record what you've done and check if there are any gaps. Then clear the context.
