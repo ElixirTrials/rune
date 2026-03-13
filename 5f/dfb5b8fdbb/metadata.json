@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "5fdfb5b8fdbb",
+  "strategy": "manual-commit",
+  "branch": "feat/e2e_with_hypernetwork",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "pyproject.toml",
+    "scripts/e2e_test.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5f/dfb5b8fdbb/0/metadata.json",
+      "transcript": "/5f/dfb5b8fdbb/0/full.jsonl",
+      "context": "/5f/dfb5b8fdbb/0/context.md",
+      "content_hash": "/5f/dfb5b8fdbb/0/content_hash.txt",
+      "prompt": "/5f/dfb5b8fdbb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11,
+    "cache_creation_tokens": 4855,
+    "cache_read_tokens": 538299,
+    "output_tokens": 965,
+    "api_call_count": 7
+  }
+}

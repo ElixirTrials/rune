@@ -1,0 +1,248 @@
+can you help me connect to my gcloud vm? noahdolevelixir@Host-001 rune % gcloud compute ssh --zone "europe-west1-c" "instance-20260313-103641" --tunnel-through-iap --project "gen-lang-client-0249847738"
+WARNING:
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+ERROR: [0] Error during local connection to [stdin]: Error while connecting [4003: 'failed to connect to backend']. (Failed to connect to port 22)
+Traceback (most recent call last):
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/command_lib/compute/iap_tunnel.py", line 781, in RunReceiveLocalData
+    websocket_conn = self._InitiateConnection(
+        conn,
+    ...<4 lines>...
+        conn_id=conn_id,
+    )
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/command_lib/compute/iap_tunnel.py", line 747, in _InitiateConnection
+    new_websocket.InitiateConnection()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/api_lib/compute/iap_tunnel_websocket.py", line 149, in InitiateConnection
+    self._WaitForOpenOrRaiseError()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/api_lib/compute/iap_tunnel_websocket.py", line 441, in _WaitForOpenOrRaiseError
+    raise ConnectionCreationError(error_msg)
+googlecloudsdk.api_lib.compute.iap_tunnel_websocket.ConnectionCreationError: Error while connecting [4003: 'failed to connect to backend']. (Failed to connect to port 22)
+Connection closed by UNKNOWN port 65535
+
+Recommendation: To check for possible causes of SSH connectivity issues and get
+recommendations, rerun the ssh command with the --troubleshoot option.
+
+gcloud compute ssh instance-20260313-103641 --project=gen-lang-client-0249847738 --zone=europe-west1-c --troubleshoot
+
+Or, to investigate an IAP tunneling issue:
+
+gcloud compute ssh instance-20260313-103641 --project=gen-lang-client-0249847738 --zone=europe-west1-c --troubleshoot --tunnel-through-iap
+
+ERROR: (gcloud.compute.ssh) [/usr/bin/ssh] exited with return code [255].
+
+---
+
+Still getting: noahdolevelixir@Host-001 rune % gcloud compute ssh --zone "europe-west1-c" "instance-20260313-103641" --tunnel-through-iap --project "gen-lang-client-0249847738"
+WARNING:
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+ERROR: [0] Error during local connection to [stdin]: Error while connecting [4003: 'failed to connect to backend']. (Failed to connect to port 22)
+Traceback (most recent call last):
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/command_lib/compute/iap_tunnel.py", line 781, in RunReceiveLocalData
+    websocket_conn = self._InitiateConnection(
+        conn,
+    ...<4 lines>...
+        conn_id=conn_id,
+    )
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/command_lib/compute/iap_tunnel.py", line 747, in _InitiateConnection
+    new_websocket.InitiateConnection()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/api_lib/compute/iap_tunnel_websocket.py", line 149, in InitiateConnection
+    self._WaitForOpenOrRaiseError()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/share/google-cloud-sdk/lib/googlecloudsdk/api_lib/compute/iap_tunnel_websocket.py", line 441, in _WaitForOpenOrRaiseError
+    raise ConnectionCreationError(error_msg)
+googlecloudsdk.api_lib.compute.iap_tunnel_websocket.ConnectionCreationError: Error while connecting [4003: 'failed to connect to backend']. (Failed to connect to port 22)
+Connection closed by UNKNOWN port 65535
+
+Recommendation: To check for possible causes of SSH connectivity issues and get
+recommendations, rerun the ssh command with the --troubleshoot option.
+
+gcloud compute ssh instance-20260313-103641 --project=gen-lang-client-0249847738 --zone=europe-west1-c --troubleshoot
+
+Or, to investigate an IAP tunneling issue:
+
+gcloud compute ssh instance-20260313-103641 --project=gen-lang-client-0249847738 --zone=europe-west1-c --troubleshoot --tunnel-through-iap
+
+ERROR: (gcloud.compute.ssh) [/usr/bin/ssh] exited with return code [255].
+
+---
+
+Can you solve the performance warning also while we wait
+
+---
+
+I can connect but while DNS works curl from the VM fails. So we don't manage to install drivers. Can you setup private google access with gcloud
+
+---
+
+Can we add eggress to github?
+
+---
+
+In our previous session, we ran an end to end test of the code -what is the command you ran to do that?
+
+---
+
+will this download all the checkpoints if they are missing?
+
+---
+
+Before when we did this, you downloaded the checkpoint of the hypernetwork from hugging face (the doc-to-lora) - can you go over your records and add auto downloading to your script. Also, I am currently getting this error when I try to run the scripts on my vm: Traceback (most recent call last):
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_test.py", line 322, in <module>
+    run_e2e()
+    ~~~~~~~^^
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_test.py", line 308, in run_e2e
+    adapter_path = test_hypernetwork_generates_adapter(checkpoint_path, adapter_dir)
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_test.py", line 135, in test_hypernetwork_generates_adapter
+    adapter_path = generate_adapter(
+        hypernetwork=h,
+    ...<5 lines>...
+        device="cpu",
+    )
+  File "/home/noah_elixirtrials_com/rune/libs/model-training/src/model_training/hypernetwork.py", line 341, in generate_adapter
+    save_hypernetwork_adapter(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        weights,
+        ^^^^^^^^
+    ...<3 lines>...
+        target_modules=target_mods,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/noah_elixirtrials_com/rune/libs/model-training/src/model_training/hypernetwork.py", line 375, in save_hypernetwork_adapter
+    from safetensors.torch import save_file  # noqa: PLC0415
+
+---
+
+no, that's stupid. Just add those to the requirements. No fallbacks that hide errors.
+
+---
+
+No, find the right repo id and update the script
+
+---
+
+I get this failure on my linux VM: Traceback (most recent call last):
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_test.py", line 321, in <module>
+    run_e2e()
+    ~~~~~~~^^
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_test.py", line 313, in run_e2e
+    asyncio.run(test_full_iteration_loop(checkpoint_path))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/noah_elixirtrials_com/.local/share/uv/python/cpython-3.14.3-linux-x86_64-gnu/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/home/noah_elixirtrials_com/.local/share/uv/python/cpython-3.14.3-linux-x86_64-gnu/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/noah_elixirtrials_com/.local/share/uv/python/cpython-3.14.3-linux-x86_64-gnu/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_test.py", line 245, in test_full_iteration_loop
+    result = await run_project(
+             ^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "/home/noah_elixirtrials_com/rune/scripts/rune_runner.py", line 242, in run_project
+    state = await run_iteration(
+            ^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "/home/noah_elixirtrials_com/rune/scripts/rune_runner.py", line 124, in run_iteration
+    return await graph.ainvoke(initial_state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/langgraph/pregel/main.py", line 3460, in ainvoke
+    async for chunk in self.astream(
+    ...<29 lines>...
+            chunks.append(chunk)
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/langgraph/pregel/main.py", line 3109, in astream
+    async for _ in runner.atick(
+    ...<16 lines>...
+            yield o
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/langgraph/pregel/_runner.py", line 304, in atick
+    await arun_with_retry(
+    ...<15 lines>...
+    )
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/langgraph/pregel/_retry.py", line 163, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/langgraph/_internal/_runnable.py", line 705, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        step.ainvoke(input, config, **kwargs), context=context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/langgraph/_internal/_runnable.py", line 473, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/noah_elixirtrials_com/rune/services/rune-agent/src/rune_agent/nodes.py", line 103, in generate_node
+    result: GenerationResult = await provider.generate(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/noah_elixirtrials_com/rune/libs/inference/src/inference/transformers_provider.py", line 106, in generate
+    self._load_model_if_needed()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/noah_elixirtrials_com/rune/libs/inference/src/inference/transformers_provider.py", line 77, in _load_model_if_needed
+    self._model.to(self._device)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/transformers/modeling_utils.py", line 3587, in to
+    return super().to(*args, **kwargs)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/nn/modules/module.py", line 1381, in to
+    return self._apply(convert)
+           ~~~~~~~~~~~^^^^^^^^^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/nn/modules/module.py", line 933, in _apply
+    module._apply(fn)
+    ~~~~~~~~~~~~~^^^^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/nn/modules/module.py", line 933, in _apply
+    module._apply(fn)
+    ~~~~~~~~~~~~~^^^^
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/nn/modules/module.py", line 964, in _apply
+    param_applied = fn(param)
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/nn/modules/module.py", line 1367, in convert
+    return t.to(
+           ~~~~^
+        device,
+        ^^^^^^^
+        dtype if t.is_floating_point() or t.is_complex() else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        non_blocking,
+        ^^^^^^^^^^^^^
+    )
+    ^
+RuntimeError: PyTorch is not linked with support for mps devices
+
+---
+
+I also get: Traceback (most recent call last):
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_sakana.py", line 394, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_sakana.py", line 370, in main
+    sd = load_checkpoint()
+  File "/home/noah_elixirtrials_com/rune/scripts/e2e_sakana.py", line 67, in load_checkpoint
+    sd = torch.load(str(CHECKPOINT_PATH), map_location="cpu", weights_only=False)
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/serialization.py", line 1549, in load
+    return _load(
+        opened_zipfile,
+    ...<3 lines>...
+        **pickle_load_args,
+    )
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/serialization.py", line 2143, in _load
+    result = unpickler.load()
+  File "/home/noah_elixirtrials_com/rune/.venv/lib/python3.14/site-packages/torch/serialization.py", line 2132, in find_class
+    return super().find_class(mod_name, name)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'ctx_to_lora'

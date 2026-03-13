@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "5fdfb5b8fdbb",
+  "session_id": "e0656677-6e3d-4139-9a97-dc3d6e524212",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-13T13:34:45.408703Z",
+  "branch": "feat/e2e_with_hypernetwork",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "pyproject.toml",
+    "scripts/e2e_test.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "e96fa53ba242",
+  "checkpoint_transcript_start": 290,
+  "transcript_lines_at_start": 290,
+  "token_usage": {
+    "input_tokens": 11,
+    "cache_creation_tokens": 4855,
+    "cache_read_tokens": 538299,
+    "output_tokens": 965,
+    "api_call_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T13:34:45.271801Z",
+    "agent_lines": 5,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 5,
+    "agent_percentage": 100
+  }
+}
