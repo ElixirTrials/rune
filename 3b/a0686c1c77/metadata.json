@@ -3,7 +3,7 @@
   "checkpoint_id": "3ba0686c1c77",
   "strategy": "manual-commit",
   "branch": "feat/e2e_with_hypernetwork",
-  "checkpoints_count": 3,
+  "checkpoints_count": 4,
   "files_touched": [
     "pyproject.toml"
   ],
@@ -14,6 +14,13 @@
       "context": "/3b/a0686c1c77/0/context.md",
       "content_hash": "/3b/a0686c1c77/0/content_hash.txt",
       "prompt": "/3b/a0686c1c77/0/prompt.txt"
+    },
+    {
+      "metadata": "/3b/a0686c1c77/1/metadata.json",
+      "transcript": "/3b/a0686c1c77/1/full.jsonl",
+      "context": "/3b/a0686c1c77/1/context.md",
+      "content_hash": "/3b/a0686c1c77/1/content_hash.txt",
+      "prompt": "/3b/a0686c1c77/1/prompt.txt"
     }
   ],
   "token_usage": {

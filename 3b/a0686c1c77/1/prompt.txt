@@ -1,0 +1,5 @@
+what is the shortcut to move between tmux split windows?
+
+---
+
+how do you install a rust compiler on linux?
