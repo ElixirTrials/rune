@@ -1,0 +1,155 @@
+<objective>
+Analyze existing codebase using parallel gsd-codebase-mapper agents to produce structured codebase documents.
+
+Each mapper agent explores a focus area and **writes documents directly** to `.planning/codebase/`. The orchestrator only receives confirmations, keeping context usage minimal.
+
+Output: .planning/codebase/ folder with 7 structured documents about the codebase state.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/map-codebase.md
+</execution_context>
+
+<context>
+Focus area:  (optional - if provided, tells agents to focus on specific subsystem)
+
+**Load project state if exists:**
+Check for .planning/STATE.md - loads context if project already initialized
+
+**This command can run:**
+- Before /gsd:new-project (brownfield codebases) - creates codebase map first
+- After /gsd:new-project (greenfield codebases) - updates codebase map as code evolves
+- Anytime to refresh codebase understanding
+</context>
+
+<when_to_use>
+**Use map-codebase for:**
+- Brownfield projects before initialization (understand existing code first)
+- Refreshing codebase map after significant changes
+- Onboarding to an unfamiliar codebase
+- Before major refactoring (understand current state)
+- When STATE.md references outdated codebase info
+
+**Skip map-codebase for:**
+- Greenfield projects with no code yet (nothing to map)
+- Trivial codebases (<5 files)
+</when_to_use>
+
+<process>
+1. Check if .planning/codebase/ already exists (offer to refresh or skip)
+2. Create .planning/codebase/ directory structure
+3. Spawn 4 parallel gsd-codebase-mapper agents:
+   - Agent 1: tech focus → writes STACK.md, INTEGRATIONS.md
+   - Agent 2: arch focus → writes ARCHITECTURE.md, STRUCTURE.md
+   - Agent 3: quality focus → writes CONVENTIONS.md, TESTING.md
+   - Agent 4: concerns focus → writes CONCERNS.md
+4. Wait for agents to complete, collect confirmations (NOT document contents)
+5. Verify all 7 documents exist with line counts
+6. Commit codebase map
+7. Offer next steps (typically: /gsd:new-project or /gsd:plan-phase)
+</process>
+
+<success_criteria>
+- [ ] .planning/codebase/ directory created
+- [ ] All 7 codebase documents written by mapper agents
+- [ ] Documents follow template structure
+- [ ] Parallel agents completed without errors
+- [ ] User knows next steps
+</success_criteria>
+
+---
+
+2
+
+---
+
+all
+
+---
+
+<task-notification>
+<task-id>a57f9774ac7ed88f2</task-id>
+<tool-use-id>toolu_01RGDzEdykTWNoRsEVjyaDeK</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a57f9774ac7ed88f2.output</output-file>
+<status>completed</status>
+<summary>Agent "Map codebase concerns" completed</summary>
+<result>## Mapping Complete
+
+**Focus:** concerns
+**Documents written:**
+- `.planning/codebase/CONCERNS.md` (218 lines)
+
+Ready for orchestrator summary.</result>
+<usage><total_tokens>99091</total_tokens><tool_uses>37</tool_uses><duration_ms>183460</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a57f9774ac7ed88f2.output
+
+---
+
+<task-notification>
+<task-id>a3f95e57fa494e00f</task-id>
+<tool-use-id>toolu_01SksedmNmPyHdSdkzV7pcEZ</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a3f95e57fa494e00f.output</output-file>
+<status>completed</status>
+<summary>Agent "Map codebase tech stack" completed</summary>
+<result>## Mapping Complete
+
+**Focus:** tech
+**Documents written:**
+- `.planning/codebase/STACK.md` (186 lines) - Updated from outdated 2026-03-02 version; removed stale references to TypeScript/React frontend, Google Vertex AI, and old workspace members. Added current GPU import patterns, workspace dependency graph, lora-server/vLLM details, and SakanaAI integration.
+- `.planning/codebase/INTEGRATIONS.md` (178 lines) - Updated from outdated version; removed Google Cloud/Vertex AI, frontend API communication, and TypeScript events references. Added four inference provider backends, Docker compose services, Pub/Sub emulator, MLflow tracking, and Sakana doc-to-lora checkpoint details.
+
+Ready for orchestrator summary.</result>
+<usage><total_tokens>54662</total_tokens><tool_uses>45</tool_uses><duration_ms>257924</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a3f95e57fa494e00f.output
+
+---
+
+<task-notification>
+<task-id>a0bd30ce1ef90397b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a0bd30ce1ef90397b.output</output-file>
+<status>completed</status>
+<summary>Agent "Map codebase architecture" completed</summary>
+<result>## Mapping Complete
+
+**Focus:** arch
+**Documents written:**
+- `.planning/codebase/ARCHITECTURE.md` (188 lines)
+- `.planning/codebase/STRUCTURE.md` (282 lines)
+
+Ready for orchestrator summary.</result>
+<usage><total_tokens>98595</total_tokens><tool_uses>43</tool_uses><duration_ms>331780</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a0bd30ce1ef90397b.output
+
+---
+
+<task-notification>
+<task-id>a84377a8646a32832</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a84377a8646a32832.output</output-file>
+<status>completed</status>
+<summary>Agent "Map codebase conventions" completed</summary>
+<result>## Mapping Complete
+
+**Focus:** quality
+**Documents written:**
+- `.planning/codebase/CONVENTIONS.md` (221 lines)
+- `.planning/codebase/TESTING.md` (320 lines)
+
+Both documents were fully rewritten to replace outdated 2026-03-02 versions that referenced non-existent TypeScript/Biome tooling and old service names. The new versions reflect the current Python-only monorepo with accurate patterns for GPU import deferral (INFRA-05), factory fixtures, sys.modules injection for CPU-only CI, and the actual project structure.
+
+Ready for orchestrator summary.</result>
+<usage><total_tokens>94443</total_tokens><tool_uses>44</tool_uses><duration_ms>358749</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a84377a8646a32832.output
+
+---
+
+Use the gh cli to understand any comments on our PR and any failing ci's and fix them.
+
+---
+
+yes

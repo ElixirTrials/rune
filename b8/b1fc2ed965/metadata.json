@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "b8b1fc2ed965",
+  "strategy": "manual-commit",
+  "branch": "feat/e2e_with_hypernetwork",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "libs/model-training/src/model_training/sakana_d2l.py",
+    "scripts/e2e_test.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b8/b1fc2ed965/0/metadata.json",
+      "transcript": "/b8/b1fc2ed965/0/full.jsonl",
+      "context": "/b8/b1fc2ed965/0/context.md",
+      "content_hash": "/b8/b1fc2ed965/0/content_hash.txt",
+      "prompt": "/b8/b1fc2ed965/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 44,
+    "cache_creation_tokens": 34066,
+    "cache_read_tokens": 827553,
+    "output_tokens": 4837,
+    "api_call_count": 27
+  }
+}
