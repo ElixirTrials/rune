@@ -269,9 +269,8 @@ def extract_activations(
 ) -> tuple[Any, Any]:
     """Extract per-layer hidden state activations from the base model.
 
-    Runs the input text through the base model and captures hidden states
-    at the specified layer indices. These activations are what Sakana's
-    HyperLoRA perceiver expects as input.
+    Backward-compatible wrapper around extract_activations_with_model().
+    Loads model and tokenizer, delegates extraction, then cleans up.
 
     Args:
         text: Input text to process.
@@ -288,42 +287,29 @@ def extract_activations(
     import torch  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
+    from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
+
     logger.info("Loading base model %s for activation extraction...", base_model_name)
     tokenizer = AutoTokenizer.from_pretrained(base_model_name)
     model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        output_hidden_states=True,
         torch_dtype=torch.float32,
     )
     model.to(device)
     model.eval()
 
-    inputs = tokenizer(
-        text, return_tensors="pt", truncation=True, max_length=max_length
-    )
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    with torch.no_grad():
-        outputs = model(**inputs)
-
-    # outputs.hidden_states is a tuple of (num_layers+1,) tensors
-    # each of shape (batch, seq_len, hidden_dim)
-    hidden_states = outputs.hidden_states
-
-    # Stack selected layers: (batch, num_layers, seq_len, hidden_dim)
-    selected = torch.stack([hidden_states[i] for i in layer_indices], dim=1)
-    attention_mask = inputs["attention_mask"]
-
-    logger.info(
-        "Extracted activations: %s from %d layers", selected.shape, len(layer_indices)
+    result = extract_activations_with_model(
+        text=text,
+        model=model,
+        tokenizer=tokenizer,
+        layer_indices=layer_indices,
+        max_length=max_length,
     )
 
-    # Free base model memory
     del model
     if device != "cpu":
-        torch.cuda.empty_cache() if "cuda" in device else None
-
-    return selected, attention_mask
+        torch.cuda.empty_cache()
+    return result
 
 
 def generate_adapter_from_sakana(

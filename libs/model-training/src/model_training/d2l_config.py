@@ -62,11 +62,14 @@ def build_qwen3_hypernet_config(
     Discovers full_attention layer indices dynamically from Qwen3NextConfig.layer_types.
     Result has exactly 12 layer indices matching the Qwen3-Coder-Next architecture.
 
-    Note: aggregator_config is set to None in Phase 25. Phase 27 (weight transfer)
-    must call get_aggregator_config() with a loaded model and populate this field
-    before using the config in training. Similarly, feature_sizes uses hidden_size
-    as a placeholder; Phase 26 confirms actual q_proj/v_proj dimensions via
-    model.named_modules() probe.
+    Phase 26 probe cache integration: if a probe cache exists for
+    QWEN3_NEXT_CANONICAL_NAME, uses real per-projection in/out dimensions for
+    feature_sizes. Falls back to hidden_size placeholder when no cache is found
+    (e.g., in CI where the model has not been probed).
+
+    Note: aggregator_config is set to None. Phase 27 (weight transfer) must call
+    get_aggregator_config() with a loaded model and populate this field before
+    using the config in training.
 
     Args:
         lora_r: LoRA rank for the adapter. Defaults to 8.
@@ -98,6 +101,28 @@ def build_qwen3_hypernet_config(
         task_type="CAUSAL_LM",
     )
 
+    from model_training.d2l_probe import (  # noqa: PLC0415
+        QWEN3_NEXT_CANONICAL_NAME,
+        load_probe_cache,
+    )
+
+    cache = load_probe_cache(QWEN3_NEXT_CANONICAL_NAME)
+    if cache is not None:
+        in_sizes = {mod: cache["feature_sizes"][mod]["in"] for mod in target_modules}
+        out_sizes = {mod: cache["feature_sizes"][mod]["out"] for mod in target_modules}
+        feature_sizes: tuple[dict[str, int], dict[str, int]] = (in_sizes, out_sizes)
+        logger.info("Using probe cache feature_sizes for %s", QWEN3_NEXT_CANONICAL_NAME)
+    else:
+        hidden: int = cfg.hidden_size or 2048
+        _placeholder: dict[str, int] = dict.fromkeys(target_modules, hidden)
+        feature_sizes = (_placeholder, dict.fromkeys(target_modules, hidden))
+        logger.warning(
+            "No probe cache for '%s' — using hidden_size=%d as placeholder. "
+            "Run probe_model() and save_probe_cache() to set real dimensions.",
+            QWEN3_NEXT_CANONICAL_NAME,
+            cfg.hidden_size,
+        )
+
     return HypernetConfig(
         latent_size=512,
         use_light_weight_lora=False,
@@ -113,11 +138,7 @@ def build_qwen3_hypernet_config(
         extra_modules=None,
         base_hidden_size=cfg.hidden_size,
         layer_indices=layer_indices,
-        feature_sizes=(
-            # placeholder — Phase 26 sets real per-module in/out dimensions
-            dict.fromkeys(target_modules, cfg.hidden_size),
-            dict.fromkeys(target_modules, cfg.hidden_size),
-        ),
+        feature_sizes=feature_sizes,
         # placeholder — Phase 27 sets real value via get_aggregator_config()
         aggregator_config=None,
     )

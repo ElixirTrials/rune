@@ -12,8 +12,16 @@ __all__ = ["format_for_sft", "load_trajectory", "record_trajectory"]
 #   from model_training.merging import ties_merge, dare_merge  # deferred GPU import
 #
 # Distillation config/data modules (transformers, peft, ctx_to_lora deferred):
-#   from model_training.d2l_config import get_d2l_qwen3_config, build_qwen3_hypernet_config
+#   from model_training.d2l_config import (
+#       get_d2l_qwen3_config, build_qwen3_hypernet_config,
+#   )
 #   from model_training.d2l_data import (
 #       format_for_distillation, generate_needle_dataset,
 #       save_jsonl, load_jsonl, split_by_task_id,
+#   )
+#
+# Architecture probe and activation extraction (torch/transformers deferred):
+#   from model_training.d2l_probe import (
+#       probe_model, extract_activations_with_model,
+#       load_probe_cache, save_probe_cache,
 #   )
