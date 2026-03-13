@@ -75,7 +75,7 @@ def test_sakana_hypernetwork(tmpdir: str) -> str:
 
     print(f"  Device: {DEVICE}")
     print(f"  Base model: {MODEL_NAME}")
-    print(f"  Checkpoint: SakanaAI/doc-to-lora (gemma_demo, 80k steps)")
+    print("  Checkpoint: SakanaAI/doc-to-lora (gemma_demo, 80k steps)")
     print(f"  Trajectory text: {len(trajectory_text)} chars")
 
     adapter_path = generate_adapter_from_sakana(
@@ -157,7 +157,9 @@ def test_provider_loads_adapter(adapter_path: str) -> None:
         if result_base.text != result_adapted.text:
             print("\n  Base and adapted outputs DIFFER (adapter influenced generation)")
         else:
-            print("\n  Base and adapted outputs are identical (adapter may not have been applied)")
+            print(
+                "\n  Base and adapted outputs are identical (adapter may not have been applied)"
+            )
 
     asyncio.run(_test())
 
@@ -192,7 +194,9 @@ def test_adapter_registry(adapter_path: str) -> None:
 
         registry.update_fitness("e2e-sakana-001", pass_rate=0.85, fitness_score=0.78)
         updated = registry.retrieve_by_id("e2e-sakana-001")
-        print(f"  Updated fitness: pass_rate={updated.pass_rate}, fitness={updated.fitness_score}")
+        print(
+            f"  Updated fitness: pass_rate={updated.pass_rate}, fitness={updated.fitness_score}"
+        )
 
         by_task = registry.query_by_task_type("qa")
         print(f"  Query by task 'qa': {len(by_task)} results")
@@ -344,7 +348,9 @@ def run_e2e() -> None:
     print("=" * 60)
     print(f"\n  Base model: {MODEL_NAME}")
     print(f"  Device: {DEVICE}")
-    print(f"  HF token: {'set' if os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN') else 'NOT SET'}")
+    print(
+        f"  HF token: {'set' if os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN') else 'NOT SET'}"
+    )
     print(f"  Steps: {sorted(run_steps)}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
