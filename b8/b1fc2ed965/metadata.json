@@ -3,7 +3,7 @@
   "checkpoint_id": "b8b1fc2ed965",
   "strategy": "manual-commit",
   "branch": "feat/e2e_with_hypernetwork",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "libs/model-training/src/model_training/sakana_d2l.py",
     "scripts/e2e_test.py"
@@ -15,13 +15,20 @@
       "context": "/b8/b1fc2ed965/0/context.md",
       "content_hash": "/b8/b1fc2ed965/0/content_hash.txt",
       "prompt": "/b8/b1fc2ed965/0/prompt.txt"
+    },
+    {
+      "metadata": "/b8/b1fc2ed965/1/metadata.json",
+      "transcript": "/b8/b1fc2ed965/1/full.jsonl",
+      "context": "/b8/b1fc2ed965/1/context.md",
+      "content_hash": "/b8/b1fc2ed965/1/content_hash.txt",
+      "prompt": "/b8/b1fc2ed965/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 44,
-    "cache_creation_tokens": 34066,
-    "cache_read_tokens": 827553,
-    "output_tokens": 4837,
-    "api_call_count": 27
+    "input_tokens": 307,
+    "cache_creation_tokens": 677492,
+    "cache_read_tokens": 27938399,
+    "output_tokens": 112629,
+    "api_call_count": 269
   }
 }
