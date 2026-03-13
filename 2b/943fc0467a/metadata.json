@@ -3,9 +3,10 @@
   "checkpoint_id": "2b943fc0467a",
   "strategy": "manual-commit",
   "branch": "feat/e2e_with_hypernetwork",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "conftest.py",
+    "docs/rune-methodology.md",
     "libs/adapter-registry/src/adapter_registry/registry.py",
     "libs/evaluation/src/evaluation/metrics.py",
     "libs/evaluation/src/evaluation/ood_benchmark.py",
@@ -56,13 +57,20 @@
       "context": "/2b/943fc0467a/1/context.md",
       "content_hash": "/2b/943fc0467a/1/content_hash.txt",
       "prompt": "/2b/943fc0467a/1/prompt.txt"
+    },
+    {
+      "metadata": "/2b/943fc0467a/2/metadata.json",
+      "transcript": "/2b/943fc0467a/2/full.jsonl",
+      "context": "/2b/943fc0467a/2/context.md",
+      "content_hash": "/2b/943fc0467a/2/content_hash.txt",
+      "prompt": "/2b/943fc0467a/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 275,
-    "cache_creation_tokens": 487181,
-    "cache_read_tokens": 24546408,
-    "output_tokens": 101467,
-    "api_call_count": 239
+    "input_tokens": 478,
+    "cache_creation_tokens": 1275478,
+    "cache_read_tokens": 40425925,
+    "output_tokens": 188607,
+    "api_call_count": 410
   }
 }
