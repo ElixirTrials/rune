@@ -36,6 +36,8 @@ from bootstrap import setup_path
 
 setup_path()  # noqa: E402
 
+from shared.hardware import get_best_device  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 # Base model ID for adapter config
@@ -338,7 +340,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--device",
-        default="mps",
+        default="auto",
         help="Device for hypernetwork computation (cpu, mps, cuda)",
     )
     args = parser.parse_args()
@@ -361,7 +363,7 @@ def main() -> None:
             max_iterations=args.max_iterations,
             checkpoint_path=args.checkpoint,
             base_model_id=args.base_model_id,
-            device=args.device,
+            device=args.device if args.device != "auto" else get_best_device(),
         )
     )
 
