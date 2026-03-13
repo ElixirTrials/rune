@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import sys
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,8 @@ from swarm_evolution import evolution_worker
 from swarm_workers import TrainingRequest, memory_watchdog, training_pool_manager
 
 logger = logging.getLogger(__name__)
+
+_MAX_BACKOFF_SECONDS = 30
 
 
 def load_task_pool(task_source: str) -> list[dict[str, Any]]:
@@ -59,11 +61,18 @@ async def agent_supervisor(
     dry_run: bool = False,
     max_failures: int = 5,
     shutdown_event: asyncio.Event | None = None,
+    use_iteration_loop: bool = False,
+    hypernetwork_checkpoint: str | None = None,
+    max_iterations: int = 5,
 ) -> dict[str, Any]:
     """Tier-2 supervisor for a single swarm agent.
 
     Processes tasks from the pool, checking checkpoints for dedup,
     running code via sandbox, and queuing training requests.
+
+    When use_iteration_loop=True, uses rune_runner's hypernetwork iteration
+    loop instead of the standard sandbox approach. Each agent runs its own
+    adapter chain per task.
 
     Args:
         agent_id: Unique identifier for this agent.
@@ -73,6 +82,9 @@ async def agent_supervisor(
         dry_run: If True, skip actual execution.
         max_failures: Consecutive failures before retiring.
         shutdown_event: Event to signal graceful shutdown.
+        use_iteration_loop: Use hypernetwork iteration loop per task.
+        hypernetwork_checkpoint: Path to pretrained hypernetwork .pt file.
+        max_iterations: Max iterations for iteration loop mode.
 
     Returns:
         Summary dict with completed/failed/skipped counts.
@@ -87,7 +99,12 @@ async def agent_supervisor(
         if shutdown_event and shutdown_event.is_set():
             break
 
-        task_hash = task.get("task_id", str(uuid.uuid4()))
+        # Use task_id if provided; otherwise derive a stable hash from the task
+        # content so retries do not create a new identity for the same work.
+        task_hash = task.get(
+            "task_id",
+            hashlib.sha256(json.dumps(task, sort_keys=True).encode()).hexdigest()[:16],
+        )
 
         if checkpoint_db.is_completed(task_hash):
             skipped += 1
@@ -102,22 +119,46 @@ async def agent_supervisor(
             continue
 
         try:
-            code = task.get("prompt", "") + task.get("canonical_solution", "")
-            test = task.get("test", "")
-            script = code + "\n" + test
-            result = sandbox.run(script, timeout=30)
+            if use_iteration_loop:
+                # Hypernetwork iteration loop — each agent gets its own
+                # adapter chain for the task
+                from rune_runner import run_project as run_iteration_project
 
-            if result.exit_code == 0 and not result.timed_out:
-                checkpoint_db.mark_completed(task_hash, "success")
-                completed += 1
-                consecutive_failures = 0
-                await training_queue.put(
-                    TrainingRequest(session_id=task_hash, task_type="swarm")
+                project_prompt = task.get("task_description", task.get("prompt", ""))
+                iter_result = await run_iteration_project(
+                    project_prompt=project_prompt,
+                    max_iterations=max_iterations,
+                    checkpoint_path=hypernetwork_checkpoint,
                 )
+                if iter_result["final_tests_passed"]:
+                    checkpoint_db.mark_completed(task_hash, "success")
+                    completed += 1
+                    consecutive_failures = 0
+                    await training_queue.put(
+                        TrainingRequest(session_id=task_hash, task_type="iteration")
+                    )
+                else:
+                    checkpoint_db.mark_failed(task_hash, agent_id)
+                    failed += 1
+                    consecutive_failures += 1
             else:
-                checkpoint_db.mark_failed(task_hash, agent_id)
-                failed += 1
-                consecutive_failures += 1
+                # Standard sandbox execution
+                code = task.get("prompt", "") + task.get("canonical_solution", "")
+                test = task.get("test", "")
+                script = code + "\n" + test
+                result = sandbox.run(script, timeout=30)
+
+                if result.exit_code == 0 and not result.timed_out:
+                    checkpoint_db.mark_completed(task_hash, "success")
+                    completed += 1
+                    consecutive_failures = 0
+                    await training_queue.put(
+                        TrainingRequest(session_id=task_hash, task_type="swarm")
+                    )
+                else:
+                    checkpoint_db.mark_failed(task_hash, agent_id)
+                    failed += 1
+                    consecutive_failures += 1
         except Exception:
             logger.exception("Agent %s failed on task %s", agent_id, task_hash)
             checkpoint_db.mark_failed(task_hash, agent_id)
@@ -133,8 +174,7 @@ async def agent_supervisor(
             break
 
         # Backoff on failure
-        if consecutive_failures > 0:
-            await asyncio.sleep(min(2**consecutive_failures, 30))
+        await asyncio.sleep(min(2**consecutive_failures, _MAX_BACKOFF_SECONDS))
 
     return {
         "agent_id": agent_id,
@@ -183,6 +223,8 @@ async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> None:
     for i, task in enumerate(tasks):
         partitions[i % num_agents].append(task)
 
+    use_iteration = bool(config.hypernetwork_checkpoint)
+
     async with asyncio.TaskGroup() as tg:
         # Agent supervisors
         agent_tasks = []
@@ -195,6 +237,8 @@ async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> None:
                     training_queue=training_queue,
                     dry_run=dry_run,
                     shutdown_event=shutdown_event,
+                    use_iteration_loop=use_iteration,
+                    hypernetwork_checkpoint=config.hypernetwork_checkpoint,
                 )
             )
             agent_tasks.append(t)

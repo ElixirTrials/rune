@@ -11,7 +11,7 @@ Usage (no import needed in test files):
         assert obj.task_type == "code-gen"
 """
 
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 import pytest
 from adapter_registry.models import AdapterRecord
@@ -25,13 +25,24 @@ from shared.rune_models import (
 )
 from training_svc.models import TrainingJob
 
+T = TypeVar("T")
+
+
+def _make_factory(cls: type[T], defaults: dict[str, Any]) -> Callable[..., T]:
+    """Return a factory callable that creates *cls* instances with merged defaults."""
+
+    def _factory(**kwargs: Any) -> T:
+        return cls(**{**defaults, **kwargs})  # type: ignore[call-arg]
+
+    return _factory
+
 
 @pytest.fixture
 def make_adapter_record() -> Callable[..., AdapterRecord]:
     """Create AdapterRecord instances with defaults."""
-
-    def _factory(**kwargs: Any) -> AdapterRecord:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        AdapterRecord,
+        {
             "id": "test-adapter-001",
             "version": 1,
             "task_type": "bug-fix",
@@ -50,101 +61,89 @@ def make_adapter_record() -> Callable[..., AdapterRecord]:
             "generation": 0,
             "training_task_hash": None,
             "agent_id": None,
-        }
-        return AdapterRecord(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )
 
 
 @pytest.fixture
 def make_adapter_ref() -> Callable[..., AdapterRef]:
     """Create AdapterRef instances with defaults."""
-
-    def _factory(**kwargs: Any) -> AdapterRef:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        AdapterRef,
+        {
             "adapter_id": "test-adapter-001",
             "task_type": "bug-fix",
             "fitness_score": None,
-        }
-        return AdapterRef(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )
 
 
 @pytest.fixture
 def make_coding_session() -> Callable[..., CodingSession]:
     """Create CodingSession instances with defaults."""
-
-    def _factory(**kwargs: Any) -> CodingSession:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        CodingSession,
+        {
             "session_id": "test-session-001",
             "task_description": "Fix the off-by-one error in list slicing",
             "task_type": "bug-fix",
             "adapter_refs": [],
             "attempt_count": 0,
             "outcome": None,
-        }
-        return CodingSession(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )
 
 
 @pytest.fixture
 def make_training_job() -> Callable[..., TrainingJob]:
     """Create TrainingJob instances with defaults."""
-
-    def _factory(**kwargs: Any) -> TrainingJob:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        TrainingJob,
+        {
             "id": "test-job-001",
             "status": "pending",
             "task_type": "bug-fix",
             "created_at": "2026-01-01T00:00:00Z",
             "adapter_id": None,
-        }
-        return TrainingJob(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )
 
 
 @pytest.fixture
 def make_evolution_job() -> Callable[..., EvolutionJob]:
     """Create EvolutionJob instances with defaults."""
-
-    def _factory(**kwargs: Any) -> EvolutionJob:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        EvolutionJob,
+        {
             "id": "test-evol-job-001",
             "status": "pending",
             "task_type": "bug-fix",
             "created_at": "2026-01-01T00:00:00Z",
             "adapter_id": None,
-        }
-        return EvolutionJob(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )
 
 
 @pytest.fixture
 def make_evol_metrics() -> Callable[..., EvolMetrics]:
     """Create EvolMetrics instances with defaults."""
-
-    def _factory(**kwargs: Any) -> EvolMetrics:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        EvolMetrics,
+        {
             "adapter_id": "test-adapter-001",
             "pass_rate": 0.75,
             "fitness_score": 0.8,
             "generalization_delta": None,
-        }
-        return EvolMetrics(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )
 
 
 @pytest.fixture
 def make_swarm_config() -> Callable[..., SwarmConfig]:
     """Create SwarmConfig instances with defaults."""
-
-    def _factory(**kwargs: Any) -> SwarmConfig:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        SwarmConfig,
+        {
             "db_url": "sqlite:///:memory:",
             "task_source": "tasks.json",
             "population_size": 4,
@@ -152,18 +151,16 @@ def make_swarm_config() -> Callable[..., SwarmConfig]:
             "evolution_interval": 60,
             "sandbox_backend": "subprocess",
             "base_model_id": "Qwen/Qwen2.5-Coder-7B",
-        }
-        return SwarmConfig(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )
 
 
 @pytest.fixture
 def make_swarm_checkpoint() -> Callable[..., SwarmCheckpoint]:
     """Create SwarmCheckpoint instances with defaults."""
-
-    def _factory(**kwargs: Any) -> SwarmCheckpoint:
-        defaults: dict[str, Any] = {
+    return _make_factory(
+        SwarmCheckpoint,
+        {
             "run_id": "test-run-001",
             "task_hash": "hash-001",
             "agent_id": "agent-001",
@@ -171,7 +168,5 @@ def make_swarm_checkpoint() -> Callable[..., SwarmCheckpoint]:
             "outcome": None,
             "started_at": None,
             "completed_at": None,
-        }
-        return SwarmCheckpoint(**{**defaults, **kwargs})
-
-    return _factory
+        },
+    )

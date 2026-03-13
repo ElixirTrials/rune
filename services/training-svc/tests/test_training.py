@@ -200,7 +200,7 @@ def test_hypernetwork_job_registers_adapter(tmp_path, monkeypatch):
 
     try:
         with patch("training_svc.storage.engine", test_engine):
-            _run_hypernetwork_job(job_id, trajectory_id, task_type)
+            _run_hypernetwork_job(job_id, adapter_id, trajectory_id, task_type)
 
         # -- Verify job completed --
         job = JOB_STORE[job_id]

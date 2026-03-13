@@ -1,19 +1,43 @@
 """Training router — POST /train/lora, POST /train/hypernetwork, GET /jobs/{id}."""
 
+import logging
 import os
+import traceback
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 
-from training_svc.jobs import JOB_STORE, JobStatus
+from training_svc.jobs import _JOB_STORE_LOCK, JOB_STORE, JobStatus
 from training_svc.schemas import (
     HypernetworkTrainingRequest,
     LoraTrainingRequest,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["training"])
+
+_PATH_UNSAFE_CHARS = frozenset({"/", "\\", ".", "\x00"})
+
+
+def _validate_adapter_id(adapter_id: str) -> None:
+    r"""Raise HTTPException(422) if adapter_id contains path-traversal characters.
+
+    Args:
+        adapter_id: The adapter identifier to validate.
+
+    Raises:
+        HTTPException: 422 if adapter_id contains ``/``, ``\\``, ``.``, or null.
+    """
+    if any(c in adapter_id for c in _PATH_UNSAFE_CHARS) or ".." in adapter_id:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"adapter_id '{adapter_id}' contains unsafe characters. "
+                "Must not contain '/', '\\', '..', or null bytes."
+            ),
+        )
 
 
 def _run_training_job(
@@ -30,7 +54,8 @@ def _run_training_job(
     Import is deferred inside the function body per INFRA-05 (GPU deps
     should not be imported at service startup in non-GPU environments).
     """
-    JOB_STORE[job_id].status = "running"
+    with _JOB_STORE_LOCK:
+        JOB_STORE[job_id].status = "running"
     try:
         from model_training.trainer import train_and_register  # noqa: PLC0415
 
@@ -42,10 +67,14 @@ def _run_training_job(
             epochs=epochs,
             learning_rate=learning_rate,
         )
-        JOB_STORE[job_id].status = "completed"
+        with _JOB_STORE_LOCK:
+            JOB_STORE[job_id].status = "completed"
     except Exception as e:  # noqa: BLE001
-        JOB_STORE[job_id].status = "failed"
-        JOB_STORE[job_id].error = str(e)
+        tb = traceback.format_exc()
+        logger.exception("Training job %s failed", job_id)
+        with _JOB_STORE_LOCK:
+            JOB_STORE[job_id].status = "failed"
+            JOB_STORE[job_id].error = f"{e}\n\n{tb}"
 
 
 @router.post("/train/lora")
@@ -72,12 +101,14 @@ async def train_lora(
     """
     job_id = str(uuid.uuid4())
     adapter_id = request.adapter_id or str(uuid.uuid4())
+    _validate_adapter_id(adapter_id)
 
-    JOB_STORE[job_id] = JobStatus(
-        job_id=job_id,
-        status="queued",
-        adapter_id=adapter_id,
-    )
+    with _JOB_STORE_LOCK:
+        JOB_STORE[job_id] = JobStatus(
+            job_id=job_id,
+            status="queued",
+            adapter_id=adapter_id,
+        )
 
     background_tasks.add_task(
         _run_training_job,
@@ -93,7 +124,9 @@ async def train_lora(
     return JSONResponse(content={"job_id": job_id, "status": "queued"}, status_code=200)
 
 
-def _run_hypernetwork_job(job_id: str, trajectory_id: str, task_type: str) -> None:
+def _run_hypernetwork_job(
+    job_id: str, adapter_id: str, trajectory_id: str, task_type: str
+) -> None:
     """Background worker: runs DocToLoraHypernetwork forward pass and saves adapter.
 
     Import is deferred inside the function body per INFRA-05 (GPU deps
@@ -101,10 +134,12 @@ def _run_hypernetwork_job(job_id: str, trajectory_id: str, task_type: str) -> No
 
     Args:
         job_id: Unique job identifier used to update JOB_STORE.
+        adapter_id: Pre-assigned adapter identifier (assigned at request time).
         trajectory_id: Trajectory ID to load and tokenize.
         task_type: Task type string (stored for context, not used in forward pass).
     """
-    JOB_STORE[job_id].status = "running"
+    with _JOB_STORE_LOCK:
+        JOB_STORE[job_id].status = "running"
     try:
         import torch  # noqa: PLC0415
         from model_training.hypernetwork import (  # noqa: PLC0415
@@ -150,7 +185,6 @@ def _run_hypernetwork_job(job_id: str, trajectory_id: str, task_type: str) -> No
             weights = hypernetwork(token_ids)
 
         # Save adapter
-        adapter_id = JOB_STORE[job_id].adapter_id or str(uuid.uuid4())
         if adapter_base:
             adapter_dir = str(Path(adapter_base) / adapter_id)
         else:
@@ -191,11 +225,14 @@ def _run_hypernetwork_job(job_id: str, trajectory_id: str, task_type: str) -> No
         )
         registry.store(record)
 
-        JOB_STORE[job_id].status = "completed"
-        JOB_STORE[job_id].adapter_id = adapter_id
+        with _JOB_STORE_LOCK:
+            JOB_STORE[job_id].status = "completed"
     except Exception as e:  # noqa: BLE001
-        JOB_STORE[job_id].status = "failed"
-        JOB_STORE[job_id].error = str(e)
+        tb = traceback.format_exc()
+        logger.exception("Hypernetwork job %s failed", job_id)
+        with _JOB_STORE_LOCK:
+            JOB_STORE[job_id].status = "failed"
+            JOB_STORE[job_id].error = f"{e}\n\n{tb}"
 
 
 @router.post("/train/hypernetwork")
@@ -217,6 +254,9 @@ async def train_hypernetwork(
     Returns:
         JSONResponse with job_id and status="queued".
 
+    Raises:
+        HTTPException: 422 if trajectory_ids is empty.
+
     Example:
         >>> body = {"task_type": "gen", "trajectory_ids": ["t-1"]}
         >>> response = client.post("/train/hypernetwork", json=body)
@@ -225,16 +265,27 @@ async def train_hypernetwork(
         >>> response.json()["status"]
         'queued'
     """
-    job_id = str(uuid.uuid4())
+    if not request.trajectory_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="trajectory_ids must not be empty.",
+        )
 
-    JOB_STORE[job_id] = JobStatus(
-        job_id=job_id,
-        status="queued",
-    )
+    job_id = str(uuid.uuid4())
+    # Assign adapter_id at creation time so GET /jobs/{id} returns it immediately
+    adapter_id = str(uuid.uuid4())
+
+    with _JOB_STORE_LOCK:
+        JOB_STORE[job_id] = JobStatus(
+            job_id=job_id,
+            status="queued",
+            adapter_id=adapter_id,
+        )
 
     background_tasks.add_task(
         _run_hypernetwork_job,
         job_id,
+        adapter_id,
         request.trajectory_ids[0],
         request.task_type,
     )
@@ -260,7 +311,8 @@ async def get_job_status(job_id: str) -> JSONResponse:
         >>> response.status_code
         404
     """
-    job = JOB_STORE.get(job_id)
+    with _JOB_STORE_LOCK:
+        job = JOB_STORE.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 

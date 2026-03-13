@@ -13,6 +13,7 @@ from inference.provider import InferenceProvider
 _DEFAULT_INFERENCE_PROVIDER = "vllm"
 _DEFAULT_VLLM_BASE_URL = "http://localhost:8100/v1"
 _DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+_DEFAULT_LLAMACPP_MODEL_PATH = ""
 
 _provider_cache: dict[tuple[str, str], InferenceProvider] = {}
 
@@ -48,7 +49,7 @@ def get_provider(
         A cached InferenceProvider instance for the requested backend.
 
     Raises:
-        ValueError: If provider_type is not "vllm" or "ollama".
+        ValueError: If provider_type is not "vllm", "ollama", or "llamacpp".
 
     Example:
         >>> provider = get_provider("vllm")
@@ -69,9 +70,16 @@ def get_provider(
         resolved_url = base_url or os.environ.get(
             "OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL
         )
+    elif ptype == "llamacpp":
+        resolved_url = base_url or os.environ.get(
+            "LLAMACPP_MODEL_PATH", _DEFAULT_LLAMACPP_MODEL_PATH
+        )
+    elif ptype == "transformers":
+        resolved_url = base_url or os.environ.get("TRANSFORMERS_MODEL_NAME", "")
     else:
         raise ValueError(
-            f"Unknown provider type: '{ptype}'. Supported values: 'vllm', 'ollama'."
+            f"Unknown provider type: '{ptype}'. "
+            "Supported values: 'vllm', 'ollama', 'llamacpp', 'transformers'."
         )
 
     cache_key = (ptype, resolved_url)
@@ -80,6 +88,17 @@ def get_provider(
             from inference.vllm_provider import VLLMProvider
 
             _provider_cache[cache_key] = VLLMProvider(base_url=resolved_url)
+        elif ptype == "llamacpp":
+            from inference.llamacpp_provider import LlamaCppProvider
+
+            _provider_cache[cache_key] = LlamaCppProvider(model_path=resolved_url)
+        elif ptype == "transformers":
+            from inference.transformers_provider import TransformersProvider
+
+            device = os.environ.get("TRANSFORMERS_DEVICE", "cpu")
+            _provider_cache[cache_key] = TransformersProvider(
+                model_name=resolved_url, device=device
+            )
         else:
             from inference.ollama_provider import OllamaProvider
 

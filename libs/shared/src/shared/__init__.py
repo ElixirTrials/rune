@@ -2,13 +2,21 @@
 
 from pathlib import Path
 
-from shared.hardware import GPUInfo, HardwareBudget, HardwareProbe
+from shared.hardware import (
+    MIN_TRAINING_VRAM_MB,
+    VRAM_PER_LORA_MB,
+    GPUInfo,
+    HardwareBudget,
+    HardwareProbe,
+    get_best_device,
+)
 from shared.rune_models import (
     AdapterRef,
     CodingSession,
     EvolMetrics,
     SwarmCheckpoint,
     SwarmConfig,
+    TaskStatus,
 )
 from shared.sandbox import (
     NsjailBackend,
@@ -17,6 +25,7 @@ from shared.sandbox import (
     SubprocessBackend,
     get_sandbox_backend,
 )
+from shared.storage_utils import create_service_engine, set_wal_mode
 
 __all__ = [
     "AdapterRef",
@@ -25,14 +34,20 @@ __all__ = [
     "GPUInfo",
     "HardwareBudget",
     "HardwareProbe",
+    "MIN_TRAINING_VRAM_MB",
     "NsjailBackend",
     "SandboxBackend",
     "SandboxResult",
     "SubprocessBackend",
     "SwarmCheckpoint",
     "SwarmConfig",
+    "TaskStatus",
+    "VRAM_PER_LORA_MB",
+    "create_service_engine",
+    "get_best_device",
     "get_prompts_dir",
     "get_sandbox_backend",
+    "set_wal_mode",
 ]
 
 

@@ -29,6 +29,7 @@ dependencies = [
     "pymdown-extensions>=10.21",
     "openai>=1.0.0",
     "psutil>=5.9.0",
+    "llama-cpp-python>=0.3.0",
 ]
 
 [dependency-groups]
@@ -73,8 +74,8 @@ pydocstyle.convention = "google"
 "**/tests/**" = ["D"]
 "conftest.py" = ["D"]
 "**/conftest.py" = ["D"]
-"scripts/**" = ["D", "C901", "E501"]
-"**/scripts/**" = ["D", "C901", "E501"]
+"scripts/**" = ["D", "C901", "E501", "E402"]
+"**/scripts/**" = ["D", "C901", "E501", "E402"]
 
 [tool.mypy]
 exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks)/"
@@ -167,6 +168,8 @@ module = [
     "safetensors.*",
     "trl",
     "trl.*",
+    "llama_cpp",
+    "llama_cpp.*",
 ]
 ignore_missing_imports = true
 

@@ -1,8 +1,9 @@
 """AdapterRegistry class providing CRUD operations for adapter metadata."""
 
 import json
+from typing import Any
 
-from sqlalchemy import event
+from shared.storage_utils import set_wal_mode
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, col, select
 
@@ -41,12 +42,34 @@ class AdapterRegistry:
             engine: A SQLAlchemy Engine connected to the target SQLite database.
         """
         self._engine = engine
-
-        @event.listens_for(engine, "connect")
-        def _set_wal(dbapi_conn, _record):  # type: ignore[no-untyped-def]
-            dbapi_conn.execute("PRAGMA journal_mode=WAL")
-
+        set_wal_mode(engine)
         SQLModel.metadata.create_all(engine)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _execute_query(self, stmt: Any) -> list[AdapterRecord]:
+        """Execute a select statement and return detached AdapterRecord instances.
+
+        Centralises the ``with Session ... expunge`` boilerplate used by every
+        read method so it is not repeated across the class.
+
+        Args:
+            stmt: A SQLModel select statement returning AdapterRecord rows.
+
+        Returns:
+            List of AdapterRecord instances detached from the session.
+        """
+        with Session(self._engine, expire_on_commit=False) as session:
+            results = list(session.exec(stmt).all())
+            for r in results:
+                session.expunge(r)
+            return results
+
+    # ------------------------------------------------------------------
+    # Write operations
+    # ------------------------------------------------------------------
 
     def store(self, record: AdapterRecord) -> None:
         """Store a new adapter record in the registry.
@@ -76,6 +99,52 @@ class AdapterRegistry:
             session.add(record)
             session.commit()
             session.expunge(record)
+
+    def archive(self, adapter_id: str) -> None:
+        """Archive an adapter by setting is_archived=True.
+
+        Args:
+            adapter_id: ID of the adapter to archive.
+
+        Raises:
+            AdapterNotFoundError: If no adapter with the given ID exists.
+        """
+        with Session(self._engine, expire_on_commit=False) as session:
+            record = session.get(AdapterRecord, adapter_id)
+            if record is None:
+                raise AdapterNotFoundError(f"No adapter with id '{adapter_id}'.")
+            record.is_archived = True
+            session.add(record)
+            session.commit()
+
+    def update_fitness(
+        self,
+        adapter_id: str,
+        pass_rate: float,
+        fitness_score: float,
+    ) -> None:
+        """Update evaluation metrics for an adapter.
+
+        Args:
+            adapter_id: ID of the adapter to update.
+            pass_rate: New pass rate value.
+            fitness_score: New fitness score value.
+
+        Raises:
+            AdapterNotFoundError: If no adapter with the given ID exists.
+        """
+        with Session(self._engine, expire_on_commit=False) as session:
+            record = session.get(AdapterRecord, adapter_id)
+            if record is None:
+                raise AdapterNotFoundError(f"No adapter with id '{adapter_id}'.")
+            record.pass_rate = pass_rate
+            record.fitness_score = fitness_score
+            session.add(record)
+            session.commit()
+
+    # ------------------------------------------------------------------
+    # Read operations
+    # ------------------------------------------------------------------
 
     def retrieve_by_id(self, adapter_id: str) -> AdapterRecord:
         """Retrieve a single adapter record by its unique ID.
@@ -115,12 +184,8 @@ class AdapterRegistry:
             >>> registry = AdapterRegistry(engine=engine)
             >>> results = registry.query_by_task_type("bug-fix")
         """
-        with Session(self._engine, expire_on_commit=False) as session:
-            stmt = select(AdapterRecord).where(AdapterRecord.task_type == task_type)
-            results = list(session.exec(stmt).all())
-            for r in results:
-                session.expunge(r)
-            return results
+        stmt = select(AdapterRecord).where(AdapterRecord.task_type == task_type)
+        return self._execute_query(stmt)
 
     def list_all(self) -> list[AdapterRecord]:
         """List all non-archived adapter records.
@@ -133,14 +198,10 @@ class AdapterRegistry:
             >>> registry = AdapterRegistry(engine=engine)
             >>> all_adapters = registry.list_all()
         """
-        with Session(self._engine, expire_on_commit=False) as session:
-            stmt = select(AdapterRecord).where(
-                AdapterRecord.is_archived == False  # noqa: E712
-            )
-            results = list(session.exec(stmt).all())
-            for r in results:
-                session.expunge(r)
-            return results
+        stmt = select(AdapterRecord).where(
+            AdapterRecord.is_archived == False  # noqa: E712
+        )
+        return self._execute_query(stmt)
 
     def query_best_for_task(
         self, task_type: str, top_k: int = 3
@@ -154,20 +215,16 @@ class AdapterRegistry:
         Returns:
             List of AdapterRecord instances ordered by fitness_score DESC.
         """
-        with Session(self._engine, expire_on_commit=False) as session:
-            stmt = (
-                select(AdapterRecord)
-                .where(
-                    AdapterRecord.task_type == task_type,
-                    AdapterRecord.is_archived == False,  # noqa: E712
-                )
-                .order_by(col(AdapterRecord.fitness_score).desc())
-                .limit(top_k)
+        stmt = (
+            select(AdapterRecord)
+            .where(
+                AdapterRecord.task_type == task_type,
+                AdapterRecord.is_archived == False,  # noqa: E712
             )
-            results = list(session.exec(stmt).all())
-            for r in results:
-                session.expunge(r)
-            return results
+            .order_by(col(AdapterRecord.fitness_score).desc())
+            .limit(top_k)
+        )
+        return self._execute_query(stmt)
 
     def is_task_solved(self, task_hash: str, threshold: float = 0.95) -> bool:
         """Check if any adapter for the given task hash meets the threshold.
@@ -179,17 +236,16 @@ class AdapterRegistry:
         Returns:
             True if a qualifying adapter exists.
         """
-        with Session(self._engine, expire_on_commit=False) as session:
-            stmt = (
-                select(AdapterRecord)
-                .where(
-                    AdapterRecord.training_task_hash == task_hash,
-                    AdapterRecord.is_archived == False,  # noqa: E712
-                    col(AdapterRecord.pass_rate) >= threshold,
-                )
-                .limit(1)
+        stmt = (
+            select(AdapterRecord)
+            .where(
+                AdapterRecord.training_task_hash == task_hash,
+                AdapterRecord.is_archived == False,  # noqa: E712
+                col(AdapterRecord.pass_rate) >= threshold,
             )
-            return session.exec(stmt).first() is not None
+            .limit(1)
+        )
+        return bool(self._execute_query(stmt))
 
     def get_lineage(self, adapter_id: str) -> list[str]:
         """Walk the parent_ids chain for an adapter.
@@ -230,34 +286,13 @@ class AdapterRegistry:
         Returns:
             List of unevaluated AdapterRecord instances.
         """
-        with Session(self._engine, expire_on_commit=False) as session:
-            stmt = select(AdapterRecord).where(
-                AdapterRecord.is_archived == False,  # noqa: E712
-                col(AdapterRecord.pass_rate).is_(None),  # type: ignore[arg-type]
-            )
-            if task_type is not None:
-                stmt = stmt.where(AdapterRecord.task_type == task_type)
-            results = list(session.exec(stmt).all())
-            for r in results:
-                session.expunge(r)
-            return results
-
-    def archive(self, adapter_id: str) -> None:
-        """Archive an adapter by setting is_archived=True.
-
-        Args:
-            adapter_id: ID of the adapter to archive.
-
-        Raises:
-            AdapterNotFoundError: If no adapter with the given ID exists.
-        """
-        with Session(self._engine, expire_on_commit=False) as session:
-            record = session.get(AdapterRecord, adapter_id)
-            if record is None:
-                raise AdapterNotFoundError(f"No adapter with id '{adapter_id}'.")
-            record.is_archived = True
-            session.add(record)
-            session.commit()
+        stmt = select(AdapterRecord).where(
+            AdapterRecord.is_archived == False,  # noqa: E712
+            col(AdapterRecord.pass_rate).is_(None),  # type: ignore[arg-type]
+        )
+        if task_type is not None:
+            stmt = stmt.where(AdapterRecord.task_type == task_type)
+        return self._execute_query(stmt)
 
     def get_task_types(self) -> list[str]:
         """Return all distinct task types in the registry.
@@ -269,28 +304,3 @@ class AdapterRegistry:
             stmt = select(AdapterRecord.task_type).distinct()
             results = list(session.exec(stmt).all())
             return sorted(results)
-
-    def update_fitness(
-        self,
-        adapter_id: str,
-        pass_rate: float,
-        fitness_score: float,
-    ) -> None:
-        """Update evaluation metrics for an adapter.
-
-        Args:
-            adapter_id: ID of the adapter to update.
-            pass_rate: New pass rate value.
-            fitness_score: New fitness score value.
-
-        Raises:
-            AdapterNotFoundError: If no adapter with the given ID exists.
-        """
-        with Session(self._engine, expire_on_commit=False) as session:
-            record = session.get(AdapterRecord, adapter_id)
-            if record is None:
-                raise AdapterNotFoundError(f"No adapter with id '{adapter_id}'.")
-            record.pass_rate = pass_rate
-            record.fitness_score = fitness_score
-            session.add(record)
-            session.commit()

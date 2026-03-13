@@ -6,9 +6,16 @@ HardwareBudget for computing concurrency limits based on available hardware.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import psutil
+
+logger = logging.getLogger(__name__)
+
+# Named constants for VRAM budgeting
+VRAM_PER_LORA_MB: int = 100  # Approximate VRAM consumed by one LoRA adapter
+MIN_TRAINING_VRAM_MB: int = 4096  # Minimum VRAM required to run a training job
 
 
 @dataclass(frozen=True)
@@ -86,8 +93,10 @@ class HardwareProbe:
                 vram_mb = mem_info.total // (1024 * 1024)
                 gpus.append(GPUInfo(name=name, vram_mb=vram_mb))
             pynvml.nvmlShutdown()
-        except (ImportError, Exception):
-            pass
+        except ImportError:
+            pass  # pynvml not installed; CPU-only mode
+        except Exception as e:
+            logger.debug("GPU detection failed (will run CPU-only): %s", e)
 
         return cls(cpu_count=cpu_count, ram_total_mb=ram_total_mb, gpus=gpus)
 
@@ -117,11 +126,8 @@ class HardwareProbe:
         vram_per_gpu = self.gpus[0].vram_mb
         free_vram = max(0, vram_per_gpu - base_model_vram_mb)
 
-        # Each LoRA adapter uses ~100MB VRAM
-        max_loras = max(1, free_vram // 100)
-
-        # Training needs ~4GB VRAM minimum
-        training_slots = 1 if free_vram >= 4096 else 0
+        max_loras = max(1, free_vram // VRAM_PER_LORA_MB)
+        training_slots = 1 if free_vram >= MIN_TRAINING_VRAM_MB else 0
 
         # Agents limited by CPU cores and available VRAM
         max_agents = max(1, min(self.cpu_count // 2, num_gpus * 4))
@@ -133,3 +139,31 @@ class HardwareProbe:
             vram_per_gpu_mb=vram_per_gpu,
             single_gpu_mode=single_gpu_mode,
         )
+
+
+def get_best_device() -> str:
+    """Return the best available compute device: ``cuda`` > ``mps`` > ``cpu``.
+
+    Imports torch inside the function body per INFRA-05 pattern so this module
+    is importable in CPU-only CI without torch installed.
+
+    Returns:
+        ``"cuda"`` if an NVIDIA GPU is available,
+        ``"mps"`` if an Apple Silicon GPU is available,
+        ``"cpu"`` otherwise.
+
+    Example:
+        >>> device = get_best_device()
+        >>> device in ("cuda", "mps", "cpu")
+        True
+    """
+    try:
+        import torch  # noqa: PLC0415
+
+        if torch.cuda.is_available():
+            return "cuda"
+        if torch.backends.mps.is_available():
+            return "mps"
+    except ImportError:
+        pass
+    return "cpu"

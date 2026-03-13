@@ -71,27 +71,16 @@ def test_load_adapter_state_dict_calls_safetensors() -> None:
 
 
 def test_ties_merge_empty_input() -> None:
-    """ties_merge with no state dicts returns empty dict without importing torch."""
-    # Temporarily block torch to ensure the function handles empty input
-    original = sys.modules.get("torch")
-    try:
-        from model_training.merging import ties_merge
+    """ties_merge raises ValueError for empty input (undefined operation)."""
+    from model_training.merging import ties_merge
 
-        result = ties_merge([])
-        assert result == {}
-    finally:
-        if original is not None:
-            sys.modules["torch"] = original
+    with pytest.raises(ValueError, match="state_dicts must not be empty"):
+        ties_merge([])
 
 
 def test_dare_merge_empty_input() -> None:
-    """dare_merge with no state dicts returns empty dict without importing torch."""
-    original = sys.modules.get("torch")
-    try:
-        from model_training.merging import dare_merge
+    """dare_merge raises ValueError for empty input (undefined operation)."""
+    from model_training.merging import dare_merge
 
-        result = dare_merge([])
-        assert result == {}
-    finally:
-        if original is not None:
-            sys.modules["torch"] = original
+    with pytest.raises(ValueError, match="state_dicts must not be empty"):
+        dare_merge([])

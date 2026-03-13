@@ -6,12 +6,15 @@ swarm agents, enabling crash recovery and deduplication.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import event
-from sqlalchemy.engine import Engine
 from sqlmodel import Field, Session, SQLModel, select
+
+from shared.storage_utils import set_wal_mode
+
+logger = logging.getLogger(__name__)
 
 
 class CheckpointRecord(SQLModel, table=True):
@@ -46,26 +49,35 @@ class SwarmCheckpointDB:
     Tracks task execution state (pending → running → completed/failed)
     to enable crash recovery and prevent duplicate work.
 
+    Args:
+        engine: SQLAlchemy Engine connected to the target SQLite database.
+        run_id: Identifier for this swarm run. Stored on every record created
+            by this instance. Defaults to ``"default"`` for backward
+            compatibility, but callers should supply a unique run ID so that
+            multiple swarm runs are distinguishable in the database.
+
     Example:
         >>> from sqlmodel import create_engine
         >>> engine = create_engine("sqlite:///checkpoints.db")
-        >>> db = SwarmCheckpointDB(engine)
+        >>> db = SwarmCheckpointDB(engine, run_id="run-2026-03-01")
         >>> db.mark_running("task-hash-1", "agent-01")
         >>> db.mark_completed("task-hash-1", "success: pass_rate=0.95")
     """
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: object, run_id: str = "default") -> None:
         """Initialize checkpoint database and create tables.
 
         Args:
             engine: SQLAlchemy Engine connected to the target SQLite database.
+            run_id: Identifier for this swarm run. Defaults to ``"default"``.
         """
+        from sqlalchemy.engine import Engine  # noqa: PLC0415
+
+        assert isinstance(engine, Engine)
         self._engine = engine
+        self._run_id = run_id
 
-        @event.listens_for(engine, "connect")
-        def _set_wal(dbapi_conn, _record):  # type: ignore[no-untyped-def]
-            dbapi_conn.execute("PRAGMA journal_mode=WAL")
-
+        set_wal_mode(engine)
         SQLModel.metadata.create_all(engine)
 
     def mark_running(self, task_hash: str, agent_id: str) -> None:
@@ -77,7 +89,7 @@ class SwarmCheckpointDB:
         """
         now = datetime.now(timezone.utc).isoformat()
         record = CheckpointRecord(
-            run_id="default",
+            run_id=self._run_id,
             task_hash=task_hash,
             agent_id=agent_id,
             status="running",
@@ -112,9 +124,18 @@ class SwarmCheckpointDB:
                 session.add(record)
                 session.commit()
             else:
-                # No running record found; create a completed one directly
+                # No running record found — this means mark_running() was never
+                # called for this task. Log a warning so the bug is visible,
+                # then create a completed record to keep the DB consistent.
+                logger.warning(
+                    "mark_completed called for task_hash=%r but no running record "
+                    "was found (run_id=%r). mark_running() may not have been called. "
+                    "Creating orphaned completed record with agent_id='unknown'.",
+                    task_hash,
+                    self._run_id,
+                )
                 new_record = CheckpointRecord(
-                    run_id="default",
+                    run_id=self._run_id,
                     task_hash=task_hash,
                     agent_id="unknown",
                     status="completed",
@@ -149,8 +170,18 @@ class SwarmCheckpointDB:
                 session.add(record)
                 session.commit()
             else:
+                # No running record found — log a warning and still create the
+                # failed record so the failure is visible in the DB.
+                logger.warning(
+                    "mark_failed called for task_hash=%r agent_id=%r but no running "
+                    "record was found (run_id=%r). mark_running() may not have been "
+                    "called. Creating orphaned failed record.",
+                    task_hash,
+                    agent_id,
+                    self._run_id,
+                )
                 new_record = CheckpointRecord(
-                    run_id="default",
+                    run_id=self._run_id,
                     task_hash=task_hash,
                     agent_id=agent_id,
                     status="failed",

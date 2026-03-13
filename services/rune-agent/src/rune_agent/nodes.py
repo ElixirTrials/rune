@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanation."
 DEFAULT_TIMEOUT = 30
-DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B"
+DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 
 
 def _build_prompt(state: RuneState) -> str:

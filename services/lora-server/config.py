@@ -83,7 +83,7 @@ class LoraServerConfig:
             >>> config.model
             'Qwen/Qwen2.5-Coder-7B-Instruct'
         """
-        raw: dict[str, Any] = yaml.safe_load(Path(path).read_text())
+        raw: dict[str, Any] = yaml.safe_load(Path(path).read_text()) or {}
         valid_fields = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in raw.items() if k in valid_fields}
         return cls(**filtered)

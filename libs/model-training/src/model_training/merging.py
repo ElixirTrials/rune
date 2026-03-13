@@ -29,7 +29,9 @@ def ties_merge(
         Merged state dict with same keys and shapes as inputs.
     """
     if not state_dicts:
-        return {}
+        raise ValueError(
+            "state_dicts must not be empty; TIES-merge of zero inputs is undefined."
+        )
 
     import torch
 
@@ -80,7 +82,9 @@ def dare_merge(
         Merged state dict with same keys and shapes as inputs.
     """
     if not state_dicts:
-        return {}
+        raise ValueError(
+            "state_dicts must not be empty; DARE-merge of zero inputs is undefined."
+        )
 
     import torch
 

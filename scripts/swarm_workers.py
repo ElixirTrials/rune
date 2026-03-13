@@ -90,6 +90,7 @@ def _train_in_subprocess(
 
         train_qlora(
             session_id=session_id,
+            adapter_id=adapter_id,
             task_type=task_type,
             output_dir=adapter_dir,
         )
@@ -120,7 +121,7 @@ async def _sleep_vllm(base_url: str) -> None:
         async with httpx.AsyncClient() as client:
             await client.post(f"{base_url}/sleep", timeout=30)
     except Exception:
-        logger.warning("Failed to sleep vLLM at %s", base_url)
+        logger.warning("Failed to sleep vLLM at %s", base_url, exc_info=True)
 
 
 async def _wake_vllm(base_url: str) -> None:
@@ -135,7 +136,7 @@ async def _wake_vllm(base_url: str) -> None:
         async with httpx.AsyncClient() as client:
             await client.post(f"{base_url}/wake_up", timeout=30)
     except Exception:
-        logger.warning("Failed to wake vLLM at %s", base_url)
+        logger.warning("Failed to wake vLLM at %s", base_url, exc_info=True)
 
 
 async def training_pool_manager(
@@ -228,14 +229,18 @@ async def memory_watchdog(
         mem = psutil.virtual_memory()
         usage = mem.percent / 100.0
 
-        if usage > threshold and agents:
-            youngest = agents[-1]
+        # Snapshot the list before operating to avoid mutation issues if another
+        # coroutine concurrently modifies `agents` at an await point.
+        alive = list(agents)
+        if usage > threshold and alive:
+            youngest = alive[-1]
             logger.warning(
                 "Memory pressure %.1f%% > %.1f%% threshold, cancelling youngest agent",
                 usage * 100,
                 threshold * 100,
             )
             youngest.cancel()
-            agents.remove(youngest)
+            if youngest in agents:
+                agents.remove(youngest)
 
         await asyncio.sleep(check_interval)

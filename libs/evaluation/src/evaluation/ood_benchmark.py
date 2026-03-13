@@ -7,11 +7,11 @@ the training distribution, measuring generalization capability.
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+from evaluation.utils import safe_subprocess_run
 
 _OOD_DATA_DIR = Path(__file__).parent / "data"
 
@@ -52,17 +52,7 @@ def run_ood_benchmark(
             script_path = Path(tmpdir) / f"{task_id.replace('/', '_')}.py"
             script_path.write_text(script)
 
-            try:
-                proc = subprocess.run(
-                    [sys.executable, str(script_path)],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    cwd=tmpdir,
-                )
-                passed = proc.returncode == 0
-            except subprocess.TimeoutExpired:
-                passed = False
+            passed = safe_subprocess_run(script_path, cwd=tmpdir)
 
             task_results.append({"task_id": task_id, "passed": passed})
 

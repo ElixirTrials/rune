@@ -4,9 +4,36 @@ Defines the shared data shapes for coding sessions, adapter references,
 and evolutionary fitness metrics used across all Rune services.
 """
 
+from __future__ import annotations
+
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
+
+
+class TaskStatus(str, Enum):
+    """Canonical status strings used across services and swarm checkpoints.
+
+    Inherits from ``str`` so values are JSON-serialisable and can be compared
+    directly to string literals in existing code (e.g. ``record.status == "running"``).
+
+    Example:
+        >>> TaskStatus.RUNNING
+        <TaskStatus.RUNNING: 'running'>
+        >>> TaskStatus.RUNNING == "running"
+        True
+        >>> "running" == TaskStatus.RUNNING
+        True
+    """
+
+    PENDING = "pending"
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SUCCESS = "success"
+    EXHAUSTED = "exhausted"
 
 
 class AdapterRef(BaseModel):
@@ -109,6 +136,7 @@ class SwarmConfig(BaseModel):
         evolution_interval: Seconds between evolution sweeps.
         sandbox_backend: Execution backend ('subprocess' or 'nsjail').
         base_model_id: HuggingFace model identifier for inference.
+        hypernetwork_checkpoint: Path to pretrained hypernetwork checkpoint.
     """
 
     db_url: str = "sqlite:///rune_swarm.db"
@@ -118,6 +146,7 @@ class SwarmConfig(BaseModel):
     evolution_interval: int = 7200
     sandbox_backend: str = "subprocess"
     base_model_id: str = "Qwen/Qwen2.5-Coder-7B"
+    hypernetwork_checkpoint: str | None = None
 
 
 class SwarmCheckpoint(BaseModel):

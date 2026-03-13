@@ -17,13 +17,17 @@ from inference.factory import get_provider, get_provider_for_step
 from inference.provider import GenerationResult, InferenceProvider
 
 if TYPE_CHECKING:
+    from inference.llamacpp_provider import LlamaCppProvider
     from inference.ollama_provider import OllamaProvider
+    from inference.transformers_provider import TransformersProvider
     from inference.vllm_provider import VLLMProvider
 
 __all__ = [
     "GenerationResult",
     "InferenceProvider",
+    "LlamaCppProvider",
     "OllamaProvider",
+    "TransformersProvider",
     "UnsupportedOperationError",
     "VLLMProvider",
     "get_provider",
@@ -40,4 +44,12 @@ def __getattr__(name: str) -> object:
         from inference.vllm_provider import VLLMProvider
 
         return VLLMProvider
+    if name == "LlamaCppProvider":
+        from inference.llamacpp_provider import LlamaCppProvider
+
+        return LlamaCppProvider
+    if name == "TransformersProvider":
+        from inference.transformers_provider import TransformersProvider
+
+        return TransformersProvider
     raise AttributeError(f"module 'inference' has no attribute {name!r}")

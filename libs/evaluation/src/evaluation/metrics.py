@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
+
+from evaluation.utils import safe_subprocess_run
 
 _DATA_DIR = Path(__file__).parent / "data"
 
@@ -172,14 +172,7 @@ def run_humaneval_subset(
             script_path = Path(tmpdir) / f"{task_id.replace('/', '_')}.py"
             script_path.write_text(script)
 
-            proc = subprocess.run(
-                [sys.executable, str(script_path)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=tmpdir,
-            )
-            passed = proc.returncode == 0
+            passed = safe_subprocess_run(script_path, cwd=tmpdir)
             task_results.append({"task_id": task_id, "passed": passed})
 
     pass_count = sum(1 for r in task_results if r["passed"])
