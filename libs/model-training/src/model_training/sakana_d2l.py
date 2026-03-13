@@ -260,6 +260,147 @@ def load_sakana_checkpoint(
     return hypernet, hc
 
 
+def _assert_transfer_integrity(hypernet: Any, loaded: Any) -> None:
+    """Assert that partial weight transfer completed correctly.
+
+    Validates the result of load_state_dict(strict=False) after loading only
+    aggregator.* weights from a Sakana checkpoint. Raises AssertionError on any
+    sign of a mismatch so failures are caught early rather than silently producing
+    a corrupted model.
+
+    Args:
+        hypernet: The HyperLoRA model (used to enumerate expected aggregator keys).
+        loaded: The _IncompatibleKeys object returned by load_state_dict(strict=False).
+
+    Raises:
+        AssertionError: If any aggregator key is missing or any unexpected key is
+            present.
+    """
+    # Check 1: unexpected keys indicate the checkpoint has keys that don't belong
+    if loaded.unexpected_keys:
+        msg = (
+            f"Transfer produced unexpected keys: {loaded.unexpected_keys!r}. "
+            "Check that checkpoint prefixes match model parameter names."
+        )
+        raise AssertionError(msg)
+
+    # Check 2: every missing key must start with "head." (head intentionally not loaded)
+    non_head_missing = [k for k in loaded.missing_keys if not k.startswith("head.")]
+    if non_head_missing:
+        msg = (
+            f"Non-head keys were missing after transfer: {non_head_missing!r}. "
+            "Run print(checkpoint.keys()) to verify aggregator.* prefixes "
+            "exist in the checkpoint."
+        )
+        raise AssertionError(msg)
+
+    # Check 3: no aggregator keys from the model should be in missing_keys
+    aggregator_keys = {k for k in hypernet.state_dict() if k.startswith("aggregator.")}
+    aggregator_missing = aggregator_keys & set(loaded.missing_keys)
+    if aggregator_missing:
+        msg = (
+            f"Aggregator keys were not loaded from checkpoint: {aggregator_missing!r}. "
+            "The checkpoint may not contain aggregator.* weights."
+        )
+        raise AssertionError(msg)
+
+    n_aggregator = len(aggregator_keys)
+    n_head_reinit = len([k for k in loaded.missing_keys if k.startswith("head.")])
+    logger.info(
+        "Transfer integrity OK: %d aggregator keys loaded, %d head keys re-initialized",
+        n_aggregator,
+        n_head_reinit,
+    )
+
+
+def transfer_aggregator_weights(hypernet: Any, checkpoint_path: str | Path) -> Any:
+    """Load aggregator weights from a Sakana checkpoint into a HyperLoRA instance.
+
+    Loads only aggregator.* weights from the checkpoint (not head.*), freezes all
+    aggregator parameters (requires_grad=False), and leaves head.* at PyTorch default
+    initialization for Phase 29 training against the new target model.
+
+    This enables reuse of the pretrained Perceiver aggregator across different target
+    model architectures. The aggregator maps document embeddings to LoRA weight space
+    and is model-agnostic; only the head needs retraining per target model.
+
+    Args:
+        hypernet: The HyperLoRA model to load weights into (mutated in-place).
+        checkpoint_path: Path to the Sakana checkpoint (.bin file).
+
+    Returns:
+        The mutated hypernet (returned for chaining convenience).
+    """
+    import torch  # noqa: PLC0415
+
+    sd = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+
+    # Filter to only aggregator.* tensors that exist in the target model
+    model_sd = hypernet.state_dict()
+    aggregator_sd = {
+        k: v
+        for k, v in sd.items()
+        if k.startswith("aggregator.") and isinstance(v, torch.Tensor) and k in model_sd
+    }
+
+    logger.info(
+        "Loading %d aggregator weights from checkpoint: %s",
+        len(aggregator_sd),
+        checkpoint_path,
+    )
+
+    loaded = hypernet.load_state_dict(aggregator_sd, strict=False)
+    _assert_transfer_integrity(hypernet, loaded)
+
+    # Freeze all aggregator parameters — only head will be trained
+    frozen_count = 0
+    trainable_count = 0
+    for name, param in hypernet.named_parameters():
+        if name.startswith("aggregator."):
+            param.requires_grad_(False)
+            frozen_count += 1
+        else:
+            trainable_count += 1
+
+    logger.info(
+        "Froze %d aggregator params; %d params (head.*) remain trainable",
+        frozen_count,
+        trainable_count,
+    )
+
+    return hypernet
+
+
+def get_aggregator_config(checkpoint_path: str | Path) -> Any:
+    """Extract the Perceiver aggregator structural config from a Sakana checkpoint.
+
+    Reads the aggregator_config from the checkpoint's HypernetConfig so that
+    d2l_config.py can populate the aggregator_config=None placeholder set in Phase 25.
+
+    Args:
+        checkpoint_path: Path to the Sakana checkpoint (.bin file).
+
+    Returns:
+        The aggregator_config object from the checkpoint's HypernetConfig.
+
+    Raises:
+        ValueError: If the checkpoint's aggregator_config is None (predates this field).
+    """
+    import torch  # noqa: PLC0415
+
+    sd = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+    hc = sd["hypernet_config"]
+
+    if hc.aggregator_config is None:
+        msg = (
+            "aggregator_config is None in checkpoint — "
+            "checkpoint may predate this field"
+        )
+        raise ValueError(msg)
+
+    return hc.aggregator_config
+
+
 def extract_activations(
     text: str,
     base_model_name: str,

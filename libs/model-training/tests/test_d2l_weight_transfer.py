@@ -6,7 +6,7 @@ CPU-only tests covering:
 - transfer_aggregator_weights() result has missing_keys only for head.*
 - _assert_transfer_integrity() raises AssertionError on missing aggregator key
 - _assert_transfer_integrity() raises AssertionError on unexpected keys
-- _assert_transfer_integrity() passes with clean transfer (head.* missing, no unexpected)
+- _assert_transfer_integrity() passes when only head.* missing, no unexpected keys
 - get_aggregator_config() extracts aggregator_config from checkpoint dict
 - get_aggregator_config() raises ValueError when aggregator_config is None
 """
@@ -18,8 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import torch
-import torch.nn as nn
-
+import torch.nn as nn  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Fake model helpers
@@ -71,10 +70,7 @@ def test_transfer_freezes_aggregator_params(monkeypatch: Any) -> None:
     source = _FakeHyperLoRA()
     fake_sd = _make_aggregator_checkpoint(source)
 
-    monkeypatch.setattr(
-        "model_training.sakana_d2l.torch.load",
-        lambda *a, **kw: fake_sd,
-    )
+    monkeypatch.setattr(torch, "load", lambda *a, **kw: fake_sd)
 
     transfer_aggregator_weights(target, "/fake/checkpoint.bin")
 
@@ -99,10 +95,7 @@ def test_transfer_leaves_head_trainable(monkeypatch: Any) -> None:
     source = _FakeHyperLoRA()
     fake_sd = _make_aggregator_checkpoint(source)
 
-    monkeypatch.setattr(
-        "model_training.sakana_d2l.torch.load",
-        lambda *a, **kw: fake_sd,
-    )
+    monkeypatch.setattr(torch, "load", lambda *a, **kw: fake_sd)
 
     transfer_aggregator_weights(target, "/fake/checkpoint.bin")
 
@@ -120,7 +113,7 @@ def test_transfer_leaves_head_trainable(monkeypatch: Any) -> None:
 
 
 def test_transfer_head_in_missing_keys(monkeypatch: Any) -> None:
-    """After transfer, missing_keys contains only head.* keys (head not in checkpoint)."""
+    """After transfer, missing_keys contains only head.* keys (head not in ckpt)."""
     from model_training.sakana_d2l import transfer_aggregator_weights
 
     target = _FakeHyperLoRA()
@@ -140,10 +133,7 @@ def test_transfer_head_in_missing_keys(monkeypatch: Any) -> None:
 
     original_assert = sakana_mod._assert_transfer_integrity
     monkeypatch.setattr(sakana_mod, "_assert_transfer_integrity", _capture_loaded)
-    monkeypatch.setattr(
-        "model_training.sakana_d2l.torch.load",
-        lambda *a, **kw: fake_sd,
-    )
+    monkeypatch.setattr(torch, "load", lambda *a, **kw: fake_sd)
 
     transfer_aggregator_weights(target, "/fake/checkpoint.bin")
 
@@ -202,7 +192,7 @@ def test_assert_integrity_fails_on_unexpected_keys() -> None:
 
 
 def test_assert_integrity_passes_clean_transfer() -> None:
-    """_assert_transfer_integrity does NOT raise when only head.* missing, no unexpected."""
+    """_assert_transfer_integrity does NOT raise when only head.* missing."""
     from model_training.sakana_d2l import _assert_transfer_integrity
 
     model = _FakeHyperLoRA()
@@ -232,10 +222,7 @@ def test_get_aggregator_config_returns_config(monkeypatch: Any) -> None:
 
     fake_sd: dict[str, Any] = {"hypernet_config": fake_hypernet_config}
 
-    monkeypatch.setattr(
-        "model_training.sakana_d2l.torch.load",
-        lambda *a, **kw: fake_sd,
-    )
+    monkeypatch.setattr(torch, "load", lambda *a, **kw: fake_sd)
 
     result = get_aggregator_config("/fake/checkpoint.bin")
     assert result == fake_aggregator_config
@@ -247,7 +234,7 @@ def test_get_aggregator_config_returns_config(monkeypatch: Any) -> None:
 
 
 def test_get_aggregator_config_raises_on_none(monkeypatch: Any) -> None:
-    """get_aggregator_config raises ValueError when checkpoint's aggregator_config is None."""
+    """get_aggregator_config raises ValueError when aggregator_config is None."""
     from model_training.sakana_d2l import get_aggregator_config
 
     fake_hypernet_config = MagicMock()
@@ -255,10 +242,7 @@ def test_get_aggregator_config_raises_on_none(monkeypatch: Any) -> None:
 
     fake_sd: dict[str, Any] = {"hypernet_config": fake_hypernet_config}
 
-    monkeypatch.setattr(
-        "model_training.sakana_d2l.torch.load",
-        lambda *a, **kw: fake_sd,
-    )
+    monkeypatch.setattr(torch, "load", lambda *a, **kw: fake_sd)
 
     with pytest.raises(ValueError, match="aggregator_config is None"):
         get_aggregator_config("/fake/checkpoint.bin")
