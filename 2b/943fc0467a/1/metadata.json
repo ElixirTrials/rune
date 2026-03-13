@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.8",
   "checkpoint_id": "2b943fc0467a",
+  "session_id": "7412b733-83bf-4882-8d00-38be935e2ba6",
   "strategy": "manual-commit",
+  "created_at": "2026-03-13T10:51:30.415018Z",
   "branch": "feat/e2e_with_hypernetwork",
-  "checkpoints_count": 2,
+  "checkpoints_count": 1,
   "files_touched": [
     "conftest.py",
     "libs/adapter-registry/src/adapter_registry/registry.py",
@@ -42,27 +44,22 @@
     "services/training-svc/src/training_svc/storage.py",
     "services/training-svc/tests/test_training.py"
   ],
-  "sessions": [
-    {
-      "metadata": "/2b/943fc0467a/0/metadata.json",
-      "transcript": "/2b/943fc0467a/0/full.jsonl",
-      "context": "/2b/943fc0467a/0/context.md",
-      "content_hash": "/2b/943fc0467a/0/content_hash.txt",
-      "prompt": "/2b/943fc0467a/0/prompt.txt"
-    },
-    {
-      "metadata": "/2b/943fc0467a/1/metadata.json",
-      "transcript": "/2b/943fc0467a/1/full.jsonl",
-      "context": "/2b/943fc0467a/1/context.md",
-      "content_hash": "/2b/943fc0467a/1/content_hash.txt",
-      "prompt": "/2b/943fc0467a/1/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "turn_id": "5e1ca49a4ad8",
   "token_usage": {
-    "input_tokens": 275,
-    "cache_creation_tokens": 487181,
-    "cache_read_tokens": 24546408,
-    "output_tokens": 101467,
-    "api_call_count": 239
+    "input_tokens": 165,
+    "cache_creation_tokens": 219358,
+    "cache_read_tokens": 18583113,
+    "output_tokens": 70143,
+    "api_call_count": 161
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T10:51:30.100468Z",
+    "agent_lines": 2605,
+    "human_added": 69,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2674,
+    "agent_percentage": 97.41959611069558
   }
 }
