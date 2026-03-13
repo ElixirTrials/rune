@@ -1,0 +1,2 @@
+{"role":"user","message":{"content":[{"type":"text","text":"<user_query>\nwhat is the shortcut to move between tmux split windows?\n</user_query>"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"By default in tmux:\n\n- **Next pane**: `Ctrl-b` then `o`\n- **Cycle last/previous pane**: `Ctrl-b` then `;`\n- **Move with arrows (recommended)**:\n  - `Ctrl-b` then `Up`\n  - `Ctrl-b` then `Down`\n  - `Ctrl-b` then `Left`\n  - `Ctrl-b` then `Right`\n\nIf those don’t work, your `~/.tmux.conf` may have custom key bindings."}]}}
