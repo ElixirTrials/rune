@@ -134,6 +134,17 @@ def build_perceiver(sd):
 
     Idefics2PerceiverResampler.forward = _eager_resampler_forward
 
+    # Patch resampler __init__ to skip flash_attention_2 assertion
+    _orig_resampler_init = Idefics2PerceiverResampler.__init__
+
+    def _patched_resampler_init(self, config):
+        config._attn_implementation = "flash_attention_2"
+        _orig_resampler_init(self, config)
+        # Override back to eager for actual forward pass
+        self._use_flash_attention_2 = False
+
+    Idefics2PerceiverResampler.__init__ = _patched_resampler_init
+
     # Force eager on configs
     _orig_perceiver_init = Idefics2Perceiver.__init__
 
