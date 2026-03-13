@@ -108,7 +108,7 @@ if [[ "$OS" == "Darwin" ]]; then
 
 elif [[ "$DISTRO" == "ubuntu" || "$DISTRO" == "debian" ]]; then
     NEEDED=()
-    for pkg in git curl build-essential libssl-dev; do
+    for pkg in git curl build-essential libssl-dev wget; do
         if dpkg -s "$pkg" &>/dev/null; then
             info "$pkg already installed"
         else
@@ -116,7 +116,24 @@ elif [[ "$DISTRO" == "ubuntu" || "$DISTRO" == "debian" ]]; then
         fi
     done
     if [[ ${#NEEDED[@]} -gt 0 ]]; then
-        sudo apt-get update -qq
+        # Disable stale apt sources (e.g. archived bullseye-backports) that
+        # would make apt-get update fail with "no longer has a Release file".
+        fix_stale_apt_sources() {
+            local src_dir="/etc/apt/sources.list.d"
+            for f in /etc/apt/sources.list "$src_dir"/*.list; do
+                [[ -f "$f" ]] || continue
+                if grep -qE '(bullseye-backports|stretch|jessie)' "$f" 2>/dev/null; then
+                    warn "Disabling stale apt source: $f"
+                    sudo sed -i.bak '/bullseye-backports\|stretch\|jessie/s/^/#/' "$f"
+                fi
+            done
+        }
+        fix_stale_apt_sources
+
+        if ! sudo apt-get update -qq 2>/dev/null; then
+            warn "apt-get update had errors — retrying with --allow-releaseinfo-change..."
+            sudo apt-get update -qq --allow-releaseinfo-change || warn "apt-get update partially failed — continuing anyway"
+        fi
         sudo apt-get install -y "${NEEDED[@]}"
         info "Installed: ${NEEDED[*]}"
     fi
@@ -135,16 +152,13 @@ else
         info "gh installed via Homebrew"
 
     elif [[ "$DISTRO" == "ubuntu" || "$DISTRO" == "debian" ]]; then
-        (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y))
         sudo mkdir -p -m 755 /etc/apt/keyrings
-        out=$(mktemp)
-        wget -qO "$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg
-        sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg < "$out" >/dev/null
-        rm -f "$out"
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
         sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | \
             sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
-        sudo apt-get update -qq
+        sudo apt-get update -qq 2>/dev/null || true
         sudo apt-get install -y gh
         info "gh installed via apt"
     else
