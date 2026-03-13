@@ -1,0 +1,428 @@
+I want you to double check end to end that all the branches are fully complete and work totally. Then go ahead and merge each one to main. When you are finished, we'll use the smallest available coding model from HuggingFace and we'll try to run our system on a small coding problem.
+
+---
+
+Go for it
+
+---
+
+Let's try something more complicated. Like a web-app or some other full project.
+
+---
+
+[Request interrupted by user]
+
+---
+
+Wait, there should be no fastapi any more. Remember all the work we just did? /Users/noahdolevelixir/Code/rune/instructions/swarm-execution-proposal-v2.md
+
+---
+
+[Request interrupted by user]
+
+---
+
+Wait, we should be generating tasks which are handled by the swarm to complete the overall project we defined in our test. The goal of this test is to check that our whole implementation works as expected.
+
+---
+
+[Request interrupted by user]
+
+---
+
+Not exactly. We want to define a project to our app (using our hypernetwork approach to give it info on the project details) and instruct it to break the project into tasks handled by the swarm where we iterate using the hypernetwork diff trajectory approached the project was defined for.
+
+---
+
+<task-notification>
+<task-id>a7ead76618e2531a1</task-id>
+<tool-use-id>toolu_01WijCXfLDAxo9ocWVWAj9U8</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a7ead76618e2531a1.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore hypernetwork and trajectory system" completed</summary>
+<result>Now I have a comprehensive understanding of the Rune codebase. Let me provide a detailed analysis:
+
+## Complete Rune Hypernetwork / Parametric Memory / Trajectory Pipeline Analysis
+
+---
+
+## 1. TRAJECTORY SYSTEM
+
+**Location:** `/Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/trajectory.py`
+
+**How Trajectories Are Recorded:**
+
+- **Function:** `record_trajectory(session_id, steps, outcome, task_description, task_type, adapter_ids)`
+- **Format:** JSON file stored at `~/.rune/trajectories/{session_id}.json` (or env var `RUNE_TRAJECTORY_DIR`)
+- **Schema:**
+  ```python
+  {
+    "session_id": str,
+    "task_description": str,
+    "task_type": str,
+    "adapter_ids": list[str],
+    "outcome": "success" | "exhausted" | None,
+    "timestamp": ISO 8601,
+    "steps": list[dict]  # Each step contains:
+      {
+        "generated_code": str,
+        "stdout": str,
+        "stderr": str,
+        "exit_code": int,
+        "tests_passed": bool
+      }
+  }
+  ```
+
+**How Trajectories Flow to Training:**
+
+1. **Recording:** Agent loop (`services/rune-agent/src/rune_agent/nodes.py`) calls `record_trajectory()` in `save_trajectory_node()` after loop terminates
+2. **Loading:** Training services call `load_trajectory(trajectory_id)` to retrieve the JSON
+3. **Formatting for SFT:** `format_for_sft(trajectory)` extracts the final successful step (or latest step if exhausted) and returns 3-message format:
+   ```python
+   [
+     {"role": "system", "content": "You are a Python code generator. Output only code, no explanation."},
+     {"role": "user", "content": task_description},
+     {"role": "assistant", "content": generated_code}  # from last successful step
+   ]
+   ```
+4. **Empty on Failure:** If outcome != "success" or no step has tests_passed=True, returns empty list `[]`
+
+**Complete Data Flow:**
+- Agent loop records per-attempt: code → execution → (pass/fail)
+- Complete trajectory persists to disk as JSON
+- Training pipeline loads, formats, and consumes the SFT messages
+- Adapter metadata stores `session_id` linking back to original trajectory
+
+---
+
+## 2. TRAINING PIPELINE
+
+**Location:** `/Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/trainer.py`
+
+### Path 1: Direct QLoRA Fine-Tuning (Phase 3 - Current)
+
+**Function:** `train_qlora(session_id, adapter_id, output_dir, base_model_id, task_type, rank, alpha, epochs, learning_rate)`
+
+**Architecture:**
+1. Load trajectory JSON → format with `format_for_sft()` → create 3-message chat dataset
+2. Load base model with NF4 quantization (4-bit)
+3. Build LoRA config via `build_qlora_config()` targeting `q_proj, v_proj`
+4. Use PEFT `SFTTrainer` (Supervised Fine-Tuning)
+5. Save adapter as `{output_dir}/adapter_model.safetensors` + `adapter_config.json`
+
+**Config Details:**
+- Rank: 64 (default)
+- Alpha: 128 (2x rank)
+- Epochs: 3
+- Learning rate: 2e-4
+- Batch size: 1 (with gradient accumulation x4)
+- bf16 precision
+- Cosine learning rate scheduler
+
+### Path 2: Integration with Registry
+
+**Function:** `train_and_register(session_id, adapter_id, database_url, ...)`
+
+**Flow:**
+1. Call `train_qlora()` to produce weights
+2. Compute SHA-256 hash of `adapter_model.safetensors`
+3. Create `AdapterRecord` with:
+   - id, version, task_type, base_model_id, rank, created_at
+   - file_path, file_hash, file_size_bytes
+   - source="qlora", session_id
+4. Store in adapter registry via `AdapterRegistry.store(record)`
+
+**All GPU imports deferred:** torch, datasets, transformers, trl, peft are imported inside function bodies (INFRA-05 pattern) so module is importable on CPU-only environments
+
+---
+
+## 3. HYPERNETWORK CONCEPT
+
+**Location:** `/Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/hypernetwork.py`
+
+**What is it:** DocToLoraHypernetwork — Perceiver-based instant LoRA adapter generation from token IDs (single forward pass, no gradient descent at inference time)
+
+**Architecture:**
+
+```
+Input: token_ids (batch, seq_len) from trajectory text
+  ↓
+Lightweight token embedding (hypernetwork's own, not base model)
+  ↓
+Learnable latent array (num_latents=32, latent_dim=256)
+  ↓
+Cross-attention: latents attend over token embeddings
+  ↓
+Self-attention stack (4 layers) over latents
+  ↓
+Linear head: projects to all LoRA weight parameters
+  ↓
+Output: PEFT state_dict with lora_A, lora_B for each layer/module
+```
+
+**Key Parameters:**
+- input_dim: vocab size
+- num_latents: 32
+- latent_dim: 256
+- depth: 4 (self-attention layers)
+- heads: 8
+- rank: 8 (output LoRA rank)
+- target_modules: ["q_proj", "v_proj"]
+- num_layers: 28 (Qwen2.5-Coder-7B layers)
+- hidden_dim: 4096
+
+**Forward Pass Output:**
+- Returns dict mapping `"base_model.model.model.layers.{i}.self_attn.{module}.lora_{A|B}.weight"` → tensor
+- Each pair (lora_A, lora_B) has shape (rank, hidden_dim) and (hidden_dim, rank)
+
+**Lazy Proxy Pattern:**
+- `DocToLoraHypernetwork` is a lazy proxy that only builds the real `nn.Module` class on first instantiation
+- Keeps module importable without torch
+
+**Saving:** `save_hypernetwork_adapter(weights, output_dir, base_model_id)` writes:
+- `adapter_model.safetensors` (weights)
+- `adapter_config.json` (PEFT format config)
+
+**Phase Status:**
+- Phase 3: QLoRA direct fine-tuning (implemented, current)
+- Phase 4: Hypernetwork forward pass replaces gradient descent (proposed, pending validation)
+
+---
+
+## 4. ADAPTER REGISTRY INTEGRATION
+
+**Location:** `/Users/noahdolevelixir/Code/rune/libs/adapter-registry/src/adapter_registry/registry.py` + `models.py`
+
+### AdapterRecord SQLModel
+```python
+class AdapterRecord(SQLModel, table=True):
+    id: str (PK)
+    version: int
+    task_type: str (indexed)
+    base_model_id: str
+    rank: int
+    created_at: str (ISO 8601)
+    file_path: str (unique)
+    file_hash: str (SHA-256)
+    file_size_bytes: int
+    pass_rate: Optional[float]
+    fitness_score: Optional[float]
+    source: str ("qlora", "hypernetwork")
+    session_id: str
+    is_archived: bool (soft delete)
+    parent_ids: Optional[str] (JSON-encoded list)
+    generation: int (evolutionary generation)
+    training_task_hash: Optional[str] (dedup key, indexed)
+    agent_id: Optional[str]
+```
+
+### Registry Methods
+
+**Store:** `registry.store(record)` — Write-once, raises `AdapterAlreadyExistsError` if duplicate ID
+
+**Query:** 
+- `retrieve_by_id(adapter_id)` → single record
+- `query_by_task_type(task_type)` → all adapters for a task
+- `list_all()` → all non-archived adapters
+- **`query_best_for_task(task_type, top_k=3)`** → top-k by fitness_score DESC
+- `query_unevaluated(task_type=None)` → adapters with pass_rate IS NULL
+
+**Lifecycle:**
+- `update_fitness(adapter_id, pass_rate, fitness_score)` — update evaluation metrics
+- `archive(adapter_id)` — soft delete
+- `get_lineage(adapter_id)` — walk parent_ids chain
+
+### How Adapters Flow Through Agent Loop
+
+**Location:** `/Users/noahdolevelixir/Code/rune/services/rune-agent/src/rune_agent/nodes.py`
+
+1. **Agent state intake:** `adapter_ids: list[str]` passed in `RuneState`
+2. **Generate node:**
+   ```python
+   adapter_id = state["adapter_ids"][0] if state["adapter_ids"] else None
+   result = await provider.generate(prompt, model, adapter_id=adapter_id)
+   ```
+3. **Provider selection:** `get_provider()` returns `VLLMProvider` (default) or `OllamaProvider`
+4. **vLLM integration:** If adapter_id provided:
+   - vLLM treats adapter_id as the model name in the request
+   - Adapter must be pre-loaded via vLLM's `/v1/load_lora_adapter` endpoint
+   - Generation applies adapter to base model
+
+**Adapter Loading in Inference:** (`libs/inference/src/inference/vllm_provider.py`)
+```python
+async def load_adapter(adapter_id: str, adapter_path: str) -> None:
+    # POST {base_url}/load_lora_adapter with {"lora_name": adapter_id, "lora_path": adapter_path}
+    
+async def generate(prompt, model, adapter_id=None, max_tokens=1024):
+    effective_model = adapter_id if adapter_id else model  # Use adapter_id as model name
+    response = await client.chat.completions.create(model=effective_model, ...)
+```
+
+---
+
+## 5. TASK DECOMPOSITION
+
+**Status: NOT IMPLEMENTED**
+
+No existing code decomposes a project description into individual coding tasks. 
+
+**Where it would fit:**
+- Agent loop intake: currently expects single `task_description` and `test_suite` as input
+- Swarm orchestrator (`scripts/swarm.py`): loads `task_source` (JSON file) with pre-defined tasks
+- Demo projects (`scripts/demo_project.py`): provide monolithic task (entire FastAPI app as single problem)
+
+**Current Task Format (from swarm.py):**
+```python
+{
+    "task_id": str,
+    "task_description": str,
+    "test_suite": str,
+    "task_type": str (optional, defaults to "function")
+}
+```
+
+**What's Missing:**
+- No LLM-based task planner that takes "Build a URL shortener" → ["Set up route handlers", "Implement storage", "Add validation", ...]
+- No task dependency graph
+- No hierarchical task structure
+- No automatic test generation for subtasks
+
+**Related Code Points:**
+- `swarm.py:load_task_pool()` loads tasks from JSON but does not generate them
+- `swarm.py:agent_supervisor()` processes pre-defined task list but does not decompose tasks
+- No planning logic in the codebase
+
+---
+
+## 6. ADAPTER FITNESS & EVOLUTION
+
+**Location:** `/Users/noahdolevelixir/Code/rune/scripts/swarm_evolution.py`
+
+**Fitness Calculation:**
+```python
+phi(a) = alpha * pass_rate(a) + (1 - alpha) * generalization(a)
+```
+- Default alpha: 0.7 (prefer specialization)
+- pass_rate: test-passing rate on held-out tasks
+- generalization: cross-task coverage metric (TBD)
+- Stored in `fitness_score` column
+
+**Evolution Operations:**
+
+1. **Evaluate:** `evaluate_fitness()` computes and updates fitness
+2. **Merge (TIES-Merging):** For each task type with ≥5 adapters:
+   - `query_best_for_task(task_type, top_k=3)` gets top 3
+   - `ties_merge(state_dicts)` combines them (trim, elect sign, average)
+   - Creates new adapter entry with `parent_ids` pointing to sources
+3. **Prune:** Archive any adapter with `fitness_score < 0.3`
+4. **Promote:** New merged adapters inherit `generation = max(parents) + 1`
+
+**Merge Implementations:**
+- **TIES-Merging:** Trim parameters below density threshold, majority-vote sign, average matching values
+- **DARE-Merging:** Drop & rescale — randomly drops a fraction, rescales, averages
+
+---
+
+## 7. COMPLETE PROJECT→TASKS→SOLVE→TRAIN→IMPROVE LOOP
+
+### What Exists
+
+**Implemented (Phase 3):**
+1. ✅ **Agent Loop:** Single task → generate/execute/reflect cycles → trajectory recorded
+2. ✅ **Direct QLoRA Training:** Trajectory → SFT dataset → fine-tuned adapter
+3. ✅ **Adapter Registry:** SQLite-backed metadata + safetensors storage, write-once policy
+4. ✅ **Adapter Serving:** vLLM with LoRA hot-loading, OpenAI-compatible API
+5. ✅ **Evolution:** Fitness-driven merge/prune/archive operations
+6. ✅ **Swarm Execution:** Multiple agents, training queue, evolution worker coordinated via asyncio
+
+**Proposed (Phase 4):**
+7. 🔬 **Hypernetwork:** Single forward pass replaces gradient descent (not yet empirically validated)
+8. 📋 **Task Decomposition:** LLM-based planning to break projects into subtasks (NOT IMPLEMENTED)
+
+### What's Missing
+
+**Critical Gap:**
+- **No Project→Task Bridge:** System accepts pre-defined task list but cannot decompose a project description
+  
+  Example: 
+  - Input: "Build a URL shortener REST API with persistence, rate limiting, and analytics"
+  - Currently: Must manually specify individual tasks
+  - Missing: Auto-planner that generates task list and test suites
+
+**Process Flow as Currently Implemented:**
+```
+Task JSON → load_task_pool()
+    ↓
+agent_supervisor (N agents, M tasks)
+    ↓
+generate/execute/reflect loop
+    ↓
+record_trajectory()
+    ↓
+training_queue (via TrainingRequest)
+    ↓
+train_qlora() OR hypernetwork forward pass
+    ↓
+AdapterRegistry.store()
+    ↓
+evolution_sweep() (periodic merge/prune)
+```
+
+**What Would Complete the Loop:**
+```
+Project Description
+    ↓
+[LLM Task Planner] ← NOT IMPLEMENTED
+    ↓
+Task List + Test Suites
+    ↓
+[Rest of pipeline as above]
+```
+
+---
+
+## 8. KEY FILES SUMMARY
+
+| Component | File | Key Functions |
+|-----------|------|---------------|
+| **Trajectory** | `libs/model-training/src/model_training/trajectory.py` | `record_trajectory()`, `load_trajectory()`, `format_for_sft()` |
+| **QLoRA Training** | `libs/model-training/src/model_training/trainer.py` | `train_qlora()`, `train_and_register()` |
+| **Hypernetwork** | `libs/model-training/src/model_training/hypernetwork.py` | `DocToLoraHypernetwork`, `save_hypernetwork_adapter()` |
+| **PEFT Utils** | `libs/model-training/src/model_training/peft_utils.py` | `build_qlora_config()`, `apply_lora_adapter()` |
+| **Adapter Merging** | `libs/model-training/src/model_training/merging.py` | `ties_merge()`, `dare_merge()`, `load_adapter_state_dict()` |
+| **Registry** | `libs/adapter-registry/src/adapter_registry/registry.py` | `AdapterRegistry` class + CRUD methods |
+| **Registry Models** | `libs/adapter-registry/src/adapter_registry/models.py` | `AdapterRecord` SQLModel |
+| **Agent State** | `services/rune-agent/src/rune_agent/state.py` | `RuneState` TypedDict |
+| **Agent Nodes** | `services/rune-agent/src/rune_agent/nodes.py` | `generate_node()`, `execute_node()`, `reflect_node()`, `save_trajectory_node()` |
+| **Inference Provider** | `libs/inference/src/inference/provider.py` | `InferenceProvider` ABC + `GenerationResult` |
+| **vLLM Provider** | `libs/inference/src/inference/vllm_provider.py` | `VLLMProvider` with adapter loading |
+| **Swarm Orchestrator** | `scripts/swarm.py` | `agent_supervisor()`, `run_swarm()`, `load_task_pool()` |
+| **Training Workers** | `scripts/swarm_workers.py` | `training_pool_manager()`, `memory_watchdog()` |
+| **Evolution** | `scripts/swarm_evolution.py` | `evolution_sweep()`, TIES-merge logic |
+| **Training Service** | `services/training-svc/src/training_svc/routers/training.py` | `/train/lora`, `/train/hypernetwork` endpoints |
+
+---
+
+## 9. CRITICAL DESIGN DECISIONS
+
+1. **Write-Once Adapter Storage:** No adapter is ever overwritten; new versions create separate entries with `parent_ids` tracking lineage
+2. **Deferred GPU Imports:** All GPU-dependent code is inside function bodies (INFRA-05) so library is importable on CPU
+3. **Single-GPU Time-Sharing:** Training pool coordinates with vLLM via sleep/wake API to share single GPU
+4. **Fitness-Driven Evolution:** Empirical evaluation (pass_rate, generalization) before promoting adapters, not assumed safety via orthogonality
+5. **Trajectory Persistence:** Complete trajectory (all attempts, all execution output) recorded for both successful and failed tasks
+6. **SFT Format Conversion:** Only successful trajectories produce training data; failed trajectories recorded but discarded for training
+7. **Lazy Hypernetwork Proxy:** Module imports work in CPU CI; torch only loaded on first instantiation
+
+---
+
+## Conclusion
+
+The Rune codebase implements a complete **trajectory recording → training → registry → serving → evolution** pipeline with working hypernetwork infrastructure (Phase 3: QLoRA, Phase 4: hypernetwork proposed). The critical missing piece is **task decomposition**: taking a project description and autonomously breaking it into individual coding tasks with generated test suites. This would bridge from "here's a complex feature request" to the current task-list-in-JSON intake point.</result>
+<usage><total_tokens>82455</total_tokens><tool_uses>76</tool_uses><duration_ms>167627</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/tasks/a7ead76618e2531a1.output
+
+---
+
+This still isn't 100% correct. The first attempt uses the hypernetwork to pass the general method for planning, executing, coding and validating to the model. The prompt is just used to launch the process. The first prompt could be the project definition. This prompt would cause us to generate an implementation plan which would be passed to the next iteration via hypernetwork to preserve context window.
