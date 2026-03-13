@@ -104,6 +104,7 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
         prompt=full_prompt,
         model=model,
         adapter_id=adapter_id,
+        max_tokens=4096,
     )
 
     extracted = _extract_code(result.text)

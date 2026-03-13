@@ -67,10 +67,12 @@ def test_sakana_hypernetwork(tmpdir: str) -> str:
 
     trajectory_text = (
         "=== Bootstrap ===\n"
-        "Phase 1: Decompose project into tasks\n"
-        "Phase 2: Generate code with tests\n"
-        "Phase 3: Execute, validate, iterate\n"
-        "Phase 4: Integrate and run full test suite\n"
+        "Phase 1: Decompose project into tasks — LRUCache core (doubly-linked list + "
+        "hash map), TTL expiration logic, thread-safety with fine-grained locks, "
+        "stats tracking, decorator wrapper\n"
+        "Phase 2: Generate code with tests for each component\n"
+        "Phase 3: Execute, validate, iterate on concurrency edge cases\n"
+        "Phase 4: Integrate components, run full test suite including stress tests\n"
     )
 
     print(f"  Device: {DEVICE}")
@@ -166,20 +168,26 @@ def test_adapter_registry(adapter_path: str) -> None:
     """Step 3: Adapter registry CRUD."""
     step(3, "Adapter Registry: store, query, retrieve")
 
+    from sqlalchemy import create_engine
+
     from adapter_registry.models import AdapterRecord
     from adapter_registry.registry import AdapterRegistry
 
     with tempfile.TemporaryDirectory() as db_dir:
         db_path = os.path.join(db_dir, "test_registry.db")
-        registry = AdapterRegistry(db_url=f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}")
+        registry = AdapterRegistry(engine=engine)
 
         record = AdapterRecord(
             id="e2e-sakana-001",
-            version="1.0",
+            version=1,
             task_type="qa",
             base_model_id=MODEL_NAME,
             rank=8,
+            created_at="2026-01-01T00:00:00Z",
             file_path=adapter_path,
+            file_hash="e2e-test-hash",
+            file_size_bytes=0,
             source="sakana_d2l",
             session_id="e2e-test",
         )
@@ -234,51 +242,17 @@ def test_evaluation_metrics() -> None:
     print("  Evaluation metrics: PASSED")
 
 
-def test_full_iteration_loop(tmpdir: str) -> None:
-    """Step 5: Full rune_runner iteration loop with Sakana hypernetwork."""
-    step(5, "Full iteration loop via rune_runner")
+def test_swarm_with_hypernetwork(tmpdir: str) -> None:
+    """Step 5: Full swarm — parallel agents + hypernetwork + evolution."""
+    step(5, "Swarm: parallel agents with hypernetwork iteration loops")
 
-    # For the iteration loop, we use our own DocToLoraHypernetwork (random init)
-    # because rune_runner.run_hypernetwork calls our generate_adapter interface.
-    # The Sakana checkpoint was already tested in steps 1-2.
-    import torch
-    from model_training.hypernetwork import DocToLoraHypernetwork
+    from model_training.sakana_d2l import download_checkpoint
+    from shared.rune_models import SwarmConfig
 
-    # gemma-2-2b-it: hidden=2304, layers=26, GQA with kv_heads=4
-    checkpoint_path = os.path.join(tmpdir, "rune_hypernetwork.pt")
-    h = DocToLoraHypernetwork(
-        input_dim=10000,
-        num_latents=4,
-        latent_dim=32,
-        depth=1,
-        heads=4,
-        rank=4,
-        target_modules=("q_proj", "v_proj"),
-        num_layers=26,
-        hidden_dim=2304,
-        module_dims={"q_proj": (2304, 2304), "v_proj": (2304, 256)},
-    )
-    torch.save(
-        {
-            "model_state_dict": h.state_dict(),
-            "hypernetwork_config": {
-                "input_dim": 10000,
-                "num_latents": 4,
-                "latent_dim": 32,
-                "depth": 1,
-                "heads": 4,
-                "rank": 4,
-                "target_modules": ["q_proj", "v_proj"],
-                "num_layers": 26,
-                "hidden_dim": 2304,
-                "module_dims": {"q_proj": (2304, 2304), "v_proj": (2304, 256)},
-            },
-        },
-        checkpoint_path,
-    )
-    print(f"  Created rune hypernetwork checkpoint: {checkpoint_path}")
+    checkpoint_path = str(download_checkpoint(variant="gemma_demo"))
+    print(f"  Sakana checkpoint: {checkpoint_path}")
 
-    # Configure provider
+    # Configure inference provider
     os.environ["INFERENCE_PROVIDER"] = "transformers"
     os.environ["TRANSFORMERS_MODEL_NAME"] = MODEL_NAME
     os.environ["TRANSFORMERS_DEVICE"] = DEVICE
@@ -287,42 +261,128 @@ def test_full_iteration_loop(tmpdir: str) -> None:
 
     _clear_cache()
 
-    from rune_runner import run_project
+    # Build task pool — two agents work on the same app from different angles
+    task_pool = [
+        {
+            "task_id": "cli-app-agent0",
+            "task_description": (
+                "Build a complete Python CLI task manager application. Requirements:\n\n"
+                "1. Data layer: TaskStore class backed by SQLite via the stdlib sqlite3 "
+                "module. Schema: tasks(id INTEGER PRIMARY KEY, title TEXT NOT NULL, "
+                "description TEXT, status TEXT DEFAULT 'todo', priority INTEGER DEFAULT 0, "
+                "created_at TEXT, due_date TEXT, tags TEXT). Supports CRUD, filtering by "
+                "status/priority/tag, and sorting.\n\n"
+                "2. Domain layer: Task dataclass with validation — title must be non-empty, "
+                "status must be one of ('todo','in_progress','done','blocked'), priority 0-5, "
+                "tags stored as comma-separated string. TaskService class that enforces "
+                "business rules: cannot transition from 'done' to 'todo', blocked tasks "
+                "cannot move to 'done' directly, and overdue tasks are auto-flagged.\n\n"
+                "3. CLI layer: argparse-based CLI with subcommands: add, list, show, "
+                "update, delete, stats. list supports --status, --priority, "
+                "--tag, --sort-by, --overdue flags. stats shows counts by status "
+                "and average completion time.\n\n"
+                "4. Include a comprehensive test suite using only unittest that covers: "
+                "TaskStore CRUD and queries, Task validation and state transitions, CLI "
+                "argument parsing and output formatting, edge cases (empty db, duplicate "
+                "titles, invalid transitions), and at least 15 test methods."
+            ),
+        },
+        {
+            "task_id": "cli-app-agent1",
+            "task_description": (
+                "Build a complete Python CLI task manager application. Requirements:\n\n"
+                "1. Data layer: TaskStore class backed by SQLite via the stdlib sqlite3 "
+                "module. Schema: tasks(id INTEGER PRIMARY KEY, title TEXT NOT NULL, "
+                "description TEXT, status TEXT DEFAULT 'todo', priority INTEGER DEFAULT 0, "
+                "created_at TEXT, due_date TEXT, tags TEXT). Supports CRUD, filtering by "
+                "status/priority/tag, and sorting.\n\n"
+                "2. Domain layer: Task dataclass with validation — title must be non-empty, "
+                "status must be one of ('todo','in_progress','done','blocked'), priority 0-5, "
+                "tags stored as comma-separated string. TaskService class that enforces "
+                "business rules: cannot transition from 'done' to 'todo', blocked tasks "
+                "cannot move to 'done' directly, and overdue tasks are auto-flagged.\n\n"
+                "3. CLI layer: argparse-based CLI with subcommands: add, list, show, "
+                "update, delete, stats. list supports --status, --priority, "
+                "--tag, --sort-by, --overdue flags. stats shows counts by status "
+                "and average completion time.\n\n"
+                "4. Include a comprehensive test suite using only unittest that covers: "
+                "TaskStore CRUD and queries, Task validation and state transitions, CLI "
+                "argument parsing and output formatting, edge cases (empty db, duplicate "
+                "titles, invalid transitions), and at least 15 test methods."
+            ),
+        },
+    ]
 
-    result = asyncio.run(
-        run_project(
-            project_prompt="Build a Python function that computes Fibonacci numbers",
-            max_iterations=2,
-            checkpoint_path=checkpoint_path,
-            base_model_id=MODEL_NAME,
-            device="cpu",
-        )
+    # Write task pool to temp file
+    task_pool_path = os.path.join(tmpdir, "e2e_tasks.json")
+    with open(task_pool_path, "w") as f:
+        json.dump(task_pool, f)
+
+    # Configure swarm — 2 agents, short evolution interval, hypernetwork enabled
+    db_path = os.path.join(tmpdir, "e2e_swarm.db")
+    config = SwarmConfig(
+        db_url=f"sqlite:///{db_path}",
+        task_source=task_pool_path,
+        population_size=2,
+        max_generations=1,
+        max_iterations=2,
+        evolution_interval=10,
+        sandbox_backend="subprocess",
+        base_model_id=MODEL_NAME,
+        device=DEVICE,
+        hypernetwork_checkpoint=checkpoint_path,
     )
 
-    print(f"\n  Session: {result['session_id']}")
-    print(f"  Total iterations: {result['total_iterations']}")
-    print(f"  Final tests passed: {result['final_tests_passed']}")
-    print(f"  Adapter dir: {result['adapter_dir']}")
+    print(f"  Population: {config.population_size} agents")
+    print(f"  Max iterations per agent: {config.max_iterations}")
+    print(f"  Evolution interval: {config.evolution_interval}s")
+    print(f"  Tasks: {len(task_pool)}")
 
-    for it in result["iterations"]:
-        code = it["generated_code"]
-        lines = code.split("\n") if code else []
-        print(f"\n  --- Iteration {it['iteration']} ---")
-        print(f"    Adapter: {it['adapter_id'] or 'none'}")
-        print(f"    Tests passed: {it['tests_passed']}")
-        print(f"    Code lines: {len(lines)}")
-        if lines:
-            for line in lines[:5]:
-                print(f"      {line}")
-            if len(lines) > 5:
-                print(f"      ... ({len(lines) - 5} more lines)")
+    from swarm import run_swarm
 
-    adapter_dir = Path(result["adapter_dir"])
-    if adapter_dir.exists():
-        subdirs = sorted(adapter_dir.iterdir())
-        print(f"\n  Adapter subdirs on disk: {[d.name for d in subdirs]}")
+    result = asyncio.run(run_swarm(config))
 
-    print("  Iteration loop: PASSED")
+    # Report agent results
+    print("\n  --- Agent Results ---")
+    for agent_result in result.get("agents", []):
+        if isinstance(agent_result, dict):
+            print(
+                f"    {agent_result.get('agent_id', '?')}: "
+                f"completed={agent_result.get('completed', 0)}, "
+                f"failed={agent_result.get('failed', 0)}, "
+                f"skipped={agent_result.get('skipped', 0)}"
+            )
+        else:
+            print(f"    Error: {agent_result}")
+
+    # Report evolution results
+    evolution = result.get("evolution")
+    if evolution:
+        print(f"\n  --- Evolution Sweep ---")
+        for task_type, stats in evolution.get("task_types", {}).items():
+            print(
+                f"    {task_type}: merged={stats['merged']}, "
+                f"pruned={stats['pruned']}, active={stats['active']}"
+            )
+    else:
+        print("\n  Evolution: no sweep results")
+
+    # Report registered adapters
+    registry = result.get("registry")
+    if registry:
+        try:
+            all_adapters = registry.query_by_task_type("iteration")
+            print(f"\n  --- Registered Adapters ({len(all_adapters)}) ---")
+            for a in all_adapters:
+                print(
+                    f"    {a.id}: fitness={a.fitness_score:.3f}, "
+                    f"pass_rate={a.pass_rate:.2f}, gen={a.generation}, "
+                    f"source={a.source}"
+                )
+        except Exception as e:
+            print(f"\n  Adapter query error: {e}")
+
+    print("\n  Swarm: PASSED")
 
 
 def run_e2e() -> None:
@@ -368,7 +428,7 @@ def run_e2e() -> None:
             test_evaluation_metrics()
 
         if 5 in run_steps:
-            test_full_iteration_loop(tmpdir)
+            test_swarm_with_hypernetwork(tmpdir)
 
     print("\n" + "=" * 60)
     print("  E2E TEST COMPLETE")

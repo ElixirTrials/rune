@@ -84,7 +84,7 @@ class TransformersProvider(InferenceProvider):
         prompt: str,
         model: str,
         adapter_id: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
@@ -119,7 +119,7 @@ class TransformersProvider(InferenceProvider):
             self._deactivate_adapter()
 
         inputs = self._tokenizer(
-            prompt, return_tensors="pt", truncation=True, max_length=2048
+            prompt, return_tensors="pt", truncation=True, max_length=8192
         )
         inputs = {k: v.to(self._device) for k, v in inputs.items()}
         input_len = inputs["input_ids"].shape[1]

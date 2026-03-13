@@ -15,9 +15,11 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -30,6 +32,9 @@ from shared.rune_models import SwarmConfig
 from shared.sandbox import get_sandbox_backend
 from swarm_evolution import evolution_worker
 from swarm_workers import TrainingRequest, memory_watchdog, training_pool_manager
+
+if TYPE_CHECKING:
+    from adapter_registry import AdapterRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +58,101 @@ def load_task_pool(task_source: str) -> list[dict[str, Any]]:
     return []
 
 
+def _register_iteration_adapter(
+    iter_result: dict[str, Any],
+    task_hash: str,
+    agent_id: str,
+    registry: "AdapterRegistry",
+    base_model_id: str,
+) -> None:
+    """Register the final adapter from an iteration loop in the registry.
+
+    Examines the iteration results to find the last adapter produced,
+    registers it with a fitness score derived from test pass rates.
+
+    Args:
+        iter_result: Return value from run_project().
+        task_hash: Stable hash for the task.
+        agent_id: ID of the agent that produced the adapter.
+        registry: Adapter registry for storing metadata.
+        base_model_id: Base model the adapter was generated for.
+    """
+    from adapter_registry.models import AdapterRecord
+
+    adapter_dir = iter_result.get("adapter_dir", "")
+    iterations = iter_result.get("iterations", [])
+    if not iterations or not adapter_dir:
+        return
+
+    # Find the last adapter directory on disk
+    adapter_base = Path(adapter_dir)
+    if not adapter_base.exists():
+        return
+
+    adapter_subdirs = sorted(adapter_base.iterdir())
+    if not adapter_subdirs:
+        return
+
+    # Use the last adapter produced
+    last_adapter = adapter_subdirs[-1]
+    safetensors = last_adapter / "adapter_model.safetensors"
+    if not safetensors.exists():
+        return
+
+    # Compute fitness from iteration results
+    total_iters = len(iterations)
+    passing_iters = sum(1 for it in iterations if it.get("tests_passed", False))
+    pass_rate = passing_iters / total_iters if total_iters > 0 else 0.0
+
+    from evaluation.metrics import evaluate_fitness
+
+    fitness = evaluate_fitness(
+        adapter_id=f"{task_hash}-{agent_id}",
+        pass_rate=pass_rate,
+        diversity_score=0.5,
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+    file_size = safetensors.stat().st_size
+
+    record = AdapterRecord(
+        id=f"{task_hash}-{agent_id}",
+        version=1,
+        task_type="iteration",
+        base_model_id=base_model_id,
+        rank=8,
+        created_at=now,
+        file_path=str(last_adapter),
+        file_hash="",
+        file_size_bytes=file_size,
+        pass_rate=pass_rate,
+        fitness_score=fitness,
+        source="iteration",
+        session_id=iter_result.get("session_id", ""),
+        agent_id=agent_id,
+        generation=0,
+    )
+
+    try:
+        registry.store(record)
+        logger.info(
+            "Registered adapter %s (fitness=%.3f, pass_rate=%.2f)",
+            record.id,
+            fitness,
+            pass_rate,
+        )
+    except Exception:
+        logger.exception("Failed to register adapter %s", record.id)
+
+
 async def agent_supervisor(
     agent_id: str,
     tasks: list[dict[str, Any]],
     checkpoint_db: SwarmCheckpointDB,
     training_queue: asyncio.Queue[TrainingRequest],
+    registry: "AdapterRegistry",
+    base_model_id: str = "Qwen/Qwen2.5-Coder-7B",
+    device: str = "cpu",
     dry_run: bool = False,
     max_failures: int = 5,
     shutdown_event: asyncio.Event | None = None,
@@ -72,13 +167,16 @@ async def agent_supervisor(
 
     When use_iteration_loop=True, uses rune_runner's hypernetwork iteration
     loop instead of the standard sandbox approach. Each agent runs its own
-    adapter chain per task.
+    adapter chain per task, and registers the resulting adapter in the registry.
 
     Args:
         agent_id: Unique identifier for this agent.
         tasks: List of task dicts to process.
         checkpoint_db: Checkpoint DB for dedup and recovery.
         training_queue: Queue for submitting training requests.
+        registry: Adapter registry for storing adapter metadata.
+        base_model_id: HuggingFace model ID for adapter config.
+        device: Device for hypernetwork computation.
         dry_run: If True, skip actual execution.
         max_failures: Consecutive failures before retiring.
         shutdown_event: Event to signal graceful shutdown.
@@ -129,7 +227,19 @@ async def agent_supervisor(
                     project_prompt=project_prompt,
                     max_iterations=max_iterations,
                     checkpoint_path=hypernetwork_checkpoint,
+                    base_model_id=base_model_id,
+                    device=device,
                 )
+
+                # Register the adapter in the registry for evolution
+                _register_iteration_adapter(
+                    iter_result=iter_result,
+                    task_hash=task_hash,
+                    agent_id=agent_id,
+                    registry=registry,
+                    base_model_id=base_model_id,
+                )
+
                 if iter_result["final_tests_passed"]:
                     checkpoint_db.mark_completed(task_hash, "success")
                     completed += 1
@@ -184,12 +294,15 @@ async def agent_supervisor(
     }
 
 
-async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> None:
+async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> dict[str, Any]:
     """Tier-1 orchestrator — runs the full swarm with asyncio.TaskGroup.
 
     Args:
         config: Swarm configuration.
         dry_run: If True, skip actual execution and training.
+
+    Returns:
+        Summary dict with agent results and evolution sweep results.
     """
     from adapter_registry import AdapterRegistry
     from sqlmodel import create_engine
@@ -211,19 +324,21 @@ async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> None:
     tasks = load_task_pool(config.task_source)
     if not tasks:
         logger.warning("No tasks to process")
-        return
+        return {"agents": [], "evolution": None}
 
     # Shared state
     training_queue: asyncio.Queue[TrainingRequest] = asyncio.Queue()
     shutdown_event = asyncio.Event()
     num_agents = min(config.population_size, budget.max_agents)
 
-    # Partition tasks across agents
+    # Partition tasks across agents (round-robin)
     partitions: list[list[dict[str, Any]]] = [[] for _ in range(num_agents)]
     for i, task in enumerate(tasks):
         partitions[i % num_agents].append(task)
 
     use_iteration = bool(config.hypernetwork_checkpoint)
+
+    agent_results: list[Any] = []
 
     async with asyncio.TaskGroup() as tg:
         # Agent supervisors
@@ -235,10 +350,14 @@ async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> None:
                     tasks=partitions[i],
                     checkpoint_db=checkpoint_db,
                     training_queue=training_queue,
+                    registry=registry,
+                    base_model_id=config.base_model_id,
+                    device=config.device,
                     dry_run=dry_run,
                     shutdown_event=shutdown_event,
                     use_iteration_loop=use_iteration,
                     hypernetwork_checkpoint=config.hypernetwork_checkpoint,
+                    max_iterations=config.max_iterations,
                 )
             )
             agent_tasks.append(t)
@@ -278,8 +397,22 @@ async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> None:
         for result in done:
             if isinstance(result, Exception):
                 logger.error("Agent failed: %s", result)
+                agent_results.append({"error": str(result)})
             else:
                 logger.info("Agent result: %s", result)
+                agent_results.append(result)
+
+    # Final evolution sweep after all agents complete
+    from swarm_evolution import evolution_sweep
+
+    evolution_result = evolution_sweep(registry)
+    logger.info("Final evolution sweep: %s", evolution_result)
+
+    return {
+        "agents": agent_results,
+        "evolution": evolution_result,
+        "registry": registry,
+    }
 
 
 def main() -> None:

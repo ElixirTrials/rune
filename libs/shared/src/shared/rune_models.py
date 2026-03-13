@@ -143,9 +143,11 @@ class SwarmConfig(BaseModel):
     task_source: str = "tasks.json"
     population_size: int = 8
     max_generations: int = 10
+    max_iterations: int = 5
     evolution_interval: int = 7200
     sandbox_backend: str = "subprocess"
     base_model_id: str = "Qwen/Qwen2.5-Coder-7B"
+    device: str = "cpu"
     hypernetwork_checkpoint: str | None = None
 
 
