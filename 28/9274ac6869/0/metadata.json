@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "289274ac6869",
+  "session_id": "e0656677-6e3d-4139-9a97-dc3d6e524212",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-13T13:52:02.278582Z",
+  "branch": "feat/e2e_with_hypernetwork",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "scripts/e2e_sakana.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "d7eeb7313603",
+  "token_usage": {
+    "input_tokens": 1844,
+    "cache_creation_tokens": 97386,
+    "cache_read_tokens": 6661001,
+    "output_tokens": 20673,
+    "api_call_count": 105
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T13:52:02.110472Z",
+    "agent_lines": 11,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 11,
+    "agent_percentage": 100
+  }
+}
