@@ -26,6 +26,10 @@ class AdapterRecord(SQLModel, table=True):
         source: How the adapter was created ('distillation', 'evolution', 'manual').
         session_id: ID of the coding session that produced this adapter.
         is_archived: Whether this adapter has been archived (soft delete).
+        parent_ids: JSON-encoded list of parent adapter IDs for lineage tracking.
+        generation: Evolutionary generation number (0 for initial adapters).
+        training_task_hash: Deduplication key for the training task.
+        agent_id: Identifier of the swarm agent that produced this adapter.
 
     Example:
         >>> record = AdapterRecord(
@@ -58,3 +62,7 @@ class AdapterRecord(SQLModel, table=True):
     source: str
     session_id: str
     is_archived: bool = Field(default=False)
+    parent_ids: Optional[str] = Field(default=None)
+    generation: int = Field(default=0)
+    training_task_hash: Optional[str] = Field(default=None, index=True)
+    agent_id: Optional[str] = Field(default=None)

@@ -6,10 +6,13 @@ Provides /health (liveness) and /ready (readiness) endpoints.
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 from fastapi import FastAPI
 
 health_app = FastAPI(title="lora-server-health")
+logger = logging.getLogger(__name__)
 
 
 async def check_vllm_ready(base_url: str = "http://localhost:8000") -> bool:
@@ -36,7 +39,8 @@ async def check_vllm_ready(base_url: str = "http://localhost:8000") -> bool:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{base_url}/health", timeout=2.0)
             return resp.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.debug("vLLM health check failed for %s: %s", base_url, e)
         return False
 
 

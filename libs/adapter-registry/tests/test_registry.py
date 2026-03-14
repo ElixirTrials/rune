@@ -137,6 +137,150 @@ def test_list_all_returns_empty_when_all_archived(
     assert results == []
 
 
+# --- query_best_for_task() ---
+
+
+def test_query_best_for_task_ordering(registry, make_adapter_record) -> None:
+    """query_best_for_task returns adapters ordered by fitness_score DESC."""
+    registry.store(make_adapter_record(id="a1", task_type="bug-fix", fitness_score=0.5))
+    registry.store(make_adapter_record(id="a2", task_type="bug-fix", fitness_score=0.9))
+    registry.store(make_adapter_record(id="a3", task_type="bug-fix", fitness_score=0.7))
+    results = registry.query_best_for_task("bug-fix", top_k=2)
+    assert len(results) == 2
+    assert results[0].id == "a2"
+    assert results[1].id == "a3"
+
+
+def test_query_best_for_task_excludes_archived(registry, make_adapter_record) -> None:
+    """query_best_for_task excludes archived adapters."""
+    registry.store(
+        make_adapter_record(
+            id="a1", task_type="bug-fix", fitness_score=0.9, is_archived=True
+        )
+    )
+    registry.store(make_adapter_record(id="a2", task_type="bug-fix", fitness_score=0.5))
+    results = registry.query_best_for_task("bug-fix")
+    assert len(results) == 1
+    assert results[0].id == "a2"
+
+
+# --- is_task_solved() ---
+
+
+def test_is_task_solved_true(registry, make_adapter_record) -> None:
+    """is_task_solved returns True when pass_rate meets threshold."""
+    registry.store(
+        make_adapter_record(id="a1", training_task_hash="hash1", pass_rate=0.96)
+    )
+    assert registry.is_task_solved("hash1") is True
+
+
+def test_is_task_solved_false(registry, make_adapter_record) -> None:
+    """is_task_solved returns False when no adapter meets threshold."""
+    registry.store(
+        make_adapter_record(id="a1", training_task_hash="hash1", pass_rate=0.5)
+    )
+    assert registry.is_task_solved("hash1") is False
+
+
+def test_is_task_solved_no_matching_hash(registry) -> None:
+    """is_task_solved returns False for unknown task hash."""
+    assert registry.is_task_solved("nonexistent") is False
+
+
+# --- get_lineage() ---
+
+
+def test_get_lineage_single(registry, make_adapter_record) -> None:
+    """get_lineage returns just the adapter itself when no parents."""
+    registry.store(make_adapter_record(id="a1"))
+    chain = registry.get_lineage("a1")
+    assert chain == ["a1"]
+
+
+def test_get_lineage_chain(registry, make_adapter_record) -> None:
+    """get_lineage walks parent_ids chain."""
+    import json
+
+    registry.store(make_adapter_record(id="root"))
+    registry.store(make_adapter_record(id="child", parent_ids=json.dumps(["root"])))
+    registry.store(
+        make_adapter_record(id="grandchild", parent_ids=json.dumps(["child"]))
+    )
+    chain = registry.get_lineage("grandchild")
+    assert chain == ["grandchild", "child", "root"]
+
+
+# --- query_unevaluated() ---
+
+
+def test_query_unevaluated_returns_null_pass_rate(
+    registry, make_adapter_record
+) -> None:
+    """query_unevaluated returns only adapters with pass_rate=None."""
+    registry.store(make_adapter_record(id="a1", pass_rate=None))
+    registry.store(make_adapter_record(id="a2", pass_rate=0.8))
+    results = registry.query_unevaluated()
+    assert len(results) == 1
+    assert results[0].id == "a1"
+
+
+def test_query_unevaluated_filters_by_task_type(registry, make_adapter_record) -> None:
+    """query_unevaluated respects task_type filter."""
+    registry.store(make_adapter_record(id="a1", pass_rate=None, task_type="bug-fix"))
+    registry.store(make_adapter_record(id="a2", pass_rate=None, task_type="feature"))
+    results = registry.query_unevaluated(task_type="bug-fix")
+    assert len(results) == 1
+    assert results[0].id == "a1"
+
+
+# --- archive() ---
+
+
+def test_archive_sets_flag(registry, make_adapter_record) -> None:
+    """archive() sets is_archived=True."""
+    registry.store(make_adapter_record(id="a1"))
+    registry.archive("a1")
+    record = registry.retrieve_by_id("a1")
+    assert record.is_archived is True
+
+
+def test_archive_nonexistent_raises(registry) -> None:
+    """archive() raises AdapterNotFoundError for unknown ID."""
+    with pytest.raises(AdapterNotFoundError):
+        registry.archive("nonexistent")
+
+
+# --- get_task_types() ---
+
+
+def test_get_task_types(registry, make_adapter_record) -> None:
+    """get_task_types returns sorted distinct task types."""
+    registry.store(make_adapter_record(id="a1", task_type="feature"))
+    registry.store(make_adapter_record(id="a2", task_type="bug-fix"))
+    registry.store(make_adapter_record(id="a3", task_type="feature"))
+    types = registry.get_task_types()
+    assert types == ["bug-fix", "feature"]
+
+
+# --- update_fitness() ---
+
+
+def test_update_fitness_persists(registry, make_adapter_record) -> None:
+    """update_fitness updates pass_rate and fitness_score."""
+    registry.store(make_adapter_record(id="a1"))
+    registry.update_fitness("a1", pass_rate=0.9, fitness_score=0.85)
+    record = registry.retrieve_by_id("a1")
+    assert record.pass_rate == 0.9
+    assert record.fitness_score == 0.85
+
+
+def test_update_fitness_nonexistent_raises(registry) -> None:
+    """update_fitness raises AdapterNotFoundError for unknown ID."""
+    with pytest.raises(AdapterNotFoundError):
+        registry.update_fitness("nonexistent", pass_rate=0.9, fitness_score=0.8)
+
+
 # --- WAL mode integration ---
 
 

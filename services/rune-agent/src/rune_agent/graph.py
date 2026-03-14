@@ -1,5 +1,13 @@
-"""LangGraph workflow for the Rune coding agent recursive loop."""
+"""LangGraph workflow for the Rune coding agent recursive loop.
 
+Supports two modes:
+1. Standard loop (create_graph): generate → execute → reflect → retry/save
+2. Single iteration (create_single_iteration_graph): generate → execute →
+   reflect → END. Used by the outer rune_runner iteration loop where the
+   hypernetwork produces a new adapter between iterations.
+"""
+
+import threading
 from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
@@ -68,17 +76,47 @@ def create_graph() -> Any:
     return workflow.compile()
 
 
-# Singleton instance for reuse
-_graph = None
+def create_single_iteration_graph() -> Any:
+    """Create a graph for one iteration: generate → execute → reflect → END.
+
+    Used by rune_runner's outer iteration loop. Each iteration runs one
+    generate/execute/reflect cycle, then returns control to the outer loop
+    which runs the hypernetwork to produce a new adapter for the next iteration.
+
+    Returns:
+        Compiled StateGraph for single-iteration execution.
+    """
+    workflow = StateGraph(RuneState)
+
+    workflow.add_node("generate", generate_node)
+    workflow.add_node("execute", execute_node)
+    workflow.add_node("reflect", reflect_node)
+
+    workflow.add_edge(START, "generate")
+    workflow.add_edge("generate", "execute")
+    workflow.add_edge("execute", "reflect")
+    workflow.add_edge("reflect", END)
+
+    return workflow.compile()
+
+
+# Singleton instance for reuse — guarded by a lock for thread safety.
+_graph: Any = None
+_graph_lock = threading.Lock()
 
 
 def get_graph() -> Any:
-    """Get or create the compiled graph instance.
+    """Get or create the compiled graph instance (thread-safe singleton).
+
+    Uses double-checked locking so the expensive create_graph() call is only
+    made once, even if multiple threads call get_graph() concurrently.
 
     Returns:
         Compiled StateGraph instance.
     """
     global _graph
     if _graph is None:
-        _graph = create_graph()
+        with _graph_lock:
+            if _graph is None:
+                _graph = create_graph()
     return _graph

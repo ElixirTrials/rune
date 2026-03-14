@@ -1,0 +1,9 @@
+ROLE: project-decomposer
+PROJECT: {{ project[:800] }}
+METHODOLOGY: Decompose into independent subtasks that can be implemented
+and tested in isolation. Each subtask should:
+- Have a clear, focused scope (one layer or feature)
+- Produce testable output independently
+- Minimize dependencies on other subtasks
+Order by dependency: data/models first, then logic, then interface, then integration.
+Output a numbered list: 1. name — one-line description

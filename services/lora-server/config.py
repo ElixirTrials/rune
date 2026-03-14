@@ -38,6 +38,7 @@ class LoraServerConfig:
         health_port: Port for the health sidecar.
         max_loras: Maximum number of concurrent LoRA adapters.
         max_lora_rank: Maximum rank for LoRA adapters (capped at 64 to avoid OOM).
+        max_cpu_loras: Maximum number of CPU-offloaded LoRA adapters.
         gpu_memory_utilization: Fraction of GPU VRAM for the model (0.80 leaves
             headroom for LoRA).
 
@@ -58,6 +59,7 @@ class LoraServerConfig:
     health_port: int = 8001
     max_loras: int = 8
     max_lora_rank: int = 64
+    max_cpu_loras: int = 16
     gpu_memory_utilization: float = 0.80
 
     @classmethod
@@ -81,7 +83,7 @@ class LoraServerConfig:
             >>> config.model
             'Qwen/Qwen2.5-Coder-7B-Instruct'
         """
-        raw: dict[str, Any] = yaml.safe_load(Path(path).read_text())
+        raw: dict[str, Any] = yaml.safe_load(Path(path).read_text()) or {}
         valid_fields = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in raw.items() if k in valid_fields}
         return cls(**filtered)

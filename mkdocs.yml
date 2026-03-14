@@ -105,6 +105,7 @@ nav:
   - Monorepo Mapping: architecture/monorepo-mapping.md
   - Adapter Storage: architecture/adapter-storage.md
   - GPU Strategy: architecture/multi-gpu-strategy.md
+  - Swarm Architecture: swarm-architecture.md
 - Appendices:
   - Risk Matrix: appendices/risk-matrix.md
   - Build Order: appendices/build-order.md

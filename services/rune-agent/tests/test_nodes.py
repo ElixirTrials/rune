@@ -267,6 +267,30 @@ async def test_save_trajectory_node_success(
     )
 
 
+async def test_execute_node_uses_sandbox_backend() -> None:
+    """execute_node delegates to the sandbox backend from get_sandbox_backend()."""
+    mock_result = MagicMock()
+    mock_result.stdout = "ok\n"
+    mock_result.stderr = ""
+    mock_result.exit_code = 0
+    mock_result.timed_out = False
+
+    mock_backend = MagicMock()
+    mock_backend.run.return_value = mock_result
+
+    state: dict[str, Any] = {
+        "generated_code": "x = 1",
+        "test_suite": "assert x == 1",
+    }
+
+    with patch("rune_agent.nodes.get_sandbox_backend", return_value=mock_backend):
+        result = await execute_node(state)
+
+    mock_backend.run.assert_called_once()
+    assert result["tests_passed"] is True
+    assert result["stdout"] == "ok\n"
+
+
 async def test_save_trajectory_node_exhausted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:

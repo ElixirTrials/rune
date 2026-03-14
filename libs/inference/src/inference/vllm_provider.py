@@ -56,7 +56,7 @@ class VLLMProvider(InferenceProvider):
         prompt: str,
         model: str,
         adapter_id: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,
     ) -> GenerationResult:
         """Generate text from a prompt, optionally using a loaded LoRA adapter.
 
