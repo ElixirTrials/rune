@@ -19,10 +19,16 @@ import pytest
 
 def test_hypernetwork_importable_without_gpu() -> None:
     """hypernetwork module is importable without GPU libs installed."""
-    # Remove any cached version so we get a fresh import
-    for key in list(sys.modules.keys()):
-        if "model_training.hypernetwork" in key:
-            del sys.modules[key]
+    # Skip sys.modules cleanup if torch is already fully loaded — clearing
+    # model_training.hypernetwork after real torch import triggers a reimport
+    # chain that hits torch's _TritonLibrary double-registration crash in
+    # pytest-xdist forked workers.
+    torch_mod = sys.modules.get("torch")
+    torch_fully_loaded = torch_mod is not None and hasattr(torch_mod, "Tensor")
+    if not torch_fully_loaded:
+        for key in list(sys.modules.keys()):
+            if "model_training.hypernetwork" in key:
+                del sys.modules[key]
 
     # Should not raise even without torch/safetensors
     from model_training.hypernetwork import (  # noqa: F401

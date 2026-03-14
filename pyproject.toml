@@ -229,7 +229,7 @@ pythonpath = [
 asyncio_mode = "auto"
 # importlib mode allows multiple test files with the same basename across
 # different directories without __init__.py (required for pytest-xdist)
-addopts = "-n auto --import-mode=importlib"
+addopts = "-n auto --dist loadgroup --import-mode=importlib"
 
 [tool.coverage.run]
 source = [

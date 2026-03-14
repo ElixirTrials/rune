@@ -11,7 +11,30 @@ Usage (no import needed in test files):
         assert obj.task_type == "code-gen"
 """
 
+import importlib.util
 from typing import Any, Callable, TypeVar
+
+# Patch torch's _dispatch_library to be idempotent — prevents the
+# _TritonLibrary double-registration crash in pytest-xdist workers.
+if importlib.util.find_spec("torch") is not None:
+    try:
+        import torch._C  # noqa: F401
+
+        _orig_dispatch_library = torch._C._dispatch_library
+
+        def _safe_dispatch_library(
+            kind: str, ns: str, dispatch_key: str, filename: str, lineno: int
+        ) -> object:
+            try:
+                return _orig_dispatch_library(kind, ns, dispatch_key, filename, lineno)
+            except RuntimeError as e:
+                if "Only a single TORCH_LIBRARY" in str(e):
+                    return None
+                raise
+
+        torch._C._dispatch_library = _safe_dispatch_library  # type: ignore[assignment]
+    except Exception:
+        pass
 
 import pytest
 from adapter_registry.models import AdapterRecord
@@ -24,6 +47,28 @@ from shared.rune_models import (
     SwarmConfig,
 )
 from training_svc.models import TrainingJob
+
+# ---------------------------------------------------------------------------
+# xdist grouping: torch tests must run on the same worker to avoid the
+# triton library double-registration crash in pytest-xdist.
+# ---------------------------------------------------------------------------
+_TORCH_TEST_FILENAMES = {"test_hypernetwork", "test_merging", "test_sakana"}
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Group torch-dependent test files onto one xdist worker.
+
+    Matches by stem (without .py) from the node ID to avoid path
+    resolution differences across pytest import modes.
+    """
+    for item in items:
+        # nodeid looks like "libs/model-training/tests/test_hypernetwork.py::test_foo"
+        parts = item.nodeid.split("::")
+        if parts:
+            file_stem = parts[0].rsplit("/", 1)[-1].removesuffix(".py")
+            if file_stem in _TORCH_TEST_FILENAMES:
+                item.add_marker(pytest.mark.xdist_group("torch"))
+
 
 T = TypeVar("T")
 
