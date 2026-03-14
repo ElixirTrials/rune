@@ -341,6 +341,53 @@ async def _load_adapter(
 # ---------------------------------------------------------------------------
 
 
+def _register_adapter(
+    registry: Any,
+    adapter_id: str,
+    task_type: str,
+    base_model_id: str,
+    file_path: str,
+    session_id: str,
+    pass_rate: float = 0.0,
+    generation: int = 0,
+) -> float:
+    """Register an adapter in the evolution registry and compute fitness.
+
+    Returns:
+        Computed fitness score.
+    """
+    from datetime import datetime, timezone
+
+    from adapter_registry.models import AdapterRecord
+    from evaluation.metrics import evaluate_fitness
+
+    fitness = evaluate_fitness(adapter_id, pass_rate, diversity_score=0.5)
+    now = datetime.now(timezone.utc).isoformat()
+
+    record = AdapterRecord(
+        id=adapter_id,
+        version=1,
+        task_type=task_type,
+        base_model_id=base_model_id,
+        rank=8,
+        created_at=now,
+        file_path=file_path,
+        file_hash="",
+        file_size_bytes=0,
+        pass_rate=pass_rate,
+        fitness_score=fitness,
+        source="phased-pipeline",
+        session_id=session_id,
+        generation=generation,
+    )
+    try:
+        registry.store(record)
+    except Exception:
+        # Duplicate — update fitness instead
+        registry.update_fitness(adapter_id, pass_rate=pass_rate, fitness_score=fitness)
+    return fitness
+
+
 async def run_phased_pipeline(
     project_prompt: str,
     max_iterations: int = 10,
@@ -349,8 +396,14 @@ async def run_phased_pipeline(
     device: str = "cpu",
     population_size: int = 2,
     max_retries_per_subtask: int = 3,
+    max_phase_iterations: int = 5,
 ) -> dict[str, Any]:
-    """Run the 4-phase pipeline with template-driven adapters.
+    """Run the 4-phase pipeline with template-driven adapters and evolution.
+
+    Each phase runs up to ``max_phase_iterations`` times, generating a new
+    adapter via H() each iteration. Early stops when the phase succeeds.
+    Between iterations, an evolution sweep merges top adapters and prunes
+    low-fitness ones.
 
     Phase 1: DECOMPOSE — single agent decomposes project into subtasks
     Phase 2: PLAN — parallel swarm plans each subtask
@@ -365,63 +418,163 @@ async def run_phased_pipeline(
         device: Device for hypernetwork computation.
         population_size: Number of parallel agents for swarm phases.
         max_retries_per_subtask: Max retry attempts per subtask in Phase 3.
+        max_phase_iterations: Max evolutionary iterations per phase (default 5).
 
     Returns:
-        Summary dict with phase results, adapters, and final code.
+        Summary dict with phase results, adapters, evolution stats, and final code.
     """
+    from adapter_registry.registry import AdapterRegistry
     from rune_agent.graph import create_single_iteration_graph
+    from sqlalchemy import create_engine
 
     graph = create_single_iteration_graph()
     session_id = f"rune-{uuid.uuid4().hex[:8]}"
     adapter_dir = ADAPTER_BASE_DIR / session_id
     adapter_dir.mkdir(parents=True, exist_ok=True)
 
+    # Evolution registry — per-session SQLite DB
+    registry_engine = create_engine(f"sqlite:///{adapter_dir}/evolution.db")
+    registry = AdapterRegistry(engine=registry_engine)
+
     phase_results: dict[str, Any] = {}
     registered_adapters: list[dict[str, str]] = []
     iteration_counter = 0
+    evolution_stats: dict[str, Any] = {
+        "phase_iterations": {},
+        "sweeps": {},
+        "best_adapters": {},
+    }
+
+    # Import evolution sweep
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from swarm_evolution import evolution_sweep
 
     # ---------------------------------------------------------------
-    # Phase 1: DECOMPOSE (single agent)
+    # Phase 1: DECOMPOSE (single agent, with evolution)
     # ---------------------------------------------------------------
     logger.info("=== Phase 1: DECOMPOSE ===")
-    decompose_trajectory = render_trajectory("decompose", project=project_prompt)
-    logger.info("Decompose trajectory: %d chars", len(decompose_trajectory))
+    best_decompose_state: dict[str, Any] | None = None
+    best_decompose_adapter_id: str | None = None
+    best_decompose_score: float = -1.0
+    loaded_adapter_id: str | None = None  # tracks what's currently loaded
+    phase1_task_type = "phase1-decompose"
 
-    decompose_adapter_dir = str(adapter_dir / "phase1_decompose")
-    decompose_adapter_path = run_hypernetwork(
-        trajectory_text=decompose_trajectory,
-        output_dir=decompose_adapter_dir,
-        base_model_id=base_model_id,
-        checkpoint_path=checkpoint_path,
-        device=device,
-    )
+    for evo_iter in range(max_phase_iterations):
+        logger.info("  Decompose iteration %d/%d", evo_iter + 1, max_phase_iterations)
 
-    current_adapter_id: str | None = None
-    if decompose_adapter_path:
-        current_adapter_id = await _load_adapter(
-            "phase1-decompose", decompose_adapter_path, None
+        # Build trajectory — include prior output on retries
+        prior_output = ""
+        if best_decompose_state is not None:
+            prior_output = best_decompose_state.get("generated_code", "")
+        decompose_trajectory = render_trajectory("decompose", project=project_prompt)
+        if prior_output and evo_iter > 0:
+            decompose_trajectory += (
+                f"\n\n[Prior decomposition attempt — improve on this]\n"
+                f"{prior_output[:500]}"
+            )
+
+        iter_adapter_dir = str(adapter_dir / f"phase1_decompose_v{evo_iter}")
+        adapter_path = run_hypernetwork(
+            trajectory_text=decompose_trajectory,
+            output_dir=iter_adapter_dir,
+            base_model_id=base_model_id,
+            checkpoint_path=checkpoint_path,
+            device=device,
         )
-        registered_adapters.append(
-            {
-                "adapter_id": current_adapter_id,
-                "task_type": "phase1-decompose",
-                "phase": "decompose",
-            }
+
+        adapter_id: str | None = None
+        if adapter_path:
+            adapter_id = f"phase1-decompose-v{evo_iter}"
+            await _load_adapter(adapter_id, adapter_path, loaded_adapter_id)
+            loaded_adapter_id = adapter_id
+            _register_adapter(
+                registry,
+                adapter_id=adapter_id,
+                task_type=phase1_task_type,
+                base_model_id=base_model_id,
+                file_path=adapter_path,
+                session_id=session_id,
+                pass_rate=0.0,
+                generation=evo_iter,
+            )
+            registered_adapters.append(
+                {
+                    "adapter_id": adapter_id,
+                    "task_type": phase1_task_type,
+                    "phase": "decompose",
+                }
+            )
+
+        decompose_prompt = render_prompt("decompose", task_description=project_prompt)
+        iteration_counter += 1
+        state = await run_iteration(
+            graph=graph,
+            project_prompt=decompose_prompt,
+            adapter_id=adapter_id,
+            session_id=session_id,
+            iteration=iteration_counter,
+            phase="decompose",
         )
 
-    # Run decompose iteration with phase-specific prompt
-    decompose_prompt = render_prompt("decompose", task_description=project_prompt)
-    iteration_counter += 1
-    state = await run_iteration(
-        graph=graph,
-        project_prompt=decompose_prompt,
-        adapter_id=current_adapter_id,
-        session_id=session_id,
-        iteration=iteration_counter,
-        phase="decompose",
-    )
+        # Score: reward 2-6 unique subtasks, penalize duplicates
+        iter_subtasks = _parse_subtask_list(state.get("generated_code", ""))
+        unique_names = {s["name"].lower().strip() for s in iter_subtasks}
+        n_unique = len(unique_names)
+        if n_unique >= 2 and n_unique <= 8:
+            score = min(1.0, n_unique / 3.0)
+        elif n_unique == 1 and state.get("tests_passed"):
+            score = 0.5
+        elif n_unique > 8:
+            score = 0.2  # too many subtasks indicates repetition
+        else:
+            score = 0.3
+        # Penalize heavy duplication
+        if len(iter_subtasks) > n_unique * 2:
+            score *= 0.3
 
-    subtasks = _parse_subtask_list(state.get("generated_code", ""))
+        # Update fitness in registry
+        if adapter_id:
+            registry.update_fitness(adapter_id, pass_rate=score, fitness_score=score)
+
+        if score > best_decompose_score:
+            best_decompose_score = score
+            best_decompose_state = state
+            best_decompose_adapter_id = adapter_id
+
+        logger.info(
+            "  Decompose v%d: %d subtasks (%d unique), score=%.2f%s",
+            evo_iter,
+            len(iter_subtasks),
+            n_unique,
+            score,
+            " (best)" if adapter_id == best_decompose_adapter_id else "",
+        )
+
+        # Early stop: got multiple unique subtasks
+        if n_unique >= 2 and score >= 0.6:
+            logger.info("  Decompose converged at iteration %d", evo_iter + 1)
+            break
+
+        # Evolution sweep between iterations
+        if evo_iter > 0:
+            sweep = evolution_sweep(registry)
+            evolution_stats["sweeps"][f"decompose-iter{evo_iter}"] = sweep
+
+    evolution_stats["phase_iterations"]["decompose"] = evo_iter + 1
+
+    # Use best decompose result
+    assert best_decompose_state is not None
+    raw_subtasks = _parse_subtask_list(best_decompose_state.get("generated_code", ""))
+    # Deduplicate subtasks by name
+    seen: set[str] = set()
+    subtasks: list[dict[str, str]] = []
+    for st in raw_subtasks:
+        key = st["name"].lower().strip()
+        if key not in seen:
+            seen.add(key)
+            subtasks.append(st)
+    evolution_stats["best_adapters"]["decompose"] = best_decompose_adapter_id
+
     logger.info(
         "Decomposed into %d subtasks: %s",
         len(subtasks),
@@ -429,67 +582,141 @@ async def run_phased_pipeline(
     )
     phase_results["decompose"] = {
         "subtasks": subtasks,
-        "adapter_id": current_adapter_id,
+        "adapter_id": best_decompose_adapter_id,
+        "iterations": evo_iter + 1,
+        "best_score": best_decompose_score,
     }
 
     # ---------------------------------------------------------------
-    # Phase 2: PLAN (parallel swarm — one agent per subtask)
+    # Phase 2: PLAN (parallel swarm, with evolution)
     # ---------------------------------------------------------------
     logger.info("=== Phase 2: PLAN ===")
-    plans: dict[str, str] = {}
+    best_plans: dict[str, str] = {}
+    best_plan_score: float = -1.0
+    best_plan_adapter_ids: list[str] = []
+    phase2_task_type = "phase2-plan"
 
-    async def _plan_subtask(idx: int, subtask: dict[str, str]) -> tuple[str, str]:
-        """Plan a single subtask — runs as a parallel coroutine."""
-        traj = render_trajectory(
-            "plan",
-            subtask=subtask,
-            subtask_index=idx + 1,
-            total_subtasks=len(subtasks),
-            project=project_prompt,
-        )
-        plan_adapter_dir = str(adapter_dir / f"phase2_plan_{subtask['name']}")
-        plan_adapter_path = run_hypernetwork(
-            trajectory_text=traj,
-            output_dir=plan_adapter_dir,
-            base_model_id=base_model_id,
-            checkpoint_path=checkpoint_path,
-            device=device,
-        )
-        plan_adapter_id: str | None = None
-        if plan_adapter_path:
-            plan_adapter_id = f"phase2-plan-{subtask['name']}"
-            await _load_adapter(plan_adapter_id, plan_adapter_path, None)
-            registered_adapters.append(
-                {
-                    "adapter_id": plan_adapter_id,
-                    "task_type": f"phase2-plan-{subtask['name']}",
-                    "phase": "plan",
-                }
+    for evo_iter in range(max_phase_iterations):
+        logger.info("  Plan iteration %d/%d", evo_iter + 1, max_phase_iterations)
+        iter_plans: dict[str, str] = {}
+
+        async def _plan_subtask(
+            idx: int, subtask: dict[str, str], evo: int
+        ) -> tuple[str, str, str | None]:
+            """Plan a single subtask — runs as a parallel coroutine."""
+            traj = render_trajectory(
+                "plan",
+                subtask=subtask,
+                subtask_index=idx + 1,
+                total_subtasks=len(subtasks),
+                project=project_prompt,
+            )
+            # Include prior plan on retries
+            if evo > 0 and subtask["name"] in best_plans:
+                traj += (
+                    f"\n\n[Prior plan — improve on this]\n"
+                    f"{best_plans[subtask['name']][:300]}"
+                )
+
+            plan_ad = str(adapter_dir / f"phase2_plan_{subtask['name']}_v{evo}")
+            plan_path = run_hypernetwork(
+                trajectory_text=traj,
+                output_dir=plan_ad,
+                base_model_id=base_model_id,
+                checkpoint_path=checkpoint_path,
+                device=device,
+            )
+            plan_aid: str | None = None
+            if plan_path:
+                plan_aid = f"phase2-plan-{subtask['name']}-v{evo}"
+                await _load_adapter(plan_aid, plan_path, None)
+                _register_adapter(
+                    registry,
+                    adapter_id=plan_aid,
+                    task_type=phase2_task_type,
+                    base_model_id=base_model_id,
+                    file_path=plan_path,
+                    session_id=session_id,
+                    generation=evo,
+                )
+                registered_adapters.append(
+                    {
+                        "adapter_id": plan_aid,
+                        "task_type": phase2_task_type,
+                        "phase": "plan",
+                    }
+                )
+
+            plan_prompt = render_prompt("plan", task_description=subtask["description"])
+            plan_state = await run_iteration(
+                graph=graph,
+                project_prompt=plan_prompt,
+                adapter_id=plan_aid,
+                session_id=session_id,
+                iteration=iteration_counter + idx + 1,
+                phase="plan",
+            )
+            return (
+                subtask["name"],
+                _parse_plan(plan_state.get("generated_code", "")),
+                plan_aid,
             )
 
-        plan_prompt = render_prompt("plan", task_description=subtask["description"])
-        plan_state = await run_iteration(
-            graph=graph,
-            project_prompt=plan_prompt,
-            adapter_id=plan_adapter_id,
-            session_id=session_id,
-            iteration=iteration_counter + idx + 1,
-            phase="plan",
+        plan_tasks = [_plan_subtask(i, st, evo_iter) for i, st in enumerate(subtasks)]
+        plan_results = await asyncio.gather(*plan_tasks)
+
+        iter_adapter_ids: list[str] = []
+        for name, plan_text, plan_aid in plan_results:
+            iter_plans[name] = plan_text
+            if plan_aid:
+                iter_adapter_ids.append(plan_aid)
+
+        # Score: fraction of plans with substance
+        good_plans = sum(1 for p in iter_plans.values() if len(p) > 50)
+        score = good_plans / max(len(iter_plans), 1)
+
+        # Update fitness for all plan adapters
+        for aid in iter_adapter_ids:
+            registry.update_fitness(aid, pass_rate=score, fitness_score=score)
+
+        if score > best_plan_score:
+            best_plan_score = score
+            best_plans = dict(iter_plans)
+            best_plan_adapter_ids = iter_adapter_ids
+
+        logger.info(
+            "  Plan v%d: %d/%d good plans, score=%.2f",
+            evo_iter,
+            good_plans,
+            len(iter_plans),
+            score,
         )
-        return subtask["name"], _parse_plan(plan_state.get("generated_code", ""))
 
-    # Run planning in parallel
-    plan_tasks = [_plan_subtask(i, st) for i, st in enumerate(subtasks)]
-    plan_results = await asyncio.gather(*plan_tasks)
-    for name, plan_text in plan_results:
-        plans[name] = plan_text
-    iteration_counter += len(subtasks)
+        # Early stop: all plans have substance
+        if score >= 1.0:
+            logger.info("  Plan converged at iteration %d", evo_iter + 1)
+            break
 
+        # Evolution sweep
+        if evo_iter > 0:
+            sweep = evolution_sweep(registry)
+            evolution_stats["sweeps"][f"plan-iter{evo_iter}"] = sweep
+
+    iteration_counter += len(subtasks) * (evo_iter + 1)
+    evolution_stats["phase_iterations"]["plan"] = evo_iter + 1
+    evolution_stats["best_adapters"]["plan"] = best_plan_adapter_ids
+
+    plans = best_plans
     logger.info("Plans generated for %d subtasks", len(plans))
-    phase_results["plan"] = {"plans": {k: v[:200] for k, v in plans.items()}}
+    phase_results["plan"] = {
+        "plans": {k: v[:200] for k, v in plans.items()},
+        "iterations": evo_iter + 1,
+        "best_score": best_plan_score,
+    }
 
     # ---------------------------------------------------------------
-    # Phase 3: CODE (parallel swarm, with retries via H())
+    # Phase 3: CODE (parallel swarm, with subtask-level retries via H())
+    # Phase 3 keeps its own retry loop — no outer evolution here.
     # ---------------------------------------------------------------
     logger.info("=== Phase 3: CODE ===")
     code_outputs: dict[str, str] = {}
@@ -565,6 +792,15 @@ async def run_phased_pipeline(
             if code_adapter_path:
                 code_adapter_id = f"phase3-code-{subtask['name']}-v{attempt}"
                 await _load_adapter(code_adapter_id, code_adapter_path, None)
+                _register_adapter(
+                    registry,
+                    adapter_id=code_adapter_id,
+                    task_type=f"phase3-code-{subtask['name']}",
+                    base_model_id=base_model_id,
+                    file_path=code_adapter_path,
+                    session_id=session_id,
+                    generation=attempt,
+                )
                 registered_adapters.append(
                     {
                         "adapter_id": code_adapter_id,
@@ -589,7 +825,16 @@ async def run_phased_pipeline(
             last_state = code_state
             existing_code = code_state.get("generated_code", "")
 
-            if code_state.get("tests_passed"):
+            # Update fitness
+            code_passed = code_state.get("tests_passed", False)
+            if code_adapter_id:
+                registry.update_fitness(
+                    code_adapter_id,
+                    pass_rate=1.0 if code_passed else 0.0,
+                    fitness_score=1.0 if code_passed else 0.2,
+                )
+
+            if code_passed:
                 logger.info(
                     "  Subtask '%s' PASSED on attempt %d",
                     subtask["name"],
@@ -618,65 +863,143 @@ async def run_phased_pipeline(
         code_outputs[name] = code_text
     iteration_counter += len(subtasks) * max_retries_per_subtask
 
+    # Post-code evolution sweep
+    code_sweep = evolution_sweep(registry)
+    evolution_stats["sweeps"]["post-code"] = code_sweep
+
     logger.info("Code generated for %d subtasks", len(code_outputs))
     phase_results["code"] = {
         "outputs": {k: v[:200] for k, v in code_outputs.items()},
     }
 
     # ---------------------------------------------------------------
-    # Phase 4: INTEGRATE (single agent)
+    # Phase 4: INTEGRATE (single agent, with evolution)
     # ---------------------------------------------------------------
     logger.info("=== Phase 4: INTEGRATE ===")
     skeletons = {
         name: _extract_code_skeleton(code) for name, code in code_outputs.items()
     }
-    integrate_trajectory = render_trajectory(
-        "integrate",
-        project=project_prompt,
-        subtask_count=len(subtasks),
-        skeletons=skeletons,
-    )
 
-    integrate_adapter_dir = str(adapter_dir / "phase4_integrate")
-    integrate_adapter_path = run_hypernetwork(
-        trajectory_text=integrate_trajectory,
-        output_dir=integrate_adapter_dir,
-        base_model_id=base_model_id,
-        checkpoint_path=checkpoint_path,
-        device=device,
-    )
+    best_integrate_state: dict[str, Any] | None = None
+    best_integrate_adapter_id: str | None = None
+    best_integrate_score: float = -1.0
+    loaded_integrate_id: str | None = None  # tracks currently loaded adapter
+    phase4_task_type = "phase4-integrate"
 
-    integrate_adapter_id: str | None = None
-    if integrate_adapter_path:
-        integrate_adapter_id = await _load_adapter(
-            "phase4-integrate", integrate_adapter_path, current_adapter_id
+    for evo_iter in range(max_phase_iterations):
+        logger.info("  Integrate iteration %d/%d", evo_iter + 1, max_phase_iterations)
+
+        integrate_trajectory = render_trajectory(
+            "integrate",
+            project=project_prompt,
+            subtask_count=len(subtasks),
+            skeletons=skeletons,
         )
-        registered_adapters.append(
-            {
-                "adapter_id": "phase4-integrate",
-                "task_type": "phase4-integrate",
-                "phase": "integrate",
-            }
+        # Include prior error context on retries
+        if evo_iter > 0 and best_integrate_state is not None:
+            error_ctx = _extract_error_summary(best_integrate_state.get("stderr", ""))
+            if error_ctx:
+                integrate_trajectory += (
+                    f"\n\n[Prior integration errors — fix these]\n{error_ctx}"
+                )
+
+        iter_adapter_dir = str(adapter_dir / f"phase4_integrate_v{evo_iter}")
+        adapter_path = run_hypernetwork(
+            trajectory_text=integrate_trajectory,
+            output_dir=iter_adapter_dir,
+            base_model_id=base_model_id,
+            checkpoint_path=checkpoint_path,
+            device=device,
         )
 
-    integrate_prompt = render_prompt("integrate", task_description=project_prompt)
-    iteration_counter += 1
-    integrate_state = await run_iteration(
-        graph=graph,
-        project_prompt=integrate_prompt,
-        adapter_id=integrate_adapter_id,
-        session_id=session_id,
-        iteration=iteration_counter,
-        phase="integrate",
-    )
+        integrate_aid: str | None = None
+        if adapter_path:
+            integrate_aid = f"phase4-integrate-v{evo_iter}"
+            await _load_adapter(integrate_aid, adapter_path, loaded_integrate_id)
+            loaded_integrate_id = integrate_aid
+            _register_adapter(
+                registry,
+                adapter_id=integrate_aid,
+                task_type=phase4_task_type,
+                base_model_id=base_model_id,
+                file_path=adapter_path,
+                session_id=session_id,
+                generation=evo_iter,
+            )
+            registered_adapters.append(
+                {
+                    "adapter_id": integrate_aid,
+                    "task_type": phase4_task_type,
+                    "phase": "integrate",
+                }
+            )
 
-    final_code = integrate_state.get("generated_code", "")
-    final_passed = integrate_state.get("tests_passed", False)
+        integrate_prompt = render_prompt("integrate", task_description=project_prompt)
+        iteration_counter += 1
+        integrate_state = await run_iteration(
+            graph=graph,
+            project_prompt=integrate_prompt,
+            adapter_id=integrate_aid,
+            session_id=session_id,
+            iteration=iteration_counter,
+            phase="integrate",
+        )
+
+        # Score from test results
+        passed_count, total_count = _count_test_results(
+            integrate_state.get("stdout", ""),
+            integrate_state.get("stderr", ""),
+        )
+        tests_passed = integrate_state.get("tests_passed", False)
+        if total_count > 0:
+            score = passed_count / total_count
+        else:
+            score = 1.0 if tests_passed else 0.0
+
+        # Update fitness
+        if integrate_aid:
+            registry.update_fitness(integrate_aid, pass_rate=score, fitness_score=score)
+
+        if score > best_integrate_score:
+            best_integrate_score = score
+            best_integrate_state = integrate_state
+            best_integrate_adapter_id = integrate_aid
+
+        logger.info(
+            "  Integrate v%d: tests_passed=%s, score=%.2f%s",
+            evo_iter,
+            tests_passed,
+            score,
+            " (best)" if integrate_aid == best_integrate_adapter_id else "",
+        )
+
+        # Early stop on success
+        if tests_passed:
+            logger.info("  Integrate converged at iteration %d", evo_iter + 1)
+            break
+
+        # Evolution sweep between iterations
+        if evo_iter > 0:
+            sweep = evolution_sweep(registry)
+            evolution_stats["sweeps"][f"integrate-iter{evo_iter}"] = sweep
+
+    evolution_stats["phase_iterations"]["integrate"] = evo_iter + 1
+    evolution_stats["best_adapters"]["integrate"] = best_integrate_adapter_id
+
+    assert best_integrate_state is not None
+    final_code = best_integrate_state.get("generated_code", "")
+    final_passed = best_integrate_state.get("tests_passed", False)
 
     phase_results["integrate"] = {
-        "adapter_id": integrate_adapter_id,
+        "adapter_id": best_integrate_adapter_id,
         "tests_passed": final_passed,
+        "iterations": evo_iter + 1,
+        "best_score": best_integrate_score,
     }
+
+    # Final evolution sweep
+    final_sweep = evolution_sweep(registry)
+    evolution_stats["sweeps"]["final"] = final_sweep
 
     logger.info("=== Pipeline Complete ===")
     logger.info("Final tests passed: %s", final_passed)
@@ -691,6 +1014,7 @@ async def run_phased_pipeline(
         "subtasks": [s["name"] for s in subtasks],
         "adapters": registered_adapters,
         "accumulated_code": final_code,
+        "evolution": evolution_stats,
     }
 
 
@@ -706,6 +1030,7 @@ async def run_project(
     base_model_id: str = DEFAULT_BASE_MODEL,
     device: str = "cpu",
     max_retries_per_subtask: int = 3,
+    max_phase_iterations: int = 5,
 ) -> dict[str, Any]:
     """Run the full project lifecycle.
 
@@ -719,6 +1044,7 @@ async def run_project(
         base_model_id: HuggingFace model ID of the base model.
         device: Device for hypernetwork computation.
         max_retries_per_subtask: Max attempts per subtask (errors go through H()).
+        max_phase_iterations: Max evolutionary iterations per phase.
 
     Returns:
         Summary dict with phase results.
@@ -730,6 +1056,7 @@ async def run_project(
         base_model_id=base_model_id,
         device=device,
         max_retries_per_subtask=max_retries_per_subtask,
+        max_phase_iterations=max_phase_iterations,
     )
 
 
@@ -775,6 +1102,12 @@ def main() -> None:
         default=2,
         help="Number of parallel agents for swarm phases (default: 2)",
     )
+    parser.add_argument(
+        "--max-phase-iterations",
+        type=int,
+        default=5,
+        help="Max evolutionary iterations per phase (default: 5, early stops on success)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -797,6 +1130,7 @@ def main() -> None:
             base_model_id=args.base_model_id,
             device=args.device if args.device != "auto" else get_best_device(),
             population_size=args.population_size,
+            max_phase_iterations=args.max_phase_iterations,
         )
     )
 

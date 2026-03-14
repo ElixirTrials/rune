@@ -300,6 +300,7 @@ def test_phased_pipeline(tmpdir: str) -> None:
             device=DEVICE,
             population_size=2,
             max_retries_per_subtask=2,
+            max_phase_iterations=5,
         )
     )
 
@@ -347,6 +348,27 @@ def test_phased_pipeline(tmpdir: str) -> None:
     # Verify adapter registration has phase-specific task_types
     adapter_types = {a["task_type"] for a in adapters}
     print(f"\n  Adapter task types: {adapter_types}")
+
+    # Report evolution results
+    evolution = result.get("evolution", {})
+    assert "phase_iterations" in evolution, "Missing evolution phase_iterations"
+    print("\n  --- Evolution Results ---")
+    phase_iters = evolution.get("phase_iterations", {})
+    for phase_name, iters in phase_iters.items():
+        print(f"    {phase_name}: {iters} iteration(s)")
+    best_adapters = evolution.get("best_adapters", {})
+    print(f"  Best adapters: {best_adapters}")
+    sweeps = evolution.get("sweeps", {})
+    print(f"  Evolution sweeps: {len(sweeps)}")
+    for sweep_name, sweep_result in sweeps.items():
+        task_types = sweep_result.get("task_types", {})
+        if task_types:
+            print(f"    {sweep_name}: {task_types}")
+
+    # Verify phase iteration counts
+    for phase_name in ("decompose", "integrate"):
+        assert phase_name in phase_iters, f"Missing iteration count for {phase_name}"
+        assert phase_iters[phase_name] >= 1, f"{phase_name} ran 0 iterations"
 
     print(f"\n  Session: {result['session_id']}")
     print(f"  Total iterations: {result['total_iterations']}")
