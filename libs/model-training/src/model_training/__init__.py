@@ -25,3 +25,6 @@ __all__ = ["format_for_sft", "load_trajectory", "record_trajectory"]
 #       probe_model, extract_activations_with_model,
 #       load_probe_cache, save_probe_cache,
 #   )
+#
+# Functional LoRA injection (torch/ctx_to_lora deferred):
+#   from model_training.d2l_lora import apply_functional_lora

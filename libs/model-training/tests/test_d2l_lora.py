@@ -48,7 +48,9 @@ class _FakeModel(nn.Module):
 
     def forward(self, x: Any) -> Any:
         for layer in self.layers:
-            x = layer.self_attn.q_proj(x)
+            attn = layer.self_attn
+            # Use all 4 projections so all A/B tensors get gradients
+            x = attn.q_proj(x) + attn.k_proj(x) + attn.v_proj(x) + attn.o_proj(x)
         return x
 
 
@@ -118,12 +120,12 @@ class TestForwardPatching:
         lora_dict = _make_fake_lora_dict(TARGET_MODULES, N_LAYERS, R, D)
         hc = _make_fake_hc(TARGET_MODULES, LAYER_INDICES)
 
-        orig_forward = model.layers[0].self_attn.q_proj.forward
+        q_proj = model.layers[0].self_attn.q_proj
+        assert "forward" not in q_proj.__dict__, "precondition: no instance override"
 
         with apply_functional_lora(model, lora_dict, hc):
-            patched_forward = model.layers[0].self_attn.q_proj.forward
-            assert patched_forward is not orig_forward, (
-                "forward should be patched inside context"
+            assert "forward" in q_proj.__dict__, (
+                "forward should be patched (instance override) inside context"
             )
 
     def test_patched_output_equals_base_plus_lora(self) -> None:
@@ -169,13 +171,13 @@ class TestForwardRestoration:
         lora_dict = _make_fake_lora_dict(TARGET_MODULES, N_LAYERS, R, D)
         hc = _make_fake_hc(TARGET_MODULES, LAYER_INDICES)
 
-        orig_forward = model.layers[0].self_attn.q_proj.forward
+        q_proj = model.layers[0].self_attn.q_proj
 
         with apply_functional_lora(model, lora_dict, hc):
-            pass  # just enter and exit
+            assert "forward" in q_proj.__dict__, "precondition: patched"
 
-        assert model.layers[0].self_attn.q_proj.forward is orig_forward, (
-            "forward should be restored after context exit"
+        assert "forward" not in q_proj.__dict__, (
+            "forward instance override should be removed after context exit"
         )
 
     def test_forward_restored_after_exception(self) -> None:
@@ -183,7 +185,7 @@ class TestForwardRestoration:
         lora_dict = _make_fake_lora_dict(TARGET_MODULES, N_LAYERS, R, D)
         hc = _make_fake_hc(TARGET_MODULES, LAYER_INDICES)
 
-        orig_forward = model.layers[0].self_attn.q_proj.forward
+        q_proj = model.layers[0].self_attn.q_proj
 
         try:
             with apply_functional_lora(model, lora_dict, hc):
@@ -191,8 +193,8 @@ class TestForwardRestoration:
         except ValueError:
             pass
 
-        assert model.layers[0].self_attn.q_proj.forward is orig_forward, (
-            "forward should be restored even after exception"
+        assert "forward" not in q_proj.__dict__, (
+            "forward instance override should be removed even after exception"
         )
 
 
@@ -231,18 +233,21 @@ class TestSkipBehavior:
     def test_non_target_layers_not_patched(self) -> None:
         model = _FakeModel(D, N_LAYERS)
         lora_dict = _make_fake_lora_dict(TARGET_MODULES, 1, R, D)
-        # Only layer index 1 in layer_indices — layers 0 and 2 should be skipped
+        # Only layer index 1 in layer_indices -- layers 0 and 2 should be skipped
         hc = _make_fake_hc(TARGET_MODULES, [1])
 
-        orig_fwd_layer0 = model.layers[0].self_attn.q_proj.forward
-        orig_fwd_layer2 = model.layers[2].self_attn.q_proj.forward
+        q0 = model.layers[0].self_attn.q_proj
+        q1 = model.layers[1].self_attn.q_proj
+        q2 = model.layers[2].self_attn.q_proj
 
         with apply_functional_lora(model, lora_dict, hc):
-            assert model.layers[0].self_attn.q_proj.forward is orig_fwd_layer0, (
+            assert "forward" not in q0.__dict__, (
                 "layer 0 should NOT be patched (not in layer_indices)"
             )
-            assert model.layers[2].self_attn.q_proj.forward is orig_fwd_layer2, (
+            assert "forward" not in q2.__dict__, (
                 "layer 2 should NOT be patched (not in layer_indices)"
             )
             # But layer 1 SHOULD be patched
-            assert model.layers[1].self_attn.q_proj.forward is not orig_fwd_layer0
+            assert "forward" in q1.__dict__, (
+                "layer 1 should be patched (in layer_indices)"
+            )
