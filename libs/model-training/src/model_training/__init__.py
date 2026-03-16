@@ -1,8 +1,15 @@
 """Training pipelines for LoRA fine-tuning and trajectory management."""
 
+from model_training.d2l_train import D2LTrainConfig, train_d2l_qwen3
 from model_training.trajectory import format_for_sft, load_trajectory, record_trajectory
 
-__all__ = ["format_for_sft", "load_trajectory", "record_trajectory"]
+__all__ = [
+    "D2LTrainConfig",
+    "format_for_sft",
+    "load_trajectory",
+    "record_trajectory",
+    "train_d2l_qwen3",
+]
 # GPU-dependent modules (peft_utils, config, trainer, hypernetwork, merging) must be
 # imported from their submodules directly to avoid top-level GPU import:
 #   from model_training.peft_utils import build_qlora_config
