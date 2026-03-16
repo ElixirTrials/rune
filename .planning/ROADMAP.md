@@ -73,7 +73,7 @@
 - [x] **Phase 25: Configuration & Data Pipeline** — Config helpers and full data pipeline with zero GPU dependencies (completed 2026-03-13)
 - [x] **Phase 26: Architecture Probe & Activation Extraction** — Dynamic attention layer discovery and pre-loaded model activation extraction (completed 2026-03-13)
 - [x] **Phase 27: Partial Weight Transfer** — Freeze aggregator, reinitialize head for Qwen3-Coder-Next output dimensions (completed 2026-03-13)
-- [ ] **Phase 28: Functional LoRA Injection** — Autograd-safe context manager for hypernetwork training
+- [x] **Phase 28: Functional LoRA Injection** — Autograd-safe context manager for hypernetwork training (completed 2026-03-16)
 - [ ] **Phase 29: Training Loop Integration** — KL+CE distillation training script with dry-run and smoke-test modes
 
 ## Phase Details
@@ -125,9 +125,9 @@ Plans:
   1. Generated LoRA tensors have non-None `.grad` after `loss.backward()` — hypernetwork parameters receive gradient signal
   2. All hypernetwork parameters have non-None `.grad` after a backward pass through the functional LoRA path
   3. After exiting the context manager, target module forward methods are restored to their originals with no side effects (verified by calling the module again outside the context)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 28-01-PLAN.md — apply_functional_lora context manager + autograd/restoration TDD tests
+- [x] 28-01-PLAN.md — apply_functional_lora context manager + autograd/restoration TDD tests
 
 ### Phase 29: Training Loop Integration
 **Goal**: The complete KL-divergence context distillation training script assembles all prior components, with dry-run mode verifying shapes on CPU in under 30 seconds and smoke-test mode confirming finite, decreasing loss over 5 real training steps.
@@ -139,7 +139,10 @@ Plans:
   3. The KL loss unit test returns zero when `student_logits == teacher_logits` (formula correctness verified)
   4. Optimizer is scoped exclusively to trainable parameters (head + projections only) — aggregator parameters have zero gradient after backward
   5. Checkpoint files written every N steps contain model state, config, step count, and attention layer indices — readable back without errors
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 29-01-PLAN.md — D2LTrainConfig + _compute_kl_ce_loss + 7 unit tests + mlflow dep + exports
+- [ ] 29-02-PLAN.md — Full training loop (train_d2l_qwen3, checkpoint, MLflow, dry-run, smoke-test, CLI) + 7 remaining tests
 
 ## Progress
 
@@ -173,8 +176,8 @@ Plans:
 | 25. Configuration & Data Pipeline | v7.0 | 2/2 | Complete | 2026-03-13 |
 | 26. Architecture Probe & Activation Extraction | v7.0 | Complete    | 2026-03-13 | 2026-03-13 |
 | 27. Partial Weight Transfer | 1/1 | Complete    | 2026-03-13 | - |
-| 28. Functional LoRA Injection | v7.0 | 0/1 | Not started | - |
-| 29. Training Loop Integration | v7.0 | 0/TBD | Not started | - |
+| 28. Functional LoRA Injection | v7.0 | 1/1 | Complete | 2026-03-16 |
+| 29. Training Loop Integration | v7.0 | 0/2 | Not started | - |
 
 ---
-*Last updated: 2026-03-16 after Phase 28 planning*
+*Last updated: 2026-03-16 after Phase 29 planning complete*
