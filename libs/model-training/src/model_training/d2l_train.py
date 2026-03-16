@@ -32,6 +32,34 @@ logger = logging.getLogger(__name__)
 __all__ = ["train_d2l_qwen3", "D2LTrainConfig"]
 
 
+def _require_probe_cache(model_name: str) -> None:
+    """Raise RuntimeError if probe cache is absent for *model_name*.
+
+    Called before build_qwen3_hypernet_config so training never proceeds with
+    placeholder feature_sizes that produce incorrect LoRA dimensions.
+
+    Defers the import of load_probe_cache so GPU-free test environments are
+    not forced to import the full probe module at module load time.
+
+    Args:
+        model_name: Canonical model identifier for cache lookup and error message.
+
+    Raises:
+        RuntimeError: If no probe cache is found for model_name.
+    """
+    from model_training.d2l_probe import load_probe_cache  # noqa: PLC0415
+
+    if load_probe_cache(model_name) is not None:
+        return
+    msg = (
+        f"Probe cache not found for '{model_name}' — "
+        "run probe_model() and save_probe_cache() before training. "
+        "Training with placeholder feature_sizes produces incorrect LoRA "
+        "dimensions."
+    )
+    raise RuntimeError(msg)
+
+
 class D2LTrainConfig(BaseModel):
     """Pydantic model for D2L training hyperparameters.
 
@@ -332,11 +360,17 @@ def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
 
     from model_training.d2l_config import build_qwen3_hypernet_config  # noqa: PLC0415
     from model_training.d2l_data import generate_needle_dataset  # noqa: PLC0415
-    from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
+    from model_training.d2l_probe import (  # noqa: PLC0415
+        QWEN3_NEXT_CANONICAL_NAME,
+        extract_activations_with_model,
+    )
     from model_training.sakana_d2l import (  # noqa: PLC0415
         get_aggregator_config,
         transfer_aggregator_weights,
     )
+
+    # Guard: dry-run also requires probe cache to produce correct LoRA dimensions.
+    _require_probe_cache(QWEN3_NEXT_CANONICAL_NAME)
 
     logger.info("Dry-run: loading tokenizer and base model...")
     tokenizer = AutoTokenizer.from_pretrained(config.base_model_name)
@@ -419,7 +453,7 @@ def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
     return shape_summary
 
 
-def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:
+def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
     """Run KL-divergence context distillation training.
 
     Three execution modes controlled by config flags:
@@ -456,6 +490,7 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:
         load_jsonl,
         split_by_task_id,
     )
+    from model_training.d2l_probe import QWEN3_NEXT_CANONICAL_NAME  # noqa: PLC0415
     from model_training.sakana_d2l import (  # noqa: PLC0415
         get_aggregator_config,
         transfer_aggregator_weights,
@@ -469,6 +504,11 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:
     # Smoke test caps steps at 5
     if config.smoke_test:
         config = config.model_copy(update={"num_steps": min(config.num_steps, 5)})
+
+    # Guard: require probe cache when not in smoke_test mode.
+    # smoke_test uses generate_needle_dataset and may not have a real probe cache.
+    if not config.smoke_test:
+        _require_probe_cache(QWEN3_NEXT_CANONICAL_NAME)
 
     num_steps = config.num_steps
     warmup_steps = config.warmup_steps

@@ -432,7 +432,7 @@ def extract_activations(
 
     logger.info("Loading base model %s for activation extraction...", base_model_name)
     tokenizer = AutoTokenizer.from_pretrained(base_model_name)
-    model = AutoModelForCausalLM.from_pretrained(
+    model: Any = AutoModelForCausalLM.from_pretrained(
         base_model_name,
         torch_dtype=torch.float32,
     )

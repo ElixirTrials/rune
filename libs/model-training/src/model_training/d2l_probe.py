@@ -1,7 +1,7 @@
-"""Architecture probe and activation extraction for model-agnostic hypernetwork training.
+"""Architecture probe and activation extraction for hypernetwork training.
 
-Discovers standard attention layers (those with q_proj/k_proj/v_proj/o_proj children)
-via model.named_modules(), caches results to JSON, and provides
+Discovers standard attention layers (those with q_proj/k_proj/v_proj/o_proj
+children) via model.named_modules(), caches results to JSON, and provides
 extract_activations_with_model() that accepts a pre-loaded model and tokenizer.
 
 Phase 26 purpose: eliminate hidden_size placeholders and per-call model loading.
