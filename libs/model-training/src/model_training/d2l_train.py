@@ -21,6 +21,8 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -162,19 +164,465 @@ def _compute_kl_ce_loss(
     }
 
 
-def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:
-    """Run KL-divergence context distillation training.
+def _training_step(
+    record: dict[str, Any],
+    base_model: Any,
+    tokenizer: Any,
+    hypernet: Any,
+    hc: Any,
+    config: D2LTrainConfig,
+) -> tuple[Any, dict[str, float]]:
+    """Execute a single training step with two-pass teacher/student separation.
+
+    Pass 1 extracts activations from activation_text only (no answer tokens).
+    Pass 2 runs teacher (no_grad) and student (with LoRA) on teacher_text.
+
+    Args:
+        record: Data record with 'activation_text' and 'teacher_text' fields.
+        base_model: Base LM in eval mode.
+        tokenizer: Tokenizer matching base_model.
+        hypernet: HyperLoRA in train mode.
+        hc: HypernetConfig with layer_indices and lora_config.
+        config: Training configuration.
+
+    Returns:
+        Tuple of (loss_tensor, metrics_dict).
+    """
+    import torch  # noqa: PLC0415
+
+    from model_training.d2l_lora import apply_functional_lora  # noqa: PLC0415
+    from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
+
+    # Pass 1: extract activations from activation_text (context only, no answer tokens)
+    features, attn_mask = extract_activations_with_model(
+        text=record["activation_text"],
+        model=base_model,
+        tokenizer=tokenizer,
+        layer_indices=list(hc.layer_indices),
+        max_length=config.max_length,
+    )
+
+    # Hypernetwork forward — OUTSIDE torch.no_grad to preserve autograd graph
+    lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
+
+    # Compute answer_start: token offset where answer begins in teacher_text
+    answer_start = len(
+        tokenizer(
+            record["activation_text"],
+            truncation=True,
+            max_length=config.max_length,
+        )["input_ids"]
+    )
+
+    # Pass 2 teacher: run base model under no_grad to get teacher logits
+    teacher_inputs = tokenizer(
+        record["teacher_text"],
+        return_tensors="pt",
+        truncation=True,
+        max_length=config.max_length,
+    )
+    try:
+        device = next(base_model.parameters()).device
+    except StopIteration:
+        device = torch.device("cpu")
+    teacher_inputs = {k: v.to(device) for k, v in teacher_inputs.items()}
+
+    with torch.no_grad():
+        teacher_out = base_model(**teacher_inputs, output_hidden_states=False)
+    teacher_logits = teacher_out.logits
+
+    # Pass 2 student: run base model with functional LoRA patches
+    with apply_functional_lora(base_model, lora_dict, hc):
+        student_out = base_model(**teacher_inputs, output_hidden_states=False)
+    student_logits = student_out.logits
+
+    return _compute_kl_ce_loss(student_logits, teacher_logits, answer_start, config)
+
+
+def _save_checkpoint(
+    step: int,
+    hypernet: Any,
+    optimizer: Any,
+    scheduler: Any,
+    config: D2LTrainConfig,
+    hc: Any,
+    best_loss: float,
+    full: bool = False,
+) -> Path:
+    """Save a tiered checkpoint to disk.
+
+    Lightweight checkpoint: hypernet weights, config, step, layer indices, best_loss.
+    Full checkpoint: additionally includes optimizer state, scheduler state, RNG state.
+
+    Args:
+        step: Current training step number.
+        hypernet: HyperLoRA model.
+        optimizer: AdamW optimizer.
+        scheduler: LR scheduler.
+        config: Training configuration.
+        hc: HypernetConfig with attention_layer_indices.
+        best_loss: Best loss seen so far.
+        full: If True, save full checkpoint with optimizer/scheduler/RNG state.
+
+    Returns:
+        Path to the saved checkpoint file.
+    """
+    import torch  # noqa: PLC0415
+
+    ckpt_dir = Path(config.checkpoint_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    payload: dict[str, Any] = {
+        "hypernet_state_dict": hypernet.state_dict(),
+        "config_json": config.model_dump(),
+        "step": step,
+        "attention_layer_indices": list(hc.layer_indices),
+        "best_loss": best_loss,
+    }
+
+    if full:
+        payload["optimizer_state_dict"] = optimizer.state_dict()
+        payload["scheduler_state_dict"] = scheduler.state_dict()
+        payload["rng_state"] = torch.get_rng_state()
+        if torch.cuda.is_available():
+            payload["cuda_rng_state"] = torch.cuda.get_rng_state()
+
+    ckpt_path = ckpt_dir / f"ckpt-{step}.pt"
+    torch.save(payload, ckpt_path)
+    logger.info("Checkpoint saved: %s (full=%s)", ckpt_path, full)
+    return ckpt_path
+
+
+def _setup_mlflow(config: D2LTrainConfig) -> None:
+    """Configure MLflow tracking URI and experiment name.
+
+    Uses MLFLOW_TRACKING_URI environment variable if set, otherwise defaults
+    to local './mlruns' directory.
+
+    Args:
+        config: Training configuration supplying experiment_name.
+    """
+    import mlflow  # noqa: PLC0415
+
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "./mlruns")
+    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_experiment(config.experiment_name)
+    logger.info(
+        "MLflow tracking URI: %s, experiment: %s",
+        tracking_uri,
+        config.experiment_name,
+    )
+
+
+def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
+    """Validate tensor shapes with a single forward pass, no optimizer step.
+
+    Loads the base model and hypernet, generates one needle record, runs one
+    training step without backward/optimizer, asserts all shapes are correct,
+    and returns a shape summary.
 
     Args:
         config: Training configuration.
 
     Returns:
-        Dictionary with training results (final loss, steps completed, etc.).
-
-    Raises:
-        NotImplementedError: Full implementation in Plan 02.
+        Dict with shape validation results: features, lora_dict, student/teacher logits.
     """
-    raise NotImplementedError("Implemented in Plan 02")
+    import torch  # noqa: PLC0415
+    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+    from model_training.d2l_config import build_qwen3_hypernet_config  # noqa: PLC0415
+    from model_training.d2l_data import generate_needle_dataset  # noqa: PLC0415
+    from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
+    from model_training.sakana_d2l import (  # noqa: PLC0415
+        get_aggregator_config,
+        transfer_aggregator_weights,
+    )
+
+    logger.info("Dry-run: loading tokenizer and base model...")
+    tokenizer = AutoTokenizer.from_pretrained(config.base_model_name)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        config.base_model_name,
+        output_hidden_states=True,
+    ).eval()
+
+    logger.info("Dry-run: building hypernet config and transferring weights...")
+    hc = build_qwen3_hypernet_config(
+        aggregator_config=get_aggregator_config(config.sakana_checkpoint_path),
+        lora_r=config.lora_r,
+    )
+
+    from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
+
+    hypernet = HyperLoRA(hc).to(torch.float32)
+    hypernet = transfer_aggregator_weights(hypernet, config.sakana_checkpoint_path)
+    hypernet.eval()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    base_model = base_model.to(device)
+    hypernet = hypernet.to(device)
+
+    records = generate_needle_dataset(n=1)
+    record = records[0]
+
+    logger.info("Dry-run: running single forward pass for shape validation...")
+    features, attn_mask = extract_activations_with_model(
+        text=record["activation_text"],
+        model=base_model,
+        tokenizer=tokenizer,
+        layer_indices=list(hc.layer_indices),
+        max_length=config.max_length,
+    )
+
+    with torch.no_grad():
+        lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
+
+    tokenizer_out = tokenizer(
+        record["teacher_text"],
+        return_tensors="pt",
+        truncation=True,
+        max_length=config.max_length,
+    )
+    teacher_inputs = {k: v.to(device) for k, v in tokenizer_out.items()}
+
+    with torch.no_grad():
+        teacher_out = base_model(**teacher_inputs, output_hidden_states=False)
+    teacher_logits = teacher_out.logits
+
+    from model_training.d2l_lora import apply_functional_lora  # noqa: PLC0415
+
+    with apply_functional_lora(base_model, lora_dict, hc):
+        with torch.no_grad():
+            student_out = base_model(**teacher_inputs, output_hidden_states=False)
+    student_logits = student_out.logits
+
+    # Assert shapes
+    assert features.ndim == 4, f"features must be 4D, got {features.ndim}D"  # noqa: S101
+    assert student_logits.shape == teacher_logits.shape, (  # noqa: S101
+        f"student/teacher logit shapes must match: "
+        f"{student_logits.shape} vs {teacher_logits.shape}"
+    )
+
+    shape_summary = {
+        "features_shape": list(features.shape),
+        "attn_mask_shape": list(attn_mask.shape),
+        "lora_modules": list(lora_dict.keys()),
+        "student_logits_shape": list(student_logits.shape),
+        "teacher_logits_shape": list(teacher_logits.shape),
+        "status": "OK",
+    }
+
+    for mod_name, ab in lora_dict.items():
+        shape_summary[f"lora_{mod_name}_A_shape"] = list(ab["A"].shape)
+        shape_summary[f"lora_{mod_name}_B_shape"] = list(ab["B"].shape)
+
+    logger.info("Dry-run shape validation passed: %s", shape_summary)
+    return shape_summary
+
+
+def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:
+    """Run KL-divergence context distillation training.
+
+    Three execution modes controlled by config flags:
+    - dry_run=True: Validate shapes with single forward pass, no optimizer step.
+    - smoke_test=True: Run min(num_steps, 5) steps, assert finite decreasing loss.
+    - default: Full training from dataset with checkpointing and MLflow tracking.
+
+    Args:
+        config: Training configuration.
+
+    Returns:
+        Dictionary with training results:
+            - final_loss: Loss at the last step.
+            - best_loss: Lowest loss seen during training.
+            - num_steps_completed: Number of training steps completed.
+            - checkpoint_dir: Path to checkpoint directory.
+            - shape_summary (dry_run only): Tensor shape validation results.
+    """
+    import mlflow  # noqa: PLC0415
+    import torch  # noqa: PLC0415
+    from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
+    from torch.nn.utils import clip_grad_norm_  # noqa: PLC0415
+    from torch.optim import AdamW  # noqa: PLC0415
+    from torch.optim.lr_scheduler import (  # noqa: PLC0415
+        CosineAnnealingLR,
+        LinearLR,
+        SequentialLR,
+    )
+    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+    from model_training.d2l_config import build_qwen3_hypernet_config  # noqa: PLC0415
+    from model_training.d2l_data import (  # noqa: PLC0415
+        generate_needle_dataset,
+        load_jsonl,
+        split_by_task_id,
+    )
+    from model_training.sakana_d2l import (  # noqa: PLC0415
+        get_aggregator_config,
+        transfer_aggregator_weights,
+    )
+
+    # Mode dispatch: dry_run exits after shape validation
+    if config.dry_run:
+        shape_summary = _dry_run_validate_shapes(config)
+        return {"shape_summary": shape_summary, "status": "dry_run_complete"}
+
+    # Smoke test caps steps at 5
+    if config.smoke_test:
+        config = config.model_copy(update={"num_steps": min(config.num_steps, 5)})
+
+    num_steps = config.num_steps
+    warmup_steps = config.warmup_steps
+
+    # Load tokenizer and base model
+    logger.info("Loading tokenizer: %s", config.base_model_name)
+    tokenizer = AutoTokenizer.from_pretrained(config.base_model_name)
+
+    logger.info("Loading base model: %s", config.base_model_name)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        config.base_model_name,
+        output_hidden_states=True,
+    ).eval()
+
+    # Build hypernet config with aggregator config from checkpoint
+    logger.info(
+        "Building hypernet config from checkpoint: %s",
+        config.sakana_checkpoint_path,
+    )
+    hc = build_qwen3_hypernet_config(
+        aggregator_config=get_aggregator_config(config.sakana_checkpoint_path),
+        lora_r=config.lora_r,
+    )
+
+    # Create hypernet and transfer aggregator weights (freezes aggregator)
+    hypernet = HyperLoRA(hc).to(torch.float32)
+    hypernet = transfer_aggregator_weights(hypernet, config.sakana_checkpoint_path)
+    hypernet.train()
+
+    # Device selection
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info("Using device: %s", device)
+    base_model = base_model.to(device)
+    hypernet = hypernet.to(device)
+
+    # Optimizer: only trainable params (head + projections, not frozen aggregator)
+    trainable_params = [p for p in hypernet.parameters() if p.requires_grad]
+    logger.info("Trainable params: %d", sum(p.numel() for p in trainable_params))
+    optimizer = AdamW(trainable_params, lr=config.lr)
+
+    # Scheduler: linear warmup → cosine annealing
+    scheduler = SequentialLR(
+        optimizer,
+        schedulers=[
+            LinearLR(optimizer, start_factor=0.01, total_iters=warmup_steps),
+            CosineAnnealingLR(
+                optimizer,
+                T_max=max(1, num_steps - warmup_steps),
+                eta_min=1e-6,
+            ),
+        ],
+        milestones=[warmup_steps],
+    )
+
+    # Data loading
+    if config.smoke_test or config.dataset_path is None:
+        records = generate_needle_dataset(n=20)
+        logger.info("Using needle dataset (%d records)", len(records))
+    else:
+        all_records = load_jsonl(config.dataset_path)
+        records, _ = split_by_task_id(all_records)
+        logger.info(
+            "Loaded %d training records from %s",
+            len(records),
+            config.dataset_path,
+        )
+
+    # MLflow setup and training loop
+    _setup_mlflow(config)
+
+    best_loss = float("inf")
+    final_loss = float("inf")
+    step_losses: list[float] = []
+
+    with mlflow.start_run(run_name=f"{config.experiment_name}-step{num_steps}"):
+        mlflow.log_params(config.model_dump())
+
+        for step in range(1, num_steps + 1):
+            record = records[(step - 1) % len(records)]
+
+            loss, metrics = _training_step(
+                record=record,
+                base_model=base_model,
+                tokenizer=tokenizer,
+                hypernet=hypernet,
+                hc=hc,
+                config=config,
+            )
+
+            loss.backward()
+            clip_grad_norm_(trainable_params, config.grad_clip)
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()
+
+            step_loss = metrics["total_loss"]
+            step_losses.append(step_loss)
+            final_loss = step_loss
+            if step_loss < best_loss:
+                best_loss = step_loss
+
+            mlflow.log_metrics(metrics, step=step)
+            logger.info(
+                "Step %d/%d — loss=%.4f (kl=%.4f, ce=%.4f)",
+                step,
+                num_steps,
+                metrics["total_loss"],
+                metrics["kl_loss"],
+                metrics["ce_loss"],
+            )
+
+            # Tiered checkpointing
+            if step % config.full_checkpoint_every == 0:
+                ckpt_path = _save_checkpoint(
+                    step=step,
+                    hypernet=hypernet,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    config=config,
+                    hc=hc,
+                    best_loss=best_loss,
+                    full=True,
+                )
+                mlflow.log_artifact(str(ckpt_path))
+            elif step % config.checkpoint_every == 0:
+                ckpt_path = _save_checkpoint(
+                    step=step,
+                    hypernet=hypernet,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    config=config,
+                    hc=hc,
+                    best_loss=best_loss,
+                    full=False,
+                )
+                mlflow.log_artifact(str(ckpt_path))
+
+    # Smoke test assertions
+    if config.smoke_test:
+        for i, sl in enumerate(step_losses):
+            assert torch.isfinite(torch.tensor(sl)), (  # noqa: S101
+                f"Smoke test: loss at step {i + 1} is not finite: {sl}"
+            )
+        assert step_losses[-1] < step_losses[0], (  # noqa: S101
+            f"Smoke test: final loss {step_losses[-1]:.4f} not less than "
+            f"initial loss {step_losses[0]:.4f}"
+        )
+
+    return {
+        "final_loss": final_loss,
+        "best_loss": best_loss,
+        "num_steps_completed": num_steps,
+        "checkpoint_dir": config.checkpoint_dir,
+    }
 
 
 if __name__ == "__main__":

@@ -56,6 +56,7 @@ def get_d2l_qwen3_config() -> dict[str, Any]:
 def build_qwen3_hypernet_config(
     lora_r: int = 8,
     target_modules: list[str] | None = None,
+    aggregator_config: Any = None,
 ) -> Any:
     """Construct HypernetConfig targeting Qwen3-Coder-Next attention layers.
 
@@ -67,13 +68,13 @@ def build_qwen3_hypernet_config(
     feature_sizes. Falls back to hidden_size placeholder when no cache is found
     (e.g., in CI where the model has not been probed).
 
-    Note: aggregator_config is set to None. Phase 27 (weight transfer) must call
-    get_aggregator_config() with a loaded model and populate this field before
-    using the config in training.
-
     Args:
         lora_r: LoRA rank for the adapter. Defaults to 8.
         target_modules: LoRA target module names. Defaults to ["q_proj", "v_proj"].
+        aggregator_config: Perceiver aggregator config from a Sakana checkpoint.
+            If None (default / Phase 25 CI), HypernetConfig is built with
+            aggregator_config=None as placeholder. Phase 29 populates this via
+            get_aggregator_config() with a loaded model.
 
     Returns:
         HypernetConfig with layer_indices set to the 12 full_attention indices
@@ -139,6 +140,5 @@ def build_qwen3_hypernet_config(
         base_hidden_size=cfg.hidden_size,
         layer_indices=layer_indices,
         feature_sizes=feature_sizes,
-        # placeholder — Phase 27 sets real value via get_aggregator_config()
-        aggregator_config=None,
+        aggregator_config=aggregator_config,
     )
