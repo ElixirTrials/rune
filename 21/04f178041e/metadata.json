@@ -3,7 +3,7 @@
   "checkpoint_id": "2104f178041e",
   "strategy": "manual-commit",
   "branch": "feat/v7-hypernetwork-training",
-  "checkpoints_count": 6,
+  "checkpoints_count": 9,
   "files_touched": [
     ".planning/ROADMAP.md"
   ],
@@ -35,13 +35,20 @@
       "context": "/21/04f178041e/3/context.md",
       "content_hash": "/21/04f178041e/3/content_hash.txt",
       "prompt": "/21/04f178041e/3/prompt.txt"
+    },
+    {
+      "metadata": "/21/04f178041e/4/metadata.json",
+      "transcript": "/21/04f178041e/4/full.jsonl",
+      "context": "/21/04f178041e/4/context.md",
+      "content_hash": "/21/04f178041e/4/content_hash.txt",
+      "prompt": "/21/04f178041e/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 225,
-    "cache_creation_tokens": 665950,
-    "cache_read_tokens": 12207156,
-    "output_tokens": 61234,
-    "api_call_count": 179
+    "input_tokens": 290,
+    "cache_creation_tokens": 750525,
+    "cache_read_tokens": 15373774,
+    "output_tokens": 78036,
+    "api_call_count": 234
   }
 }
