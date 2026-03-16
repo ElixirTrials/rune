@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "a76af1a9ab88",
+  "session_id": "733201ba-8b1e-4613-aa93-fa0f8e017e21",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-16T17:52:45.703615Z",
+  "branch": "feat/v7-hypernetwork-training",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/model-training/src/model_training/d2l_probe.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "30fb0402f98c",
+  "checkpoint_transcript_start": 49,
+  "transcript_lines_at_start": 49,
+  "token_usage": {
+    "input_tokens": 3,
+    "cache_creation_tokens": 22151,
+    "cache_read_tokens": 15228,
+    "output_tokens": 29,
+    "api_call_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-16T17:52:45.686031Z",
+    "agent_lines": 3,
+    "human_added": 163,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 166,
+    "agent_percentage": 1.8072289156626504
+  }
+}

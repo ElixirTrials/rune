@@ -1,0 +1,47 @@
+/gsd:execute-phase 30 --auto
+
+---
+
+<objective>
+Execute all plans in a phase using wave-based parallel execution.
+
+Orchestrator stays lean: discover plans, analyze dependencies, group into waves, spawn subagents, collect results. Each subagent loads the full execute-plan context and handles its own plan.
+
+Context budget: ~15% orchestrator, 100% fresh per subagent.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+</execution_context>
+
+<context>
+Phase: 30 --auto
+
+**Flags:**
+- `--gaps-only` — Execute only gap closure plans (plans with `gap_closure: true` in frontmatter). Use after verify-work creates fix plans.
+
+Context files are resolved inside the workflow via `gsd-tools init execute-phase` and per-subagent `<files_to_read>` blocks.
+</context>
+
+<process>
+Execute the execute-phase workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/execute-phase.md end-to-end.
+Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
+</process>
+
+---
+
+<task-notification>
+<task-id>bxpqu4op3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/bxpqu4op3.output</output-file>
+<status>completed</status>
+<summary>Background command "git add -f .planning/phases/25-configuration-data-pipeline/25-02-SUMMARY.md .planning/phases/26-architecture-probe-activation-extraction/26-01-SUMMARY.md && git commit -m "$(cat <<'EOF'
+chore(30-02): add requirements-completed frontmatter to SUMMARY files
+
+- 25-02-SUMMARY.md: add requirements-completed: [DATA-04, DATA-05]
+- 26-01-SUMMARY.md: add requirements-completed: [ARCH-01, ARCH-02]
+EOF
+)"" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/bxpqu4op3.output
