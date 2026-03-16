@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "e52580717264",
+  "strategy": "manual-commit",
+  "branch": "feat/v7-hypernetwork-training",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".planning/STATE.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e5/2580717264/0/metadata.json",
+      "transcript": "/e5/2580717264/0/full.jsonl",
+      "context": "/e5/2580717264/0/context.md",
+      "content_hash": "/e5/2580717264/0/content_hash.txt",
+      "prompt": "/e5/2580717264/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "e52580717264",
+  "session_id": "733201ba-8b1e-4613-aa93-fa0f8e017e21",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-16T17:54:58.329049Z",
+  "branch": "feat/v7-hypernetwork-training",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".planning/STATE.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "30fb0402f98c",
+  "checkpoint_transcript_start": 55,
+  "transcript_lines_at_start": 55,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-16T17:54:58.292333Z",
+    "agent_lines": 11,
+    "human_added": 258,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 269,
+    "agent_percentage": 4.089219330855019
+  }
+}
