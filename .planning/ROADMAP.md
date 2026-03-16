@@ -75,6 +75,7 @@
 - [x] **Phase 27: Partial Weight Transfer** — Freeze aggregator, reinitialize head for Qwen3-Coder-Next output dimensions (completed 2026-03-13)
 - [x] **Phase 28: Functional LoRA Injection** — Autograd-safe context manager for hypernetwork training (completed 2026-03-16)
 - [x] **Phase 29: Training Loop Integration** — KL+CE distillation training script with dry-run and smoke-test modes (completed 2026-03-16)
+- [ ] **Phase 30: Audit Gap Closure & Quality Gate** — Probe cache guard, documentation hygiene, pre-existing mypy fixes, data prep script
 
 ## Phase Details
 
@@ -91,7 +92,7 @@
 **Plans:** 2/2 plans complete
 Plans:
 - [x] 25-01-PLAN.md — Config helpers + core data pipeline (JSONL, needle, split, distillation format) with tests
-- [ ] 25-02-PLAN.md — Trajectory generation from HumanEval, LLM augmentation, GitHub mining stubs
+- [x] 25-02-PLAN.md — Trajectory generation from HumanEval, LLM augmentation, GitHub mining stubs
 
 ### Phase 26: Architecture Probe & Activation Extraction
 **Goal**: The architecture probe correctly identifies exactly 12 standard attention layers in Qwen3-Coder-Next (not DeltaNet), and activation extraction accepts a pre-loaded model reference rather than loading weights per call.
@@ -115,7 +116,7 @@ Plans:
   3. A post-load assertion explicitly fails if any expected aggregator key is missing from the loaded state dict
 **Plans:** 1/1 plans complete
 Plans:
-- [ ] 27-01-PLAN.md — Weight transfer functions (transfer_aggregator_weights, get_aggregator_config, assertions) + tests
+- [x] 27-01-PLAN.md — Weight transfer functions (transfer_aggregator_weights, get_aggregator_config, assertions) + tests
 
 ### Phase 28: Functional LoRA Injection
 **Goal**: The `apply_functional_lora` context manager patches target modules using `F.linear` with live hypernetwork tensor graph nodes, preserving autograd continuity through the hypernetwork, and restores original forward methods on exit.
@@ -141,8 +142,27 @@ Plans:
   5. Checkpoint files written every N steps contain model state, config, step count, and attention layer indices — readable back without errors
 **Plans:** 2/2 plans complete
 Plans:
-- [ ] 29-01-PLAN.md — D2LTrainConfig + _compute_kl_ce_loss + 7 unit tests + mlflow dep + exports
-- [ ] 29-02-PLAN.md — Full training loop (train_d2l_qwen3, checkpoint, MLflow, dry-run, smoke-test, CLI) + 7 remaining tests
+- [x] 29-01-PLAN.md — D2LTrainConfig + _compute_kl_ce_loss + 7 unit tests + mlflow dep + exports
+- [x] 29-02-PLAN.md — Full training loop (train_d2l_qwen3, checkpoint, MLflow, dry-run, smoke-test, CLI) + 7 remaining tests
+
+### Phase 30: Audit Gap Closure & Quality Gate
+**Goal**: Close all tech debt and integration gaps identified by the v7.0 milestone audit: add probe cache guard in training loop, fix all documentation inconsistencies (REQUIREMENTS.md checkboxes, SUMMARY frontmatter, VERIFICATION body), fix pre-existing mypy errors, create data prep automation script, and commit uncommitted cosmetic change.
+**Depends on**: Phase 29
+**Requirements**: None new (all 24 requirements already satisfied — this phase fixes documentation and adds safety guards)
+**Gap Closure**: Closes gaps from v7.0-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. `train_d2l_qwen3` logs a warning or raises when probe cache is absent (no more silent placeholder fallback)
+  2. All 24 REQUIREMENTS.md checkboxes match their verified status (`[x]` for all)
+  3. Traceability table shows "Complete" for all 24 requirements
+  4. SUMMARY frontmatter `requirements-completed` fields present for 25-02 (DATA-04, DATA-05) and 26-01 (ARCH-01, ARCH-02)
+  5. Phase 29 VERIFICATION body consistent with frontmatter (truth #8 shows resolved, not FAILED)
+  6. Pre-existing mypy errors in `sakana_d2l.py` (lines 80, 416) resolved
+  7. `uv run mypy libs/model-training/src` passes with zero errors
+  8. A data prep script or CLI command connects `format_for_distillation` → `save_jsonl` for producing training JSONL
+**Plans:** 2 plans
+Plans:
+- [ ] 30-01-PLAN.md — Probe cache guard, mypy fixes, data prep script
+- [ ] 30-02-PLAN.md — Documentation fixes (SUMMARY frontmatter, VERIFICATION body)
 
 ## Progress
 
@@ -174,10 +194,11 @@ Plans:
 | 23. Integration Fix & Quality Gate | v5.0 | 1/1 | Complete | 2026-03-06 |
 | 24. Phase 22 Verification & Dep Hygiene | v5.0 | 1/1 | Complete | 2026-03-06 |
 | 25. Configuration & Data Pipeline | v7.0 | 2/2 | Complete | 2026-03-13 |
-| 26. Architecture Probe & Activation Extraction | v7.0 | Complete    | 2026-03-13 | 2026-03-13 |
-| 27. Partial Weight Transfer | 1/1 | Complete    | 2026-03-13 | - |
+| 26. Architecture Probe & Activation Extraction | v7.0 | 1/1 | Complete | 2026-03-13 |
+| 27. Partial Weight Transfer | v7.0 | 1/1 | Complete | 2026-03-13 |
 | 28. Functional LoRA Injection | v7.0 | 1/1 | Complete | 2026-03-16 |
-| 29. Training Loop Integration | 2/2 | Complete   | 2026-03-16 | - |
+| 29. Training Loop Integration | v7.0 | 2/2 | Complete | 2026-03-16 |
+| 30. Audit Gap Closure & Quality Gate | v7.0 | 0/2 | Planned | - |
 
 ---
-*Last updated: 2026-03-16 after Phase 29 planning complete*
+*Last updated: 2026-03-16 after phase 30 planning*
