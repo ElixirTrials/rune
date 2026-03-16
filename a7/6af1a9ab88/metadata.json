@@ -3,7 +3,7 @@
   "checkpoint_id": "a76af1a9ab88",
   "strategy": "manual-commit",
   "branch": "feat/v7-hypernetwork-training",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "libs/model-training/src/model_training/d2l_probe.py"
   ],
@@ -21,13 +21,20 @@
       "context": "/a7/6af1a9ab88/1/context.md",
       "content_hash": "/a7/6af1a9ab88/1/content_hash.txt",
       "prompt": "/a7/6af1a9ab88/1/prompt.txt"
+    },
+    {
+      "metadata": "/a7/6af1a9ab88/2/metadata.json",
+      "transcript": "/a7/6af1a9ab88/2/full.jsonl",
+      "context": "/a7/6af1a9ab88/2/context.md",
+      "content_hash": "/a7/6af1a9ab88/2/content_hash.txt",
+      "prompt": "/a7/6af1a9ab88/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 59,
-    "cache_creation_tokens": 313634,
-    "cache_read_tokens": 3383951,
-    "output_tokens": 15949,
-    "api_call_count": 49
+    "input_tokens": 116,
+    "cache_creation_tokens": 402148,
+    "cache_read_tokens": 6026941,
+    "output_tokens": 30721,
+    "api_call_count": 96
   }
 }
