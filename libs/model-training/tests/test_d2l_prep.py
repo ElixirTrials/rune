@@ -11,9 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -117,7 +114,8 @@ def test_cli_help_exits_zero() -> None:
         cwd=Path(__file__).parent.parent,
     )
     assert result.returncode == 0, (
-        f"--help exited {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        f"--help exited {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert "usage" in result.stdout.lower() or "usage" in result.stderr.lower(), (
         "help output must contain 'usage'"
