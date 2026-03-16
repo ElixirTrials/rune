@@ -1,0 +1,295 @@
+<objective>
+Start a new milestone: questioning → research (optional) → requirements → roadmap.
+
+Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Gathers "what's next", updates PROJECT.md, then runs requirements → roadmap cycle.
+
+**Creates/Updates:**
+- `.planning/PROJECT.md` — updated with new milestone goals
+- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/REQUIREMENTS.md` — scoped requirements for this milestone
+- `.planning/ROADMAP.md` — phase structure (continues numbering)
+- `.planning/STATE.md` — reset for new milestone
+
+**After:** `/gsd:plan-phase [N]` to start execution.
+</objective>
+
+<execution_context>
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/questioning.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/references/ui-brand.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/project.md
+@/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/templates/requirements.md
+</execution_context>
+
+<context>
+Milestone name: "Hypernetwork training" read the following plan and begin defining a milestone and plan: /Users/noahdolevelixir/Code/rune/instructions/hypernetwork_training_plan.md (optional - will prompt if not provided)
+
+Project and milestone context files are resolved inside the workflow (`init new-milestone`) and delegated via `<files_to_read>` blocks where subagents are used.
+</context>
+
+<process>
+Execute the new-milestone workflow from @/Users/noahdolevelixir/.claude-elixirtrials/get-shit-done/workflows/new-milestone.md end-to-end.
+Preserve all workflow gates (validation, questioning, research, requirements, roadmap approval, commits).
+</process>
+
+---
+
+<task-notification>
+<task-id>a518d911160a9f507</task-id>
+<tool-use-id>toolu_014vp3WWKzCerer1thAgDdpT</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a518d911160a9f507.output</output-file>
+<status>completed</status>
+<summary>Agent "Stack research" completed</summary>
+<result>## RESEARCH COMPLETE
+
+**Project:** Rune v7.0 — KL-divergence context distillation training pipeline
+**Mode:** Ecosystem (stack additions)
+**Confidence:** HIGH for existing packages and patterns; MEDIUM for exact transformers version pinning for Qwen3-Coder-Next
+
+---
+
+### Key Findings
+
+- **Zero new package dependencies.** All capabilities needed for v7.0 are already in the installed stack. The only `pyproject.toml` change is bumping `transformers>=4.47.0` to `transformers>=5.0.0` — Qwen3NextConfig landed in transformers ~4.57.0.dev0, stable in the 5.x line.
+
+- **Functional LoRA via `F.linear` is the correct pattern.** `F.linear(x, W_frozen + lora_B @ lora_A)` where `lora_B`/`lora_A` are hypernetwork outputs preserves the computation graph. PEFT's `get_peft_model` wraps modules so LoRA weights become leaf parameters — that severs the hypernetwork's autograd graph and must not be used for training.
+
+- **Qwen3-Coder-Next has 12 attention layers out of 48, not 16.** The hybrid block pattern is 12 × (3 Gated DeltaNet + 1 Gated Attention). Attention layer positions are deterministic (every 4th, starting at index 3). Detect dynamically via `config.layer_types[i] == "attention"` — do not hardcode indices.
+
+- **GQA shapes are asymmetric:** `q_proj` is `(2048, 2048)` but `v_proj` is `(512, 2048)` (2 KV heads × 256 head_dim). The hypernetwork head must account for per-module dimensions, exactly as the existing `module_dims` dict pattern in `hypernetwork.py` already supports.
+
+- **All benchmark datasets are loadable with existing `datasets>=4.6.1`:** HumanEval (`openai/openai_humaneval`), MBPP (`mbpp`), CodeContests (`deepmind/code_contests`), SWE-bench Verified (`princeton-nlp/SWE-bench_Verified`), BigCodeBench (`bigcode/bigcodebench`).
+
+---
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/STACK.md` | Technology recommendations for v7.0 KL-distillation pipeline |
+
+---
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Functional LoRA injection pattern | HIGH | PyTorch forums + F.linear docs confirm autograd graph preservation |
+| KL-divergence loss formula | HIGH | Standard Hinton distillation formula, confirmed by Doc-to-LoRA paper |
+| Qwen3-Coder-Next architecture | HIGH | Official HF model card + transformers Qwen3NextConfig docs |
+| transformers version bump to >=5.0.0 | MEDIUM | Qwen3Next definitely needs >4.47; exact stable release is ~5.x but not pinned precisely |
+| Dataset HuggingFace IDs | HIGH | Verified directly against HuggingFace hub pages |
+| Zero new dependencies | HIGH | Cross-checked all v7.0 requirements against existing pyproject.toml |
+
+---
+
+### Roadmap Implications
+
+- Phase 1 (data pipeline) can start immediately — `datasets` already present, JSONL uses stdlib.
+- Phase 2 (architecture probe) needs a Qwen3-Coder-Next model pull — training machine must have transformers upgraded to 5.x before any phase involving `AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-Coder-Next")`.
+- Phase 3 (functional LoRA injection) is pure torch — no new install needed, but must NOT use PEFT wrapping.
+- The `pyproject.toml` transformers bump should be the first PR landed, gating all subsequent phases.
+
+### Open Questions
+
+- Exact transformers stable version containing `Qwen3NextConfig` (5.0.0 vs 5.1.x vs 5.3.x) — verify with `pip install transformers --upgrade` on training machine and check `transformers.__version__`.
+- Whether `output_hidden_states=True` works correctly through the MoE router in Qwen3-Coder-Next for capturing per-layer hidden states (should, but needs smoke test with the actual model).
+
+Sources:
+- [Qwen/Qwen3-Coder-Next on HuggingFace](https://huggingface.co/Qwen/Qwen3-Coder-Next)
+- [HuggingFace Transformers: Qwen3-Next model doc](https://huggingface.co/docs/transformers/en/model_doc/qwen3_next)
+- [Doc-to-LoRA paper (arXiv:2602.15902)](https://arxiv.org/pdf/2602.15902)
+- [PyTorch hypernetwork autograd forum](https://discuss.pytorch.org/t/hypernetwork-implementation/152109)
+- [Kaitchup: Qwen3-Coder-Next architecture guide](https://kaitchup.substack.com/p/qwen3-coder-next-how-to-run-qwens)
+- [deepmind/code_contests on HuggingFace](https://huggingface.co/datasets/deepmind/code_contests)
+- [princeton-nlp/SWE-bench_Verified on HuggingFace](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified)
+- [bigcode/bigcodebench on HuggingFace](https://huggingface.co/datasets/bigcode/bigcodebench)
+- [PyTorch F.linear documentation](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.linear.html)</result>
+<usage><total_tokens>68971</total_tokens><tool_uses>33</tool_uses><duration_ms>267425</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a518d911160a9f507.output
+
+---
+
+<task-notification>
+<task-id>ade0aeb65ca3dcf49</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/ade0aeb65ca3dcf49.output</output-file>
+<status>completed</status>
+<summary>Agent "Architecture research" completed</summary>
+<result>## RESEARCH COMPLETE
+
+**Project:** Rune v7.0 — KL-divergence context distillation training pipeline
+**Mode:** Ecosystem / Integration Architecture
+**Confidence:** HIGH
+
+### Key Findings
+
+- All new components belong in the existing `libs/model-training/` package — no new packages or services needed. The existing infrastructure (GPU import deferral, sys.modules injection, `adapter_registry` dependency) is fully reusable.
+
+- The hardest architectural constraint is autograd preservation: `peft.get_peft_model()` must NOT be used during training because it severs the gradient graph between the hypernetwork's output tensors and the student loss. `apply_functional_lora()` in `peft_utils.py` is the correct alternative.
+
+- The two-pass teacher/student separation (context pass for activations, query-only pass for student prediction) is architecturally mandatory — single-pass leaks answer tokens into the hypernetwork's input, causing the hypernetwork to copy answers instead of compressing context.
+
+- `sakana_d2l.py` needs two extensions: `extract_activations_with_model()` (accepts pre-loaded model to avoid reload per training step) and `build_qwen3_hypernet_config()` (dynamic attention layer discovery, since Qwen3 has 48 total layers but only 12 are standard attention — the rest are DeltaNet or MoE-gating layers).
+
+- `d2l_data.py` must enforce task-ID-level train/test split before augmentation to prevent task-family leakage.
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/ARCHITECTURE.md` | Integration map, component boundaries, data flows, build order with rationale, anti-patterns |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Existing module structure | HIGH | Full source read of all 7 existing files |
+| New component placement | HIGH | Derived directly from existing patterns and dependency graph |
+| Build order | HIGH | Strict dependency analysis — no ambiguity |
+| GPU/autograd patterns | HIGH | Verified against existing code + PROJECT.md key decisions |
+| Qwen3 layer count (12/48) | MEDIUM | Specified in PROJECT.md milestone context; not independently verified against Qwen3 model card |
+
+### Roadmap Implications
+
+The build order (config → data → sakana extensions → functional LoRA → training script) maps directly to 5 phases in the milestone roadmap. The data pipeline (Step 2) can be built and tested entirely CPU-side, providing early test suite confidence before any GPU work begins. The functional LoRA context manager (Step 4) is the riskiest component and should be isolated as its own phase with explicit autograd verification tests before the training loop is built on top of it.
+
+### Open Questions
+
+- Exact Qwen3-Coder-Next attention layer topology: the 12-of-48 count is cited in PROJECT.md but the precise layer naming convention (needed for `build_qwen3_hypernet_config()` probing logic) requires the actual model to be loaded for inspection.
+- Whether `ctx_to_lora.HyperLoRA` supports arbitrary `layer_indices` length or has a fixed expectation tied to the `qwen_4b_d2l` checkpoint's 12-layer configuration.</result>
+<usage><total_tokens>76932</total_tokens><tool_uses>22</tool_uses><duration_ms>332452</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/ade0aeb65ca3dcf49.output
+
+---
+
+<task-notification>
+<task-id>ac5f8da00d347f762</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/ac5f8da00d347f762.output</output-file>
+<status>completed</status>
+<summary>Agent "Pitfalls research" completed</summary>
+<result>Good. The file is correct. Let me provide the structured return.
+
+---
+
+## RESEARCH COMPLETE
+
+**Project:** Rune v7.0 — Hypernetwork Training Pipeline
+**Mode:** Pitfalls Research — adding KL-divergence context distillation training to existing codebase
+**Confidence:** HIGH (autograd/KL pitfalls), MEDIUM (Qwen3-Coder-Next architecture naming, MoE distillation specifics)
+
+### Key Findings
+
+- **The autograd break is the single most likely failure mode.** PyTorch forum confirmed: assigning generated weights to `param.data` silently severs the computation graph. The hypernetwork trains with zero gradient. This must be verified with a gradient flow unit test before any other training code runs.
+
+- **Two-pass contamination is invisible in training metrics.** If activations are extracted from the answer-containing pass, the hypernetwork learns to inject answer information rather than context compression. Training loss drops normally — only held-out task evaluation reveals the failure.
+
+- **Qwen3-Coder-Next has 12 attention layers out of 48.** The 3:1 DeltaNet-to-Attention ratio (every 4th layer is GatedAttention) means DeltaNet module names differ from `self_attn.*`. Dynamic discovery is required; hardcoding `num_layers=48` with `self_attn.q_proj` targets will silently find only 12 hook points or produce shape mismatches.
+
+- **`strict=False` weight transfer requires explicit key-presence assertions.** After loading `qwen_4b_d2l` weights, code must assert aggregator keys ARE loaded and head keys ARE NOT — otherwise a silently wrong initialization is mistaken for a successful transfer.
+
+- **Task-ID split must come before augmentation, enforced at the API level.** Splitting after augmentation produces correlated train/test sets; evaluation inflates silently.
+
+### Files Created / Updated
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/PITFALLS.md` | 9 critical pitfalls with prevention strategy, warning signs, and phase-to-address mapping; covers autograd, KL formula, architecture naming, data leakage, weight transfer, MoE routing instability, and activation extraction lifecycle |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Autograd graph severing (Pitfall 1) | HIGH | Directly verified in PyTorch forum thread documenting exact failure mechanism |
+| KL loss numerical formula (Pitfall 4) | HIGH | PyTorch F.kl_div API behavior confirmed; temperature scaling from 2025 COLING paper |
+| Two-pass contamination (Pitfall 2) | HIGH | Design stated in PROJECT.md; logic verified against known data leakage patterns |
+| Task-ID split (Pitfall 6) | HIGH | scikit-learn canonical reference; confirmed in PROJECT.md key decisions |
+| Qwen3-Coder-Next layer naming (Pitfall 3) | MEDIUM | Architecture layout confirmed from model card and vLLM blog; exact Python attribute names require loading the model |
+| MoE routing instability (Pitfall 7) | MEDIUM | 2025 research papers; not yet hardened community patterns for this specific architecture |
+| Partial weight transfer assertions (Pitfall 5) | HIGH | Based on existing `sakana_d2l.py` code pattern already using `strict=False`; failure mode confirmed from codebase inspection |
+
+### Roadmap Implications
+
+- **Phase 1 is the highest-risk phase.** Five of nine pitfalls must be prevented here: gradient flow test for functional LoRA, two-pass data pipeline assertion, KL loss unit test, smoke-test mode, and task-ID split enforcement.
+- **Architecture probe must be Phase 1's first deliverable**, before any training code is written. Wrong layer names cause shape errors or silent no-ops that are hard to diagnose later.
+- **Weight transfer (Phase 2) is lower risk** if the aggregator-vs-head key assertions are written first. One morning's work with explicit logging.
+- The existing `extract_activations` function in `sakana_d2l.py` (loads model, extracts, deletes internally) is a known integration gotcha — it needs refactoring to accept a pre-loaded model before use at 80B scale.
+
+Sources consulted:
+- [PyTorch Forum: Difficulties in training a hyper-network](https://discuss.pytorch.org/t/difficulties-in-training-a-hyper-network/154914)
+- [COLING 2025: Rethinking KL Divergence in Knowledge Distillation](https://aclanthology.org/2025.coling-main.383/)
+- [arXiv 2502.12947: Every Expert Matters — KD for MoE LMs](https://arxiv.org/html/2502.12947v1)
+- [Qwen/Qwen3-Coder-Next HuggingFace Model Card](https://huggingface.co/Qwen/Qwen3-Coder-Next)
+- [vLLM Blog: Qwen3-Next Support](https://vllm.ai/blog/qwen3-next)
+- [scikit-learn: Common Pitfalls — Augmentation and Data Splitting](https://scikit-learn.org/stable/common_pitfalls.html)</result>
+<usage><total_tokens>83415</total_tokens><tool_uses>35</tool_uses><duration_ms>421590</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/ac5f8da00d347f762.output
+
+---
+
+<task-notification>
+<task-id>a9b6e596ec6ac4ac5</task-id>
+<tool-use-id>toolu_01TivfGGaX31eXtGK7TEAqxZ</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a9b6e596ec6ac4ac5.output</output-file>
+<status>completed</status>
+<summary>Agent "Features research" completed</summary>
+<result>## RESEARCH COMPLETE
+
+**Project:** Rune v7.0 — KL-divergence context distillation training pipeline
+**Mode:** Ecosystem / Feature landscape
+**Confidence:** HIGH (architecture) / MEDIUM (training patterns)
+
+### Key Findings
+
+- **Qwen3-Next-80B has exactly 12 targetable attention layers** — `config.layer_types` is the authoritative field, returning 48 strings where `"full_attention"` appears at indices 3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47. This is verified in the official HuggingFace transformers docs (HIGH confidence). DeltaNet layers (the other 36) have incompatible architecture and must not be targeted.
+
+- **`get_peft_model()` is an anti-feature** for hypernetwork training. PEFT wrapping severs the autograd graph between hypernetwork parameters and the student model's outputs. The correct pattern is `F.linear(x, w + scale * lora_B @ lora_A, bias)` where lora_B/lora_A come from `hypernet.generate_weights()`, keeping the computation graph intact.
+
+- **Two-pass separation is a correctness invariant** — the teacher must see only (context + query), not the answer. The student must see only the query. Leaking answer tokens into the teacher activation extraction causes the hypernetwork to cheat rather than compress knowledge.
+
+- **15 table-stakes features** are required for a functional training pipeline, with hard ordering constraints: layer discovery → config → weight transfer → functional LoRA → loss. Task-ID split must precede augmentation.
+
+- **Partial weight transfer from `qwen_4b_d2l`** is the key feasibility unlock — freeze the Perceiver aggregator (transferable across model families), retrain only the projection head (model-dimension-specific).
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `/Users/noahdolevelixir/Code/rune/.planning/research/FEATURES.md` | Feature landscape: table stakes, differentiators, anti-features, dependencies, MVP |
+
+### Confidence Assessment
+
+| Area | Level | Reason |
+|------|-------|--------|
+| Qwen3-Next architecture (layer types, counts) | HIGH | Verified in official HF transformers docs and model card |
+| KL distillation training loop patterns | MEDIUM | Doc-to-LoRA paper + 2025 ICLR/COLING research confirms patterns; Rune-specific adaptation is novel |
+| Functional LoRA autograd preservation | MEDIUM | torch.func official docs confirm; specific hook injection approach is implementation-level |
+| Partial weight transfer freeze/retrain boundary | MEDIUM | Pattern confirmed by hypernetwork literature; exact key names from codebase inspection |
+| Needle dataset construction | MEDIUM | Sequential-NIAH paper confirms pattern; Rune-specific coding trajectory format is novel |
+
+### Roadmap Implications
+
+1. **Start CPU-only:** Layer discovery, config construction, JSONL I/O, and format_for_distillation are all CPU-safe. Build and test these before any GPU work.
+2. **Shape verification is a phase gate:** Dry-run mode must pass before any real training run is attempted. Wrong shapes on 80B = expensive failure.
+3. **Gradient flow test is a correctness gate:** The functional LoRA smoke-test checking `head.weight.grad is not None` should run before committing to a full training run.
+4. **Data pipeline (5 tests) can be built and tested entirely in CI** (no GPU, no HF model download needed).
+5. **Training tests (14 tests) require the sys.modules injection pattern** from v5.0 for torch/safetensors mocking in CI.
+
+Sources:
+- [Doc-to-LoRA: Learning to Instantly Internalize Contexts](https://arxiv.org/abs/2602.15902)
+- [Transformers Qwen3-Next documentation](https://huggingface.co/docs/transformers/main/en/model_doc/qwen3_next)
+- [Qwen3-Next-80B-A3B-Instruct model card](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct)
+- [torch.func.functional_call documentation](https://docs.pytorch.org/docs/stable/generated/torch.func.functional_call.html)
+- [ICLR 2025: Forward vs Reverse KL in LLM distillation](https://d2jud02ci9yv69.cloudfront.net/2025-04-28-llm-knowledge-distil-157/blog/llm-knowledge-distil/)
+- [AKL: Rethinking Kullback-Leibler Divergence in Knowledge Distillation for LLMs](https://aclanthology.org/2025.coling-main.383/)
+- [HyperAdaLoRA: Accelerating LoRA Rank Allocation via Hypernetworks](https://arxiv.org/abs/2510.02630)
+- [Partial Hypernetworks for Continual Learning](https://arxiv.org/pdf/2306.10724)
+- [Sakana Doc-to-LoRA project page](https://pub.sakana.ai/doc-to-lora/)
+- [NVIDIA Qwen3-Next blog](https://developer.nvidia.com/blog/new-open-source-qwen3-next-models-preview-hybrid-moe-architecture-delivering-improved-accuracy-and-accelerated-parallel-processing-across-nvidia-platform)</result>
+<usage><total_tokens>84511</total_tokens><tool_uses>34</tool_uses><duration_ms>494085</duration_ms></usage>
+</task-notification>
+Full transcript available at: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a28cc7f8-d590-4f58-a1da-c6f85dad1bcb/tasks/a9b6e596ec6ac4ac5.output

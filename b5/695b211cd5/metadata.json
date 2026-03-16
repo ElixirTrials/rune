@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "b5695b211cd5",
+  "strategy": "manual-commit",
+  "branch": "feat/v7-hypernetwork-training",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".planning/REQUIREMENTS.md",
+    ".planning/STATE.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b5/695b211cd5/0/metadata.json",
+      "transcript": "/b5/695b211cd5/0/full.jsonl",
+      "context": "/b5/695b211cd5/0/context.md",
+      "content_hash": "/b5/695b211cd5/0/content_hash.txt",
+      "prompt": "/b5/695b211cd5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 54,
+    "cache_creation_tokens": 166902,
+    "cache_read_tokens": 2718217,
+    "output_tokens": 15670,
+    "api_call_count": 39
+  }
+}
