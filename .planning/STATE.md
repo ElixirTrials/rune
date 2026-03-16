@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v7.0
 milestone_name: Hypernetwork Training
 status: completed
-stopped_at: Completed 29-01-PLAN.md
-last_updated: "2026-03-16T10:45:55.841Z"
+stopped_at: Completed 29-02-PLAN.md
+last_updated: "2026-03-16T10:57:47.234Z"
 last_activity: 2026-03-16 — Phase 28 Plan 01 complete; apply_functional_lora context manager implemented
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 100
 ---
 
@@ -50,6 +50,7 @@ Progress: [██████████] 100%
 | Phase 27 P01 | 294 | 2 tasks | 2 files |
 | Phase 28 P01 | 408s | 2 tasks | 3 files |
 | Phase 29 P01 | 250 | 2 tasks | 4 files |
+| Phase 29 P02 | 383 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,9 @@ Progress: [██████████] 100%
 - [Phase 28]: F.linear two-pass pattern: base_out from detached W + lora_out from live A/B tensors preserves autograd graph
 - [Phase 29]: reduction='batchmean' for KL divergence — correct probabilistic normalization by batch size
 - [Phase 29]: train_d2l_qwen3 stub in Plan 01 raises NotImplementedError — clean separation from Plan 02 training loop
+- [Phase 29]: build_qwen3_hypernet_config gains aggregator_config param — plan interface required it; hardcoded None in Phase 25 broke Phase 29 integration
+- [Phase 29]: hypernet.generate_weights() called outside torch.no_grad() — preserves autograd graph through lora_dict to hypernet head for loss.backward()
+- [Phase 29]: smoke_test assertion: final_loss < initial_loss validates learning signal in 5 steps (not just finite loss)
 
 ### Pending Todos
 
@@ -86,6 +90,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-16T10:45:55.839Z
-Stopped at: Completed 29-01-PLAN.md
+Last session: 2026-03-16T10:57:47.232Z
+Stopped at: Completed 29-02-PLAN.md
 Resume file: None

@@ -40,12 +40,12 @@ Requirements for KL-divergence context distillation training pipeline. Each maps
 ### Training Loop
 
 - [x] **TRAIN-01**: KL-divergence context distillation training script with CLI arguments matching specification
-- [ ] **TRAIN-02**: Two-pass teacher/student separation: activations from `[trajectory+query]` only, teacher logits from `[trajectory+query+answer]`
+- [x] **TRAIN-02**: Two-pass teacher/student separation: activations from `[trajectory+query]` only, teacher logits from `[trajectory+query+answer]`
 - [x] **TRAIN-03**: Blended loss `α*KL + (1-α)*CE` with configurable temperature and blending coefficient
-- [ ] **TRAIN-04**: AdamW optimizer scoped to trainable parameters only (head + projections), with cosine LR schedule and warmup
-- [ ] **TRAIN-05**: Checkpoint saving every N steps with model state, config, step count, and attention layer indices
-- [ ] **TRAIN-06**: Dry-run mode (`--dry-run`) validates all tensor shapes in one forward pass, exits 0 on success
-- [ ] **TRAIN-07**: Smoke-test mode (`--smoke-test`) runs 5 training steps, verifies finite loss and non-None gradients
+- [x] **TRAIN-04**: AdamW optimizer scoped to trainable parameters only (head + projections), with cosine LR schedule and warmup
+- [x] **TRAIN-05**: Checkpoint saving every N steps with model state, config, step count, and attention layer indices
+- [x] **TRAIN-06**: Dry-run mode (`--dry-run`) validates all tensor shapes in one forward pass, exits 0 on success
+- [x] **TRAIN-07**: Smoke-test mode (`--smoke-test`) runs 5 training steps, verifies finite loss and non-None gradients
 
 ### Testing
 
@@ -100,12 +100,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LORA-02 | Phase 28 | Complete |
 | LORA-03 | Phase 28 | Complete |
 | TRAIN-01 | Phase 29 | Complete |
-| TRAIN-02 | Phase 29 | Pending |
+| TRAIN-02 | Phase 29 | Complete |
 | TRAIN-03 | Phase 29 | Complete |
-| TRAIN-04 | Phase 29 | Pending |
-| TRAIN-05 | Phase 29 | Pending |
-| TRAIN-06 | Phase 29 | Pending |
-| TRAIN-07 | Phase 29 | Pending |
+| TRAIN-04 | Phase 29 | Complete |
+| TRAIN-05 | Phase 29 | Complete |
+| TRAIN-06 | Phase 29 | Complete |
+| TRAIN-07 | Phase 29 | Complete |
 | TEST-01 | Phase 29 | Complete |
 | TEST-02 | Phase 25 | Pending |
 

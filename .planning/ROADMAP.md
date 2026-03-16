@@ -74,7 +74,7 @@
 - [x] **Phase 26: Architecture Probe & Activation Extraction** — Dynamic attention layer discovery and pre-loaded model activation extraction (completed 2026-03-13)
 - [x] **Phase 27: Partial Weight Transfer** — Freeze aggregator, reinitialize head for Qwen3-Coder-Next output dimensions (completed 2026-03-13)
 - [x] **Phase 28: Functional LoRA Injection** — Autograd-safe context manager for hypernetwork training (completed 2026-03-16)
-- [ ] **Phase 29: Training Loop Integration** — KL+CE distillation training script with dry-run and smoke-test modes
+- [x] **Phase 29: Training Loop Integration** — KL+CE distillation training script with dry-run and smoke-test modes (completed 2026-03-16)
 
 ## Phase Details
 
@@ -139,7 +139,7 @@ Plans:
   3. The KL loss unit test returns zero when `student_logits == teacher_logits` (formula correctness verified)
   4. Optimizer is scoped exclusively to trainable parameters (head + projections only) — aggregator parameters have zero gradient after backward
   5. Checkpoint files written every N steps contain model state, config, step count, and attention layer indices — readable back without errors
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 29-01-PLAN.md — D2LTrainConfig + _compute_kl_ce_loss + 7 unit tests + mlflow dep + exports
 - [ ] 29-02-PLAN.md — Full training loop (train_d2l_qwen3, checkpoint, MLflow, dry-run, smoke-test, CLI) + 7 remaining tests
@@ -177,7 +177,7 @@ Plans:
 | 26. Architecture Probe & Activation Extraction | v7.0 | Complete    | 2026-03-13 | 2026-03-13 |
 | 27. Partial Weight Transfer | 1/1 | Complete    | 2026-03-13 | - |
 | 28. Functional LoRA Injection | v7.0 | 1/1 | Complete | 2026-03-16 |
-| 29. Training Loop Integration | 1/2 | In Progress|  | - |
+| 29. Training Loop Integration | 2/2 | Complete   | 2026-03-16 | - |
 
 ---
 *Last updated: 2026-03-16 after Phase 29 planning complete*
