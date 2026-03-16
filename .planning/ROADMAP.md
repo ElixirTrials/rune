@@ -75,7 +75,7 @@
 - [x] **Phase 27: Partial Weight Transfer** — Freeze aggregator, reinitialize head for Qwen3-Coder-Next output dimensions (completed 2026-03-13)
 - [x] **Phase 28: Functional LoRA Injection** — Autograd-safe context manager for hypernetwork training (completed 2026-03-16)
 - [x] **Phase 29: Training Loop Integration** — KL+CE distillation training script with dry-run and smoke-test modes (completed 2026-03-16)
-- [ ] **Phase 30: Audit Gap Closure & Quality Gate** — Probe cache guard, documentation hygiene, pre-existing mypy fixes, data prep script
+- [x] **Phase 30: Audit Gap Closure & Quality Gate** — Probe cache guard, documentation hygiene, pre-existing mypy fixes, data prep script (completed 2026-03-16)
 
 ## Phase Details
 
@@ -159,7 +159,7 @@ Plans:
   6. Pre-existing mypy errors in `sakana_d2l.py` (lines 80, 416) resolved
   7. `uv run mypy libs/model-training/src` passes with zero errors
   8. A data prep script or CLI command connects `format_for_distillation` → `save_jsonl` for producing training JSONL
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 30-01-PLAN.md — Probe cache guard, mypy fixes, data prep script
 - [x] 30-02-PLAN.md — Documentation fixes (SUMMARY frontmatter, VERIFICATION body)
@@ -198,7 +198,7 @@ Plans:
 | 27. Partial Weight Transfer | v7.0 | 1/1 | Complete | 2026-03-13 |
 | 28. Functional LoRA Injection | v7.0 | 1/1 | Complete | 2026-03-16 |
 | 29. Training Loop Integration | v7.0 | 2/2 | Complete | 2026-03-16 |
-| 30. Audit Gap Closure & Quality Gate | v7.0 | 2/2 | Complete | 2026-03-16 |
+| 30. Audit Gap Closure & Quality Gate | 2/2 | Complete   | 2026-03-16 | 2026-03-16 |
 
 ---
 *Last updated: 2026-03-16 after phase 30 planning*

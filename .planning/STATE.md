@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v7.0
 milestone_name: Hypernetwork Training
 status: completed
-stopped_at: Completed 30-02-PLAN.md
-last_updated: "2026-03-16T17:53:00Z"
+stopped_at: Completed 30-01-PLAN.md
+last_updated: "2026-03-16T17:57:27.691Z"
 last_activity: 2026-03-16 — Phase 30 Plan 02 complete; documentation consistency fixes (requirements-completed frontmatter, VERIFICATION body)
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 9
+  completed_plans: 9
   percent: 100
 ---
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100%
 | Phase 29 P01 | 250 | 2 tasks | 4 files |
 | Phase 29 P02 | 383 | 2 tasks | 3 files |
 | Phase 30 P02 | 249 | 2 tasks | 3 files |
+| Phase 30 P01 | 1500 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Progress: [██████████] 100%
 - [Phase 29]: build_qwen3_hypernet_config gains aggregator_config param — plan interface required it; hardcoded None in Phase 25 broke Phase 29 integration
 - [Phase 29]: hypernet.generate_weights() called outside torch.no_grad() — preserves autograd graph through lora_dict to hypernet head for loss.backward()
 - [Phase 29]: smoke_test assertion: final_loss < initial_loss validates learning signal in 5 steps (not just finite loss)
+- [Phase 30]: _require_probe_cache() helper encapsulates RuntimeError guard — avoids duplicating error message across _dry_run_validate_shapes and train_d2l_qwen3
+- [Phase 30]: smoke_test skips probe cache guard — generate_needle_dataset may run without real probe cache on test machines
+- [Phase 30]: sakana_d2l.py model: Any annotation — AutoModelForCausalLM.from_pretrained generic return type causes false mypy arg-type error on .to(device)
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-16T17:53:00Z
-Stopped at: Completed 30-02-PLAN.md
+Last session: 2026-03-16T17:57:27.690Z
+Stopped at: Completed 30-01-PLAN.md
 Resume file: None
