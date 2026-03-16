@@ -16,6 +16,7 @@ and augmentation:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -198,7 +199,7 @@ def _make_humaneval_dataset(n: int = 5) -> list[dict[str, Any]]:
 
 
 def test_generate_trajectory_dataset_returns_records_with_required_fields() -> None:
-    """generate_trajectory_dataset returns list of dicts with task_id, activation_text, teacher_text."""
+    """generate_trajectory_dataset returns dicts with required fields."""
     from model_training.d2l_data import generate_trajectory_dataset
 
     fake_dataset = _make_humaneval_dataset(5)
@@ -237,9 +238,6 @@ def test_generate_trajectory_dataset_task_id_starts_with_humaneval() -> None:
 # ---------------------------------------------------------------------------
 # Test 8: augment_trajectories returns n_variants records per input
 # ---------------------------------------------------------------------------
-
-
-import sys
 
 
 def _inject_fake_datasets_module(fake_data: list[dict[str, Any]]) -> None:
@@ -337,7 +335,7 @@ def test_augmented_records_inherit_source_task_id() -> None:
     assert len(augmented) == 3
     for record in augmented:
         assert record["task_id"] == source_task_id, (
-            f"Augmented record task_id '{record['task_id']}' != source '{source_task_id}'"
+            f"Augmented task_id '{record['task_id']}' != source '{source_task_id}'"
         )
 
 
@@ -347,7 +345,7 @@ def test_augmented_records_inherit_source_task_id() -> None:
 
 
 def test_augmented_and_original_records_zero_task_id_leakage() -> None:
-    """Mixing augmented and original records: split_by_task_id still has zero task_id overlap."""
+    """Augmented + original records: split_by_task_id has zero overlap."""
     from model_training.d2l_data import augment_trajectories, split_by_task_id
 
     n_tasks = 10

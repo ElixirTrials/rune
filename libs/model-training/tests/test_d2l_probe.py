@@ -13,15 +13,12 @@ Tests cover:
 
 from __future__ import annotations
 
-import sys
-from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import torch
 import torch.nn as nn
-
 
 # ---------------------------------------------------------------------------
 # Fake model helpers for probe tests
@@ -294,7 +291,7 @@ def test_extract_activations_with_model_auto_detects_from_cache(
 def test_extract_activations_with_model_raises_without_cache(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
-    """extract_activations_with_model raises RuntimeError when no cache and layer_indices=None."""
+    """extract_activations_with_model raises RuntimeError without cache."""
     import model_training.d2l_probe as probe_module
     from model_training.d2l_probe import extract_activations_with_model
 

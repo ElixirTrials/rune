@@ -11,7 +11,6 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-
 from model_training.d2l_lora import apply_functional_lora
 
 # ---------------------------------------------------------------------------
@@ -141,14 +140,14 @@ class TestForwardPatching:
 
         # Get the q_proj at layer 0
         q_proj = model.layers[0].self_attn.q_proj
-        W = q_proj.weight.detach()
+        w = q_proj.weight.detach()
 
         # Expected: base + lora
-        base_out = torch.nn.functional.linear(x, W)
-        A = lora_dict["q_proj"]["A"][0, 0]  # (r, d_in)
-        B = lora_dict["q_proj"]["B"][0, 0]  # (r, d_out)
-        lora_Ax = torch.nn.functional.linear(x, A)
-        lora_out = torch.nn.functional.linear(lora_Ax, B.t()) * scale
+        base_out = torch.nn.functional.linear(x, w)
+        a_mat = lora_dict["q_proj"]["A"][0, 0]  # (r, d_in)
+        b_mat = lora_dict["q_proj"]["B"][0, 0]  # (r, d_out)
+        lora_ax = torch.nn.functional.linear(x, a_mat)
+        lora_out = torch.nn.functional.linear(lora_ax, b_mat.t()) * scale
 
         expected = base_out + lora_out
 

@@ -3,6 +3,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from adapter_registry.registry import AdapterRegistry
 from shared.checkpoint_db import SwarmCheckpointDB

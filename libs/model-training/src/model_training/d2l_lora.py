@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["apply_functional_lora"]
 
 
-def _extract_layer_idx(
-    module_path: str, layer_indices: list[int]
-) -> int | None:
+def _extract_layer_idx(module_path: str, layer_indices: list[int]) -> int | None:
     """Extract positional index within layer_indices from a dotted module path.
 
     Finds the last numeric segment in the path (e.g. "model.layers.7.self_attn.q_proj"
@@ -148,9 +146,7 @@ class _FunctionalLoRAContext:
 
             logger.debug("Patched %s (layer_pos=%d)", module_path, layer_pos)
 
-        logger.info(
-            "Functional LoRA applied to %d modules", len(self._patched_modules)
-        )
+        logger.info("Functional LoRA applied to %d modules", len(self._patched_modules))
         return self
 
     def __exit__(self, *args: Any) -> None:

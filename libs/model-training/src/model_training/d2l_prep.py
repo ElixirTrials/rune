@@ -80,9 +80,7 @@ def prepare_training_jsonl(
             )
 
     save_jsonl(all_records, output_path)
-    logger.info(
-        "Wrote %d records to %s", len(all_records), output_path
-    )
+    logger.info("Wrote %d records to %s", len(all_records), output_path)
     return len(all_records)
 
 
