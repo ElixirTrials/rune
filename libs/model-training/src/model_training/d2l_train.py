@@ -616,6 +616,9 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:
             f"Smoke test: final loss {step_losses[-1]:.4f} not less than "
             f"initial loss {step_losses[0]:.4f}"
         )
+        assert any(p.grad is not None for p in trainable_params), (  # noqa: S101
+            "Smoke test: no trainable param has non-None gradient after training"
+        )
 
     return {
         "final_loss": final_loss,
