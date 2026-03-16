@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "a76af1a9ab88",
+  "strategy": "manual-commit",
+  "branch": "feat/v7-hypernetwork-training",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "libs/model-training/src/model_training/d2l_probe.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a7/6af1a9ab88/0/metadata.json",
+      "transcript": "/a7/6af1a9ab88/0/full.jsonl",
+      "context": "/a7/6af1a9ab88/0/context.md",
+      "content_hash": "/a7/6af1a9ab88/0/content_hash.txt",
+      "prompt": "/a7/6af1a9ab88/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 56,
+    "cache_creation_tokens": 291483,
+    "cache_read_tokens": 3368723,
+    "output_tokens": 15920,
+    "api_call_count": 48
+  }
+}
