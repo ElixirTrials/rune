@@ -3,12 +3,13 @@
 Purpose: give an AI coding agent the minimum, high‑signal knowledge to be productive here (run, test, navigate, and change code safely).
 
 ## 1) Big picture (one-liner)
-- Monorepo of small Python services (FastAPI), LangGraph agent packages, an inference layer, evaluation code, and an adapter registry. Docs are generated with MkDocs (monorepo plugin + mkdocstrings).
-- Key dirs: `services/{api-service,rune-agent}`; `libs/{adapter-registry,inference,model-training,shared,events-py,evaluation}`.
+- Monorepo: Python services (FastAPI), LangGraph agent, inference providers, evaluation, adapter registry. A scripts-based "fat orchestrator" layer runs the 4-phase pipeline (decompose → plan → code → integrate) and parallel swarm execution. Docs via MkDocs.
+- Key dirs: `scripts/` (orchestration); `services/{rune-agent,training-svc,evolution-svc,api-service}`; `libs/{adapter-registry,inference,model-training,shared,events-py,evaluation}`.
 
 ## 2) Quick start — concrete commands (exact)
-- Full stack (recommended for end-to-end work):
-  - docker: `docker-compose -f infra/docker-compose.yml up --build` (from repo root)
+- Pipeline run: `uv run scripts/rune_runner.py --project "Build a statistics library"`
+- Swarm orchestration: `uv run scripts/swarm.py --agents 4 --hours 2`
+- E2E test: `uv run scripts/e2e_test.py`
 - API (dev):
   - ensure deps: `uv sync --all-extras`
   - run (dev reload): `uv run uvicorn api_service.main:app --reload`
@@ -24,10 +25,13 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
   - Kill local dev processes: `scripts/kill-running-processes.sh`
 
 ## 3) Architecture & integration (what to know)
-- API Service (`services/api-service`): FastAPI orchestrator, DB (Postgres), MLFlow; exposes REST API for adapter management and other components.
-- Agent packages (`services/rune-agent/`): LangGraph StateGraphs — graph in `graph.py`, nodes in `nodes.py`, typed state in `state.py`. Prefer invoking via graph factories (e.g. `create_graph()`), not by importing internal runtime elsewhere.
-- Inference layer: central model-loading / call interface — agents call it rather than calling models directly.
-- Docs: each component has its own `mkdocs.yml` and is included into the root `mkdocs.yml` via `!include` (see `scripts/update_root_navigation.py`).
+- Scripts Orchestrator (`scripts/`): Fat orchestrator layer. `rune_runner.py` runs the 4-phase pipeline; `swarm.py` coordinates agents, training pool, evolution worker, and memory watchdog via asyncio. This is the primary execution path.
+- Agent (`services/rune-agent/`): LangGraph StateGraph — generate → execute → reflect → save. Two modes: `create_graph()` (standard loop) and `create_single_iteration_graph()` (one cycle, used by rune_runner's outer loop).
+- Inference providers (`libs/inference/`): Provider-agnostic via `InferenceProvider` ABC. Backends: TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider. Factory selects by config.
+- Adapter Registry (`libs/adapter-registry/`): SQLite + filesystem store. `AdapterRegistry` class with write-once enforcement. Key: `store()`, `query_best_for_task()`, `get_lineage()`.
+- Model Training (`libs/model-training/`): DocToLoraHypernetwork (Perceiver-based), D2L training pipeline, TIES/DARE merging, QLoRA trainer.
+- Templates: Jinja2 phase templates in `libs/shared/src/shared/templates/*.j2`. Rendered via `shared.template_loader`.
+- Docs: each component has its own `mkdocs.yml` included into root via `!include`.
 
 ## 4) Project-specific conventions (do this, not generic advice)
 - Component layout: `services/<name>/` or `libs/<name>/` or `apps/<name>/` with `src/<snake_name>/`, `tests/`, `mkdocs.yml`, `pyproject.toml`; Python packages may have `src/<pkg>/notebooks/playground.ipynb` for quick manual checks.
@@ -42,12 +46,16 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
 - Keep `libs/shared` tiny and dependency-free (no business logic).
 
 ## 6) Where to look (highest signal files)
-- Run & wiring: `services/api-service/src/api_service/main.py` (health/readiness, lifespan)
-- Agent canonical example: `services/rune-agent/{graph.py,nodes.py,state.py,notebooks/playground.ipynb}`
-- CI / commands: `.github/workflows/ci.yml` (shows `uv` usage, JS workflow)
-- Dev compose: `infra/docker-compose.yml` (run from root with `-f infra/docker-compose.yml`; service envs: Postgres, MLflow, VITE_API_BASE_URL)
-- Docs/nav automation: `scripts/update_root_navigation.py`, `scripts/generate_components_overview.py`
-- OpenAPI export: `services/api-service/scripts/export_openapi.py`
+- Pipeline & swarm: `scripts/rune_runner.py` (4-phase pipeline), `scripts/swarm.py` (orchestrator)
+- Agent: `services/rune-agent/src/rune_agent/{graph.py,nodes.py,state.py}`
+- Models & contracts: `libs/shared/src/shared/rune_models.py` (CodingSession, SwarmConfig, PipelinePhase)
+- Hypernetwork: `libs/model-training/src/model_training/hypernetwork.py`
+- Merging: `libs/model-training/src/model_training/merging.py` (TIES/DARE)
+- Adapter registry: `libs/adapter-registry/src/adapter_registry/{registry.py,models.py}`
+- Inference: `libs/inference/src/inference/{provider.py,factory.py}`
+- Templates: `libs/shared/src/shared/templates/*.j2`
+- CI: `.github/workflows/ci.yml`
+- Docs/nav: `scripts/update_root_navigation.py`, `scripts/generate_components_overview.py`
 
 ## 7) Typical edit tasks — exact steps for an AI to propose or implement
 - Add a new API endpoint:
@@ -58,6 +66,15 @@ Purpose: give an AI coding agent the minimum, high‑signal knowledge to be prod
   5) update docs by adding module to the component `docs/api/index.md` and run `uv run mkdocs build -f mkdocs.yml`
 - Add/modify an agent node:
   - edit `nodes.py` + update `graph.py`; add a small notebook example in `notebooks/`; test via `pytest` and the notebook.
+- Add/modify a pipeline phase template:
+  1) edit the `.j2` file in `libs/shared/src/shared/templates/`
+  2) update `scripts/rune_runner.py` if the template variables changed
+  3) run `uv run pytest tests/` to verify integration
+- Add a new inference provider:
+  1) create `src/inference/{name}_provider.py` implementing `InferenceProvider`
+  2) add lazy import in `src/inference/__init__.py`
+  3) register in `src/inference/factory.py`
+  4) add tests
 
 ## 8) CI & linting expectations
 - Use `uv run ruff` for linting and `uv run mypy` for type checks (CI enforces both). Keep line-length ~88 and Google docstring style where present.

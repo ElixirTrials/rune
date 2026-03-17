@@ -1,7 +1,7 @@
 [project]
-name = "elixirtrials--template"
+name = "rune"
 version = "0.1.0"
-description = "Template Repo ElixirTrials "
+description = "Local-first coding agent with LoRA weight-space episodic memory"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [

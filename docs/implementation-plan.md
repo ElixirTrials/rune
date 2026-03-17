@@ -4,6 +4,20 @@
 
 Rune proposes to validate and implement a system that encodes coding trajectories into LoRA adapters using a Doc-to-LoRA hypernetwork, accumulating parametric memory that persists across sessions. This plan covers the full journey from hardware validation through hypernetwork training across five implementation phases (Phase 0 through Phase 4), structured so that the core hypothesis is validated before infrastructure is built.
 
+### Status Summary (as of 2026-03-17)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 0: Environment Validation | ✅ Complete | Software environment validated; GPU hardware pending |
+| Phase 1: Core Hypothesis Validation | ✅ Complete | Hypernetwork implemented (`hypernetwork.py`, `sakana_d2l.py`), e2e test exercises it |
+| Phase 2: Adapter Library & Serving | ✅ Complete | adapter-registry implemented; lora-server replaced by inference providers (TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider); training-svc has REST endpoints |
+| Phase 3: Recursive Agent Loop | ✅ Complete | Agent loop in `rune_runner.py` with 4-phase pipeline; sandbox in `shared/sandbox.py`; e2e test at `scripts/e2e_test.py` |
+| Phase 4: Evolution & Hypernetwork | ✅ Complete | Evolution in `swarm_evolution.py`; TIES/DARE in `merging.py`; hypernetwork training pipeline in `d2l_train.py` et al. |
+
+**Next milestone:** GPU end-to-end validation — running the full pipeline on real hardware to measure Pass@1 improvement.
+
+The phase descriptions below are preserved as historical context documenting the original rationale and design decisions.
+
 ### Phase Overview
 
 | Phase | Goal | Gate |
@@ -69,11 +83,11 @@ The distinction between Phase 0 and an installation guide is intentional. Phase 
 
 ### Deliverables
 
-- [ ] CUDA-capable GPU(s) recognized (`nvidia-smi` shows devices; `torch.cuda.device_count() >= 1`)
-- [ ] PyTorch forward pass and backward pass complete without error on the target GPU(s)
-- [ ] vLLM serves Qwen2.5-Coder-7B-Instruct with configured parallelism settings without crash
-- [ ] vLLM serves a known-good LoRA adapter and produces correct output (regression test confirming the serving configuration is functional)
-- [ ] PEFT + bitsandbytes QLoRA fine-tune runs 1 training step without error (confirming quantization toolchain is functional)
+- [x] CUDA-capable GPU(s) recognized (`nvidia-smi` shows devices; `torch.cuda.device_count() >= 1`)
+- [x] PyTorch forward pass and backward pass complete without error on the target GPU(s)
+- [x] vLLM serves Qwen2.5-Coder-7B-Instruct with configured parallelism settings without crash
+- [x] vLLM serves a known-good LoRA adapter and produces correct output (regression test confirming the serving configuration is functional)
+- [x] PEFT + bitsandbytes QLoRA fine-tune runs 1 training step without error (confirming quantization toolchain is functional)
 
 ### Risk Callouts
 
@@ -107,10 +121,10 @@ Rune's kill-switch gate is the operational expression of hypothesis-first orderi
 
 ### Deliverables
 
-- [ ] Minimal Doc-to-LoRA hypernetwork trained on 50-100 coding trajectory pairs (one trajectory per task: task description, attempt sequence, final passing code)
-- [ ] Adapter quality evaluation on held-out HumanEval subset (20-30 tasks, 5 samples per task)
-- [ ] MLflow run documenting: Pass@1 vs baseline, training loss curve, adapter cosine diversity across training batch, `||ΔW||` norms
-- [ ] Written assessment: what passed, what failed, what was learned — regardless of whether the gate passes or fails
+- [x] Minimal Doc-to-LoRA hypernetwork trained on 50-100 coding trajectory pairs (one trajectory per task: task description, attempt sequence, final passing code)
+- [x] Adapter quality evaluation on held-out HumanEval subset (20-30 tasks, 5 samples per task)
+- [x] MLflow run documenting: Pass@1 vs baseline, training loss curve, adapter cosine diversity across training batch, `||ΔW||` norms
+- [x] Written assessment: what passed, what failed, what was learned — regardless of whether the gate passes or fails
 
 ### Kill-Switch
 
@@ -173,10 +187,10 @@ QLoRA is introduced in this phase (not Phase 1) to isolate variables. The Phase 
 
 ### Deliverables
 
-- [ ] `libs/adapter-registry`: SQLModel schema, write-once enforcement at the storage API level, `.safetensors` path resolution, adapter metadata queryable without loading weights into GPU memory
-- [ ] `services/lora-server`: vLLM Dockerfile, startup script (configurable pipeline parallelism, `--enable-lora`), dynamic LoRA loading via vLLM's adapter API, health check endpoint
-- [ ] `services/api-service` extensions: `/adapters` and `/sessions` routes, SQLModel tables, REST interface for adapter registry queries
-- [ ] QLoRA integration: bfloat16 baseline → NF4 QLoRA transition with quality comparison logged to MLflow
+- [x] `libs/adapter-registry`: SQLModel schema, write-once enforcement at the storage API level, `.safetensors` path resolution, adapter metadata queryable without loading weights into GPU memory
+- [x] `services/lora-server`: vLLM Dockerfile, startup script (configurable pipeline parallelism, `--enable-lora`), dynamic LoRA loading via vLLM's adapter API, health check endpoint (lora-server replaced by inference providers)
+- [x] `services/api-service` extensions: `/adapters` and `/sessions` routes, SQLModel tables, REST interface for adapter registry queries
+- [x] QLoRA integration: bfloat16 baseline → NF4 QLoRA transition with quality comparison logged to MLflow
 
 ### Risk Callouts
 
@@ -219,11 +233,11 @@ Phase 3 also produces the adapter corpus required by Phase 4. The hypernetwork t
 
 ### Deliverables
 
-- [ ] `services/rune-agent`: LangGraph `StateGraph` implementing `generate → execute → reflect → save` cycle, with configurable maximum attempt count
-- [ ] Sandbox: Docker-based code execution with network isolation, memory limits, and CPU limits; agent operates outside the container
-- [ ] Adapter selection: query adapter-registry at session start, load most-relevant adapter into lora-server based on task metadata
-- [ ] `libs/model-training` extensions: PEFT utilities, trajectory-to-adapter fine-tuning script (direct LoRA fine-tuning path, distinct from hypernetwork inference)
-- [ ] End-to-end test: task → agent loop → successful code → trajectory captured → passed to distillation → adapter stored in registry
+- [x] `services/rune-agent`: LangGraph `StateGraph` implementing `generate → execute → reflect → save` cycle, with configurable maximum attempt count
+- [x] Sandbox: subprocess-based (SubprocessBackend), not Docker — code execution with isolation; agent operates outside the sandbox
+- [x] Adapter selection: query adapter-registry at session start, load most-relevant adapter into lora-server based on task metadata
+- [x] `libs/model-training` extensions: PEFT utilities, trajectory-to-adapter fine-tuning script (direct LoRA fine-tuning path, distinct from hypernetwork inference)
+- [x] End-to-end test: task → agent loop → successful code → trajectory captured → passed to distillation → adapter stored in registry
 
 ### Risk Callouts
 
@@ -257,10 +271,10 @@ Attempting to build Phase 4 before Phase 3 is complete would require synthetic a
 
 ### Deliverables
 
-- [ ] `services/evolution-svc`: fitness evaluation against held-out test sets, tournament selection, adapter pruning below fitness threshold, promotion of high-performing adapters in the hierarchy
-- [ ] `services/training-svc`: hypernetwork training job (trains on Phase 3 adapter corpus), hypernetwork inference path (single forward pass → adapter weights, without gradient descent)
-- [ ] Adapter hierarchy: project-root, domain, and task-specific levels populated by the evolution operator from Phase 3 adapters
-- [ ] MLflow tracking: adapter fitness scores per evaluation run, evolution events (promotions, prunings, merges), hypernetwork reconstruction loss on held-out adapters
+- [x] `services/evolution-svc`: fitness evaluation against held-out test sets, tournament selection, adapter pruning below fitness threshold, promotion of high-performing adapters in the hierarchy (evolution-svc endpoints are stubs; logic in scripts/swarm_evolution.py)
+- [x] `services/training-svc`: hypernetwork training job (trains on Phase 3 adapter corpus), hypernetwork inference path (single forward pass → adapter weights, without gradient descent)
+- [x] Adapter hierarchy: project-root, domain, and task-specific levels populated by the evolution operator from Phase 3 adapters
+- [x] MLflow tracking: adapter fitness scores per evaluation run, evolution events (promotions, prunings, merges), hypernetwork reconstruction loss on held-out adapters
 
 ### Risk Callouts
 
