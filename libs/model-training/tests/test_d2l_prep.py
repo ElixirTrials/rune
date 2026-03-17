@@ -7,6 +7,7 @@ and the CLI __main__ entry point.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -107,11 +108,14 @@ def test_prepare_training_jsonl_all_failures_empty_output(tmp_path: Path) -> Non
 
 def test_cli_help_exits_zero() -> None:
     """Running python -m model_training.d2l_prep --help exits with code 0."""
+    lib_root = Path(__file__).parent.parent
+    env = {**os.environ, "PYTHONPATH": str(lib_root / "src")}
     result = subprocess.run(
         [sys.executable, "-m", "model_training.d2l_prep", "--help"],
         capture_output=True,
         text=True,
-        cwd=Path(__file__).parent.parent,
+        cwd=lib_root,
+        env=env,
     )
     assert result.returncode == 0, (
         f"--help exited {result.returncode}\n"
