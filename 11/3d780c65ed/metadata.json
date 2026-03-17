@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "113d780c65ed",
+  "strategy": "manual-commit",
+  "branch": "feat/e2e_with_hypernetwork",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".planning/REQUIREMENTS.md",
+    ".planning/ROADMAP.md",
+    ".planning/STATE.md",
+    ".planning/phases/25-configuration-data-pipeline/25-02-SUMMARY.md",
+    ".planning/phases/26-architecture-probe-activation-extraction/26-01-SUMMARY.md",
+    ".planning/phases/26-architecture-probe-activation-extraction/26-RESEARCH.md",
+    ".planning/phases/27-partial-weight-transfer/27-RESEARCH.md",
+    ".planning/phases/28-functional-lora-injection/28-01-PLAN.md",
+    ".planning/phases/28-functional-lora-injection/28-RESEARCH.md",
+    ".planning/phases/29-training-loop-integration/29-01-PLAN.md",
+    ".planning/phases/29-training-loop-integration/29-01-SUMMARY.md",
+    ".planning/phases/29-training-loop-integration/29-02-PLAN.md",
+    ".planning/phases/29-training-loop-integration/29-02-SUMMARY.md",
+    ".planning/phases/29-training-loop-integration/29-VERIFICATION.md",
+    ".planning/phases/30-audit-gap-closure-quality-gate/30-01-SUMMARY.md",
+    ".planning/phases/30-audit-gap-closure-quality-gate/30-02-SUMMARY.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/11/3d780c65ed/0/metadata.json",
+      "transcript": "/11/3d780c65ed/0/full.jsonl",
+      "context": "/11/3d780c65ed/0/context.md",
+      "content_hash": "/11/3d780c65ed/0/content_hash.txt",
+      "prompt": "/11/3d780c65ed/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 55,
+    "cache_creation_tokens": 58270,
+    "cache_read_tokens": 2290373,
+    "output_tokens": 10483,
+    "api_call_count": 50
+  }
+}
