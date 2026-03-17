@@ -763,6 +763,7 @@ async def run_phased_pipeline(
     logger.info("Plans generated for %d subtasks", len(plans))
     phase_results["plan"] = {
         "plans": {k: v[:200] for k, v in plans.items()},
+        "plan_lengths": {k: len(v) for k, v in plans.items()},
         "iterations": evo_iter + 1,
         "best_score": best_plan_score,
     }
@@ -959,6 +960,7 @@ async def run_phased_pipeline(
     )
     phase_results["code"] = {
         "outputs": {k: v[:200] for k, v in code_outputs.items()},
+        "output_lengths": {k: len(v) for k, v in code_outputs.items()},
         "subtask_results": code_subtask_results,
         "iterations": max_code_attempts,
         "passed": code_passed_count,

@@ -436,7 +436,7 @@ def extract_activations(
         base_model_name,
         torch_dtype=torch.float32,
     )
-    model.to(device)
+    model = model.to(device)  # type: ignore[assignment]
     model.eval()
 
     result = extract_activations_with_model(

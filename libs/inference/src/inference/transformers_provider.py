@@ -56,6 +56,7 @@ class TransformersProvider(InferenceProvider):
         self._base_model: Any = None
         self._loaded_adapters: dict[str, str] = {}  # id -> path
         self._active_adapter: str | None = None
+        self._is_peft_wrapped: bool = False
 
     def _load_model_if_needed(self) -> None:
         """Load the base model and tokenizer if not already loaded."""
@@ -166,9 +167,11 @@ class TransformersProvider(InferenceProvider):
 
         adapter_path = self._loaded_adapters[adapter_id]
 
-        if self._active_adapter:
-            # Already has a PEFT wrapper — load additional adapter
-            self._model.load_adapter(adapter_path, adapter_name=adapter_id)
+        if self._is_peft_wrapped:
+            # Already has a PEFT wrapper — check if adapter is already loaded
+            if adapter_id not in self._model.peft_config:
+                self._model.load_adapter(adapter_path, adapter_name=adapter_id)
+            self._model.enable_adapter_layers()
             self._model.set_adapter(adapter_id)
         else:
             # First adapter — wrap base model with PeftModel
@@ -177,16 +180,17 @@ class TransformersProvider(InferenceProvider):
             )
             self._model.to(self._device)
             self._model.eval()
+            self._is_peft_wrapped = True
 
         self._active_adapter = adapter_id
         logger.info("Activated adapter: %s", adapter_id)
 
     def _deactivate_adapter(self) -> None:
-        """Deactivate current adapter, revert to base model."""
-        if self._active_adapter and self._base_model is not None:
-            self._model = self._base_model
+        """Deactivate current adapter, keeping PeftModel wrapper alive."""
+        if self._active_adapter and self._is_peft_wrapped:
+            self._model.disable_adapter_layers()
             self._active_adapter = None
-            logger.info("Deactivated adapter, reverted to base model")
+            logger.info("Deactivated adapter layers (wrapper preserved)")
 
     async def load_adapter(self, adapter_id: str, adapter_path: str) -> None:
         """Register a PEFT adapter directory for use during generation.
@@ -202,7 +206,7 @@ class TransformersProvider(InferenceProvider):
         logger.info("Registered adapter %s -> %s", adapter_id, adapter_path)
 
     async def unload_adapter(self, adapter_id: str) -> None:
-        """Remove a registered adapter.
+        """Remove a registered adapter, freeing GPU memory.
 
         Args:
             adapter_id: The adapter name to remove.
@@ -210,8 +214,17 @@ class TransformersProvider(InferenceProvider):
         if adapter_id in self._loaded_adapters:
             if self._active_adapter == adapter_id:
                 self._deactivate_adapter()
+            # Delete from PeftModel to free GPU memory
+            if self._is_peft_wrapped and adapter_id in self._model.peft_config:
+                self._model.delete_adapter(adapter_id)
             del self._loaded_adapters[adapter_id]
-            logger.info("Unloaded adapter %s", adapter_id)
+            # If no adapters remain, revert to base model
+            if not self._loaded_adapters and self._is_peft_wrapped:
+                self._model = self._base_model
+                self._is_peft_wrapped = False
+                logger.info("All adapters removed, reverted to base model")
+            else:
+                logger.info("Unloaded adapter %s", adapter_id)
 
     async def list_adapters(self) -> list[str]:
         """List all registered adapter IDs.

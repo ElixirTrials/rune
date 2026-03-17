@@ -317,14 +317,17 @@ def test_phased_pipeline(tmpdir: str) -> None:
     # Phase 2: Plan
     plan = phases.get("plan", {})
     plan_outputs = plan.get("plans", {})
+    plan_lengths = plan.get("plan_lengths", {})
     print(f"  Phase 2 (Plan): {len(plan_outputs)} plans generated")
     for name, text in plan_outputs.items():
-        print(f"    - {name}: {text[:60]}...")
+        actual_len = plan_lengths.get(name, len(text))
+        print(f"    - {name}: {actual_len} chars (preview: {text[:60]}...)")
 
     # Phase 3: Code
     code = phases.get("code", {})
     code_outputs = code.get("outputs", {})
     code_subtask_results = code.get("subtask_results", {})
+    code_output_lengths = code.get("output_lengths", {})
     code_passed = code.get("passed", 0)
     code_total = code.get("total", 0)
     print(f"  Phase 3 (Code): {code_passed}/{code_total} subtasks passed")
@@ -332,7 +335,10 @@ def test_phased_pipeline(tmpdir: str) -> None:
         sr = code_subtask_results.get(name, {})
         status = "PASS" if sr.get("passed") else "FAIL"
         attempts = sr.get("attempts", "?")
-        print(f"    - {name}: {len(text)} chars [{status} after {attempts} attempt(s)]")
+        actual_len = code_output_lengths.get(name, len(text))
+        print(
+            f"    - {name}: {actual_len} chars [{status} after {attempts} attempt(s)]"
+        )
 
     # Phase 4: Integrate
     integrate = phases.get("integrate", {})
