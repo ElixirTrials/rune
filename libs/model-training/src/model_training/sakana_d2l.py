@@ -231,25 +231,28 @@ def load_sakana_checkpoint(
 
     hypernet = HyperLoRA(hc).to(torch.float32)
 
-    # Load perceiver/aggregator/head weights from checkpoint
-    hypernet_keys = [
-        k for k in sd.keys() if k.startswith(("aggregator.", "head.", "extra_"))
-    ]
-    hypernet_sd = {k: sd[k] for k in hypernet_keys if k in hypernet.state_dict()}
+    # Load ALL hypernet weights from checkpoint (not just a prefix subset).
+    # The checkpoint contains aggregator.*, head.*, scaler_{A,B}.*,
+    # bias_{A,B}.*, and layers.0.* — all are required for correct
+    # adapter generation.  scaler_B in particular defaults to zeros,
+    # so skipping it zeroes out every lora_B matrix.
+    model_keys = set(hypernet.state_dict().keys())
+    hypernet_sd = {k: v for k, v in sd.items() if k in model_keys}
 
-    if hypernet_sd:
-        loaded = hypernet.load_state_dict(hypernet_sd, strict=False)
-        logger.info("Loaded %d perceiver weight tensors", len(hypernet_sd))
-        if loaded.missing_keys:
-            logger.info("Missing keys: %d", len(loaded.missing_keys))
-    else:
-        full_state = {k: v for k, v in sd.items() if isinstance(v, torch.Tensor)}
-        loaded = hypernet.load_state_dict(full_state, strict=False)
-        logger.info(
-            "Loaded full state: missing=%d, unexpected=%d",
+    loaded = hypernet.load_state_dict(hypernet_sd, strict=False)
+    logger.info(
+        "Loaded %d/%d hypernet weight tensors",
+        len(hypernet_sd),
+        len(model_keys),
+    )
+    if loaded.missing_keys:
+        logger.warning(
+            "Missing keys (%d, will use defaults): %s",
             len(loaded.missing_keys),
-            len(loaded.unexpected_keys),
+            loaded.missing_keys,
         )
+    if loaded.unexpected_keys:
+        logger.info("Unexpected keys: %d", len(loaded.unexpected_keys))
 
     hypernet = hypernet.to(device)
     hypernet.eval()
