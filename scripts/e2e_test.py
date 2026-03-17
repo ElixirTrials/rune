@@ -299,7 +299,6 @@ def test_phased_pipeline(tmpdir: str) -> None:
             base_model_id=MODEL_NAME,
             device=DEVICE,
             population_size=2,
-            max_retries_per_subtask=2,
             max_phase_iterations=5,
         )
     )

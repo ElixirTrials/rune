@@ -56,6 +56,42 @@ logger = logging.getLogger(__name__)
 DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-1.5B"
 ADAPTER_BASE_DIR = Path.home() / ".rune" / "adapters"
 
+# ---------------------------------------------------------------------------
+# Phase iteration config — env var driven
+# ---------------------------------------------------------------------------
+#
+# Global default:  RUNE_MAX_PHASE_ITERATIONS  (applies to all phases)
+# Per-phase:       RUNE_MAX_ITERATIONS_DECOMPOSE
+#                  RUNE_MAX_ITERATIONS_PLAN
+#                  RUNE_MAX_ITERATIONS_CODE
+#                  RUNE_MAX_ITERATIONS_INTEGRATE
+#
+# Per-phase overrides take precedence over the global default.
+# CLI --max-phase-iterations overrides the global env var.
+# Hardcoded fallback is 5.
+
+_FALLBACK_MAX_ITERATIONS = 5
+
+
+def _get_phase_iterations(phase: str, cli_override: int | None = None) -> int:
+    """Resolve max iterations for a phase from env vars and CLI args.
+
+    Resolution order (first non-None wins):
+      1. RUNE_MAX_ITERATIONS_{PHASE}   (per-phase env var)
+      2. cli_override                   (--max-phase-iterations)
+      3. RUNE_MAX_PHASE_ITERATIONS      (global env var)
+      4. _FALLBACK_MAX_ITERATIONS       (hardcoded 5)
+    """
+    per_phase = os.environ.get(f"RUNE_MAX_ITERATIONS_{phase.upper()}")
+    if per_phase is not None:
+        return int(per_phase)
+    if cli_override is not None:
+        return cli_override
+    global_env = os.environ.get("RUNE_MAX_PHASE_ITERATIONS")
+    if global_env is not None:
+        return int(global_env)
+    return _FALLBACK_MAX_ITERATIONS
+
 
 # ---------------------------------------------------------------------------
 # Helpers — kept from original (used by template variable preparation)
@@ -395,15 +431,20 @@ async def run_phased_pipeline(
     base_model_id: str = DEFAULT_BASE_MODEL,
     device: str = "cpu",
     population_size: int = 2,
-    max_retries_per_subtask: int = 3,
-    max_phase_iterations: int = 5,
+    max_phase_iterations: int | None = None,
 ) -> dict[str, Any]:
     """Run the 4-phase pipeline with template-driven adapters and evolution.
 
-    Each phase runs up to ``max_phase_iterations`` times, generating a new
+    Each phase runs up to its configured max iterations, generating a new
     adapter via H() each iteration. Early stops when the phase succeeds.
     Between iterations, an evolution sweep merges top adapters and prunes
     low-fitness ones.
+
+    Iteration counts are resolved per-phase via env vars:
+      - ``RUNE_MAX_ITERATIONS_DECOMPOSE``, ``..._PLAN``, ``..._CODE``, ``..._INTEGRATE``
+      - ``RUNE_MAX_PHASE_ITERATIONS`` (global default)
+      - ``max_phase_iterations`` kwarg (overrides global env var)
+      - Hardcoded fallback: 5
 
     Phase 1: DECOMPOSE — single agent decomposes project into subtasks
     Phase 2: PLAN — parallel swarm plans each subtask
@@ -417,8 +458,7 @@ async def run_phased_pipeline(
         base_model_id: HuggingFace model ID of the base model.
         device: Device for hypernetwork computation.
         population_size: Number of parallel agents for swarm phases.
-        max_retries_per_subtask: Max retry attempts per subtask in Phase 3.
-        max_phase_iterations: Max evolutionary iterations per phase (default 5).
+        max_phase_iterations: Default max iterations per phase (env vars override).
 
     Returns:
         Summary dict with phase results, adapters, evolution stats, and final code.
@@ -435,6 +475,19 @@ async def run_phased_pipeline(
     # Evolution registry — per-session SQLite DB
     registry_engine = create_engine(f"sqlite:///{adapter_dir}/evolution.db")
     registry = AdapterRegistry(engine=registry_engine)
+
+    # Resolve per-phase iteration limits
+    iters_decompose = _get_phase_iterations("decompose", max_phase_iterations)
+    iters_plan = _get_phase_iterations("plan", max_phase_iterations)
+    iters_code = _get_phase_iterations("code", max_phase_iterations)
+    iters_integrate = _get_phase_iterations("integrate", max_phase_iterations)
+    logger.info(
+        "Phase iteration limits: decompose=%d, plan=%d, code=%d, integrate=%d",
+        iters_decompose,
+        iters_plan,
+        iters_code,
+        iters_integrate,
+    )
 
     phase_results: dict[str, Any] = {}
     registered_adapters: list[dict[str, str]] = []
@@ -459,8 +512,8 @@ async def run_phased_pipeline(
     loaded_adapter_id: str | None = None  # tracks what's currently loaded
     phase1_task_type = "phase1-decompose"
 
-    for evo_iter in range(max_phase_iterations):
-        logger.info("  Decompose iteration %d/%d", evo_iter + 1, max_phase_iterations)
+    for evo_iter in range(iters_decompose):
+        logger.info("  Decompose iteration %d/%d", evo_iter + 1, iters_decompose)
 
         # Build trajectory — include prior output on retries
         prior_output = ""
@@ -596,8 +649,8 @@ async def run_phased_pipeline(
     best_plan_adapter_ids: list[str] = []
     phase2_task_type = "phase2-plan"
 
-    for evo_iter in range(max_phase_iterations):
-        logger.info("  Plan iteration %d/%d", evo_iter + 1, max_phase_iterations)
+    for evo_iter in range(iters_plan):
+        logger.info("  Plan iteration %d/%d", evo_iter + 1, iters_plan)
         iter_plans: dict[str, str] = {}
 
         async def _plan_subtask(
@@ -716,7 +769,7 @@ async def run_phased_pipeline(
 
     # ---------------------------------------------------------------
     # Phase 3: CODE (parallel swarm, with evolutionary retries via H())
-    # Each subtask gets up to max_phase_iterations attempts. Each attempt
+    # Each subtask gets up to iters_code attempts. Each attempt
     # generates a fresh adapter, and evolution sweeps run between attempts.
     # ---------------------------------------------------------------
     logger.info("=== Phase 3: CODE ===")
@@ -732,7 +785,7 @@ async def run_phased_pipeline(
         last_state: dict[str, Any] | None = None
         loaded_code_adapter: str | None = None
 
-        for attempt in range(max_phase_iterations):
+        for attempt in range(iters_code):
             if attempt == 0:
                 traj = render_trajectory(
                     "code",
@@ -770,7 +823,7 @@ async def run_phased_pipeline(
                     "code_retry",
                     subtask=subtask,
                     attempt=attempt + 1,
-                    max_retries=max_phase_iterations,
+                    max_retries=iters_code,
                     plan=plan,
                     existing_code=existing_code,
                     passed=passed,
@@ -823,7 +876,7 @@ async def run_phased_pipeline(
                 project_prompt=code_prompt,
                 adapter_id=code_adapter_id,
                 session_id=session_id,
-                iteration=iteration_counter + idx * max_phase_iterations + attempt + 1,
+                iteration=iteration_counter + idx * iters_code + attempt + 1,
                 phase="code",
             )
 
@@ -855,7 +908,7 @@ async def run_phased_pipeline(
                 "  Subtask '%s' FAILED attempt %d/%d — retrying via H()",
                 subtask["name"],
                 attempt + 1,
-                max_phase_iterations,
+                iters_code,
             )
 
             # Evolution sweep between attempts
@@ -866,12 +919,12 @@ async def run_phased_pipeline(
         logger.warning(
             "Subtask '%s' failed after %d attempts",
             subtask["name"],
-            max_phase_iterations,
+            iters_code,
         )
         return (
             subtask["name"],
             existing_code,
-            {"passed": False, "attempts": max_phase_iterations},
+            {"passed": False, "attempts": iters_code},
         )
 
     # Run coding in parallel
@@ -880,7 +933,7 @@ async def run_phased_pipeline(
     for name, code_text, subtask_result in code_results:
         code_outputs[name] = code_text
         code_subtask_results[name] = subtask_result
-    iteration_counter += len(subtasks) * max_phase_iterations
+    iteration_counter += len(subtasks) * iters_code
 
     # Post-code evolution sweep
     code_sweep = evolution_sweep(registry)
@@ -926,8 +979,8 @@ async def run_phased_pipeline(
     loaded_integrate_id: str | None = None  # tracks currently loaded adapter
     phase4_task_type = "phase4-integrate"
 
-    for evo_iter in range(max_phase_iterations):
-        logger.info("  Integrate iteration %d/%d", evo_iter + 1, max_phase_iterations)
+    for evo_iter in range(iters_integrate):
+        logger.info("  Integrate iteration %d/%d", evo_iter + 1, iters_integrate)
 
         integrate_trajectory = render_trajectory(
             "integrate",
@@ -1069,8 +1122,7 @@ async def run_project(
     checkpoint_path: str | None = None,
     base_model_id: str = DEFAULT_BASE_MODEL,
     device: str = "cpu",
-    max_retries_per_subtask: int = 3,
-    max_phase_iterations: int = 5,
+    max_phase_iterations: int | None = None,
 ) -> dict[str, Any]:
     """Run the full project lifecycle.
 
@@ -1083,8 +1135,7 @@ async def run_project(
         checkpoint_path: Path to pretrained hypernetwork checkpoint.
         base_model_id: HuggingFace model ID of the base model.
         device: Device for hypernetwork computation.
-        max_retries_per_subtask: Max attempts per subtask (errors go through H()).
-        max_phase_iterations: Max evolutionary iterations per phase.
+        max_phase_iterations: Default max iterations per phase (env vars override).
 
     Returns:
         Summary dict with phase results.
@@ -1095,7 +1146,6 @@ async def run_project(
         checkpoint_path=checkpoint_path,
         base_model_id=base_model_id,
         device=device,
-        max_retries_per_subtask=max_retries_per_subtask,
         max_phase_iterations=max_phase_iterations,
     )
 
