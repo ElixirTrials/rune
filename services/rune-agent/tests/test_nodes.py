@@ -141,14 +141,14 @@ async def test_generate_node_with_adapter() -> None:
 
 
 async def test_execute_node_passing_script() -> None:
-    """execute_node: simple passing script returns tests_passed=True, exit_code=0."""
+    """execute_node: bare assert (no TestCase) returns tests_passed=False."""
     state: dict[str, Any] = {
         "generated_code": "x = 1",
         "test_suite": "assert x == 1",
     }
     result = await execute_node(state)
 
-    assert result["tests_passed"] is True
+    assert result["tests_passed"] is False  # no unittest.TestCase
     assert result["exit_code"] == 0
     assert isinstance(result["stdout"], str)
     assert isinstance(result["stderr"], str)
@@ -271,7 +271,7 @@ async def test_execute_node_uses_sandbox_backend() -> None:
     """execute_node delegates to the sandbox backend from get_sandbox_backend()."""
     mock_result = MagicMock()
     mock_result.stdout = "ok\n"
-    mock_result.stderr = ""
+    mock_result.stderr = "Ran 1 test in 0.001s\n\nOK\n"
     mock_result.exit_code = 0
     mock_result.is_timed_out = False
 
@@ -279,8 +279,12 @@ async def test_execute_node_uses_sandbox_backend() -> None:
     mock_backend.run.return_value = mock_result
 
     state: dict[str, Any] = {
-        "generated_code": "x = 1",
-        "test_suite": "assert x == 1",
+        "generated_code": (
+            "import unittest\n"
+            "class TestX(unittest.TestCase):\n"
+            "    def test_x(self): self.assertEqual(1, 1)\n"
+        ),
+        "test_suite": "",
     }
 
     with patch("rune_agent.nodes.get_sandbox_backend", return_value=mock_backend):
@@ -289,6 +293,8 @@ async def test_execute_node_uses_sandbox_backend() -> None:
     mock_backend.run.assert_called_once()
     assert result["tests_passed"] is True
     assert result["stdout"] == "ok\n"
+    assert result["test_count"] == 1
+    assert result["tests_ran"] is True
 
 
 async def test_save_trajectory_node_exhausted(
@@ -322,3 +328,59 @@ async def test_save_trajectory_node_exhausted(
         task_type="function",
         adapter_ids=["adapter-1"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Test validation tests (Part B)
+# ---------------------------------------------------------------------------
+
+
+async def test_execute_node_no_testcase_returns_false() -> None:
+    """execute_node: code without TestCase classes returns tests_passed=False."""
+    state: dict[str, Any] = {
+        "generated_code": "print('hello world')",
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+
+    assert result["tests_passed"] is False
+    assert result["test_count"] == 0
+    assert result["tests_ran"] is False
+
+
+async def test_execute_node_real_testcase_passes() -> None:
+    """execute_node: real TestCase with passing tests returns tests_passed=True."""
+    state: dict[str, Any] = {
+        "generated_code": (
+            "import unittest\n\n"
+            "class TestAdd(unittest.TestCase):\n"
+            "    def test_one_plus_one(self):\n"
+            "        self.assertEqual(1 + 1, 2)\n\n"
+            "if __name__ == '__main__':\n"
+            "    unittest.main()\n"
+        ),
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+
+    assert result["tests_passed"] is True
+    assert result["test_count"] >= 1
+    assert result["tests_ran"] is True
+
+
+async def test_execute_node_testcase_without_main_auto_injected() -> None:
+    """execute_node: TestCase without unittest.main() gets auto-injected and passes."""
+    state: dict[str, Any] = {
+        "generated_code": (
+            "import unittest\n\n"
+            "class TestMath(unittest.TestCase):\n"
+            "    def test_add(self):\n"
+            "        self.assertEqual(2 + 2, 4)\n"
+        ),
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+
+    assert result["tests_passed"] is True
+    assert result["test_count"] >= 1
+    assert result["tests_ran"] is True

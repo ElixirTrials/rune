@@ -48,6 +48,7 @@ from bootstrap import setup_path
 setup_path()  # noqa: E402
 
 from shared.hardware import get_best_device  # noqa: E402
+from shared.sandbox import count_test_results, extract_failed_tests  # noqa: E402
 from shared.template_loader import render_prompt, render_trajectory  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -150,40 +151,14 @@ def _extract_code_skeleton(code: str) -> str:
             and stripped.startswith("self.")
         ):
             skeleton_lines.append(line)
-    return "\n".join(skeleton_lines[:40])
+    return "\n".join(skeleton_lines[:80])
 
 
-def _count_test_results(stdout: str, stderr: str) -> tuple[int, int]:
-    """Parse unittest output to count passed/failed tests."""
-    total = 0
-    failed = 0
-
-    ran_match = re.search(r"Ran (\d+) test", stderr or "")
-    if ran_match:
-        total = int(ran_match.group(1))
-
-    fail_match = re.search(r"failures=(\d+)", stderr or "")
-    err_match = re.search(r"errors=(\d+)", stderr or "")
-    if fail_match:
-        failed += int(fail_match.group(1))
-    if err_match:
-        failed += int(err_match.group(1))
-
-    passed = max(0, total - failed)
-    return passed, total
-
-
-def _extract_failed_tests(stderr: str) -> str:
-    """Extract names of failing tests from unittest stderr."""
-    if not stderr:
-        return ""
-    lines = stderr.strip().splitlines()
-    failed = [
-        ln.strip()
-        for ln in lines
-        if ln.strip().startswith("FAIL:") or ln.strip().startswith("ERROR:")
-    ]
-    return "; ".join(failed[:5])
+# _count_test_results and _extract_failed_tests are now imported from
+# shared.sandbox as count_test_results and extract_failed_tests.
+# Keep thin wrappers for backward compatibility with internal callers.
+_count_test_results = count_test_results
+_extract_failed_tests = extract_failed_tests
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +239,8 @@ async def run_iteration(
         "stderr": "",
         "exit_code": 0,
         "tests_passed": False,
+        "test_count": 0,
+        "tests_ran": False,
         "trajectory": [],
         "phase": phase,
         "outcome": None,
@@ -808,7 +785,12 @@ async def run_phased_pipeline(
                 tests_passed = last_state.get("tests_passed", False)
 
                 # Build fix guidance
-                if total == 0:
+                if total == 0 and last_state.get("exit_code", 1) == 0:
+                    fix_guidance = (
+                        "NO tests detected — include unittest.TestCase tests "
+                        "and end with: if __name__ == '__main__': unittest.main()"
+                    )
+                elif total == 0:
                     fix_guidance = (
                         "Code failed to execute. Check syntax, imports, indentation."
                     )
@@ -871,7 +853,42 @@ async def run_phased_pipeline(
                     }
                 )
 
-            code_prompt = render_prompt("code", task_description=subtask["description"])
+            if attempt == 0:
+                code_prompt = render_prompt(
+                    "code",
+                    task_description=subtask["description"],
+                )
+            else:
+                assert last_state is not None
+                passed, total = _count_test_results(
+                    last_state.get("stdout", ""),
+                    last_state.get("stderr", ""),
+                )
+                error_summary = _extract_error_summary(last_state.get("stderr", ""))
+
+                if total == 0 and last_state.get("exit_code", 1) == 0:
+                    fix_guidance_prompt = (
+                        "NO tests detected — include unittest.TestCase"
+                    )
+                elif total == 0:
+                    fix_guidance_prompt = (
+                        "Code failed to execute. Check syntax."
+                    )
+                elif passed == 0:
+                    fix_guidance_prompt = "No tests pass. Fix basic structure."
+                else:
+                    fix_guidance_prompt = (
+                        f"{total - passed} test(s) failing. Fix them."
+                    )
+
+                code_prompt = render_prompt(
+                    "code_retry",
+                    task_description=subtask["description"],
+                    passed=passed,
+                    total=total,
+                    error_summary=error_summary,
+                    fix_guidance=fix_guidance_prompt,
+                )
             code_state = await run_iteration(
                 graph=graph,
                 project_prompt=code_prompt,
@@ -884,13 +901,23 @@ async def run_phased_pipeline(
             last_state = code_state
             existing_code = code_state.get("generated_code", "")
 
-            # Update fitness
+            # Update fitness with partial credit from test results
             code_passed = code_state.get("tests_passed", False)
+            code_p, code_t = _count_test_results(
+                code_state.get("stdout", ""),
+                code_state.get("stderr", ""),
+            )
+            if code_passed:
+                code_fitness = 1.0
+            elif code_t > 0:
+                code_fitness = max(0.1, code_p / code_t * 0.8)
+            else:
+                code_fitness = 0.1
             if code_adapter_id:
                 registry.update_fitness(
                     code_adapter_id,
-                    pass_rate=1.0 if code_passed else 0.0,
-                    fitness_score=1.0 if code_passed else 0.2,
+                    pass_rate=code_p / code_t if code_t > 0 else 0.0,
+                    fitness_score=code_fitness,
                 )
 
             if code_passed:
@@ -1029,7 +1056,35 @@ async def run_phased_pipeline(
                 }
             )
 
-        integrate_prompt = render_prompt("integrate", task_description=project_prompt)
+        if evo_iter == 0 or best_integrate_state is None:
+            integrate_prompt = render_prompt(
+                "integrate",
+                task_description=project_prompt,
+            )
+        else:
+            int_passed, int_total = _count_test_results(
+                best_integrate_state.get("stdout", ""),
+                best_integrate_state.get("stderr", ""),
+            )
+            int_error = _extract_error_summary(best_integrate_state.get("stderr", ""))
+
+            if int_total == 0 and best_integrate_state.get("exit_code", 1) == 0:
+                int_fix = "NO tests detected — include unittest.TestCase"
+            elif int_total == 0:
+                int_fix = "Code failed to execute. Check syntax."
+            elif int_passed == 0:
+                int_fix = "No tests pass. Fix basic structure."
+            else:
+                int_fix = f"{int_total - int_passed} test(s) failing. Fix them."
+
+            integrate_prompt = render_prompt(
+                "integrate_retry",
+                task_description=project_prompt,
+                passed=int_passed,
+                total=int_total,
+                error_summary=int_error,
+                fix_guidance=int_fix,
+            )
         iteration_counter += 1
         integrate_state = await run_iteration(
             graph=graph,
@@ -1049,7 +1104,8 @@ async def run_phased_pipeline(
         if total_count > 0:
             score = passed_count / total_count
         else:
-            score = 1.0 if tests_passed else 0.0
+            # No tests ran — never treat as full success
+            score = 0.1 if integrate_state.get("exit_code", 1) == 0 else 0.0
 
         # Update fitness
         if integrate_aid:

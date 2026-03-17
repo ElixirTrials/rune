@@ -1,10 +1,10 @@
 ROLE: python-coder
 SUBTASK: {{ subtask.name }} ({{ subtask_index }}/{{ total_subtasks }})
 PLAN:
-{{ plan[:500] }}
+{{ plan[:800] }}
 {% if existing_code %}
 EXISTING CODE:
-{{ existing_code[:400] }}
+{{ existing_code[:800] }}
 {% endif %}
 PRACTICES: Use dataclasses for models, type annotations on all signatures,
 unittest.TestCase for tests, clean layered architecture, no stubs or

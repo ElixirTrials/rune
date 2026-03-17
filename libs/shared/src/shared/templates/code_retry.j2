@@ -1,10 +1,10 @@
 ROLE: python-coder
 SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
 PLAN:
-{{ plan[:400] }}
+{{ plan[:600] }}
 {% if existing_code %}
 EXISTING CODE:
-{{ existing_code[:300] }}
+{{ existing_code[:600] }}
 {% endif %}
 TESTS: {{ passed }}/{{ total }} {{ "PASSING" if tests_passed else "FAILING" }}
 ERRORS:

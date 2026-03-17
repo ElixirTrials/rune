@@ -23,6 +23,8 @@ class RuneState(TypedDict):
         stderr: Standard error from executing generated code.
         exit_code: Process exit code from execution (0 = success).
         tests_passed: Whether the test suite passed on this attempt.
+        test_count: Number of unittest tests that ran.
+        tests_ran: Whether any unittest tests actually executed.
         trajectory: List of per-attempt records for parametric memory training.
         outcome: Terminal result -- 'success', 'exhausted', or None if still running.
     """
@@ -42,6 +44,8 @@ class RuneState(TypedDict):
     stderr: str
     exit_code: int
     tests_passed: bool
+    test_count: int
+    tests_ran: bool
     # Accumulated trajectory
     trajectory: list[dict[str, Any]]
     # Pipeline phase

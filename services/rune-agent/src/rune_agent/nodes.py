@@ -7,7 +7,7 @@ from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
-from shared.sandbox import get_sandbox_backend
+from shared.sandbox import count_test_results, get_sandbox_backend, has_unittest_classes
 
 from .state import RuneState
 
@@ -152,18 +152,42 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     timeout: int = int(os.environ.get("RUNE_EXEC_TIMEOUT", DEFAULT_TIMEOUT))
 
     script = state["generated_code"] + "\n\n" + state["test_suite"]
+
+    # Auto-inject unittest.main() if TestCase classes exist but no runner
+    if has_unittest_classes(script) and "unittest.main()" not in script:
+        script += (
+            "\n\nimport unittest\n"
+            "if __name__ == '__main__':\n    unittest.main()\n"
+        )
+
     backend = get_sandbox_backend()
     result = backend.run(script, timeout=timeout)
 
     stdout = result.stdout
     stderr = result.stderr
     exit_code = result.exit_code
-    tests_passed = result.exit_code == 0 and not result.is_timed_out
+
+    # Determine test validation based on unittest output
+    combined = state["generated_code"] + "\n" + state["test_suite"]
+    has_tests = has_unittest_classes(combined)
+    passed_count, total_count = count_test_results(stdout, stderr)
+    tests_ran = total_count > 0
+
+    if has_tests and tests_ran and exit_code == 0 and not result.is_timed_out:
+        tests_passed = True
+    elif has_tests and not tests_ran:
+        tests_passed = False
+    elif not has_tests:
+        tests_passed = False
+    else:
+        tests_passed = False
 
     logger.info(
-        "execute_node: exit_code=%d, tests_passed=%s",
+        "execute_node: exit_code=%d, tests_passed=%s, test_count=%d, tests_ran=%s",
         exit_code,
         tests_passed,
+        total_count,
+        tests_ran,
     )
 
     return {
@@ -171,6 +195,8 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
         "stderr": stderr,
         "exit_code": exit_code,
         "tests_passed": tests_passed,
+        "test_count": total_count,
+        "tests_ran": tests_ran,
     }
 
 
