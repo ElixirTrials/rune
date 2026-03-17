@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "113d780c65ed",
+  "session_id": "94a76949-e25b-4e8c-9527-ab42831e7224",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-17T09:34:27.416314Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".planning/phases/26-architecture-probe-activation-extraction/26-01-SUMMARY.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "2ff113197e78",
+  "token_usage": {
+    "input_tokens": 57,
+    "cache_creation_tokens": 88514,
+    "cache_read_tokens": 2642990,
+    "output_tokens": 14772,
+    "api_call_count": 47
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-17T09:34:26.964072Z",
+    "agent_lines": 0,
+    "human_added": 235,
+    "human_modified": 145,
+    "human_removed": 0,
+    "total_committed": 235,
+    "agent_percentage": 0
+  }
+}

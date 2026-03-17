@@ -2,8 +2,7 @@
   "cli_version": "0.4.8",
   "checkpoint_id": "113d780c65ed",
   "strategy": "manual-commit",
-  "branch": "feat/e2e_with_hypernetwork",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     ".planning/REQUIREMENTS.md",
     ".planning/ROADMAP.md",
@@ -29,13 +28,20 @@
       "context": "/11/3d780c65ed/0/context.md",
       "content_hash": "/11/3d780c65ed/0/content_hash.txt",
       "prompt": "/11/3d780c65ed/0/prompt.txt"
+    },
+    {
+      "metadata": "/11/3d780c65ed/1/metadata.json",
+      "transcript": "/11/3d780c65ed/1/full.jsonl",
+      "context": "/11/3d780c65ed/1/context.md",
+      "content_hash": "/11/3d780c65ed/1/content_hash.txt",
+      "prompt": "/11/3d780c65ed/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 55,
-    "cache_creation_tokens": 58270,
-    "cache_read_tokens": 2290373,
-    "output_tokens": 10483,
-    "api_call_count": 50
+    "input_tokens": 112,
+    "cache_creation_tokens": 146784,
+    "cache_read_tokens": 4933363,
+    "output_tokens": 25255,
+    "api_call_count": 97
   }
 }
