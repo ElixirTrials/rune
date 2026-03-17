@@ -325,9 +325,15 @@ def test_phased_pipeline(tmpdir: str) -> None:
     # Phase 3: Code
     code = phases.get("code", {})
     code_outputs = code.get("outputs", {})
-    print(f"  Phase 3 (Code): {len(code_outputs)} implementations")
+    code_subtask_results = code.get("subtask_results", {})
+    code_passed = code.get("passed", 0)
+    code_total = code.get("total", 0)
+    print(f"  Phase 3 (Code): {code_passed}/{code_total} subtasks passed")
     for name, text in code_outputs.items():
-        print(f"    - {name}: {len(text)} chars")
+        sr = code_subtask_results.get(name, {})
+        status = "PASS" if sr.get("passed") else "FAIL"
+        attempts = sr.get("attempts", "?")
+        print(f"    - {name}: {len(text)} chars [{status} after {attempts} attempt(s)]")
 
     # Phase 4: Integrate
     integrate = phases.get("integrate", {})
@@ -366,7 +372,7 @@ def test_phased_pipeline(tmpdir: str) -> None:
             print(f"    {sweep_name}: {task_types}")
 
     # Verify phase iteration counts
-    for phase_name in ("decompose", "integrate"):
+    for phase_name in ("decompose", "code", "integrate"):
         assert phase_name in phase_iters, f"Missing iteration count for {phase_name}"
         assert phase_iters[phase_name] >= 1, f"{phase_name} ran 0 iterations"
 

@@ -715,19 +715,24 @@ async def run_phased_pipeline(
     }
 
     # ---------------------------------------------------------------
-    # Phase 3: CODE (parallel swarm, with subtask-level retries via H())
-    # Phase 3 keeps its own retry loop — no outer evolution here.
+    # Phase 3: CODE (parallel swarm, with evolutionary retries via H())
+    # Each subtask gets up to max_phase_iterations attempts. Each attempt
+    # generates a fresh adapter, and evolution sweeps run between attempts.
     # ---------------------------------------------------------------
     logger.info("=== Phase 3: CODE ===")
     code_outputs: dict[str, str] = {}
+    code_subtask_results: dict[str, dict[str, Any]] = {}
 
-    async def _code_subtask(idx: int, subtask: dict[str, str]) -> tuple[str, str]:
-        """Code a single subtask with retry loop — runs as a parallel coroutine."""
+    async def _code_subtask(
+        idx: int, subtask: dict[str, str]
+    ) -> tuple[str, str, dict[str, Any]]:
+        """Code a single subtask with evolutionary retry loop."""
         plan = plans.get(subtask["name"], "")
         existing_code = ""
         last_state: dict[str, Any] | None = None
+        loaded_code_adapter: str | None = None
 
-        for attempt in range(max_retries_per_subtask):
+        for attempt in range(max_phase_iterations):
             if attempt == 0:
                 traj = render_trajectory(
                     "code",
@@ -765,7 +770,7 @@ async def run_phased_pipeline(
                     "code_retry",
                     subtask=subtask,
                     attempt=attempt + 1,
-                    max_retries=max_retries_per_subtask,
+                    max_retries=max_phase_iterations,
                     plan=plan,
                     existing_code=existing_code,
                     passed=passed,
@@ -791,7 +796,10 @@ async def run_phased_pipeline(
             code_adapter_id: str | None = None
             if code_adapter_path:
                 code_adapter_id = f"phase3-code-{subtask['name']}-v{attempt}"
-                await _load_adapter(code_adapter_id, code_adapter_path, None)
+                await _load_adapter(
+                    code_adapter_id, code_adapter_path, loaded_code_adapter
+                )
+                loaded_code_adapter = code_adapter_id
                 _register_adapter(
                     registry,
                     adapter_id=code_adapter_id,
@@ -815,10 +823,7 @@ async def run_phased_pipeline(
                 project_prompt=code_prompt,
                 adapter_id=code_adapter_id,
                 session_id=session_id,
-                iteration=iteration_counter
-                + idx * max_retries_per_subtask
-                + attempt
-                + 1,
+                iteration=iteration_counter + idx * max_phase_iterations + attempt + 1,
                 phase="code",
             )
 
@@ -840,36 +845,71 @@ async def run_phased_pipeline(
                     subtask["name"],
                     attempt + 1,
                 )
-                return subtask["name"], existing_code
+                return (
+                    subtask["name"],
+                    existing_code,
+                    {"passed": True, "attempts": attempt + 1},
+                )
 
             logger.info(
-                "  Subtask '%s' FAILED attempt %d — retrying via H()",
+                "  Subtask '%s' FAILED attempt %d/%d — retrying via H()",
                 subtask["name"],
                 attempt + 1,
+                max_phase_iterations,
             )
+
+            # Evolution sweep between attempts
+            if attempt > 0:
+                evolution_sweep(registry)
 
         # Exhausted retries — return last attempt's code
         logger.warning(
             "Subtask '%s' failed after %d attempts",
             subtask["name"],
-            max_retries_per_subtask,
+            max_phase_iterations,
         )
-        return subtask["name"], existing_code
+        return (
+            subtask["name"],
+            existing_code,
+            {"passed": False, "attempts": max_phase_iterations},
+        )
 
     # Run coding in parallel
     code_tasks = [_code_subtask(i, st) for i, st in enumerate(subtasks)]
     code_results = await asyncio.gather(*code_tasks)
-    for name, code_text in code_results:
+    for name, code_text, subtask_result in code_results:
         code_outputs[name] = code_text
-    iteration_counter += len(subtasks) * max_retries_per_subtask
+        code_subtask_results[name] = subtask_result
+    iteration_counter += len(subtasks) * max_phase_iterations
 
     # Post-code evolution sweep
     code_sweep = evolution_sweep(registry)
     evolution_stats["sweeps"]["post-code"] = code_sweep
 
-    logger.info("Code generated for %d subtasks", len(code_outputs))
+    # Track Phase 3 in evolution stats
+    max_code_attempts = max(
+        (r["attempts"] for r in code_subtask_results.values()), default=1
+    )
+    code_passed_count = sum(1 for r in code_subtask_results.values() if r["passed"])
+    evolution_stats["phase_iterations"]["code"] = max_code_attempts
+    evolution_stats["best_adapters"]["code"] = {
+        name: f"phase3-code-{name}-v{r['attempts'] - 1}"
+        for name, r in code_subtask_results.items()
+        if r["passed"]
+    }
+
+    logger.info(
+        "Code generated for %d subtasks (%d/%d passed)",
+        len(code_outputs),
+        code_passed_count,
+        len(code_outputs),
+    )
     phase_results["code"] = {
         "outputs": {k: v[:200] for k, v in code_outputs.items()},
+        "subtask_results": code_subtask_results,
+        "iterations": max_code_attempts,
+        "passed": code_passed_count,
+        "total": len(code_outputs),
     }
 
     # ---------------------------------------------------------------
