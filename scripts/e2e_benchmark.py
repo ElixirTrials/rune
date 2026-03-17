@@ -212,14 +212,20 @@ def print_report(results: list[dict]) -> None:
         print(f"\n  --- {r['task_name']} ({r['category']}) ---")
         print(f"    Session:          {r['session_id']}")
         print(f"    Time:             {r['elapsed_seconds']}s")
-        print(f"    Subtasks:         {r['n_subtasks']} ({', '.join(r['subtask_names'][:5])})")
+        print(
+            f"    Subtasks:         {r['n_subtasks']} ({', '.join(r['subtask_names'][:5])})"
+        )
         print(f"    Plans generated:  {r['n_plans']}")
-        print(f"    Code pass rate:   {r['code_passed']}/{r['code_total']} ({r['code_pass_rate']:.0%})")
+        print(
+            f"    Code pass rate:   {r['code_passed']}/{r['code_total']} ({r['code_pass_rate']:.0%})"
+        )
         print(f"    Integration:      {'PASS' if r['integration_passed'] else 'FAIL'}")
         print(f"    Adapters:         {r['n_adapters']}")
         print(f"    Phase iterations: {r['phase_iterations']}")
         print(f"    Final code:       {r['final_code_length']} chars")
-        print(f"    Scores:           decompose={r['decompose_score']:.2f} plan={r['plan_score']:.2f} integrate={r['integrate_score']:.2f}")
+        print(
+            f"    Scores:           decompose={r['decompose_score']:.2f} plan={r['plan_score']:.2f} integrate={r['integrate_score']:.2f}"
+        )
 
     # Aggregate stats
     print("\n  --- AGGREGATE ---")
@@ -234,8 +240,12 @@ def print_report(results: list[dict]) -> None:
     print(f"    Tasks run:           {len(results)}")
     print(f"    Total time:          {total_time:.0f}s ({avg_time:.0f}s avg per task)")
     print(f"    Avg subtasks:        {avg_subtasks:.1f}")
-    print(f"    Code subtask pass:   {total_code_pass}/{total_code_total} ({total_code_pass/max(total_code_total,1):.0%})")
-    print(f"    Integration pass:    {integration_pass}/{len(results)} ({integration_pass/len(results):.0%})")
+    print(
+        f"    Code subtask pass:   {total_code_pass}/{total_code_total} ({total_code_pass / max(total_code_total, 1):.0%})"
+    )
+    print(
+        f"    Integration pass:    {integration_pass}/{len(results)} ({integration_pass / len(results):.0%})"
+    )
     print(f"    Total adapters:      {total_adapters}")
 
     # Performance assessment
@@ -245,7 +255,9 @@ def print_report(results: list[dict]) -> None:
         if code_rate >= 0.7:
             print(f"    Code generation:     STRONG ({code_rate:.0%} subtasks passing)")
         elif code_rate >= 0.4:
-            print(f"    Code generation:     MODERATE ({code_rate:.0%} subtasks passing)")
+            print(
+                f"    Code generation:     MODERATE ({code_rate:.0%} subtasks passing)"
+            )
         else:
             print(f"    Code generation:     WEAK ({code_rate:.0%} subtasks passing)")
 
@@ -298,7 +310,9 @@ def main() -> None:
     print(f"  Device:               {DEVICE}")
     print(f"  Tasks:                {len(selected_tasks)}")
     print(f"  Max phase iterations: {args.max_phase_iterations}")
-    print(f"  HF token:             {'set' if os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN') else 'NOT SET'}")
+    print(
+        f"  HF token:             {'set' if os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN') else 'NOT SET'}"
+    )
 
     # Download checkpoint once
     from model_training.sakana_d2l import download_checkpoint
@@ -320,28 +334,30 @@ def main() -> None:
                 results.append(summary)
             except Exception as e:
                 logger.exception("Task %s failed", task["id"])
-                results.append({
-                    "task_id": task["id"],
-                    "task_name": task["name"],
-                    "category": task["category"],
-                    "elapsed_seconds": 0,
-                    "session_id": "FAILED",
-                    "total_iterations": 0,
-                    "n_subtasks": 0,
-                    "subtask_names": [],
-                    "n_plans": 0,
-                    "code_passed": 0,
-                    "code_total": 0,
-                    "code_pass_rate": 0,
-                    "integration_passed": False,
-                    "n_adapters": 0,
-                    "phase_iterations": {},
-                    "decompose_score": 0,
-                    "plan_score": 0,
-                    "integrate_score": 0,
-                    "final_code_length": 0,
-                    "error": str(e),
-                })
+                results.append(
+                    {
+                        "task_id": task["id"],
+                        "task_name": task["name"],
+                        "category": task["category"],
+                        "elapsed_seconds": 0,
+                        "session_id": "FAILED",
+                        "total_iterations": 0,
+                        "n_subtasks": 0,
+                        "subtask_names": [],
+                        "n_plans": 0,
+                        "code_passed": 0,
+                        "code_total": 0,
+                        "code_pass_rate": 0,
+                        "integration_passed": False,
+                        "n_adapters": 0,
+                        "phase_iterations": {},
+                        "decompose_score": 0,
+                        "plan_score": 0,
+                        "integrate_score": 0,
+                        "final_code_length": 0,
+                        "error": str(e),
+                    }
+                )
 
     print_report(results)
 

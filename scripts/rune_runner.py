@@ -871,15 +871,11 @@ async def run_phased_pipeline(
                         "NO tests detected — include unittest.TestCase"
                     )
                 elif total == 0:
-                    fix_guidance_prompt = (
-                        "Code failed to execute. Check syntax."
-                    )
+                    fix_guidance_prompt = "Code failed to execute. Check syntax."
                 elif passed == 0:
                     fix_guidance_prompt = "No tests pass. Fix basic structure."
                 else:
-                    fix_guidance_prompt = (
-                        f"{total - passed} test(s) failing. Fix them."
-                    )
+                    fix_guidance_prompt = f"{total - passed} test(s) failing. Fix them."
 
                 code_prompt = render_prompt(
                     "code_retry",
