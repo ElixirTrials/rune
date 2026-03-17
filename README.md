@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://elixirtrials.github.io/rune/"><img alt="Docs" src="https://img.shields.io/badge/docs-GitHub%20Pages-8ca0e0.svg" /></a>
-  <img alt="Stage" src="https://img.shields.io/badge/stage-research-orange" />
+  <img alt="Stage" src="https://img.shields.io/badge/stage-alpha-blue" />
 </p>
 
 ---
@@ -24,7 +24,7 @@
 
 ## Abstract
 
-Current coding agents are bounded by context windows: each session begins fresh, and accumulated procedural knowledge — debugging patterns, project conventions, execution feedback — evaporates when the window closes. Rune hypothesizes that LoRA weight space can serve as persistent episodic memory, encoding what an agent has learned directly into the model's parameters rather than into tokens. The approach centers on a Doc-to-LoRA hypernetwork that converts coding trajectories into composable LoRA adapters in a single forward pass, combined with recursive distillation and a hierarchical adapter library that grows with each solved task. Rune is at the research stage: the architecture is documented, the component design is grounded in published work, and no implementation exists yet — the core hypothesis awaits empirical validation.
+Rune encodes coding trajectories into LoRA adapters so that a local Small Language Model accumulates procedural knowledge across sessions — debugging patterns, project conventions, execution feedback — in weight space rather than context tokens. The system implements a 4-phase template-driven pipeline (decompose → plan → code → integrate), parallel swarm orchestration, a Doc-to-LoRA hypernetwork for single-forward-pass adapter generation, TIES/DARE merging for adapter evolution, and a flat adapter registry with lineage tracking. The codebase includes 301+ tests, an end-to-end pipeline exercising all phases, and inference providers for Transformers, llama.cpp, Ollama, and vLLM. GPU end-to-end validation on real hardware is the next milestone.
 
 ---
 
@@ -56,57 +56,48 @@ The weight update for a single LoRA adapter follows `ΔW = BA`, where `B` and `A
 
 ## Architecture Overview
 
-Rune's architecture consists of three interacting components: the recursive code generation loop, the adapter hierarchy, and the serving layer.
+Rune's architecture consists of three interacting subsystems: the 4-phase pipeline, the adapter registry with evolutionary lifecycle, and the inference provider layer.
 
-### The Recursive Loop
+### The 4-Phase Pipeline
 
-The agent begins with a task and a set of candidate adapters selected from the adapter library. It generates code, executes it in an isolated sandbox, and evaluates the result. If tests fail, the trajectory is fed back into the generation step. When tests pass — or after a maximum attempt count — the complete trajectory is distilled into a new LoRA adapter by the Doc-to-LoRA hypernetwork, and that adapter is composed into the library.
-
-```mermaid
-flowchart LR
-    Task([Task]) --> Generate[Generate Code]
-    Generate --> Execute[Execute in Sandbox]
-    Execute --> Reflect{Tests Pass?}
-    Reflect -->|no| Generate
-    Reflect -->|yes| Distill[Distill Trajectory]
-    Distill --> HyperNet[Doc-to-LoRA\nHypernetwork]
-    HyperNet --> NewAdapter[(New LoRA\nAdapter)]
-    NewAdapter --> Compose[Compose with\nAdapter Library]
-    Compose --> Done([Task Complete])
-```
-
-The three Rune extensions to Doc-to-LoRA are visible in this loop: procedural trajectories enter the hypernetwork (not factual documents), the generate-execute-reflect cycle produces recursive refinement before distillation, and the Compose step merges the new adapter with the existing library rather than replacing it. The sandbox is network-isolated and resource-constrained — agent-generated code cannot escape the container.
-
-### The Adapter Hierarchy
-
-Adapters are organized in a three-level hierarchy: a project root adapter encodes high-level conventions and patterns, domain adapters encode task-type knowledge (async Python patterns, FastAPI idioms), and task-specific adapters encode solutions to individual problems. When a new task arrives, the adapter router selects the most relevant adapters at each level and loads them into the serving layer.
-
-```mermaid
-flowchart TD
-    Project[Project Root Adapter\ne.g. rune/main] --> Domain1[Domain: Python Async]
-    Project --> Domain2[Domain: FastAPI Patterns]
-    Domain1 --> Task1[Bug Fix #123]
-    Domain1 --> Task2[Bug Fix #456]
-    Domain2 --> Task3[Feature: OAuth]
-    Domain2 --> Task4[Feature: Rate Limiting]
-```
-
-The Evolution Operator manages this hierarchy: periodically evaluating adapter fitness on held-out tests, promoting high-performing adapters upward in the hierarchy, pruning low-performing ones, and merging adapters that have overlapping coverage. This lifecycle means the adapter library improves continuously as the agent works on more tasks. Adapters are stored as versioned `.safetensors` files on the local filesystem with metadata in SQLite; the registry is queryable without loading weights into GPU memory.
-
-### The Serving Architecture
-
-The base Small Language Model (SLM) runs in a vLLM server with dynamic LoRA adapter loading. The adapter router queries the adapter registry — a SQLite metadata store — selects the relevant adapters for the current task, and loads them dynamically into the vLLM serving process. This design follows S-LoRA's unified paging approach [2], which manages adapter weights and KV cache tensors in a shared GPU memory pool, enabling concurrent serving of many adapters from a single base model without reloading weights.
+A coding task flows through four sequential phases. Phases 2 and 3 run as parallel swarms of agents; phases 1 and 4 run single-agent. Each phase is driven by a Jinja2 template that renders the trajectory/prompt, a hypernetwork H() that optionally generates an adapter, and an inference provider that produces the output. The recursive generate-execute-reflect loop happens *within* each phase via per-phase iteration with early stopping.
 
 ```mermaid
 flowchart LR
-    Request([Coding Request]) --> Router[Adapter Router]
-    Registry[(Adapter Registry\nSQLite + Filesystem)] --> Router
-    Router --> Server[vLLM Server]
-    BaseModel[Base SLM\nQwen2.5-Coder-7B] --> Server
-    Server --> Response([Generated Code])
+    Task([Task]) --> P1[Phase 1: DECOMPOSE\nsingle agent]
+    P1 --> P2[Phase 2: PLAN\nparallel swarm]
+    P2 --> P3[Phase 3: CODE\nparallel swarm + retries]
+    P3 --> P4[Phase 4: INTEGRATE\nsingle agent]
+    P4 --> Done([Integrated Code\n+ Adapters])
 ```
 
-The serving layer is intentionally separated from training: when the hypernetwork or fine-tuning jobs require GPU resources, the serving process yields GPUs via a lease mechanism rather than competing for VRAM. Multi-GPU setups can use pipeline parallelism, which splits model layers across GPUs and passes activations at layer boundaries — the recommended strategy for GPUs connected via PCIe rather than NVLink.
+- **DECOMPOSE** — Breaks the project into subtasks (`decompose.j2` template)
+- **PLAN** — Generates an architecture plan per subtask in parallel (`plan.j2`)
+- **CODE** — Produces working code per subtask with retry on failure (`code.j2`, `code_retry.j2`)
+- **INTEGRATE** — Merges all subtask outputs into a coherent codebase (`integrate.j2`)
+
+Entry points: `scripts/rune_runner.py` (single pipeline run), `scripts/swarm.py` (multi-agent orchestration with training and evolution).
+
+### The Adapter Registry
+
+Adapters are stored in a flat structure indexed by `task_type`, `generation`, and `parent_ids` for lineage tracking. There is no hierarchical project/domain/task tree — instead, the registry supports querying by task type, fitness ranking, lineage walking, and deduplication by training task hash.
+
+Each `AdapterRecord` tracks: `id`, `version`, `task_type`, `base_model_id`, `rank`, `file_path`, `file_hash`, `file_size_bytes`, `pass_rate`, `fitness_score`, `source`, `session_id`, `parent_ids`, `generation`, `training_task_hash`, `agent_id`. Write-once enforcement prevents overwriting existing adapters (`AdapterAlreadyExistsError`). Metadata fields like `fitness_score` and `is_archived` are mutable; weight files are immutable.
+
+The evolution operator (`scripts/swarm_evolution.py`) periodically merges top adapters per task type using TIES or DARE merging, archives low-fitness adapters, and tracks generational lineage.
+
+### The Inference Layer
+
+Inference is provider-agnostic via the `InferenceProvider` abstract base class with four implementations:
+
+| Provider | Backend | LoRA Support |
+|----------|---------|-------------|
+| `TransformersProvider` | HuggingFace Transformers | Yes (PEFT) |
+| `LlamaCppProvider` | llama.cpp via llama-cpp-python | Model-level |
+| `OllamaProvider` | Ollama HTTP API | Base model only |
+| `VLLMProvider` | vLLM OpenAI-compatible API | Yes (dynamic loading) |
+
+All providers implement `generate()`, `load_adapter()`, `unload_adapter()`, and `list_adapters()`. The factory (`inference/factory.py`) selects the provider based on configuration. For single-GPU setups, the swarm orchestrator coordinates GPU time-sharing between inference and training via vLLM sleep/wake REST calls.
 
 ---
 
@@ -141,32 +132,38 @@ Rune runs on any local machine with a CUDA-capable GPU. The system is designed f
 
 **Multi-GPU:** If you have multiple GPUs, Rune supports pipeline parallelism to improve serving throughput. For GPUs connected via PCIe (most consumer setups), pipeline parallelism (`--pipeline-parallel-size N`) is recommended over tensor parallelism. Tensor parallelism requires all-reduce synchronization at every transformer layer — efficient over NVLink (~112 GB/s per direction) but a bottleneck over PCIe (~32 GB/s bidirectional). Additionally, vLLM issue [#21471](https://github.com/vllm-project/vllm/issues/21471) documents TP + LoRA output corruption on consumer GPUs without NVLink; pipeline parallelism is the confirmed working configuration.
 
-The lora-server defaults to single-GPU operation and can be configured for multi-GPU via `pipeline_parallel_size` in `services/lora-server/config.yaml`.
+The swarm orchestrator defaults to single-GPU operation with sleep/wake time-sharing between inference and training. Multi-GPU setups can dedicate separate GPUs to each role.
 
 ---
 
 ## Current Status
 
-**Stage:** Research / Pre-implementation
+**Stage:** Alpha (implementation complete, awaiting GPU e2e validation)
 
-Rune is a documented architecture proposal, not a working system. As of 2026-03-02:
+As of 2026-03-17, the following components are implemented and tested (301+ tests passing):
 
-- No implementation exists
-- The core hypothesis — that Doc-to-LoRA can encode coding trajectories into reusable LoRA adapters — has not been empirically validated
-- The architecture synthesizes prior work (Doc-to-LoRA, S-LoRA, QLoRA) but adapter composition has not been demonstrated for coding tasks
+- **4-phase pipeline** (`scripts/rune_runner.py`) — decompose → plan → code → integrate with Jinja2 templates, per-phase iteration, and early stopping
+- **Swarm orchestration** (`scripts/swarm.py`) — parallel agent execution, training pool, evolution worker, memory watchdog, checkpoint persistence
+- **Doc-to-LoRA hypernetwork** (`libs/model-training`) — Perceiver-based `DocToLoraHypernetwork` generating rank-8 LoRA adapters in a single forward pass
+- **Adapter registry** (`libs/adapter-registry`) — SQLite + filesystem store with write-once enforcement, lineage tracking, fitness queries
+- **TIES/DARE merging** (`libs/model-training/merging.py`) — evolutionary adapter combination
+- **Inference providers** (`libs/inference`) — TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider
+- **Sandbox execution** (`libs/shared/sandbox.py`) — SubprocessBackend for isolated code execution
+- **D2L training pipeline** (`libs/model-training`) — data preparation, LoRA mining, hypernetwork training, probing
+- **Evaluation** (`libs/evaluation`) — OOD benchmark, fitness scoring, Pass@k metrics
 
-The project is structured so that early phases validate the hypothesis before infrastructure is built. Phase 0 validates the software environment — confirming vLLM, PEFT, and the quantization toolchain work correctly on the target machine. Phase 1 tests the core hypothesis with a measurable gate: if the Doc-to-LoRA approach does not produce adapters that improve Pass@1 on held-out coding tasks by at least 5%, the approach is revised before the serving infrastructure is built. If the hypothesis fails, the architecture documentation still stands as a concrete proposal that others can test, extend, or refute.
+**What works:** All components pass unit and integration tests on CPU. The e2e test (`scripts/e2e_test.py`) exercises the full pipeline from task through all four phases to adapter storage.
 
-The architecture is detailed enough to implement. The open question is whether the hypothesis holds.
+**What's next:** GPU end-to-end validation on real hardware — confirming that the hypernetwork produces adapters that measurably improve coding task performance.
 
 ---
 
 ## Open Questions
 
-- **Can Doc-to-LoRA encode procedural coding knowledge?** The hypernetwork was validated on factual recall. Coding trajectories have a different structure — sequential attempts, error messages, corrections. Does the same Perceiver-style architecture generalize to this input format, or does it require architectural modifications to handle trajectory-shaped inputs?
-- **Does recursive refinement improve adapter quality?** The baseline is one-shot distillation: a single forward pass over a complete trajectory. Does the iterative generate-execute-reflect loop produce richer trajectories that yield measurably better adapters, or is the marginal improvement small enough that one-shot is sufficient?
-- **How do composed adapters interact?** LoRA adapters for different tasks operate in different subspaces of the weight matrix. When composed additively, do they interact constructively (useful transfer across task types) or destructively (interference that degrades performance on both tasks)? The answer depends on how correlated the task distributions are and how the adapter ranks are chosen.
-- **What is the minimum adapter corpus size for hypernetwork training?** The hypernetwork requires a diverse corpus of pre-trained LoRA adapters as training data — a cold-start problem. How many adapters are needed before the hypernetwork produces useful outputs? This determines the feasibility timeline for the hypernetwork component specifically.
+- **Does the hypernetwork produce adapters that improve Pass@1 on real hardware?** The hypernetwork architecture is implemented and tested on CPU. The critical validation — measuring Pass@1 improvement on held-out coding tasks vs the base model — requires GPU e2e runs.
+- **How do TIES/DARE-merged adapters interact across task types?** Merging is implemented and tested for correctness. Whether merged adapters transfer constructively across task types (useful knowledge sharing) or destructively (interference) depends on task distribution correlation and remains an empirical question.
+- **What is the minimum adapter corpus size for effective hypernetwork training?** The D2L training pipeline is built. The cold-start question — how many diverse adapters are needed before the hypernetwork generalizes — will be answered by early GPU training runs.
+- **Does recursive refinement improve adapter quality?** The per-phase iteration loop with early stopping is implemented. Whether richer trajectories (more attempts, more error corrections) produce measurably better adapters than single-pass trajectories is an empirical question for GPU validation.
 
 ---
 
@@ -182,29 +179,35 @@ The architecture is detailed enough to implement. The open question is whether t
 
 ## System Components
 
-Rune is structured as a monorepo with four new services and two extended libraries:
+Rune is structured as a monorepo with services, libraries, and a scripts-based orchestration layer:
 
 | Component | Status | Role |
 |-----------|--------|------|
-| `services/rune-agent` | New | Recursive code generation loop (LangGraph), sandbox tool integration, adapter selection |
-| `services/lora-server` | New | vLLM subprocess serving base model with dynamic LoRA adapter loading |
-| `services/training-svc` | New | Async hypernetwork training and LoRA fine-tuning jobs |
-| `services/evolution-svc` | New | Adapter fitness evaluation, lifecycle management, pruning, and promotion |
-| `libs/adapter-registry` | New | Adapter metadata (SQLite), versioned `.safetensors` files on local filesystem |
-| `libs/model-training` | Extend | PEFT utilities, hypernetwork model definition |
-| `services/api-service` | Extend | REST API adding session and adapter registry routes |
-
-The build order follows component dependencies: `adapter-registry` first (no dependencies), then `lora-server` (unblocks all agent work), then `model-training` extensions, `api-service` extensions, `rune-agent`, `evolution-svc`, `training-svc`, and finally the hypernetwork (requires a corpus of pre-trained adapters). This ordering ensures the core hypothesis can be tested — with direct LoRA fine-tuning — before the hypernetwork component is built.
+| `scripts/` | Implemented | Fat orchestrator: `rune_runner.py` (pipeline), `swarm.py` (multi-agent), `swarm_workers.py` (training pool), `swarm_evolution.py` (merging/pruning), `e2e_test.py` |
+| `services/rune-agent` | Implemented | LangGraph state graph: generate → execute → reflect → save, with single-iteration mode for outer loop control |
+| `services/training-svc` | Implemented | FastAPI service: POST /train/lora, POST /train/hypernetwork, GET /jobs/{id} |
+| `services/evolution-svc` | Partial | FastAPI service with endpoint stubs: /evaluate, /evolve, /promote, /prune. Evolution logic lives in `scripts/swarm_evolution.py` |
+| `libs/adapter-registry` | Implemented | SQLite + filesystem adapter store with write-once enforcement, fitness queries, lineage tracking |
+| `libs/model-training` | Implemented | Hypernetwork, D2L training pipeline, TIES/DARE merging, QLoRA trainer, PEFT utilities |
+| `libs/inference` | Implemented | Provider-agnostic interface with Transformers, llama.cpp, Ollama, and vLLM backends |
+| `libs/shared` | Implemented | Hardware probe, sandbox, checkpoint DB, template loader, Rune data models, storage utils |
+| `libs/evaluation` | Implemented | OOD benchmark, Pass@k metrics, fitness scoring, generalization delta |
+| `libs/events-py` | Implemented | Event envelope (created/updated/deleted) with typed helpers |
+| `services/api-service` | Implemented | REST API with adapter and session routes |
 
 ---
 
 ## Collaboration
 
-Rune is at the research stage — there is no working code to contribute to yet. But if you are working on hypernetwork training for procedural knowledge, LoRA episodic memory for agents, or local inference and training infrastructure on consumer hardware, this is adjacent territory. Discussion, critique, and related work are welcome.
+Contributions are welcome. To get started:
 
-Open a thread in [GitHub Discussions](../../discussions) or reach out directly. The architecture documentation, design decisions, and open questions are available in the project documentation.
+1. **Run the tests:** `uv sync --all-extras && uv run pytest` (301+ tests, runs in ~1 minute on CPU)
+2. **Follow conventions:** Google docstrings, `ruff` for linting, `mypy` for type checking, `uv` for dependency management
+3. **Key entry points:** `scripts/rune_runner.py` (pipeline), `scripts/swarm.py` (orchestrator), `scripts/e2e_test.py` (end-to-end)
 
-The most useful form of collaboration at this stage is critique: identifying flaws in the architectural reasoning, pointing to prior work that addresses the open questions, or sharing results from related experiments. Code contributions will become relevant once the core hypothesis is validated and implementation begins.
+If you are working on hypernetwork training for procedural knowledge, LoRA episodic memory for agents, or local inference/training infrastructure on consumer hardware — this is adjacent territory. Discussion, critique, and GPU validation results are especially valuable at this stage.
+
+Open a thread in [GitHub Discussions](../../discussions) or reach out directly.
 
 ---
 

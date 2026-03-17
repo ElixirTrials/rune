@@ -2,9 +2,58 @@
 
 from pathlib import Path
 
-from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
+from shared.hardware import (
+    MIN_TRAINING_VRAM_MB,
+    VRAM_PER_LORA_MB,
+    GPUInfo,
+    HardwareBudget,
+    HardwareProbe,
+    get_best_device,
+)
+from shared.rune_models import (
+    AdapterRef,
+    CodingSession,
+    EvolMetrics,
+    PipelinePhase,
+    SwarmCheckpoint,
+    SwarmConfig,
+    TaskStatus,
+)
+from shared.sandbox import (
+    NsjailBackend,
+    SandboxBackend,
+    SandboxResult,
+    SubprocessBackend,
+    get_sandbox_backend,
+)
+from shared.storage_utils import create_service_engine, set_wal_mode
+from shared.template_loader import render_prompt, render_trajectory
 
-__all__ = ["AdapterRef", "CodingSession", "EvolMetrics", "get_prompts_dir"]
+__all__ = [
+    "AdapterRef",
+    "CodingSession",
+    "EvolMetrics",
+    "GPUInfo",
+    "HardwareBudget",
+    "HardwareProbe",
+    "MIN_TRAINING_VRAM_MB",
+    "NsjailBackend",
+    "PipelinePhase",
+    "SandboxBackend",
+    "SandboxResult",
+    "SubprocessBackend",
+    "SwarmCheckpoint",
+    "SwarmConfig",
+    "TaskStatus",
+    "VRAM_PER_LORA_MB",
+    "create_service_engine",
+    "get_best_device",
+    "get_prompts_dir",
+    "get_sandbox_backend",
+    "render_prompt",
+    "render_trajectory",
+    "set_wal_mode",
+]
 
 
 def get_prompts_dir() -> Path:

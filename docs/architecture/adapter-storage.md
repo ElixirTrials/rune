@@ -10,34 +10,19 @@ For the component that implements this storage, see [Monorepo Mapping](monorepo-
 
 ## Filesystem Path Convention
 
-Adapters are stored under a configurable root directory (default: `~/.rune/adapters/`). The path encodes the adapter's position in the three-level hierarchy and ensures uniqueness via version identifiers.
+Adapters are stored under a configurable root directory (default: `~/.rune/adapters/`). The structure is flat — each adapter gets a directory named by its ID.
 
 ```
 ~/.rune/adapters/
-  project/
-    {project_id}/
-      v{version}/
-        adapter.safetensors
-        adapter_config.json
-  domain/
-    {domain_slug}/
-      v{version}/
-        adapter.safetensors
-        adapter_config.json
-  task/
-    {task_type}/
-      {adapter_id}/
-        adapter.safetensors
-        adapter_config.json
+  {adapter_id}/
+    adapter.safetensors
+    adapter_config.json
 ```
 
 ### Path Components
 
 | Component | Format | Example |
 |-----------|--------|---------|
-| Hierarchy level | `project`, `domain`, `task` | `task/` |
-| Project ID | Slugified project name | `rune-core` |
-| Domain slug | Kebab-case domain descriptor | `python-async`, `fastapi-patterns` |
 | Task type | Kebab-case task category | `bug-fix`, `feature-impl`, `refactor` |
 | Adapter ID | UUID v4 | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
 | Version | Monotonically increasing integer | `v1`, `v2`, `v3` |
@@ -57,57 +42,32 @@ The `adapter_config.json` follows the standard PEFT format, ensuring adapters ar
 
 The adapter registry maintains a SQLite database at `~/.rune/adapter_registry.db`. This database is the source of truth for adapter metadata — the filesystem stores weights, SQLite stores everything else.
 
-### adapters table
+### AdapterRecord (table: adapter_records)
 
-```sql
-CREATE TABLE adapters (
-    id              TEXT PRIMARY KEY,   -- UUID v4
-    version         INTEGER NOT NULL,   -- Monotonically increasing per lineage
-    task_type       TEXT NOT NULL,       -- e.g. 'bug-fix', 'feature-impl'
-    hierarchy_level TEXT NOT NULL,       -- 'project', 'domain', or 'task'
-    domain          TEXT,               -- Domain slug (NULL for task-level)
-    project_id      TEXT,               -- Project ID (NULL for task/domain-level)
-    base_model_id   TEXT NOT NULL,       -- e.g. 'Qwen/Qwen2.5-Coder-7B-Instruct'
-    rank            INTEGER NOT NULL,    -- LoRA rank (e.g. 64)
-    created_at      TEXT NOT NULL,       -- ISO 8601 timestamp
-    file_path       TEXT NOT NULL,       -- Relative path from adapter root
-    file_hash       TEXT NOT NULL,       -- SHA-256 of adapter.safetensors
-    file_size_bytes INTEGER NOT NULL,    -- Size of adapter.safetensors
-    pass_rate       REAL,               -- 0.0-1.0, NULL if not yet evaluated
-    fitness_score   REAL,               -- Composite fitness (pass_rate + generalization)
-    source          TEXT NOT NULL,       -- 'fine-tune' or 'hypernetwork'
-    trajectory_id   TEXT,               -- FK to trajectories table
-    session_id      TEXT NOT NULL,       -- Session that produced this adapter
-    is_archived     INTEGER DEFAULT 0,  -- 1 if pruned by evolution-svc
-    parent_id       TEXT,               -- ID of adapter this was promoted from
-    UNIQUE(file_path)
-);
-```
+The schema is defined as a SQLModel class (`AdapterRecord`). Fields with `(indexed)` have `Field(index=True)` in the model definition.
 
-### trajectories table
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PRIMARY KEY | UUID string |
+| `version` | INTEGER NOT NULL | Lineage tracking |
+| `task_type` | TEXT NOT NULL | e.g. 'bug-fix' (indexed) |
+| `base_model_id` | TEXT NOT NULL | e.g. 'Qwen/Qwen2.5-Coder-7B' |
+| `rank` | INTEGER NOT NULL | LoRA rank |
+| `created_at` | TEXT NOT NULL | ISO 8601 |
+| `file_path` | TEXT NOT NULL | Path to .safetensors |
+| `file_hash` | TEXT NOT NULL | SHA-256 |
+| `file_size_bytes` | INTEGER NOT NULL | |
+| `pass_rate` | REAL | 0.0-1.0, NULL if unevaluated |
+| `fitness_score` | REAL | Composite fitness, NULL if unevaluated |
+| `source` | TEXT NOT NULL | 'distillation', 'evolution', 'manual' |
+| `session_id` | TEXT NOT NULL | Session that produced this |
+| `is_archived` | INTEGER DEFAULT 0 | Soft delete |
+| `parent_ids` | TEXT | JSON list of parent adapter IDs |
+| `generation` | INTEGER DEFAULT 0 | Evolutionary generation |
+| `training_task_hash` | TEXT | Deduplication key (indexed) |
+| `agent_id` | TEXT | Swarm agent identifier |
 
-```sql
-CREATE TABLE trajectories (
-    id              TEXT PRIMARY KEY,   -- UUID v4
-    task_id         TEXT NOT NULL,       -- External task identifier
-    task_type       TEXT NOT NULL,       -- Matches adapter task_type
-    attempt_count   INTEGER NOT NULL,    -- Number of generate-execute-reflect cycles
-    outcome         TEXT NOT NULL,       -- 'success' or 'exhausted'
-    created_at      TEXT NOT NULL,       -- ISO 8601 timestamp
-    trajectory_json TEXT NOT NULL        -- Full trajectory record (see Recursive Loop doc)
-);
-```
-
-### Indexes
-
-```sql
-CREATE INDEX idx_adapters_task_type ON adapters(task_type);
-CREATE INDEX idx_adapters_hierarchy ON adapters(hierarchy_level);
-CREATE INDEX idx_adapters_fitness ON adapters(fitness_score DESC);
-CREATE INDEX idx_adapters_session ON adapters(session_id);
-CREATE INDEX idx_adapters_created ON adapters(created_at);
-CREATE INDEX idx_adapters_archived ON adapters(is_archived);
-```
+Indexing is handled by SQLModel via `Field(index=True)` on the model class — no separate index creation is needed.
 
 ---
 
@@ -117,36 +77,35 @@ Adapter immutability is a correctness requirement, not a convention. The write-o
 
 ### Storage API Level
 
-The `adapter_registry` library exposes a `store_adapter()` function that is the only code path for writing adapters. This function enforces:
+The `adapter_registry` library exposes a `store()` method that is the only code path for writing adapters. This method enforces:
 
-1. **ID uniqueness**: If `id` already exists in SQLite, the write is rejected with an error (not silently ignored).
+1. **ID uniqueness**: If `id` already exists in SQLite, the write is rejected with `AdapterAlreadyExistsError`.
 2. **Path uniqueness**: If `file_path` already exists on the filesystem, the write is rejected.
-3. **No update API**: There is no `update_adapter()` or `overwrite_adapter()` function. The API surface makes overwrites impossible by omission.
+3. **No update API**: There is no overwrite or update-weights method. The API surface makes overwrites impossible by omission.
 
 ### Lifecycle Operations
 
 | Operation | Allowed | Mechanism |
 |-----------|---------|-----------|
-| Create new adapter | Yes | `store_adapter()` — new ID, new path |
-| Read adapter metadata | Yes | `get_adapter()`, `query_adapters()` |
+| Create new adapter | Yes | `store()` — new ID, new path |
+| Read adapter metadata | Yes | `retrieve_by_id()`, `query_by_task_type()`, `query_best_for_task()`, `list_all()` |
 | Read adapter weights | Yes | Load `.safetensors` from `file_path` |
-| Overwrite existing adapter | No | Rejected by storage API |
+| Overwrite existing adapter | No | Rejected by storage API with `AdapterAlreadyExistsError` |
 | Delete adapter file | No | Not exposed in API |
-| Archive adapter (soft delete) | Yes | `archive_adapter()` sets `is_archived = 1` |
+| Archive adapter (soft delete) | Yes | `archive()` sets `is_archived = 1` |
 | Update fitness score | Yes | `update_fitness()` — metadata-only, weights unchanged |
-| Update pass rate | Yes | `update_pass_rate()` — metadata-only, weights unchanged |
 
 Metadata fields (`pass_rate`, `fitness_score`, `is_archived`) are mutable because they describe the adapter's evaluation state, not its weights. The weight file and its hash are immutable after creation.
 
 ### New Versions, Not Overwrites
 
-When the evolution operator promotes a task-level adapter to domain level, it creates a new adapter entry at the domain level with a `parent_id` pointing to the source. The original task-level adapter remains unchanged. The version field tracks lineage — `v2` of a domain adapter is a successor to `v1`, but `v1` still exists and is still queryable.
+When the evolution operator produces a new adapter from one or more parents, it creates a new adapter entry with `parent_ids` (a JSON list) pointing to the sources. The original adapters remain unchanged. The version field tracks lineage — version 2 of an adapter is a successor to version 1, but version 1 still exists and is still queryable.
 
 ---
 
 ## Querying Without GPU
 
-A design requirement is that adapter metadata must be queryable without loading weights into GPU memory. The SQLite database stores all metadata needed for adapter selection, fitness ranking, and lifecycle management. The only operation that requires GPU memory is loading `adapter.safetensors` into the vLLM serving process for inference.
+A design requirement is that adapter metadata must be queryable without loading weights into GPU memory. The SQLite database stores all metadata needed for adapter selection, fitness ranking, and lifecycle management. The only operation that requires GPU memory is loading `adapter.safetensors` into the inference provider for inference.
 
 This separation means the adapter registry can power dashboards, CLI tools, and batch evaluation scripts on CPU-only machines while the GPU machines handle serving and training.
 

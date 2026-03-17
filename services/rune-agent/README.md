@@ -1,42 +1,38 @@
-# Guest Interaction Agent
+# rune-agent
 
-## Purpose
-This component implements a specific AI agent workflow for interacting with guests. It uses LangGraph to define the flow and state.
+LangGraph state graph implementing the recursive code generation loop.
 
-## Implementation Guide
+## Architecture
 
-### 1. Define State
-Create a typed state in `src/rune_agent/state.py`:
-```python
-from typing import TypedDict, Annotated
-from langgraph.graph.message import add_messages
+The agent defines a `StateGraph` with four nodes:
 
-class AgentState(TypedDict):
-    messages: Annotated[list, add_messages]
-    context: dict
+```
+START → generate → execute → reflect → [should_retry] → generate (retry) OR save_trajectory → END
 ```
 
-### 2. Define Nodes
-Create node functions in `src/rune_agent/nodes.py`.
-```python
-async def extraction_node(state: AgentState):
-    # Call model via inference component
-    result = await extractor(state["context"])
-    return {"extracted": result}
-```
+Two graph modes:
+- **`create_graph()`** — Standard loop with retry logic (used standalone)
+- **`create_single_iteration_graph()`** — Single iteration: generate → execute → reflect → END (used by `scripts/rune_runner.py`'s outer iteration loop, where the hypernetwork produces a new adapter between iterations)
 
-### 3. Build Graph
-Assemble the graph in `src/rune_agent/graph.py`.
-```python
-from langgraph.graph import StateGraph, START, END
+## Key Files
 
-def create_graph():
-    workflow = StateGraph(AgentState)
-    workflow.add_node("extract", extraction_node)
-    workflow.add_edge(START, "extract")
-    workflow.add_edge("extract", END)
-    return workflow.compile()
-```
+| File | Purpose |
+|------|---------|
+| `graph.py` | Graph construction (`create_graph`, `create_single_iteration_graph`, `should_retry` router) |
+| `nodes.py` | Node implementations (`generate_node`, `execute_node`, `reflect_node`, `save_trajectory_node`) |
+| `state.py` | `RuneState` TypedDict defining the agent state |
 
-## Running the Agent
-You can test this agent in isolation using the notebook at `src/rune_agent/notebooks/playground.ipynb` or via `pytest`.
+## State
+
+`RuneState` tracks: task description, generated code, execution results, test pass/fail, attempt count, max attempts, trajectory history.
+
+## Retry Logic
+
+`should_retry(state)` routes from reflect:
+- Tests passed → `save_trajectory` (success)
+- Attempts exhausted → `save_trajectory` (exhausted)
+- Otherwise → `generate` (retry)
+
+## Relationship to Pipeline
+
+The outer 4-phase pipeline (`scripts/rune_runner.py`) uses `create_single_iteration_graph()` for each iteration within a phase. Between iterations, the hypernetwork can generate a fresh adapter. The agent graph handles a single generate-execute-reflect cycle; the pipeline handles phase sequencing and iteration.

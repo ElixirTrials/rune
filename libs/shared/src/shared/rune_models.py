@@ -4,9 +4,48 @@ Defines the shared data shapes for coding sessions, adapter references,
 and evolutionary fitness metrics used across all Rune services.
 """
 
+from __future__ import annotations
+
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
+
+
+class TaskStatus(str, Enum):
+    """Canonical status strings used across services and swarm checkpoints.
+
+    Inherits from ``str`` so values are JSON-serialisable and can be compared
+    directly to string literals in existing code (e.g. ``record.status == "running"``).
+
+    Example:
+        >>> TaskStatus.RUNNING
+        <TaskStatus.RUNNING: 'running'>
+        >>> TaskStatus.RUNNING == "running"
+        True
+        >>> "running" == TaskStatus.RUNNING
+        True
+    """
+
+    PENDING = "pending"
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SUCCESS = "success"
+    EXHAUSTED = "exhausted"
+
+
+class PipelinePhase(str, Enum):
+    """Pipeline phases for the multi-phase swarm pipeline.
+
+    Each phase uses a dedicated Jinja2 trajectory template and prompt template.
+    """
+
+    DECOMPOSE = "decompose"
+    PLAN = "plan"
+    CODE = "code"
+    INTEGRATE = "integrate"
 
 
 class AdapterRef(BaseModel):
@@ -96,3 +135,51 @@ class EvolMetrics(BaseModel):
     pass_rate: float
     fitness_score: float
     generalization_delta: Optional[float] = None
+
+
+class SwarmConfig(BaseModel):
+    """Configuration for a swarm execution run.
+
+    Attributes:
+        db_url: SQLite database URL for the adapter registry.
+        task_source: Path to task definitions file or inline task list.
+        population_size: Number of concurrent swarm agents.
+        max_generations: Maximum evolutionary generations.
+        evolution_interval: Seconds between evolution sweeps.
+        sandbox_backend: Execution backend ('subprocess' or 'nsjail').
+        base_model_id: HuggingFace model identifier for inference.
+        hypernetwork_checkpoint: Path to pretrained hypernetwork checkpoint.
+    """
+
+    db_url: str = "sqlite:///rune_swarm.db"
+    task_source: str = "tasks.json"
+    population_size: int = 8
+    max_generations: int = 10
+    max_iterations: int = 5
+    evolution_interval: int = 7200
+    sandbox_backend: str = "subprocess"
+    base_model_id: str = "Qwen/Qwen2.5-Coder-7B"
+    device: str = "cpu"
+    hypernetwork_checkpoint: str | None = None
+
+
+class SwarmCheckpoint(BaseModel):
+    """Status record for a single swarm task execution.
+
+    Attributes:
+        run_id: Unique identifier for the swarm run.
+        task_hash: Hash of the task being executed.
+        agent_id: Identifier of the agent executing the task.
+        status: Current status (pending, running, completed, failed).
+        outcome: Result description when completed.
+        started_at: ISO 8601 timestamp when execution began.
+        completed_at: ISO 8601 timestamp when execution finished.
+    """
+
+    run_id: str
+    task_hash: str
+    agent_id: str
+    status: str = "pending"
+    outcome: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None

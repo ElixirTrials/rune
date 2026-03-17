@@ -1,0 +1,8 @@
+# Swarm execution configuration
+db_url: "sqlite:///rune_swarm.db"
+task_source: "tasks.json"
+population_size: 8
+max_generations: 10
+evolution_interval: 7200
+sandbox_backend: "subprocess"
+base_model_id: "Qwen/Qwen2.5-Coder-7B"

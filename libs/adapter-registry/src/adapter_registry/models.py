@@ -1,7 +1,5 @@
 """SQLModel table model for LoRA adapter metadata records."""
 
-from typing import Optional
-
 from sqlmodel import Field, SQLModel
 
 
@@ -26,6 +24,10 @@ class AdapterRecord(SQLModel, table=True):
         source: How the adapter was created ('distillation', 'evolution', 'manual').
         session_id: ID of the coding session that produced this adapter.
         is_archived: Whether this adapter has been archived (soft delete).
+        parent_ids: JSON-encoded list of parent adapter IDs for lineage tracking.
+        generation: Evolutionary generation number (0 for initial adapters).
+        training_task_hash: Deduplication key for the training task.
+        agent_id: Identifier of the swarm agent that produced this adapter.
 
     Example:
         >>> record = AdapterRecord(
@@ -53,8 +55,12 @@ class AdapterRecord(SQLModel, table=True):
     file_path: str
     file_hash: str
     file_size_bytes: int
-    pass_rate: Optional[float] = Field(default=None)
-    fitness_score: Optional[float] = Field(default=None)
+    pass_rate: float | None = Field(default=None)
+    fitness_score: float | None = Field(default=None)
     source: str
     session_id: str
     is_archived: bool = Field(default=False)
+    parent_ids: str | None = Field(default=None)
+    generation: int = Field(default=0)
+    training_task_hash: str | None = Field(default=None, index=True)
+    agent_id: str | None = Field(default=None)

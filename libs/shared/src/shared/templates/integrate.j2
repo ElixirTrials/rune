@@ -1,0 +1,12 @@
+ROLE: integrator
+PROJECT: {{ project[:400] }}
+SUBTASKS COMPLETED: {{ subtask_count }}
+CODE SKELETONS:
+{% for name, skeleton in skeletons.items() %}
+--- {{ name }} ---
+{{ skeleton[:300] }}
+{% endfor %}
+METHODOLOGY: Assemble all subtask implementations into a single cohesive
+module. Resolve import dependencies, ensure consistent naming across
+modules, wire up cross-layer calls, and add integration tests that
+exercise end-to-end workflows and edge cases.

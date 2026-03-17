@@ -6,13 +6,13 @@ This page provides an overview of all microservices and shared libraries in this
 
 | Component | Description | Documentation |
 | :--- | :--- | :--- |
-| **adapter-registry** | No description available. | [API Reference](adapter-registry/api/index.md) |
-| **api-service** | The API Service is the central orchestrator for the application. It provides HTTP endpoints for the frontend, manages database persistence, and triggers background agent tasks. | [API Reference](api-service/api/index.md) |
-| **evaluation** | This component runs offline evaluation benchmarks against your agents. | [API Reference](evaluation/api/index.md) |
-| **events-py** | Shared event envelope shapes and helpers used by Python services that publish or consume events. | [API Reference](events-py/api/index.md) |
-| **evolution-svc** | Adapter evaluation, evolution, promotion, and pruning service for Rune. | [API Reference](evolution-svc/api/index.md) |
-| **inference** | This component acts as the "Standard Library" for AI in this repository. It centralizes model loading, prompt rendering, and agent construction to ensure consistency across all services. | [API Reference](inference/api/index.md) |
-| **model-training** | This component handles fine-tuning (LoRA), distillation, or training of custom models. | [API Reference](model-training/api/index.md) |
-| **rune-agent** | This component implements a specific AI agent workflow for interacting with guests. It uses LangGraph to define the flow and state. | [API Reference](rune-agent/api/index.md) |
-| **shared** | This component holds code that is strictly **common** to multiple components. This usually includes: | [API Reference](shared/api/index.md) |
-| **training-svc** | LoRA and hypernetwork training job service for Rune. | [API Reference](training-svc/api/index.md) |
+| **adapter-registry** | SQLite + filesystem store for LoRA adapter metadata with write-once enforcement, fitness queries, and lineage tracking. | [API Reference](adapter-registry/api/index.md) |
+| **api-service** | FastAPI orchestrator providing HTTP endpoints for adapter management, session tracking, and service coordination. | [API Reference](api-service/api/index.md) |
+| **evaluation** | Adapter benchmarking with OOD testing, Pass@k metrics, fitness scoring, and generalization delta computation. | [API Reference](evaluation/api/index.md) |
+| **events-py** | Shared event envelope shapes (created/updated/deleted) and helpers used by Python services. | [API Reference](events-py/api/index.md) |
+| **evolution-svc** | Adapter evaluation, evolution, promotion, and pruning service. REST stubs; evolution logic in `scripts/swarm_evolution.py`. | [API Reference](evolution-svc/api/index.md) |
+| **inference** | Provider-agnostic inference interface with TransformersProvider, LlamaCppProvider, OllamaProvider, and VLLMProvider backends. | [API Reference](inference/api/index.md) |
+| **model-training** | DocToLoraHypernetwork, D2L training pipeline, TIES/DARE adapter merging, QLoRA fine-tuning, and PEFT utilities. | [API Reference](model-training/api/index.md) |
+| **rune-agent** | LangGraph state graph implementing the recursive generate → execute → reflect coding loop with single-iteration mode for pipeline integration. | [API Reference](rune-agent/api/index.md) |
+| **shared** | Hardware probe, sandbox (SubprocessBackend), checkpoint DB, Jinja2 template loader, Rune data models, and storage utilities. | [API Reference](shared/api/index.md) |
+| **training-svc** | FastAPI service for LoRA fine-tuning and hypernetwork training jobs (POST /train/lora, POST /train/hypernetwork, GET /jobs/{id}). | [API Reference](training-svc/api/index.md) |

@@ -3,12 +3,11 @@
 import logging
 import os
 import re
-import subprocess
-import tempfile
 from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
+from shared.sandbox import get_sandbox_backend
 
 from .state import RuneState
 
@@ -16,14 +15,18 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanation."
 DEFAULT_TIMEOUT = 30
-DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B"
+DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 
 
 def _build_prompt(state: RuneState) -> str:
     """Build the user prompt for the LLM based on current attempt.
 
-    First attempt (attempt_count == 0): includes task description and test suite.
-    Retry (attempt_count > 0): also includes prior code, stdout, stderr, exit code.
+    When ``state["phase"]`` is set, renders the corresponding Jinja2 prompt
+    template (e.g. ``prompt_code.j2``).  Retry context is intentionally
+    omitted — errors flow through the adapter weights, not the prompt.
+
+    When ``state["phase"]`` is ``None``, preserves the original behaviour
+    for backward compatibility.
 
     Args:
         state: Current agent state.
@@ -31,6 +34,13 @@ def _build_prompt(state: RuneState) -> str:
     Returns:
         Formatted prompt string.
     """
+    phase = state.get("phase")
+
+    if phase is not None:
+        from shared.template_loader import render_prompt
+
+        return render_prompt(phase, task_description=state["task_description"])
+
     task = state["task_description"]
     test_suite = state["test_suite"]
 
@@ -105,6 +115,7 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
         prompt=full_prompt,
         model=model,
         adapter_id=adapter_id,
+        max_tokens=4096,
     )
 
     extracted = _extract_code(result.text)
@@ -141,29 +152,13 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     timeout: int = int(os.environ.get("RUNE_EXEC_TIMEOUT", DEFAULT_TIMEOUT))
 
     script = state["generated_code"] + "\n\n" + state["test_suite"]
+    backend = get_sandbox_backend()
+    result = backend.run(script, timeout=timeout)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        script_path = tmpdir + "/solution.py"
-        with open(script_path, "w") as f:
-            f.write(script)
-
-        try:
-            proc = subprocess.run(
-                ["python", script_path],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=tmpdir,
-            )
-            stdout = proc.stdout
-            stderr = proc.stderr
-            exit_code = proc.returncode
-            tests_passed = proc.returncode == 0
-        except subprocess.TimeoutExpired:
-            stdout = ""
-            stderr = f"Execution timed out after {timeout}s"
-            exit_code = 1
-            tests_passed = False
+    stdout = result.stdout
+    stderr = result.stderr
+    exit_code = result.exit_code
+    tests_passed = result.exit_code == 0 and not result.is_timed_out
 
     logger.info(
         "execute_node: exit_code=%d, tests_passed=%s",

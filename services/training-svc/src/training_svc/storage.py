@@ -1,15 +1,9 @@
 """Database storage configuration for training service."""
 
-import os
+from shared.storage_utils import create_service_engine
+from sqlmodel import SQLModel
 
-from sqlmodel import SQLModel, create_engine
-
-# Get database URL from environment or default to SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///training_svc.db")
-
-# Create engine with appropriate settings
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args, echo=False)
+engine = create_service_engine("sqlite:///training_svc.db")
 
 
 def create_db_and_tables() -> None:

@@ -14,24 +14,25 @@ For the component build order and dependency chain, see [Build Order](../appendi
 
 | Rune Service | Path | Extends / Runs Alongside | Integration Points |
 |-------------|------|--------------------------|-------------------|
-| `rune-agent` | `services/rune-agent/` | Runs alongside existing services | Consumes `libs/adapter-registry` for adapter selection; calls `lora-server` for inference; uses `libs/events-py` for event publishing; manages Docker sandbox containers |
-| `lora-server` | `services/lora-server/` | Runs alongside `services/inference` (existing) | Wraps vLLM subprocess with dynamic LoRA loading; exposes adapter loading API; coordinates GPU lease with `training-svc` |
-| `training-svc` | `services/training-svc/` | Extends `libs/model-training` | Consumes PEFT utilities from `model-training`; reads adapter corpus from `adapter-registry`; acquires GPU lease from `lora-server` for training jobs |
-| `evolution-svc` | `services/evolution-svc/` | Runs alongside `services/evaluation` (existing) | Reads adapter metadata from `adapter-registry`; evaluates adapter fitness using held-out test sets; writes promotion/pruning events via `libs/events-py` |
+| `rune-agent` | `services/rune-agent/` | LangGraph state graph (generate → execute → reflect) with 4-phase pipeline (decompose → plan → code → integrate) | Consumes `libs/adapter-registry` for adapter selection; uses `libs/inference` providers for generation; uses `libs/events-py` for event publishing; manages sandbox containers via `libs/shared` |
+| `training-svc` | `services/training-svc/` | Extends `libs/model-training` (FastAPI) | Consumes PEFT utilities and hypernetwork from `model-training`; reads adapter corpus from `adapter-registry`; coordinates GPU via vLLM sleep/wake REST calls managed by `scripts/swarm_workers.py` |
+| `evolution-svc` | `services/evolution-svc/` | FastAPI stubs; primary logic in `scripts/swarm_evolution.py` | Reads adapter metadata from `adapter-registry`; evaluates adapter fitness using held-out test sets; writes promotion/pruning events via `libs/events-py` |
 
 ### New Libraries
 
 | Rune Library | Path | Extends / New | Consumers |
 |-------------|------|---------------|-----------|
-| `adapter-registry` | `libs/adapter-registry/` | New | `rune-agent`, `lora-server`, `training-svc`, `evolution-svc`, `api-service` |
+| `adapter-registry` | `libs/adapter-registry/` | New (implemented) | `rune-agent`, `training-svc`, `evolution-svc`, `api-service` |
 
 ### Extended Existing Components
 
 | Component | Path | What Changes |
 |-----------|------|-------------|
-| `model-training` | `libs/model-training/` | Add PEFT utilities: QLoRA config helpers, trajectory-to-adapter fine-tuning script, hypernetwork model definition |
+| `model-training` | `libs/model-training/` | Hypernetwork (DocToLoraHypernetwork), D2L training pipeline (d2l_train, d2l_data, d2l_probe, d2l_config, d2l_lora, d2l_prep, d2l_mining), TIES/DARE merging (merging.py), QLoRA trainer, PEFT utilities, Sakana D2L integration |
 | `api-service` | `services/api-service/` | Add REST routes: `/adapters` (registry CRUD), `/sessions` (agent session state); new SQLModel tables for session tracking |
-| `inference` | `libs/inference/` | Add adapter-aware inference client that routes requests through `lora-server` with adapter selection headers |
+| `inference` | `libs/inference/` | Provider-agnostic interface (InferenceProvider ABC) with TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider backends and factory for configuration-based selection |
+| `shared` | `libs/shared/` | Hardware probe, sandbox (SubprocessBackend), checkpoint DB, template loader, Rune data models (CodingSession, SwarmConfig, PipelinePhase), storage utils |
+| `evaluation` | `libs/evaluation/` | OOD benchmark, fitness scoring, Pass@k metrics, generalization delta |
 
 ---
 
@@ -43,41 +44,39 @@ Every Rune component depends on the adapter registry. It provides two interfaces
 
 | Interface | Protocol | Consumers |
 |-----------|----------|-----------|
-| Python API (`adapter_registry.client`) | Direct import (in-process) | `rune-agent`, `training-svc`, `evolution-svc` |
+| Python API (`adapter_registry.registry.AdapterRegistry`) | Direct import (in-process) | `rune-agent`, `training-svc`, `evolution-svc` |
 | REST API (via `api-service`) | HTTP | External tools, UI, monitoring |
 
-The registry owns the SQLite database and the filesystem adapter store. See [Adapter Storage](adapter-storage.md) for schema and path conventions.
+The registry owns the SQLite database and the filesystem adapter store. Key exceptions: `AdapterAlreadyExistsError`, `AdapterNotFoundError`. See [Adapter Storage](adapter-storage.md) for schema and path conventions.
 
-### lora-server <-> training-svc (GPU lease)
+### GPU Coordination (vLLM sleep/wake)
 
-The lora-server and training-svc share the same two GPUs. They coordinate via a GPU lease mechanism:
+GPU coordination uses vLLM sleep/wake REST calls managed by `scripts/swarm_workers.py`. When a training job needs the GPU, the worker puts vLLM to sleep, runs QLoRA in a subprocess, then wakes vLLM:
 
 ```mermaid
 flowchart LR
-    TrainReq([Training Job Request]) --> Lease[Request GPU Lease]
-    Lease --> Check{lora-server idle?}
-    Check -->|yes| Yield[lora-server yields secondary GPU]
-    Check -->|no| Queue[Queue until idle]
-    Yield --> Train[training-svc runs on leased GPU]
-    Train --> Release[Release lease]
-    Release --> Resume[lora-server resumes full config]
+    TrainReq([Training Request]) --> Sleep[POST /sleep to vLLM]
+    Sleep --> Train[QLoRA in subprocess]
+    Train --> Wake[POST /wake_up to vLLM]
+    Wake --> Resume[Inference resumes]
 ```
 
-See [GPU Strategy](multi-gpu-strategy.md) for the full GPU lease protocol.
+See [GPU Strategy](multi-gpu-strategy.md) for the full GPU coordination protocol.
 
-### rune-agent <-> lora-server (inference)
+### rune-agent <-> inference providers
 
-The agent sends generation requests to the lora-server with adapter selection metadata. The lora-server loads the requested adapters via vLLM's dynamic LoRA API (S-LoRA unified paging) and returns generated code.
+The agent uses the `InferenceProvider` interface from `libs/inference/` for generation. The provider is selected via configuration-based factory, supporting multiple backends:
 
 | Field | Value |
 |-------|-------|
-| Protocol | HTTP (OpenAI-compatible `/v1/completions`) |
-| Adapter selection | `X-Adapter-IDs` header or request body field |
+| Interface | `InferenceProvider` ABC (`libs/inference/`) |
+| Backends | `TransformersProvider`, `LlamaCppProvider`, `OllamaProvider`, `VLLMProvider` |
+| Selection | Factory-based, driven by configuration |
 | Concurrency | Single-tenant (one agent session at a time in v1) |
 
 ### evolution-svc <-> adapter-registry (lifecycle)
 
-The evolution service reads adapter metadata, evaluates fitness on held-out tests, and writes lifecycle events:
+The evolution service reads adapter metadata, evaluates fitness on held-out tests, and writes lifecycle events. Note: evolution logic primarily lives in `scripts/swarm_evolution.py`, not in the service endpoints (which are stubs).
 
 | Operation | Description |
 |-----------|-------------|
@@ -85,6 +84,19 @@ The evolution service reads adapter metadata, evaluates fitness on held-out test
 | Promote | Move high-fitness task adapter to domain level |
 | Prune | Mark low-fitness adapters as archived (not deleted — write-once) |
 | Merge | Combine overlapping adapters into a new composite adapter |
+
+### scripts/ (fat orchestrator)
+
+The `scripts/` directory is the primary execution layer, collapsing the microservice architecture into single-process orchestration:
+
+| Script | Role |
+|--------|------|
+| `rune_runner.py` | 4-phase pipeline: decompose → plan → code → integrate |
+| `swarm.py` | Multi-agent orchestrator: agents + training pool + evolution + watchdog |
+| `swarm_workers.py` | Training pool manager: QLoRA in subprocess, vLLM sleep/wake |
+| `swarm_evolution.py` | Evolution worker: TIES/DARE merge, pruning, lineage tracking |
+| `e2e_test.py` | End-to-end test exercising full pipeline |
+| `bootstrap.py` | Path setup for scripts importing from libs/ |
 
 ---
 
@@ -94,8 +106,8 @@ These existing monorepo services are not modified by Rune and continue operating
 
 | Service / Library | Role | Rune Relationship |
 |------------------|------|-------------------|
-| `libs/shared` | Shared utilities | May consume for common config patterns |
-| `libs/evaluation` | Evaluation library | Used by `evolution-svc` for test execution harness |
+| `libs/shared` | Extended: hardware.py, checkpoint_db.py, sandbox.py, template_loader.py, rune_models.py, storage_utils.py | Consumed by scripts, services, and other libs |
+| `libs/evaluation` | Extended: ood_benchmark.py, metrics.py | Used by `evolution-svc` and `scripts/swarm_evolution.py` for fitness evaluation |
 
 ---
 
@@ -103,17 +115,23 @@ These existing monorepo services are not modified by Rune and continue operating
 
 ```
 rune/
+  scripts/                  # Fat orchestrator layer
+    rune_runner.py          # 4-phase pipeline
+    swarm.py                # Multi-agent orchestrator
+    swarm_workers.py        # Training pool, GPU coordination
+    swarm_evolution.py      # TIES/DARE merge, pruning
+    e2e_test.py             # End-to-end test
   services/
-    api-service/          # Extended: +adapter and session routes
-    rune-agent/           # Rune coding agent: recursive code generation loop
-    lora-server/          # New: vLLM serving with dynamic LoRA
-    training-svc/         # New: hypernetwork + fine-tuning jobs
-    evolution-svc/        # New: adapter lifecycle management
+    api-service/            # REST API with adapter and session routes
+    rune-agent/             # LangGraph state graph: generate → execute → reflect
+    training-svc/           # LoRA and hypernetwork training jobs (FastAPI)
+    evolution-svc/          # Adapter lifecycle endpoints (FastAPI, stubs)
   libs/
-    adapter-registry/     # New: SQLite + filesystem adapter store
-    model-training/       # Extended: +PEFT utilities, hypernetwork
-    inference/            # Extended: +adapter-aware client
-    events-py/            # Unchanged (consumed by new services)
-    evaluation/           # Unchanged (consumed by evolution-svc)
-    shared/               # Unchanged
+    adapter-registry/       # SQLite + filesystem adapter store
+    model-training/         # Hypernetwork, D2L pipeline, TIES/DARE, trainer
+    inference/              # Provider-agnostic: Transformers, llama.cpp, Ollama, vLLM
+    shared/                 # Hardware, sandbox, templates, models, checkpoint DB
+    evaluation/             # OOD benchmark, Pass@k, fitness scoring
+    events-py/              # Event envelope and helpers
+  docs/                     # MkDocs documentation
 ```

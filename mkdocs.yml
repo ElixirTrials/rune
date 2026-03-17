@@ -1,5 +1,5 @@
 site_name: Rune Documentation
-site_description: Implementation plan and architecture documentation for Rune
+site_description: Architecture documentation and component reference for the Rune coding agent
 site_author: Noah
 site_dir: site/docs
 docs_dir: docs
@@ -105,6 +105,7 @@ nav:
   - Monorepo Mapping: architecture/monorepo-mapping.md
   - Adapter Storage: architecture/adapter-storage.md
   - GPU Strategy: architecture/multi-gpu-strategy.md
+  - Swarm Architecture: swarm-architecture.md
 - Appendices:
   - Risk Matrix: appendices/risk-matrix.md
   - Build Order: appendices/build-order.md

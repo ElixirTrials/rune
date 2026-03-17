@@ -1,130 +1,142 @@
-# Recursive Code Generation Loop
+# 4-Phase Coding Pipeline
 
 ## Overview
 
-The recursive loop is Rune's central execution mechanism: a task enters, code is generated, executed, evaluated, and — if tests fail — the trajectory feeds back into generation. When the loop terminates (tests pass or max attempts reached), the complete trajectory is distilled into a LoRA adapter. This document specifies the data flow at each step, retry logic, and termination conditions.
+Rune's execution model is a 4-phase sequential pipeline. Phases 2 and 3 run as parallel swarms; phases 1 and 4 run single-agent. Within each phase, a generate-execute-reflect loop iterates until tests pass or max attempts are reached. Each phase is driven by a Jinja2 template, optionally enhanced by a hypernetwork-generated LoRA adapter.
 
-For the serving architecture that supports this loop, see [GPU Strategy](multi-gpu-strategy.md). For where the resulting adapters are stored, see [Adapter Storage](adapter-storage.md).
+For swarm orchestration details, see [Swarm Architecture](../swarm-architecture.md). For adapter storage, see [Adapter Storage](adapter-storage.md).
 
 ---
 
-## Loop Architecture
+## Pipeline Architecture
 
 ```mermaid
-flowchart TD
-    Task([Task + Selected Adapters]) --> Generate
-    Generate[Generate Code] --> Execute
-    Execute[Execute in Sandbox] --> Reflect
-    Reflect{Tests Pass?} -->|no, attempts remaining| Generate
-    Reflect -->|yes| Distill
-    Reflect -->|no, max attempts reached| Distill
-    Distill[Distill Trajectory] --> Store
-    Store([Store Adapter in Registry])
+flowchart LR
+    Task([Task]) --> P1[Phase 1: DECOMPOSE\nsingle agent]
+    P1 --> P2[Phase 2: PLAN\nparallel swarm]
+    P2 --> P3[Phase 3: CODE\nparallel swarm + retries]
+    P3 --> P4[Phase 4: INTEGRATE\nsingle agent]
+    P4 --> Done([Integrated Code\n+ Adapters])
 ```
 
 ---
 
-## Step-by-Step Data Flow
+## Phase Details
 
-### Step 1: Task Intake
-
-| Field | Description |
-|-------|-------------|
-| **Input** | Task description, test suite, selected adapter IDs from registry |
-| **Output** | Initialized agent state with loaded adapters |
-| **Side effects** | Adapter router queries registry, loads best-match adapters into lora-server |
-
-The adapter router queries the [adapter registry](adapter-storage.md) by task metadata (language, domain, task type) and selects the highest-fitness adapter at each hierarchy level. Selected adapters are loaded into the vLLM serving process via its dynamic LoRA API.
-
-### Step 2: Generate
+### Phase 1: DECOMPOSE (single agent)
 
 | Field | Description |
 |-------|-------------|
-| **Input** | Task description + trajectory so far (empty on first attempt) |
-| **Output** | Generated code (candidate solution) |
-| **Model** | Base SLM + loaded LoRA adapters, served via vLLM |
+| **Template** | `decompose.j2` (trajectory), `prompt_decompose.j2` (prompt) |
+| **Input** | Project specification |
+| **Output** | List of subtasks |
+| **Adapter** | `decompose_adapter` (if available) |
 
-On the first attempt, the prompt contains only the task description and test signatures. On subsequent attempts, the prompt includes the full trajectory: prior code attempts, execution outputs, error messages, and reflection notes. The trajectory grows monotonically — nothing is discarded between attempts.
+Breaks a project specification into discrete subtasks. Runs once with the base model (+ optional adapter).
 
-### Step 3: Execute
-
-| Field | Description |
-|-------|-------------|
-| **Input** | Generated code + test suite |
-| **Output** | Execution result: stdout, stderr, exit code, test results |
-| **Environment** | Docker sandbox: network-isolated, memory-limited, CPU-limited |
-
-The sandbox is a Docker container with no network access, read-only filesystem mounts (except the output directory), and strict resource limits. Agent-generated code cannot escape the container. The execution timeout is configurable per task but defaults to 30 seconds.
-
-### Step 4: Reflect
+### Phase 2: PLAN (parallel swarm)
 
 | Field | Description |
 |-------|-------------|
-| **Input** | Execution result + current attempt count |
-| **Output** | Decision: retry, distill-on-success, or distill-on-exhaustion |
-| **Logic** | Tests pass -> distill. Tests fail AND attempts < max -> retry. Tests fail AND attempts >= max -> distill anyway. |
+| **Template** | `plan.j2` (trajectory), `prompt_plan.j2` (prompt) |
+| **Input** | Project spec + one subtask per agent |
+| **Output** | Architecture plan per subtask |
+| **Adapter** | `plan_adapter` (if available) |
 
-The reflect step appends the execution result to the trajectory and evaluates termination conditions. The trajectory record includes the attempt number, generated code, full execution output, and the pass/fail determination. This record is the input to distillation regardless of outcome.
+Each subtask is assigned to a swarm agent. All agents run in parallel. Each produces an architecture plan for its subtask.
 
-### Step 5: Distill
-
-| Field | Description |
-|-------|-------------|
-| **Input** | Complete trajectory (all attempts, all execution results) |
-| **Output** | New LoRA adapter (`.safetensors` file) + metadata |
-| **Method** | Direct LoRA fine-tuning (Phase 3) or Doc-to-LoRA hypernetwork forward pass (Phase 4) |
-
-In Phase 3 (implementation plan), distillation uses direct LoRA fine-tuning: the trajectory is formatted as training data and a standard PEFT fine-tune produces the adapter. In Phase 4, the Doc-to-LoRA hypernetwork replaces this with a single forward pass — no gradient descent at inference time.
-
-Both successful and failed trajectories are distilled. A failed trajectory (max attempts reached, tests still failing) may still encode useful partial knowledge — debugging patterns, error recognition, partial solutions. The adapter metadata records whether the source trajectory was successful.
-
-### Step 6: Store
+### Phase 3: CODE (parallel swarm + retries)
 
 | Field | Description |
 |-------|-------------|
-| **Input** | New adapter file + metadata (task type, pass rate, trajectory outcome) |
-| **Output** | Adapter registered in SQLite, `.safetensors` written to filesystem |
-| **Policy** | Write-once: no existing adapter is overwritten. See [Adapter Storage](adapter-storage.md). |
+| **Template** | `code.j2` (first attempt), `code_retry.j2` (retries) |
+| **Input** | Subtask + plan + prior code skeleton |
+| **Output** | Working code per subtask |
+| **Adapter** | `code_adapter` (if available), refreshed via H() between iterations |
+
+The retry template (`code_retry.j2`) includes error summaries and attempt history. Between iterations, the hypernetwork H() can generate a fresh adapter from the accumulated trajectory. This is the primary phase where the recursive loop operates.
+
+### Phase 4: INTEGRATE (single agent)
+
+| Field | Description |
+|-------|-------------|
+| **Template** | `integrate.j2` (trajectory), `prompt_integrate.j2` (prompt) |
+| **Input** | Project spec + all code outputs from Phase 3 |
+| **Output** | Final integrated codebase |
+| **Adapter** | `integrate_adapter` (if available) |
+
+Merges all subtask code outputs into a coherent final codebase.
 
 ---
 
-## Retry and Termination
+## Per-Phase Iteration
 
-| Condition | Action | Trajectory State |
-|-----------|--------|-----------------|
-| Tests pass on attempt N | Terminate loop, distill | N attempts recorded, final attempt marked successful |
-| Tests fail, attempt < max | Retry from Generate | Trajectory grows by one attempt |
-| Tests fail, attempt = max | Terminate loop, distill | All attempts recorded, marked as exhausted |
-| Sandbox timeout | Treat as test failure | Timeout recorded in trajectory |
-| Sandbox crash (OOM, segfault) | Treat as test failure | Crash details recorded in trajectory |
+Each phase runs up to N iterations (configurable per phase via environment variables):
 
-The maximum attempt count is configurable. The default is 5 attempts. This cap prevents indefinite loops on tasks beyond the model's current capability while still allowing multi-step reasoning.
+| Variable | Scope |
+|----------|-------|
+| `RUNE_MAX_PHASE_ITERATIONS` | Global default for all phases |
+| `RUNE_MAX_ITERATIONS_DECOMPOSE` | Phase 1 override |
+| `RUNE_MAX_ITERATIONS_PLAN` | Phase 2 override |
+| `RUNE_MAX_ITERATIONS_CODE` | Phase 3 override |
+| `RUNE_MAX_ITERATIONS_INTEGRATE` | Phase 4 override |
+
+CLI flag `--max-phase-iterations` overrides the global env var. Hardcoded fallback is 5.
+
+Within each iteration:
+1. Render the Jinja2 trajectory template with current state
+2. Optionally generate/refresh adapter via hypernetwork H()
+3. Run inference (base model + adapter) to produce output
+4. Execute output in sandbox, evaluate results
+5. Score fitness; if passing or max iterations reached, stop
+
+---
+
+## Template System
+
+All phase instructions flow through Jinja2 templates in `libs/shared/src/shared/templates/`:
+
+| Template | Phase | Purpose |
+|----------|-------|---------|
+| `decompose.j2` | 1 | Trajectory context for decomposition |
+| `prompt_decompose.j2` | 1 | Model prompt for decomposition |
+| `plan.j2` | 2 | Trajectory context for planning |
+| `prompt_plan.j2` | 2 | Model prompt for planning |
+| `code.j2` | 3 | Trajectory context for first code attempt |
+| `code_retry.j2` | 3 | Trajectory context for retry (includes errors, history) |
+| `prompt_code.j2` | 3 | Model prompt for code generation |
+| `integrate.j2` | 4 | Trajectory context for integration |
+| `prompt_integrate.j2` | 4 | Model prompt for integration |
+
+Templates are rendered via `shared.template_loader.render_trajectory()` and `render_prompt()`.
+
+---
+
+## Sandbox
+
+Code execution uses `shared.sandbox.SubprocessBackend` — a subprocess-based sandbox with configurable timeout. The sandbox runs agent-generated code in isolation and captures stdout, stderr, and exit code.
 
 ---
 
 ## Trajectory Schema
 
-Each trajectory is a structured record passed to the distillation step:
+The trajectory flowing through the pipeline maps to `CodingSession` from `shared.rune_models`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `task_id` | string | Unique task identifier |
-| `task_description` | string | Natural language task description |
-| `test_suite` | string | Test code used for evaluation |
-| `attempts` | list | Ordered list of attempt records |
-| `attempts[].code` | string | Generated code for this attempt |
-| `attempts[].stdout` | string | Execution stdout |
-| `attempts[].stderr` | string | Execution stderr |
-| `attempts[].exit_code` | int | Process exit code |
-| `attempts[].tests_passed` | bool | Whether all tests passed |
-| `outcome` | enum | `success` or `exhausted` |
-| `adapter_ids_loaded` | list | Adapters that were active during generation |
+| `session_id` | str | Unique session identifier |
+| `task_description` | str | Human-readable task description |
+| `task_type` | str | Task category (e.g. 'bug-fix', 'feature-impl') |
+| `adapter_refs` | list[AdapterRef] | Adapters loaded during this session |
+| `attempt_count` | int | Number of generate-execute-reflect cycles |
+| `outcome` | str or None | 'success', 'exhausted', or None if in progress |
 
 ---
 
 ## Integration Points
 
-- **Adapter Registry** ([Adapter Storage](adapter-storage.md)): Queried at task intake for adapter selection; written to at Store step
-- **vLLM lora-server** ([GPU Strategy](multi-gpu-strategy.md)): Serves base model + adapters during Generate step
-- **Sandbox**: Docker container managed by rune-agent, isolated from host
-- **model-training lib**: Provides PEFT utilities for the distillation step
+- **Adapter Registry** ([Adapter Storage](adapter-storage.md)): Queried at phase start for adapter selection; written to after adapter generation
+- **Inference Providers** (`libs/inference`): TransformersProvider, LlamaCppProvider, OllamaProvider, or VLLMProvider — selected via factory
+- **Sandbox** (`shared.sandbox.SubprocessBackend`): Executes generated code
+- **Hypernetwork** (`model_training.hypernetwork.DocToLoraHypernetwork`): Generates adapters from trajectories
+- **Swarm** (`scripts/swarm.py`): Orchestrates parallel execution of Phases 2 and 3

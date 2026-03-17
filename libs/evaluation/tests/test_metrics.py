@@ -101,28 +101,61 @@ def test_kill_switch_gate_result_keys() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_score_adapter_quality_raises_not_implemented() -> None:
-    """score_adapter_quality raises NotImplementedError with function name."""
-    with pytest.raises(NotImplementedError, match="score_adapter_quality"):
-        score_adapter_quality("adapter-001", 0.85)
+def test_score_adapter_quality_no_delta() -> None:
+    """score_adapter_quality without generalization_delta equals pass_rate."""
+    score = score_adapter_quality("adapter-001", 0.85)
+    assert abs(score - 0.85) < 1e-9
 
 
-def test_compare_adapters_raises_not_implemented() -> None:
-    """compare_adapters raises NotImplementedError with function name."""
-    with pytest.raises(NotImplementedError, match="compare_adapters"):
-        compare_adapters(["adapter-001", "adapter-002"])
+def test_score_adapter_quality_with_positive_delta() -> None:
+    """score_adapter_quality with positive delta is higher than pass_rate alone."""
+    score = score_adapter_quality("adapter-001", 0.85, generalization_delta=0.1)
+    assert score > 0.85
 
 
-def test_test_generalization_raises_not_implemented() -> None:
-    """test_generalization raises NotImplementedError with function name."""
-    with pytest.raises(NotImplementedError, match="test_generalization"):
-        _test_generalization("adapter-001")
+def test_score_adapter_quality_capped() -> None:
+    """score_adapter_quality is capped at 1.0."""
+    score = score_adapter_quality("adapter-001", 0.95, generalization_delta=1.0)
+    assert score == 1.0
 
 
-def test_evaluate_fitness_raises_not_implemented() -> None:
-    """evaluate_fitness raises NotImplementedError with function name."""
-    with pytest.raises(NotImplementedError, match="evaluate_fitness"):
-        evaluate_fitness("adapter-001", 0.85)
+def test_compare_adapters_returns_rankings() -> None:
+    """compare_adapters returns scores, rankings, best_adapter, summary."""
+    result = compare_adapters(["adapter-001", "adapter-002"])
+    assert "scores" in result
+    assert "rankings" in result
+    assert "best_adapter" in result
+    assert result["best_adapter"] in ["adapter-001", "adapter-002"]
+    assert len(result["rankings"]) == 2
+
+
+def test_compare_adapters_requires_two() -> None:
+    """compare_adapters raises ValueError with fewer than 2 adapters."""
+    with pytest.raises(ValueError):
+        compare_adapters(["adapter-001"])
+
+
+def test_test_generalization_returns_result() -> None:
+    """test_generalization returns generalization metrics."""
+    result = _test_generalization("adapter-001")
+    assert "in_distribution_score" in result
+    assert "ood_score" in result
+    assert "generalization_delta" in result
+    assert "generalizes" in result
+    assert isinstance(result["generalizes"], bool)
+
+
+def test_evaluate_fitness_pure_pass_rate() -> None:
+    """evaluate_fitness with diversity=0: fitness = 0.7 * pass_rate."""
+    fitness = evaluate_fitness("adapter-001", pass_rate=0.85, diversity_score=0.0)
+    assert abs(fitness - 0.7 * 0.85) < 1e-9
+
+
+def test_evaluate_fitness_with_diversity() -> None:
+    """evaluate_fitness with diversity: weighted sum of pass_rate and diversity."""
+    fitness = evaluate_fitness("adapter-001", pass_rate=0.85, diversity_score=0.3)
+    expected = 0.7 * 0.85 + 0.3 * 0.3
+    assert abs(fitness - expected) < 1e-9
 
 
 # ---------------------------------------------------------------------------

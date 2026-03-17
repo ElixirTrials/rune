@@ -17,6 +17,9 @@ health_port: 8001
 # Maximum concurrent LoRA adapters in the S-LoRA unified memory pool.
 max_loras: 8
 
+# Maximum CPU-offloaded LoRA adapters for swarm workloads.
+max_cpu_loras: 32
+
 # Fraction of GPU VRAM reserved for the model. 0.80 leaves headroom for
 # LoRA adapter weights and KV cache. Reduce if you see OOM at startup.
 gpu_memory_utilization: 0.80

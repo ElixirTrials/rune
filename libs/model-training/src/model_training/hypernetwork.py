@@ -13,7 +13,7 @@ Usage:
         save_hypernetwork_adapter,
     )
 
-    model = DocToLoraHypernetwork(input_dim=32000)
+    model = DocToLoraHypernetwork(input_dim=DEFAULT_VOCAB_SIZE)
     weights = model(token_ids)
     save_hypernetwork_adapter(weights, "/tmp/adapter", "Qwen/Qwen2.5-Coder-7B")
 """
@@ -23,6 +23,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
+
+# Default vocabulary size for the hypernetwork input embedding.
+# Used when the tokenizer vocabulary size is not explicitly provided.
+DEFAULT_VOCAB_SIZE: int = 32000
 
 if TYPE_CHECKING:
     import torch
@@ -60,7 +64,12 @@ def _build_hypernetwork_class() -> type:
             rank: LoRA rank for generated adapters. Default: 8.
             target_modules: LoRA target module names. Default: ("q_proj", "v_proj").
             num_layers: Number of transformer layers in target model. Default: 28.
-            hidden_dim: Hidden dim of q_proj/v_proj in target model. Default: 4096.
+            hidden_dim: Hidden dim of target model. Default: 4096. Used as
+                fallback when module_dims is not provided.
+            module_dims: Per-module output dimensions for GQA models where
+                q_proj and v_proj have different sizes. Maps module name to
+                (in_features, out_features). If None, all modules use
+                (hidden_dim, hidden_dim).
         """
 
         def __init__(
@@ -74,6 +83,7 @@ def _build_hypernetwork_class() -> type:
             target_modules: Sequence[str] = ("q_proj", "v_proj"),
             num_layers: int = 28,
             hidden_dim: int = 4096,
+            module_dims: dict[str, tuple[int, int]] | None = None,
         ) -> None:
             super().__init__()
 
@@ -83,6 +93,14 @@ def _build_hypernetwork_class() -> type:
             self.num_layers = num_layers
             self.num_latents = num_latents
             self.latent_dim = latent_dim
+
+            # Per-module dimensions: (in_features, out_features)
+            # For GQA: q_proj is (hidden, hidden) but v_proj is (hidden, kv_dim)
+            if module_dims is not None:
+                self.module_dims = module_dims
+            else:
+                _default_dims = (hidden_dim, hidden_dim)
+                self.module_dims = dict.fromkeys(target_modules, _default_dims)
 
             # Hypernetwork's own lightweight embedding — does NOT load the 7B model
             self.token_embedding = nn.Embedding(input_dim, latent_dim)
@@ -102,10 +120,12 @@ def _build_hypernetwork_class() -> type:
             self.self_attend = nn.TransformerEncoder(encoder_layer, num_layers=depth)
 
             # Project flattened latents to all LoRA weight parameters.
-            # Each (layer, module) needs:
-            #   lora_A: rank * hidden_dim params
-            #   lora_B: hidden_dim * rank params
-            total_params = len(target_modules) * num_layers * 2 * rank * hidden_dim
+            # Each (layer, module) needs lora_A and lora_B with per-module dims.
+            total_params = 0
+            for m in target_modules:
+                in_f, out_f = self.module_dims[m]
+                # lora_A: (rank, in_features), lora_B: (out_features, rank)
+                total_params += num_layers * (rank * in_f + out_f * rank)
             self.weight_head = nn.Linear(latent_dim * num_latents, total_params)
 
         def forward(self, token_ids: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -149,28 +169,30 @@ def _build_hypernetwork_class() -> type:
             # Reshape into PEFT state_dict for first batch element (index 0)
             state_dict: dict[str, torch.Tensor] = {}
             offset = 0
-            a_size = self.rank * self.hidden_dim
-            b_size = self.hidden_dim * self.rank
 
             for i in range(self.num_layers):
                 for module in self.target_modules:
-                    # lora_A: shape (rank, hidden_dim)
+                    in_f, out_f = self.module_dims[module]
+                    a_size = self.rank * in_f
+                    b_size = out_f * self.rank
+
+                    # lora_A: shape (rank, in_features)
                     key_a = (
                         f"base_model.model.model.layers.{i}"
                         f".self_attn.{module}.lora_A.weight"
                     )
                     state_dict[key_a] = weights[0, offset : offset + a_size].reshape(
-                        self.rank, self.hidden_dim
+                        self.rank, in_f
                     )
                     offset += a_size
 
-                    # lora_B: shape (hidden_dim, rank)
+                    # lora_B: shape (out_features, rank)
                     key_b = (
                         f"base_model.model.model.layers.{i}"
                         f".self_attn.{module}.lora_B.weight"
                     )
                     state_dict[key_b] = weights[0, offset : offset + b_size].reshape(
-                        self.hidden_dim, self.rank
+                        out_f, self.rank
                     )
                     offset += b_size
 
@@ -207,6 +229,125 @@ class _LazyHypernetworkProxy:
 
 
 DocToLoraHypernetwork: _LazyHypernetworkProxy = _LazyHypernetworkProxy()
+
+
+def load_pretrained(
+    checkpoint_path: str,
+    device: str = "cpu",
+    **kwargs: Any,
+) -> Any:
+    """Load a pretrained DocToLoraHypernetwork from a checkpoint.
+
+    Args:
+        checkpoint_path: Path to the .pt checkpoint file.
+        device: Device to load onto ('cpu', 'cuda', 'mps'). Default: 'cpu'.
+        **kwargs: Override constructor args (input_dim, num_latents, etc.).
+
+    Returns:
+        DocToLoraHypernetwork nn.Module loaded with pretrained weights.
+    """
+    import torch  # noqa: PLC0415
+
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+
+    # Extract constructor args from checkpoint or use defaults/overrides
+    ctor_args = checkpoint.get("hypernetwork_config", {})
+    ctor_args.update(kwargs)
+    if "input_dim" not in ctor_args:
+        ctor_args["input_dim"] = DEFAULT_VOCAB_SIZE
+
+    model = DocToLoraHypernetwork(**ctor_args)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model = model.to(device)
+    model.eval()
+    return model
+
+
+def trajectory_to_tokens(
+    trajectory_text: str,
+    vocab_size: int = DEFAULT_VOCAB_SIZE,
+    max_length: int = 2048,
+) -> "torch.Tensor":
+    """Encode trajectory text as token IDs for the hypernetwork.
+
+    Uses a simple hash-based tokenization (character trigrams mapped to
+    vocab indices). This is intentionally simple — the hypernetwork learns
+    its own embedding, so exact tokenization doesn't matter as long as
+    it's consistent.
+
+    Args:
+        trajectory_text: Text to encode (plan, code diffs, test results, etc.).
+        vocab_size: Size of the hypernetwork's embedding vocabulary.
+        max_length: Maximum sequence length (truncates or pads).
+
+    Returns:
+        Token ID tensor of shape (1, max_length) ready for hypernetwork forward().
+    """
+    import zlib  # noqa: PLC0415
+
+    import torch  # noqa: PLC0415
+
+    tokens: list[int] = []
+    for i in range(0, len(trajectory_text) - 2):
+        trigram = trajectory_text[i : i + 3]
+        token_id = zlib.crc32(trigram.encode()) % vocab_size
+        tokens.append(token_id)
+
+    # Pad or truncate to max_length
+    if len(tokens) < max_length:
+        tokens.extend([0] * (max_length - len(tokens)))
+    else:
+        tokens = tokens[:max_length]
+
+    return torch.tensor([tokens], dtype=torch.long)
+
+
+def generate_adapter(
+    hypernetwork: Any,
+    trajectory_text: str,
+    output_dir: str,
+    base_model_id: str,
+    vocab_size: int = DEFAULT_VOCAB_SIZE,
+    max_length: int = 2048,
+    device: str = "cpu",
+) -> str:
+    """End-to-end: encode trajectory, run hypernetwork, save adapter.
+
+    Args:
+        hypernetwork: A DocToLoraHypernetwork instance.
+        trajectory_text: Text to encode into the adapter.
+        output_dir: Directory to save the adapter files.
+        base_model_id: HuggingFace model ID of the base model.
+        vocab_size: Vocabulary size for tokenization.
+        max_length: Max token sequence length.
+        device: Device for tensor operations.
+
+    Returns:
+        Path to the saved adapter directory.
+    """
+    import torch  # noqa: PLC0415
+
+    # Infer vocab size from hypernetwork's embedding if available
+    h_vocab = getattr(
+        getattr(hypernetwork, "token_embedding", None), "num_embeddings", None
+    )
+    effective_vocab = h_vocab if h_vocab is not None else vocab_size
+    tokens = trajectory_to_tokens(trajectory_text, effective_vocab, max_length)
+    tokens = tokens.to(device)
+
+    with torch.no_grad():
+        weights = hypernetwork(tokens)
+
+    rank = getattr(hypernetwork, "rank", 8)
+    target_mods = getattr(hypernetwork, "target_modules", ["q_proj", "v_proj"])
+    save_hypernetwork_adapter(
+        weights,
+        output_dir,
+        base_model_id,
+        rank=rank,
+        target_modules=target_mods,
+    )
+    return output_dir
 
 
 def save_hypernetwork_adapter(
