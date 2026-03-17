@@ -159,7 +159,7 @@ def test_hypernetwork_job_registers_adapter(tmp_path, monkeypatch):
     )  # type: ignore[attr-defined]
     fake_weights_tensor = MagicMock()
     torch_mod.load = MagicMock(return_value={})  # type: ignore[attr-defined]
-    sys.modules["torch"] = torch_mod
+    monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
     # transformers mock
     transformers_mod = ModuleType("transformers")
@@ -169,7 +169,7 @@ def test_hypernetwork_job_registers_adapter(tmp_path, monkeypatch):
     mock_auto_tokenizer = MagicMock()
     mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
     transformers_mod.AutoTokenizer = mock_auto_tokenizer  # type: ignore[attr-defined]
-    sys.modules["transformers"] = transformers_mod
+    monkeypatch.setitem(sys.modules, "transformers", transformers_mod)
 
     # model_training.hypernetwork mock — save_hypernetwork_adapter must create the file
     def fake_save_hypernetwork_adapter(weights, output_dir, base_model_id):
@@ -187,8 +187,8 @@ def test_hypernetwork_job_registers_adapter(tmp_path, monkeypatch):
     hypernetwork_mod = ModuleType("model_training.hypernetwork")
     hypernetwork_mod.DocToLoraHypernetwork = mock_hypernetwork_class  # type: ignore[attr-defined]
     hypernetwork_mod.save_hypernetwork_adapter = fake_save_hypernetwork_adapter  # type: ignore[attr-defined]
-    sys.modules["model_training"] = ModuleType("model_training")
-    sys.modules["model_training.hypernetwork"] = hypernetwork_mod
+    monkeypatch.setitem(sys.modules, "model_training", ModuleType("model_training"))
+    monkeypatch.setitem(sys.modules, "model_training.hypernetwork", hypernetwork_mod)
 
     # model_training.trajectory mock
     trajectory_mod = ModuleType("model_training.trajectory")
@@ -196,37 +196,26 @@ def test_hypernetwork_job_registers_adapter(tmp_path, monkeypatch):
     trajectory_mod.format_for_sft = MagicMock(
         return_value=[{"role": "user", "content": "hello"}]
     )  # type: ignore[attr-defined]
-    sys.modules["model_training.trajectory"] = trajectory_mod
+    monkeypatch.setitem(sys.modules, "model_training.trajectory", trajectory_mod)
 
-    try:
-        with patch("training_svc.storage.engine", test_engine):
-            _run_hypernetwork_job(job_id, adapter_id, trajectory_id, task_type)
+    with patch("training_svc.storage.engine", test_engine):
+        _run_hypernetwork_job(job_id, adapter_id, trajectory_id, task_type)
 
-        # -- Verify job completed --
-        job = JOB_STORE[job_id]
-        assert job.status == "completed", (
-            f"Expected status 'completed', got '{job.status}': {job.error}"
-        )
+    # -- Verify job completed --
+    job = JOB_STORE[job_id]
+    assert job.status == "completed", (
+        f"Expected status 'completed', got '{job.status}': {job.error}"
+    )
 
-        # -- Verify AdapterRecord stored in registry --
-        registry = AdapterRegistry(engine=test_engine)
-        record = registry.retrieve_by_id(adapter_id)
+    # -- Verify AdapterRecord stored in registry --
+    registry = AdapterRegistry(engine=test_engine)
+    record = registry.retrieve_by_id(adapter_id)
 
-        assert record.source == "hypernetwork"
-        assert record.rank == 8
-        assert record.task_type == task_type
-        assert record.session_id == trajectory_id
-        assert len(record.file_hash) == 64, (
-            "file_hash should be a 64-char SHA-256 hex string"
-        )
-        assert record.file_size_bytes > 0
-    finally:
-        # Clean up injected sys.modules to avoid contaminating other tests
-        for mod_name in [
-            "torch",
-            "transformers",
-            "model_training",
-            "model_training.hypernetwork",
-            "model_training.trajectory",
-        ]:
-            sys.modules.pop(mod_name, None)
+    assert record.source == "hypernetwork"
+    assert record.rank == 8
+    assert record.task_type == task_type
+    assert record.session_id == trajectory_id
+    assert len(record.file_hash) == 64, (
+        "file_hash should be a 64-char SHA-256 hex string"
+    )
+    assert record.file_size_bytes > 0

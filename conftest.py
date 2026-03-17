@@ -52,7 +52,19 @@ from training_svc.models import TrainingJob
 # xdist grouping: torch tests must run on the same worker to avoid the
 # triton library double-registration crash in pytest-xdist.
 # ---------------------------------------------------------------------------
-_TORCH_TEST_FILENAMES = {"test_hypernetwork", "test_merging", "test_sakana"}
+_TORCH_TEST_FILENAMES = {
+    "test_hypernetwork",
+    "test_merging",
+    "test_sakana",
+    "test_d2l_config",
+    "test_d2l_train",
+    "test_d2l_weight_transfer",
+    "test_d2l_probe",
+    "test_d2l_prep",
+    "test_trainer",
+    "test_transformers_provider",
+    "test_training",
+}
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
