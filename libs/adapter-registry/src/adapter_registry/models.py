@@ -1,7 +1,5 @@
 """SQLModel table model for LoRA adapter metadata records."""
 
-from typing import Optional
-
 from sqlmodel import Field, SQLModel
 
 
@@ -57,12 +55,12 @@ class AdapterRecord(SQLModel, table=True):
     file_path: str
     file_hash: str
     file_size_bytes: int
-    pass_rate: Optional[float] = Field(default=None)
-    fitness_score: Optional[float] = Field(default=None)
+    pass_rate: float | None = Field(default=None)
+    fitness_score: float | None = Field(default=None)
     source: str
     session_id: str
     is_archived: bool = Field(default=False)
-    parent_ids: Optional[str] = Field(default=None)
+    parent_ids: str | None = Field(default=None)
     generation: int = Field(default=0)
-    training_task_hash: Optional[str] = Field(default=None, index=True)
-    agent_id: Optional[str] = Field(default=None)
+    training_task_hash: str | None = Field(default=None, index=True)
+    agent_id: str | None = Field(default=None)

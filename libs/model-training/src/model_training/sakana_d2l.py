@@ -544,6 +544,11 @@ def _save_sakana_adapter(
     from safetensors.torch import save_file  # noqa: PLC0415
 
     output_path = Path(output_dir)
+    safetensors_file = output_path / "adapter_model.safetensors"
+    if safetensors_file.exists():
+        raise FileExistsError(
+            f"Adapter already exists at {safetensors_file}; refusing to overwrite"
+        )
     output_path.mkdir(parents=True, exist_ok=True)
 
     layer_indices = list(hc.layer_indices)

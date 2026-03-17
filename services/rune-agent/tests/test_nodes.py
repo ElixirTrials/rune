@@ -273,7 +273,7 @@ async def test_execute_node_uses_sandbox_backend() -> None:
     mock_result.stdout = "ok\n"
     mock_result.stderr = ""
     mock_result.exit_code = 0
-    mock_result.timed_out = False
+    mock_result.is_timed_out = False
 
     mock_backend = MagicMock()
     mock_backend.run.return_value = mock_result

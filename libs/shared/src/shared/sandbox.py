@@ -26,13 +26,13 @@ class SandboxResult:
         stdout: Captured standard output.
         stderr: Captured standard error.
         exit_code: Process exit code (0 = success).
-        timed_out: Whether execution was terminated due to timeout.
+        is_timed_out: Whether execution was terminated due to timeout.
     """
 
     stdout: str
     stderr: str
     exit_code: int
-    timed_out: bool
+    is_timed_out: bool
 
 
 class SandboxBackend(ABC):
@@ -85,14 +85,14 @@ class SubprocessBackend(SandboxBackend):
                     stdout=proc.stdout,
                     stderr=proc.stderr,
                     exit_code=proc.returncode,
-                    timed_out=False,
+                    is_timed_out=False,
                 )
             except subprocess.TimeoutExpired:
                 return SandboxResult(
                     stdout="",
                     stderr=f"Execution timed out after {timeout}s",
                     exit_code=1,
-                    timed_out=True,
+                    is_timed_out=True,
                 )
 
 
@@ -158,14 +158,14 @@ class NsjailBackend(SandboxBackend):
                     stdout=proc.stdout,
                     stderr=proc.stderr,
                     exit_code=proc.returncode,
-                    timed_out=False,
+                    is_timed_out=False,
                 )
             except subprocess.TimeoutExpired:
                 return SandboxResult(
                     stdout="",
                     stderr=f"Execution timed out after {timeout}s",
                     exit_code=1,
-                    timed_out=True,
+                    is_timed_out=True,
                 )
 
 

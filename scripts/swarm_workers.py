@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -142,9 +143,9 @@ async def _wake_vllm(base_url: str) -> None:
 async def training_pool_manager(
     training_queue: asyncio.Queue[TrainingRequest],
     budget: "HardwareBudget",
-    db_url: str = "sqlite:///rune_swarm.db",
-    adapter_base_dir: str = "/tmp/rune_adapters",
-    vllm_base_url: str = "http://localhost:8100/v1",
+    db_url: str | None = None,
+    adapter_base_dir: str | None = None,
+    vllm_base_url: str | None = None,
     shutdown_event: asyncio.Event | None = None,
 ) -> None:
     """Async manager that processes training requests from a queue.
@@ -160,6 +161,13 @@ async def training_pool_manager(
         vllm_base_url: vLLM server URL for sleep/wake coordination.
         shutdown_event: Event to signal graceful shutdown.
     """
+    db_url = db_url or os.environ.get("RUNE_DB_URL", "sqlite:///rune_swarm.db")
+    adapter_base_dir = adapter_base_dir or os.environ.get(
+        "RUNE_ADAPTER_DIR", "/tmp/rune_adapters"
+    )
+    vllm_base_url = vllm_base_url or os.environ.get(
+        "RUNE_VLLM_URL", "http://localhost:8100/v1"
+    )
     loop = asyncio.get_event_loop()
     max_workers = max(1, budget.training_slots)
 

@@ -57,7 +57,7 @@ def run_code(code: str) -> tuple[bool, str, str]:
     backend = get_sandbox_backend()
     result = backend.run(code, timeout=30)
     return (
-        result.exit_code == 0 and not result.timed_out,
+        result.exit_code == 0 and not result.is_timed_out,
         result.stdout,
         result.stderr,
     )

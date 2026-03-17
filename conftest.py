@@ -12,6 +12,7 @@ Usage (no import needed in test files):
 """
 
 import importlib.util
+import logging
 from typing import Any, Callable, TypeVar
 
 # Patch torch's _dispatch_library to be idempotent — prevents the
@@ -33,8 +34,10 @@ if importlib.util.find_spec("torch") is not None:
                 raise
 
         torch._C._dispatch_library = _safe_dispatch_library  # type: ignore[assignment]
-    except Exception:
-        pass
+    except (ImportError, AttributeError):
+        logging.getLogger(__name__).debug(
+            "torch dispatch library patch skipped", exc_info=True
+        )
 
 import pytest
 from adapter_registry.models import AdapterRecord

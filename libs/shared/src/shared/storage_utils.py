@@ -25,6 +25,8 @@ def set_wal_mode(engine: Engine) -> None:
     Args:
         engine: SQLAlchemy Engine to configure.
     """
+    if engine.dialect.name != "sqlite":
+        return
 
     @event.listens_for(engine, "connect")
     def _set_wal(dbapi_conn: object, _record: object) -> None:  # type: ignore[type-arg]

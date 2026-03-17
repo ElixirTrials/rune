@@ -158,7 +158,7 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     stdout = result.stdout
     stderr = result.stderr
     exit_code = result.exit_code
-    tests_passed = result.exit_code == 0 and not result.timed_out
+    tests_passed = result.exit_code == 0 and not result.is_timed_out
 
     logger.info(
         "execute_node: exit_code=%d, tests_passed=%s",

@@ -283,12 +283,14 @@ def trajectory_to_tokens(
     Returns:
         Token ID tensor of shape (1, max_length) ready for hypernetwork forward().
     """
+    import zlib  # noqa: PLC0415
+
     import torch  # noqa: PLC0415
 
     tokens: list[int] = []
     for i in range(0, len(trajectory_text) - 2):
         trigram = trajectory_text[i : i + 3]
-        token_id = hash(trigram) % vocab_size
+        token_id = zlib.crc32(trigram.encode()) % vocab_size
         tokens.append(token_id)
 
     # Pad or truncate to max_length

@@ -12,7 +12,7 @@ def test_subprocess_runs_code() -> None:
     result = backend.run('print("hello")')
     assert result.stdout.strip() == "hello"
     assert result.exit_code == 0
-    assert result.timed_out is False
+    assert result.is_timed_out is False
 
 
 def test_subprocess_captures_error() -> None:
@@ -25,7 +25,7 @@ def test_subprocess_captures_error() -> None:
 def test_subprocess_timeout() -> None:
     backend = SubprocessBackend()
     result = backend.run("import time; time.sleep(60)", timeout=2)
-    assert result.timed_out is True
+    assert result.is_timed_out is True
     assert result.exit_code == 1
 
 

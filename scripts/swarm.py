@@ -326,7 +326,7 @@ async def agent_supervisor(
                 script = code + "\n" + test
                 result = sandbox.run(script, timeout=30)
 
-                if result.exit_code == 0 and not result.timed_out:
+                if result.exit_code == 0 and not result.is_timed_out:
                     checkpoint_db.mark_completed(task_hash, "success")
                     completed += 1
                     consecutive_failures = 0
