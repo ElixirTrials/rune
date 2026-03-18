@@ -4,7 +4,8 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock
 
-from shared.hardware import GPUInfo, HardwareBudget, HardwareProbe
+import torch
+from shared.hardware import GPUInfo, HardwareBudget, HardwareProbe, resolve_model_dtype
 
 
 def test_probe_returns_correct_cpu_ram() -> None:
@@ -86,3 +87,118 @@ def test_compute_budget_multi_gpu() -> None:
     assert budget.single_gpu_mode is False
     assert budget.training_slots == 1
     assert isinstance(budget, HardwareBudget)
+
+
+# ---------------------------------------------------------------------------
+# resolve_model_dtype tests
+# ---------------------------------------------------------------------------
+
+# Bytes-per-param for reference: fp32=4, bf16=2, fp16=2
+_2B_PARAMS = 2_600_000_000  # gemma-2-2b
+_300M_PARAMS = 300_000_000  # HyperLoRA perceiver (approx)
+
+
+def test_resolve_dtype_override_respected() -> None:
+    """Manual override always wins regardless of VRAM."""
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cuda",
+        available_vram_bytes=4 * 1024**3,  # 4 GB — way too small for fp32
+        dtype_override="float32",
+    )
+    assert dt == torch.float32
+
+
+def test_resolve_dtype_override_bfloat16() -> None:
+    """Override 'bfloat16' returns torch.bfloat16."""
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cuda",
+        available_vram_bytes=100 * 1024**3,
+        dtype_override="bfloat16",
+    )
+    assert dt == torch.bfloat16
+
+
+def test_resolve_dtype_override_float16() -> None:
+    """Override 'float16' returns torch.float16."""
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cuda",
+        available_vram_bytes=100 * 1024**3,
+        dtype_override="float16",
+    )
+    assert dt == torch.float16
+
+
+def test_resolve_dtype_cpu_always_float32() -> None:
+    """CPU device always returns float32 (no VRAM constraint)."""
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cpu",
+        available_vram_bytes=0,
+    )
+    assert dt == torch.float32
+
+
+def test_resolve_dtype_plenty_of_vram_returns_float32() -> None:
+    """With 40GB free and a 2B model, fp32 fits — use it."""
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cuda",
+        available_vram_bytes=40 * 1024**3,  # 40 GB
+    )
+    assert dt == torch.float32
+
+
+def test_resolve_dtype_tight_vram_returns_bfloat16() -> None:
+    """With 8GB free and a 2B model, fp32 doesn't fit but bf16 does."""
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cuda",
+        available_vram_bytes=8 * 1024**3,  # 8 GB
+    )
+    assert dt == torch.bfloat16
+
+
+def test_resolve_dtype_very_tight_vram_still_bfloat16() -> None:
+    """Even with very tight VRAM, bf16 is the floor (we don't go lower)."""
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cuda",
+        available_vram_bytes=2 * 1024**3,  # 2 GB — even bf16 won't fit
+    )
+    assert dt == torch.bfloat16
+
+
+def test_resolve_dtype_small_model_fits_fp32() -> None:
+    """A small 300M model in fp32 needs ~1.2GB — fits in 8GB easily."""
+    dt = resolve_model_dtype(
+        param_count=_300M_PARAMS,
+        device="cuda",
+        available_vram_bytes=8 * 1024**3,
+    )
+    assert dt == torch.float32
+
+
+def test_resolve_dtype_overhead_bytes_counted() -> None:
+    """Overhead bytes reduce effective VRAM, can push fp32 to bf16."""
+    # 2B params * 4 bytes = 10GB. With 12GB VRAM and 4GB overhead, only 8GB left.
+    dt = resolve_model_dtype(
+        param_count=_2B_PARAMS,
+        device="cuda",
+        available_vram_bytes=12 * 1024**3,
+        overhead_bytes=4 * 1024**3,
+    )
+    assert dt == torch.bfloat16
+
+
+def test_resolve_dtype_env_var_override(monkeypatch) -> None:
+    """RUNE_DTYPE_OVERRIDE env var takes precedence over auto-detection."""
+    monkeypatch.setenv("RUNE_DTYPE_OVERRIDE", "float16")
+    dt = resolve_model_dtype(
+        param_count=_300M_PARAMS,
+        device="cuda",
+        available_vram_bytes=100 * 1024**3,
+    )
+    assert dt == torch.float16

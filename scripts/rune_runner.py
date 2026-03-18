@@ -299,6 +299,15 @@ def run_hypernetwork(
         )
         return None
 
+    # Free fragmented GPU memory before loading hypernetwork
+    import torch  # noqa: PLC0415
+
+    if device != "cpu" and torch.cuda.is_available():
+        import gc
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
     if _is_sakana_checkpoint(checkpoint_path):
         from model_training.sakana_d2l import generate_adapter_from_sakana
 
@@ -981,8 +990,7 @@ async def run_phased_pipeline(
         len(code_outputs),
     )
     phase_results["code"] = {
-        "outputs": {k: v[:200] for k, v in code_outputs.items()},
-        "output_lengths": {k: len(v) for k, v in code_outputs.items()},
+        "outputs": code_outputs,
         "subtask_results": code_subtask_results,
         "iterations": max_code_attempts,
         "passed": code_passed_count,
@@ -1147,6 +1155,40 @@ async def run_phased_pipeline(
     final_sweep = evolution_sweep(registry)
     evolution_stats["sweeps"]["final"] = final_sweep
 
+    # -------------------------------------------------------------------
+    # Save generated code artifacts to session directory
+    # -------------------------------------------------------------------
+    import json as _json
+
+    output_dir = adapter_dir / "outputs"
+    output_dir.mkdir(exist_ok=True)
+
+    # Save final integrated code as runnable .py
+    final_code_path = output_dir / "final.py"
+    final_code_path.write_text(final_code)
+
+    # Save per-subtask code
+    for name, code_text in code_outputs.items():
+        safe_name = re.sub(r"[^\w\-]", "_", name)
+        (output_dir / f"subtask_{safe_name}.py").write_text(code_text)
+
+    # Save run summary with full code and execution results
+    run_summary = {
+        "session_id": session_id,
+        "project_prompt": project_prompt,
+        "final_tests_passed": final_passed,
+        "subtasks": [s["name"] for s in subtasks],
+        "plans": dict(plans),
+        "code_outputs": dict(code_outputs),
+        "code_subtask_results": code_subtask_results,
+        "integration_score": best_integrate_score,
+        "phase_iterations": evolution_stats.get("phase_iterations", {}),
+    }
+    (output_dir / "run_summary.json").write_text(
+        _json.dumps(run_summary, indent=2, default=str)
+    )
+
+    logger.info("Code artifacts saved to %s", output_dir)
     logger.info("=== Pipeline Complete ===")
     logger.info("Final tests passed: %s", final_passed)
 

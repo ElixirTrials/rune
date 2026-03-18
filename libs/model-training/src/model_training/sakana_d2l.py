@@ -122,8 +122,7 @@ def _patch_flash_attention() -> None:
     _orig_resampler_init = Idefics2PerceiverResampler.__init__
 
     def _patched_resampler_init(self: Any, config: Any) -> None:
-        config._attn_implementation = "eager"
-        config._attn_implementation_internal = "eager"
+        config._attn_implementation = "flash_attention_2"
         _orig_resampler_init(self, config)
         self._use_flash_attention_2 = False
 
@@ -214,6 +213,14 @@ def load_sakana_checkpoint(
 
     _patch_flash_attention()
 
+    # Pre-import flash_attn before torch.load — the unpickler triggers
+    # ctx_to_lora module imports in a context that breaks flash_attn
+    # resolution if it hasn't been imported yet.
+    try:
+        import flash_attn.flash_attn_interface  # noqa: F401,PLC0415
+    except ImportError:
+        pass
+
     if checkpoint_path is None:
         checkpoint_path = download_checkpoint(variant)
 
@@ -229,8 +236,17 @@ def load_sakana_checkpoint(
     )
 
     from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
+    from shared.hardware import resolve_model_dtype  # noqa: PLC0415
 
-    hypernet = HyperLoRA(hc).to(torch.float32)
+    hypernet_param_count = sum(
+        v.numel() for v in sd.values() if isinstance(v, torch.Tensor)
+    )
+    hypernet_dtype = resolve_model_dtype(
+        param_count=hypernet_param_count,
+        device=device,
+    )
+    logger.info("HyperLoRA dtype resolved to %s", hypernet_dtype)
+    hypernet = HyperLoRA(hc).to(hypernet_dtype)
 
     # Load ALL hypernet weights from checkpoint (not just a prefix subset).
     # The checkpoint contains aggregator.*, head.*, scaler_{A,B}.*,
@@ -430,15 +446,41 @@ def extract_activations(
         attention_mask shape: (1, seq_len)
     """
     import torch  # noqa: PLC0415
+    from shared.hardware import resolve_model_dtype  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
     from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
 
     logger.info("Loading base model %s for activation extraction...", base_model_name)
     tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+
+    # Estimate param count from model config to resolve dtype
+    from transformers import AutoConfig  # noqa: PLC0415
+
+    config = AutoConfig.from_pretrained(base_model_name)
+    estimated_params = getattr(config, "num_parameters", None)
+    if estimated_params is None:
+        # Rough estimate: vocab_size * hidden + num_layers * 4 * hidden^2
+        vocab = getattr(config, "vocab_size", 256000)
+        hidden = getattr(config, "hidden_size", 2304)
+        n_layers = getattr(config, "num_hidden_layers", 26)
+        estimated_params = vocab * hidden + n_layers * 4 * hidden * hidden
+
+    # Account for inference model already on GPU as overhead
+    overhead = 0
+    if device != "cpu" and torch.cuda.is_available():
+        overhead = torch.cuda.memory_allocated(0)
+
+    activation_dtype = resolve_model_dtype(
+        param_count=estimated_params,
+        device=device,
+        overhead_bytes=overhead,
+    )
+    logger.info("Activation extraction dtype resolved to %s", activation_dtype)
+
     model: Any = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        torch_dtype=torch.float32,
+        torch_dtype=activation_dtype,
     )
     model = model.to(device)  # type: ignore[assignment]
     model.eval()
@@ -521,6 +563,11 @@ def generate_adapter_from_sakana(
         base_model_name=base_model_name,
         hc=hc,
     )
+
+    # Free hypernet VRAM — it's not needed after adapter weights are saved
+    del hypernet, lora_dict, layernorm_dict, features, attn_mask
+    if device != "cpu":
+        torch.cuda.empty_cache()
 
     return output_dir
 
