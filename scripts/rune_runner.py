@@ -287,7 +287,10 @@ def run_hypernetwork(
         device: Device for computation ('cpu', 'mps', 'cuda').
 
     Returns:
-        Path to saved adapter directory, or None if hypernetwork unavailable.
+        Path to saved adapter directory, or None if no checkpoint provided.
+
+    Raises:
+        RuntimeError: If a checkpoint is provided but adapter generation fails.
     """
     if not checkpoint_path or not Path(checkpoint_path).exists():
         logger.warning(
@@ -296,34 +299,30 @@ def run_hypernetwork(
         )
         return None
 
-    try:
-        if _is_sakana_checkpoint(checkpoint_path):
-            from model_training.sakana_d2l import generate_adapter_from_sakana
+    if _is_sakana_checkpoint(checkpoint_path):
+        from model_training.sakana_d2l import generate_adapter_from_sakana
 
-            return generate_adapter_from_sakana(
-                text=trajectory_text,
-                output_dir=output_dir,
-                checkpoint_path=checkpoint_path,
-                base_model_name=base_model_id,
-                device=device,
-            )
-        else:
-            from model_training.hypernetwork import (
-                generate_adapter,
-                load_pretrained,
-            )
+        return generate_adapter_from_sakana(
+            text=trajectory_text,
+            output_dir=output_dir,
+            checkpoint_path=checkpoint_path,
+            base_model_name=base_model_id,
+            device=device,
+        )
+    else:
+        from model_training.hypernetwork import (
+            generate_adapter,
+            load_pretrained,
+        )
 
-            hypernetwork = load_pretrained(checkpoint_path, device=device)
-            return generate_adapter(
-                hypernetwork=hypernetwork,
-                trajectory_text=trajectory_text,
-                output_dir=output_dir,
-                base_model_id=base_model_id,
-                device=device,
-            )
-    except Exception:
-        logger.exception("Hypernetwork adapter generation failed")
-        return None
+        hypernetwork = load_pretrained(checkpoint_path, device=device)
+        return generate_adapter(
+            hypernetwork=hypernetwork,
+            trajectory_text=trajectory_text,
+            output_dir=output_dir,
+            base_model_id=base_model_id,
+            device=device,
+        )
 
 
 # ---------------------------------------------------------------------------

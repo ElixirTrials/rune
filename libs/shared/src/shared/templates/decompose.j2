@@ -1,9 +1,19 @@
 ROLE: project-decomposer
 PROJECT: {{ project[:1200] }}
-METHODOLOGY: Decompose into independent subtasks that can be implemented
+METHODOLOGY: Decompose into 3-6 independent subtasks that can be implemented
 and tested in isolation. Each subtask should:
 - Have a clear, focused scope (one layer or feature)
 - Produce testable output independently
 - Minimize dependencies on other subtasks
 Order by dependency: data/models first, then logic, then interface, then integration.
-Output a numbered list: 1. name — one-line description
+
+EXAMPLE DECOMPOSITION (for a "Build a key-value store"):
+1. KVStore core — In-memory dict-backed store with get/put/delete/contains
+2. Persistence layer — SQLite serialization with save/load/clear
+3. TTL expiration — Lazy and eager expiry with configurable TTL per key
+4. Batch operations — Multi-get, multi-put, atomic transactions
+5. CLI interface — Command-line REPL with help, get, put, del commands
+
+Output a numbered list in exactly this format:
+1. name — one-line description
+2. name — one-line description

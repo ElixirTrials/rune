@@ -122,7 +122,8 @@ def _patch_flash_attention() -> None:
     _orig_resampler_init = Idefics2PerceiverResampler.__init__
 
     def _patched_resampler_init(self: Any, config: Any) -> None:
-        config._attn_implementation = "flash_attention_2"
+        config._attn_implementation = "eager"
+        config._attn_implementation_internal = "eager"
         _orig_resampler_init(self, config)
         self._use_flash_attention_2 = False
 
