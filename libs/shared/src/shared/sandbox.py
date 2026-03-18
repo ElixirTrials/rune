@@ -173,11 +173,12 @@ def count_test_results(stdout: str, stderr: str) -> tuple[int, int]:
     """Parse unittest output to count (passed, total) tests.
 
     Args:
-        stdout: Captured standard output from test execution.
-        stderr: Captured standard error from test execution.
+        stdout (str): Captured standard output from test execution.
+        stderr (str): Captured standard error from test execution.
 
     Returns:
-        Tuple of (passed_count, total_count).
+        tuple[int, int]: (passed_count, total_count). Returns (0, 0)
+            if no unittest output is detected.
     """
     import re as _re
 
@@ -203,10 +204,11 @@ def extract_failed_tests(stderr: str) -> str:
     """Extract names of failing tests from unittest stderr.
 
     Args:
-        stderr: Captured standard error from test execution.
+        stderr (str): Captured standard error from test execution.
 
     Returns:
-        Semicolon-separated string of failed test names.
+        str: Semicolon-separated string of up to 5 failed test names.
+            Empty string if no failures found.
     """
     if not stderr:
         return ""
@@ -223,10 +225,11 @@ def has_unittest_classes(code: str) -> bool:
     """Check whether code contains unittest.TestCase subclasses.
 
     Args:
-        code: Python source code string.
+        code (str): Python source code string.
 
     Returns:
-        True if the code contains at least one TestCase class definition.
+        bool: True if the code contains at least one TestCase class
+            definition.
     """
     import re as _re
 

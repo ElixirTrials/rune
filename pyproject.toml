@@ -198,6 +198,8 @@ module = [
     "llama_cpp.*",
     "ctx_to_lora",
     "ctx_to_lora.*",
+    "flash_attn",
+    "flash_attn.*",
 ]
 ignore_missing_imports = true
 

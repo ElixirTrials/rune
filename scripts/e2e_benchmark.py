@@ -299,7 +299,10 @@ def main() -> None:
 
     task_indices = list(range(len(TASKS)))
     if args.tasks:
-        task_indices = [int(t) - 1 for t in args.tasks.split(",")]
+        task_indices = [int(t.strip()) - 1 for t in args.tasks.split(",") if t.strip()]
+        for idx in task_indices:
+            if idx < 0 or idx >= len(TASKS):
+                parser.error(f"--tasks values must be in range 1-{len(TASKS)}")
 
     selected_tasks = [TASKS[i] for i in task_indices]
 

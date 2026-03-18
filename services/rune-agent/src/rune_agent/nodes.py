@@ -154,7 +154,7 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     script = state["generated_code"] + "\n\n" + state["test_suite"]
 
     # Auto-inject unittest.main() if TestCase classes exist but no runner
-    if has_unittest_classes(script) and "unittest.main()" not in script:
+    if has_unittest_classes(script) and not re.search(r"unittest\.main\s*\(", script):
         script += (
             "\n\nimport unittest\nif __name__ == '__main__':\n    unittest.main()\n"
         )
