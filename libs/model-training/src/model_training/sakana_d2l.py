@@ -506,6 +506,7 @@ def generate_adapter_from_sakana(
     variant: str = DEFAULT_VARIANT,
     base_model_name: str | None = None,
     device: str = "cpu",
+    max_length: int = 2048,
 ) -> str:
     """End-to-end: text → base model activations → HyperLoRA → PEFT adapter.
 
@@ -522,6 +523,7 @@ def generate_adapter_from_sakana(
         variant: HF checkpoint variant if downloading.
         base_model_name: Override base model. If None, uses the one from checkpoint.
         device: Device for computation.
+        max_length: Maximum token sequence length for activation extraction.
 
     Returns:
         Path to the saved adapter directory.
@@ -548,13 +550,24 @@ def generate_adapter_from_sakana(
         base_model_name=base_model_name,
         layer_indices=layer_indices,
         device=device,
-        max_length=512,
+        max_length=max_length,
     )
 
     # Generate LoRA weights via perceiver
     logger.info("Generating LoRA weights via HyperLoRA perceiver...")
     with torch.no_grad():
         lora_dict, layernorm_dict = hypernet.generate_weights(features, attn_mask, None)
+
+    # Combine generated weights with bias — Sakana concatenates bias as extra
+    # rank dimensions (rank 8 → 16 for single chunk). This is how the
+    # checkpoint was trained and evaluated.
+    from ctx_to_lora.modeling.lora_merger import combine_lora as _combine_lora
+
+    n_chunks = torch.ones(1, dtype=torch.int32)
+    lora_bias = (
+        hypernet.get_head_bias() if hypernet.config.use_bias else None
+    )
+    lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
 
     # Save as PEFT adapter
     _save_sakana_adapter(
@@ -601,26 +614,34 @@ def _save_sakana_adapter(
 
     layer_indices = list(hc.layer_indices)
     target_modules = list(hc.lora_config.target_modules)
-    rank = hc.lora_config.r
+
+    # Determine actual rank from the combined weights (may be 2*base_rank
+    # after combine_lora concatenates bias as extra rank dimensions).
+    first_mod = next(iter(lora_dict))
+    actual_rank = lora_dict[first_mod]["A"].shape[-2]
+
+    # Module path prefix: attention modules use self_attn, MLP uses mlp
+    _attn_modules = {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"}
 
     # Convert Sakana format → PEFT flat state_dict
     # Sakana: lora_dict[module_name]["A"] shape (batch, num_layers, rank, in)
-    # PEFT: .layers.{i}.mlp.{module}.lora_A.weight (rank, in_features)
+    # PEFT: .layers.{i}.{prefix}.{module}.lora_A.weight (rank, in_features)
     state_dict = {}
     for mod_name, weights in lora_dict.items():
         if mod_name not in target_modules:
             continue
         a_weights = weights["A"]  # (batch, num_layers, rank, in_features)
         b_weights = weights["B"]  # (batch, num_layers, rank, out_features)
+        prefix = "self_attn" if mod_name in _attn_modules else "mlp"
 
         for layer_pos, layer_idx in enumerate(layer_indices):
             key_a = (
                 f"base_model.model.model.layers.{layer_idx}"
-                f".mlp.{mod_name}.lora_A.weight"
+                f".{prefix}.{mod_name}.lora_A.weight"
             )
             key_b = (
                 f"base_model.model.model.layers.{layer_idx}"
-                f".mlp.{mod_name}.lora_B.weight"
+                f".{prefix}.{mod_name}.lora_B.weight"
             )
             # Take first batch element, transpose B to (out_features, rank)
             state_dict[key_a] = a_weights[0, layer_pos].contiguous()
@@ -628,10 +649,19 @@ def _save_sakana_adapter(
 
     save_file(state_dict, str(output_path / "adapter_model.safetensors"))
 
+    # Sakana's lora_forward uses scaling = lora_alpha directly (not alpha/r
+    # as PEFT does). To compensate, set PEFT lora_alpha = checkpoint_alpha *
+    # actual_rank so that PEFT's alpha/r division recovers the original
+    # scaling factor.
+    checkpoint_alpha = getattr(
+        hc.lora_config, "lora_alpha", hc.lora_config.r * 2
+    ) if hc is not None else actual_rank * 2
+    peft_alpha = checkpoint_alpha * actual_rank
+
     adapter_config = {
         "peft_type": "LORA",
-        "r": rank,
-        "lora_alpha": rank * 2,
+        "r": actual_rank,
+        "lora_alpha": peft_alpha,
         "target_modules": target_modules,
         "lora_dropout": 0.0,
         "bias": "none",
@@ -648,6 +678,6 @@ def _save_sakana_adapter(
         "Saved PEFT adapter: %d tensors, %d layers, rank=%d, targets=%s",
         len(state_dict),
         len(layer_indices),
-        rank,
+        actual_rank,
         target_modules,
     )
