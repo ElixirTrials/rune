@@ -1,5 +1,8 @@
 ROLE: python-coder
-SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
+{% if project %}PROJECT: {{ project[:200] }}
+{% endif %}SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
+{% if subtask.description %}DESCRIPTION: {{ subtask.description[:200] }}
+{% endif %}
 PLAN:
 {{ plan[:600] }}
 {% if existing_code %}

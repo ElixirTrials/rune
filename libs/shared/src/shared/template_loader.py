@@ -1,12 +1,13 @@
 """Jinja2 template loader for phase trajectory and prompt rendering."""
 
-from jinja2 import Environment, PackageLoader
+from jinja2 import Environment, PackageLoader, Undefined
 
 _env = Environment(
     loader=PackageLoader("shared", "templates"),
     keep_trailing_newline=False,
     trim_blocks=True,
     lstrip_blocks=True,
+    undefined=Undefined,
 )
 
 

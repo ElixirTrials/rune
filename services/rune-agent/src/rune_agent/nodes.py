@@ -13,7 +13,39 @@ from .state import RuneState
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanation."
+_PHASE_SYSTEM_PROMPTS: dict[str, str] = {
+    "decompose": (
+        "You are a project decomposer. Break projects into subtasks. "
+        "Output ONLY a numbered list, never code."
+    ),
+    "decompose_concise": (
+        "You are a project decomposer. Break projects into subtasks. "
+        "Output ONLY a numbered list, never code."
+    ),
+    "plan": (
+        "You are a software architect. Output ONLY architecture plans "
+        "with class signatures, data flow, and test strategy. Never output code."
+    ),
+    "code": "You are a Python code generator. Output only code, no explanation.",
+    "code_retry": "You are a Python code generator. Output only code, no explanation.",
+    "code_continue": (
+        "You are a Python code generator. Output only code, no explanation."
+    ),
+    "diagnose": (
+        "You are a code diagnostician. Identify which subtasks have bugs. "
+        "Output ONLY a numbered list, never code."
+    ),
+    "code_repair": (
+        "You are a Python code generator. Output only code, no explanation."
+    ),
+    "integrate": "You are a Python code generator. Output only code, no explanation.",
+    "integrate_retry": (
+        "You are a Python code generator. Output only code, no explanation."
+    ),
+}
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a Python code generator. Output only code, no explanation."
+)
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 
@@ -39,7 +71,8 @@ def _build_prompt(state: RuneState) -> str:
     if phase is not None:
         from shared.template_loader import render_prompt
 
-        return render_prompt(phase, task_description=state["task_description"])
+        ctx = state.get("prompt_context") or {}
+        return render_prompt(phase, task_description=state["task_description"], **ctx)
 
     task = state["task_description"]
     test_suite = state["test_suite"]
@@ -109,25 +142,28 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
 
     provider = get_provider()
     user_prompt = _build_prompt(state)
-    full_prompt = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
+    phase = state.get("phase")
+    system_prompt = _PHASE_SYSTEM_PROMPTS.get(phase or "", DEFAULT_SYSTEM_PROMPT)
 
     result: GenerationResult = await provider.generate(
-        prompt=full_prompt,
+        prompt=user_prompt,
         model=model,
         adapter_id=adapter_id,
         max_tokens=4096,
+        system_prompt=system_prompt,
     )
 
     extracted = _extract_code(result.text)
     logger.info(
-        "generate_node: attempt=%d, model=%s, adapter_id=%s, tokens=%d",
+        "generate_node: attempt=%d, model=%s, adapter_id=%s, tokens=%d, finish=%s",
         state["attempt_count"],
         result.model,
         result.adapter_id,
         result.token_count,
+        result.finish_reason,
     )
 
-    return {"generated_code": extracted}
+    return {"generated_code": extracted, "finish_reason": result.finish_reason}
 
 
 async def execute_node(state: RuneState) -> dict[str, Any]:

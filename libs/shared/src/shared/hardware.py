@@ -148,9 +148,9 @@ _BYTES_PER_PARAM = {
     "float16": 2,
 }
 
-# VRAM safety margin — reserve 40% for activations, KV cache, forward pass,
-# fragmentation, and other models that may be co-resident on the GPU.
-_VRAM_MARGIN = 0.60
+# VRAM safety margin — reserve 30% for KV cache, activations during forward
+# pass, and CUDA memory fragmentation.
+_VRAM_MARGIN = 0.70
 
 
 def resolve_model_dtype(

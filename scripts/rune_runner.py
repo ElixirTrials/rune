@@ -49,7 +49,7 @@ setup_path()  # noqa: E402
 
 from shared.hardware import get_best_device  # noqa: E402
 from shared.sandbox import count_test_results, extract_failed_tests  # noqa: E402
-from shared.template_loader import render_prompt, render_trajectory  # noqa: E402
+from shared.template_loader import render_trajectory  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -170,18 +170,32 @@ def _parse_subtask_list(model_output: str) -> list[dict[str, str]]:
     """Parse Phase 1 output into [{name, description}, ...].
 
     Expects numbered list format: ``1. name — description``
-    Also accepts ``1. name - description`` or ``1. name: description``.
+    Also accepts ``1. name - description``, ``1. name: description``,
+    ``1. **name:** description`` (markdown bold), or ``1. description sentence``
+    (no separator).
     """
     subtasks: list[dict[str, str]] = []
     for line in model_output.splitlines():
         line = line.strip()
-        # Match: "1. name — description" or "1. name - description"
+        # Strip markdown bold markers
+        line = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", line)
+        # Primary: "1. name — description" or "1. name - desc" or "1. name: desc"
         match = re.match(r"^\d+\.\s*(.+?)\s*(?:—|-|:)\s*(.+)$", line)
         if match:
             subtasks.append(
                 {
                     "name": match.group(1).strip(),
                     "description": match.group(2).strip(),
+                }
+            )
+            continue
+        # Fallback: "1. description sentence" (no separator)
+        match = re.match(r"^\d+\.\s*(.+?)\.?\s*$", line)
+        if match and len(match.group(1).strip()) > 3:
+            subtasks.append(
+                {
+                    "name": match.group(1).strip(),
+                    "description": "",
                 }
             )
     if not subtasks:
@@ -200,6 +214,37 @@ def _parse_plan(model_output: str) -> str:
     return model_output.strip()
 
 
+def _parse_diagnose_output(
+    model_output: str,
+    known_subtasks: list[str],
+) -> list[dict[str, str]]:
+    """Parse diagnose phase output into [{name, diagnosis}, ...].
+
+    Matches diagnosed subtask names against known subtask names using
+    substring matching (the model may abbreviate or rephrase names).
+    """
+    raw = _parse_subtask_list(model_output)
+    known_lower = {k.lower().strip(): k for k in known_subtasks}
+
+    matched: list[dict[str, str]] = []
+    for item in raw:
+        name = item["name"].lower().strip().rstrip(":")
+        diagnosis = item["description"] or item["name"]
+
+        # Exact match
+        if name in known_lower:
+            matched.append({"name": known_lower[name], "diagnosis": diagnosis})
+            continue
+
+        # Substring match: find the known subtask that best matches
+        for known_key, known_name in known_lower.items():
+            if name in known_key or known_key in name:
+                matched.append({"name": known_name, "diagnosis": diagnosis})
+                break
+
+    return matched
+
+
 # ---------------------------------------------------------------------------
 # Core iteration runner
 # ---------------------------------------------------------------------------
@@ -212,16 +257,18 @@ async def run_iteration(
     session_id: str,
     iteration: int,
     phase: str | None = None,
+    prompt_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run one iteration of the agent loop.
 
     Args:
         graph: Compiled single-iteration LangGraph.
-        project_prompt: The constant project definition prompt.
+        project_prompt: Raw task description (not pre-rendered).
         adapter_id: Current adapter to load, or None for base model.
         session_id: Session ID for trajectory tracking.
         iteration: Current iteration number.
         phase: Pipeline phase for template-driven prompts.
+        prompt_context: Extra template vars for prompt rendering (retry context).
 
     Returns:
         Final state dict from the graph execution.
@@ -243,6 +290,8 @@ async def run_iteration(
         "tests_ran": False,
         "trajectory": [],
         "phase": phase,
+        "prompt_context": prompt_context,
+        "finish_reason": None,
         "outcome": None,
     }
 
@@ -466,12 +515,14 @@ async def run_phased_pipeline(
     iters_plan = _get_phase_iterations("plan", max_phase_iterations)
     iters_code = _get_phase_iterations("code", max_phase_iterations)
     iters_integrate = _get_phase_iterations("integrate", max_phase_iterations)
+    iters_repair = _get_phase_iterations("repair", max_phase_iterations)
     logger.info(
-        "Phase iteration limits: decompose=%d, plan=%d, code=%d, integrate=%d",
+        "Phase iteration limits: decompose=%d, plan=%d, code=%d, integrate=%d, repair=%d",
         iters_decompose,
         iters_plan,
         iters_code,
         iters_integrate,
+        iters_repair,
     )
 
     phase_results: dict[str, Any] = {}
@@ -486,6 +537,12 @@ async def run_phased_pipeline(
     # Import evolution sweep
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from swarm_evolution import evolution_sweep
+
+    # Extract first sentence as project label for prompts.
+    # The full project spec flows through adapter weights; prompts only
+    # need enough to orient the model on which project it's working on.
+    _dot = project_prompt.find(".")
+    project_label = project_prompt[: _dot + 1] if _dot > 0 else project_prompt.split("\n")[0]
 
     # ---------------------------------------------------------------
     # Phase 1: DECOMPOSE (single agent, with evolution)
@@ -543,22 +600,25 @@ async def run_phased_pipeline(
                 }
             )
 
-        decompose_prompt = render_prompt("decompose", task_description=project_prompt)
         iteration_counter += 1
+        decompose_phase = "decompose_concise" if adapter_id else "decompose"
         state = await run_iteration(
             graph=graph,
-            project_prompt=decompose_prompt,
+            project_prompt=project_prompt,
             adapter_id=adapter_id,
             session_id=session_id,
             iteration=iteration_counter,
-            phase="decompose",
+            phase=decompose_phase,
         )
 
         # Score: reward 2-6 unique subtasks, penalize duplicates
         iter_subtasks = _parse_subtask_list(state.get("generated_code", ""))
         unique_names = {s["name"].lower().strip() for s in iter_subtasks}
         n_unique = len(unique_names)
-        if n_unique >= 2 and n_unique <= 8:
+        is_fallback = n_unique == 1 and iter_subtasks[0]["name"] == "implementation"
+        if is_fallback:
+            score = 0.05  # parser fallback — model didn't produce a list
+        elif n_unique >= 2 and n_unique <= 8:
             score = min(1.0, n_unique / 3.0)
         elif n_unique == 1 and state.get("tests_passed"):
             score = 0.5
@@ -685,14 +745,15 @@ async def run_phased_pipeline(
                     }
                 )
 
-            plan_prompt = render_prompt("plan", task_description=subtask["description"])
             plan_state = await run_iteration(
                 graph=graph,
-                project_prompt=plan_prompt,
+                project_prompt=project_prompt,
                 adapter_id=plan_aid,
                 session_id=session_id,
                 iteration=iteration_counter + idx + 1,
                 phase="plan",
+                prompt_context={"subtask_name": subtask["name"],
+                                "project_label": project_label},
             )
             return (
                 subtask["name"],
@@ -780,51 +841,74 @@ async def run_phased_pipeline(
                     total_subtasks=len(subtasks),
                     plan=plan,
                     existing_code=existing_code,
+                    project=project_prompt,
                 )
             else:
-                # Retry: build trajectory with error context
                 assert last_state is not None  # guaranteed by attempt > 0
-                passed, total = _count_test_results(
-                    last_state.get("stdout", ""),
-                    last_state.get("stderr", ""),
-                )
-                error_summary = _extract_error_summary(last_state.get("stderr", ""))
-                failed_tests = _extract_failed_tests(last_state.get("stderr", ""))
-                tests_passed = last_state.get("tests_passed", False)
+                is_truncated = last_state.get("finish_reason") == "length"
 
-                # Build fix guidance
-                if total == 0 and last_state.get("exit_code", 1) == 0:
-                    fix_guidance = (
-                        "NO tests detected — include unittest.TestCase tests "
-                        "and end with: if __name__ == '__main__': unittest.main()"
+                if is_truncated:
+                    # Continuation: prior output was cut off at max_tokens.
+                    # Concatenate prior + new output after generation.
+                    traj = render_trajectory(
+                        "code_continue",
+                        subtask=subtask,
+                        attempt=attempt + 1,
+                        max_retries=iters_code,
+                        plan=plan,
+                        existing_code=existing_code,
+                        project=project_prompt,
                     )
-                elif total == 0:
-                    fix_guidance = (
-                        "Code failed to execute. Check syntax, imports, indentation."
-                    )
-                elif passed == 0:
-                    fix_guidance = "No tests pass. Focus on basic structure first."
                 else:
-                    fix_guidance = (
-                        f"{total - passed} test(s) failing. "
-                        "Fix without breaking passing tests."
+                    # Retry: code was complete but tests failed or code errored.
+                    passed, total = _count_test_results(
+                        last_state.get("stdout", ""),
+                        last_state.get("stderr", ""),
                     )
+                    error_summary = _extract_error_summary(
+                        last_state.get("stderr", "")
+                    )
+                    failed_tests = _extract_failed_tests(
+                        last_state.get("stderr", "")
+                    )
+                    tests_passed = last_state.get("tests_passed", False)
 
-                traj = render_trajectory(
-                    "code_retry",
-                    subtask=subtask,
-                    attempt=attempt + 1,
-                    max_retries=iters_code,
-                    plan=plan,
-                    existing_code=existing_code,
-                    passed=passed,
-                    total=total,
-                    tests_passed=tests_passed,
-                    error_summary=error_summary,
-                    failed_tests=failed_tests,
-                    fix_guidance=fix_guidance,
-                    history=None,
-                )
+                    if total == 0 and last_state.get("exit_code", 1) == 0:
+                        fix_guidance = (
+                            "NO tests detected — include unittest.TestCase tests "
+                            "and end with: if __name__ == '__main__': unittest.main()"
+                        )
+                    elif total == 0:
+                        fix_guidance = (
+                            "Code failed to execute. "
+                            "Check syntax, imports, indentation."
+                        )
+                    elif passed == 0:
+                        fix_guidance = (
+                            "No tests pass. Focus on basic structure first."
+                        )
+                    else:
+                        fix_guidance = (
+                            f"{total - passed} test(s) failing. "
+                            "Fix without breaking passing tests."
+                        )
+
+                    traj = render_trajectory(
+                        "code_retry",
+                        subtask=subtask,
+                        attempt=attempt + 1,
+                        max_retries=iters_code,
+                        plan=plan,
+                        existing_code=existing_code,
+                        passed=passed,
+                        total=total,
+                        tests_passed=tests_passed,
+                        error_summary=error_summary,
+                        failed_tests=failed_tests,
+                        fix_guidance=fix_guidance,
+                        history=None,
+                        project=project_prompt,
+                    )
 
             code_adapter_dir = str(
                 adapter_dir / f"phase3_code_{subtask['name']}_v{attempt}"
@@ -862,10 +946,17 @@ async def run_phased_pipeline(
                 )
 
             if attempt == 0:
-                code_prompt = render_prompt(
-                    "code",
-                    task_description=subtask["description"],
-                )
+                code_phase = "code"
+                code_ctx: dict[str, Any] | None = {
+                    "subtask_name": subtask["name"],
+                    "project_label": project_label,
+                }
+            elif is_truncated:
+                code_phase = "code_continue"
+                code_ctx = {
+                    "subtask_name": subtask["name"],
+                    "project_label": project_label,
+                }
             else:
                 assert last_state is not None
                 passed, total = _count_test_results(
@@ -885,25 +976,39 @@ async def run_phased_pipeline(
                 else:
                     fix_guidance_prompt = f"{total - passed} test(s) failing. Fix them."
 
-                code_prompt = render_prompt(
-                    "code_retry",
-                    task_description=subtask["description"],
-                    passed=passed,
-                    total=total,
-                    error_summary=error_summary,
-                    fix_guidance=fix_guidance_prompt,
-                )
+                code_phase = "code_retry"
+                code_ctx = {
+                    "subtask_name": subtask["name"],
+                    "project_label": project_label,
+                    "passed": passed,
+                    "total": total,
+                    "error_summary": error_summary,
+                    "fix_guidance": fix_guidance_prompt,
+                }
             code_state = await run_iteration(
                 graph=graph,
-                project_prompt=code_prompt,
+                project_prompt=project_prompt,
                 adapter_id=code_adapter_id,
                 session_id=session_id,
                 iteration=iteration_counter + idx * iters_code + attempt + 1,
-                phase="code",
+                phase=code_phase,
+                prompt_context=code_ctx,
             )
 
             last_state = code_state
-            existing_code = code_state.get("generated_code", "")
+            new_code = code_state.get("generated_code", "")
+
+            # For continuation: concatenate prior code + new output
+            if attempt > 0 and is_truncated:
+                existing_code = existing_code + "\n" + new_code
+                logger.info(
+                    "  Subtask '%s' continuation: appended %d chars (total %d)",
+                    subtask["name"],
+                    len(new_code),
+                    len(existing_code),
+                )
+            else:
+                existing_code = new_code
 
             # Update fitness with partial credit from test results
             code_passed = code_state.get("tests_passed", False)
@@ -1005,6 +1110,22 @@ async def run_phased_pipeline(
         name: _extract_code_skeleton(code) for name, code in code_outputs.items()
     }
 
+    # Build integration doc: structured summary of subtasks, plans, and code
+    # This flows through the hypernetwork so the integrate adapter "knows"
+    # what was built and how pieces connect.
+    integration_doc_parts: list[str] = []
+    for st in subtasks:
+        name = st["name"]
+        plan_summary = plans.get(name, "")[:200]
+        code_summary = _extract_code_skeleton(code_outputs.get(name, ""))[:300]
+        passed = code_subtask_results.get(name, {}).get("passed", False)
+        integration_doc_parts.append(
+            f"- {name}: {'PASSED' if passed else 'FAILED'}\n"
+            f"  Plan: {plan_summary}\n"
+            f"  Code: {code_summary}"
+        )
+    integration_doc = "\n".join(integration_doc_parts)
+
     best_integrate_state: dict[str, Any] | None = None
     best_integrate_adapter_id: str | None = None
     best_integrate_score: float = -1.0
@@ -1019,6 +1140,7 @@ async def run_phased_pipeline(
             project=project_prompt,
             subtask_count=len(subtasks),
             skeletons=skeletons,
+            integration_doc=integration_doc,
         )
         # Include prior error context on retries
         if evo_iter > 0 and best_integrate_state is not None:
@@ -1060,10 +1182,11 @@ async def run_phased_pipeline(
             )
 
         if evo_iter == 0 or best_integrate_state is None:
-            integrate_prompt = render_prompt(
-                "integrate",
-                task_description=project_prompt,
-            )
+            integrate_phase = "integrate"
+            integrate_ctx: dict[str, Any] | None = {
+                "subtask_count": len(subtasks),
+                "project_label": project_label,
+            }
         else:
             int_passed, int_total = _count_test_results(
                 best_integrate_state.get("stdout", ""),
@@ -1080,22 +1203,24 @@ async def run_phased_pipeline(
             else:
                 int_fix = f"{int_total - int_passed} test(s) failing. Fix them."
 
-            integrate_prompt = render_prompt(
-                "integrate_retry",
-                task_description=project_prompt,
-                passed=int_passed,
-                total=int_total,
-                error_summary=int_error,
-                fix_guidance=int_fix,
-            )
+            integrate_phase = "integrate_retry"
+            integrate_ctx = {
+                "subtask_count": len(subtasks),
+                "project_label": project_label,
+                "passed": int_passed,
+                "total": int_total,
+                "error_summary": int_error,
+                "fix_guidance": int_fix,
+            }
         iteration_counter += 1
         integrate_state = await run_iteration(
             graph=graph,
-            project_prompt=integrate_prompt,
+            project_prompt=project_prompt,
             adapter_id=integrate_aid,
             session_id=session_id,
             iteration=iteration_counter,
-            phase="integrate",
+            phase=integrate_phase,
+            prompt_context=integrate_ctx,
         )
 
         # Score from test results
@@ -1150,6 +1275,256 @@ async def run_phased_pipeline(
         "iterations": evo_iter + 1,
         "best_score": best_integrate_score,
     }
+
+    # ---------------------------------------------------------------
+    # Phase 5: DIAGNOSE → REPAIR → RE-INTEGRATE loop
+    # When integration fails, ask the model which subtasks need repair,
+    # fix them with targeted adapters, and re-integrate.
+    # ---------------------------------------------------------------
+    repair_history: list[dict[str, Any]] = []
+
+    for repair_iter in range(iters_repair):
+        if final_passed:
+            break
+
+        logger.info(
+            "=== Phase 5: REPAIR iteration %d/%d ===",
+            repair_iter + 1,
+            iters_repair,
+        )
+
+        # --- DIAGNOSE: ask the model which subtasks need fixing ---
+        integration_error = _extract_error_summary(
+            best_integrate_state.get("stderr", "")
+        )
+        if not integration_error:
+            integration_error = best_integrate_state.get("stderr", "")[:500]
+
+        diagnose_traj = render_trajectory(
+            "diagnose",
+            project=project_prompt,
+            code_outputs=code_outputs,
+            integration_error=integration_error,
+            repair_history=repair_history,
+        )
+        diagnose_adapter_dir = str(
+            adapter_dir / f"phase5_diagnose_v{repair_iter}"
+        )
+        diagnose_adapter_path = run_hypernetwork(
+            trajectory_text=diagnose_traj,
+            output_dir=diagnose_adapter_dir,
+            base_model_id=base_model_id,
+            checkpoint_path=checkpoint_path,
+            device=device,
+        )
+
+        diagnose_aid: str | None = None
+        if diagnose_adapter_path:
+            diagnose_aid = f"phase5-diagnose-v{repair_iter}"
+            await _load_adapter(diagnose_aid, diagnose_adapter_path, None)
+
+        iteration_counter += 1
+        diagnose_state = await run_iteration(
+            graph=graph,
+            project_prompt=project_prompt,
+            adapter_id=diagnose_aid,
+            session_id=session_id,
+            iteration=iteration_counter,
+            phase="diagnose",
+            prompt_context={"project_label": project_label},
+        )
+
+        diagnosed = _parse_diagnose_output(
+            diagnose_state.get("generated_code", ""),
+            list(code_outputs.keys()),
+        )
+
+        if not diagnosed:
+            logger.warning("  Diagnose produced no actionable items, stopping repair")
+            break
+
+        logger.info(
+            "  Diagnosed %d subtask(s): %s",
+            len(diagnosed),
+            [(d["name"], d["diagnosis"][:60]) for d in diagnosed],
+        )
+
+        # --- REPAIR: fix each diagnosed subtask ---
+        for diag in diagnosed:
+            repair_name = diag["name"]
+            diagnosis = diag["diagnosis"]
+            subtask = next(
+                (s for s in subtasks if s["name"] == repair_name), None
+            )
+            if subtask is None:
+                logger.warning("  Diagnosed subtask '%s' not found, skipping", repair_name)
+                continue
+
+            sibling_skeletons = {
+                n: _extract_code_skeleton(c)
+                for n, c in code_outputs.items()
+                if n != repair_name
+            }
+
+            # Per-subtask repair history
+            subtask_history = [
+                h.get("diagnosis", "")
+                for h in repair_history
+                for d in h.get("diagnosed", [])
+                if d.get("name") == repair_name
+            ]
+
+            repair_traj = render_trajectory(
+                "code_repair",
+                subtask=subtask,
+                existing_code=code_outputs[repair_name],
+                diagnosis=diagnosis,
+                sibling_skeletons=sibling_skeletons,
+                repair_history=subtask_history,
+                project=project_prompt,
+            )
+            repair_adapter_dir = str(
+                adapter_dir / f"phase5_repair_{repair_name}_v{repair_iter}"
+            )
+            repair_adapter_path = run_hypernetwork(
+                trajectory_text=repair_traj,
+                output_dir=repair_adapter_dir,
+                base_model_id=base_model_id,
+                checkpoint_path=checkpoint_path,
+                device=device,
+            )
+
+            repair_aid: str | None = None
+            if repair_adapter_path:
+                repair_aid = f"phase5-repair-{repair_name}-v{repair_iter}"
+                await _load_adapter(repair_aid, repair_adapter_path, None)
+
+            iteration_counter += 1
+            repair_state = await run_iteration(
+                graph=graph,
+                project_prompt=project_prompt,
+                adapter_id=repair_aid,
+                session_id=session_id,
+                iteration=iteration_counter,
+                phase="code_repair",
+                prompt_context={
+                    "subtask_name": repair_name,
+                    "project_label": project_label,
+                    "diagnosis": diagnosis,
+                },
+            )
+
+            repaired_code = repair_state.get("generated_code", "")
+            if repaired_code.strip():
+                code_outputs[repair_name] = repaired_code
+                logger.info(
+                    "  Repaired '%s' (%d lines)",
+                    repair_name,
+                    len(repaired_code.splitlines()),
+                )
+
+        # --- RE-INTEGRATE with patched code ---
+        skeletons = {
+            name: _extract_code_skeleton(code)
+            for name, code in code_outputs.items()
+        }
+        integration_doc_parts = []
+        for st in subtasks:
+            name = st["name"]
+            plan_summary = plans.get(name, "")[:200]
+            code_summary = _extract_code_skeleton(
+                code_outputs.get(name, "")
+            )[:300]
+            integration_doc_parts.append(
+                f"- {name}: REPAIRED\n"
+                f"  Plan: {plan_summary}\n"
+                f"  Code: {code_summary}"
+            )
+        integration_doc = "\n".join(integration_doc_parts)
+
+        reintegrate_traj = render_trajectory(
+            "integrate",
+            project=project_prompt,
+            subtask_count=len(subtasks),
+            skeletons=skeletons,
+            integration_doc=integration_doc,
+        )
+        reintegrate_adapter_dir = str(
+            adapter_dir / f"phase5_reintegrate_v{repair_iter}"
+        )
+        reintegrate_adapter_path = run_hypernetwork(
+            trajectory_text=reintegrate_traj,
+            output_dir=reintegrate_adapter_dir,
+            base_model_id=base_model_id,
+            checkpoint_path=checkpoint_path,
+            device=device,
+        )
+
+        reintegrate_aid: str | None = None
+        if reintegrate_adapter_path:
+            reintegrate_aid = f"phase5-reintegrate-v{repair_iter}"
+            await _load_adapter(reintegrate_aid, reintegrate_adapter_path, None)
+
+        iteration_counter += 1
+        reintegrate_state = await run_iteration(
+            graph=graph,
+            project_prompt=project_prompt,
+            adapter_id=reintegrate_aid,
+            session_id=session_id,
+            iteration=iteration_counter,
+            phase="integrate",
+            prompt_context={
+                "subtask_count": len(subtasks),
+                "project_label": project_label,
+            },
+        )
+
+        ri_passed, ri_total = _count_test_results(
+            reintegrate_state.get("stdout", ""),
+            reintegrate_state.get("stderr", ""),
+        )
+        ri_score = ri_passed / ri_total if ri_total > 0 else 0.0
+        final_passed = reintegrate_state.get("tests_passed", False)
+
+        logger.info(
+            "  Re-integrate: %d/%d tests, score=%.2f, passed=%s",
+            ri_passed,
+            ri_total,
+            ri_score,
+            final_passed,
+        )
+
+        # Record this repair iteration
+        repair_history.append({
+            "iteration": repair_iter,
+            "diagnosed": diagnosed,
+            "integration_error": integration_error,
+            "result": ri_score,
+        })
+
+        if ri_score > best_integrate_score:
+            best_integrate_score = ri_score
+            best_integrate_state = reintegrate_state
+            best_integrate_adapter_id = reintegrate_aid
+
+        if final_passed:
+            logger.info("  Repair loop converged at iteration %d", repair_iter + 1)
+            break
+
+    evolution_stats["phase_iterations"]["repair"] = len(repair_history)
+
+    # Update final results after repair loop
+    final_code = best_integrate_state.get("generated_code", "")
+    final_passed = best_integrate_state.get("tests_passed", False)
+
+    if repair_history:
+        phase_results["repair"] = {
+            "iterations": len(repair_history),
+            "best_score": best_integrate_score,
+            "diagnosed_total": sum(
+                len(h["diagnosed"]) for h in repair_history
+            ),
+        }
 
     # Final evolution sweep
     final_sweep = evolution_sweep(registry)

@@ -50,5 +50,9 @@ class RuneState(TypedDict):
     trajectory: list[dict[str, Any]]
     # Pipeline phase
     phase: Optional[str]  # 'decompose' | 'plan' | 'code' | 'integrate' | None
+    # Extra template vars for prompt rendering (retry context, etc.)
+    prompt_context: Optional[dict[str, Any]]
+    # Generation metadata
+    finish_reason: Optional[str]  # 'stop' | 'length' (truncated)
     # Terminal result
     outcome: Optional[str]  # 'success' | 'exhausted' | None

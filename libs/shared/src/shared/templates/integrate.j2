@@ -1,6 +1,10 @@
 ROLE: integrator
 PROJECT: {{ project[:800] }}
 SUBTASKS COMPLETED: {{ subtask_count }}
+{% if integration_doc %}
+SUBTASK SUMMARY:
+{{ integration_doc[:1500] }}
+{% endif %}
 CODE SKELETONS:
 {% for name, skeleton in skeletons.items() %}
 --- {{ name }} ---

@@ -1,0 +1,21 @@
+ROLE: python-coder (repair)
+{% if project %}PROJECT: {{ project[:300] }}
+{% endif %}SUBTASK: {{ subtask.name }}
+DIAGNOSIS: {{ diagnosis[:300] }}
+YOUR CURRENT CODE:
+{{ existing_code[:800] }}
+SIBLING SUBTASKS (your code must be compatible with these):
+{% for name, skeleton in sibling_skeletons.items() %}
+--- {{ name }} ---
+{{ skeleton[:400] }}
+{% endfor %}
+{% if repair_history %}
+PRIOR REPAIR ATTEMPTS FOR THIS SUBTASK:
+{% for attempt in repair_history %}
+  - Attempt {{ loop.index }}: {{ attempt[:200] }}
+{% endfor %}
+{% endif %}
+PRACTICES: Fix the diagnosed issues. Ensure all classes and functions are
+defined in your code — do not import from sibling subtask modules.
+Use dataclasses, type annotations, unittest.TestCase.
+End with: if __name__ == '__main__': unittest.main()

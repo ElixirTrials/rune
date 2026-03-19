@@ -71,9 +71,29 @@ class TransformersProvider(InferenceProvider):
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
+        # Resolve dtype: prefer fp32 on GPU when VRAM allows (better generation
+        # quality for the resident inference model), fall back to model default.
+        resolved_dtype = self._torch_dtype
+        if resolved_dtype == "auto" and self._device != "cpu":
+            from shared.hardware import resolve_model_dtype  # noqa: PLC0415
+            from transformers import AutoConfig  # noqa: PLC0415
+
+            config = AutoConfig.from_pretrained(self._model_name)
+            param_count = getattr(config, "num_parameters", None)
+            if param_count is None:
+                # Estimate from config fields
+                h = getattr(config, "hidden_size", 2048)
+                v = getattr(config, "vocab_size", 32000)
+                n = getattr(config, "num_hidden_layers", 24)
+                param_count = v * h + n * 12 * h * h
+            resolved_dtype = resolve_model_dtype(
+                param_count=param_count, device=self._device
+            )
+            logger.info("Inference model dtype resolved to %s", resolved_dtype)
+
         self._model = AutoModelForCausalLM.from_pretrained(
             self._model_name,
-            torch_dtype=self._torch_dtype,
+            torch_dtype=resolved_dtype,
         )
         self._model.to(self._device)
         self._model.eval()
@@ -86,15 +106,18 @@ class TransformersProvider(InferenceProvider):
         model: str,
         adapter_id: str | None = None,
         max_tokens: int = 4096,
+        system_prompt: str | None = None,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
         Args:
-            prompt: The input prompt.
+            prompt: The user-facing input prompt.
             model: Ignored (model is set at construction).
             adapter_id: LoRA adapter ID to activate. Must be loaded via
                 load_adapter() before use.
             max_tokens: Maximum tokens to generate.
+            system_prompt: Optional system-level instruction prepended via
+                the tokenizer's chat template when available.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -119,8 +142,10 @@ class TransformersProvider(InferenceProvider):
         elif not adapter_id and self._active_adapter:
             self._deactivate_adapter()
 
+        # Build chat-formatted prompt via tokenizer's chat template
+        formatted = self._format_prompt(prompt, system_prompt)
         inputs = self._tokenizer(
-            prompt, return_tensors="pt", truncation=True, max_length=8192
+            formatted, return_tensors="pt", truncation=True, max_length=8192
         )
         inputs = {k: v.to(self._device) for k, v in inputs.items()}
         input_len = inputs["input_ids"].shape[1]
@@ -138,14 +163,41 @@ class TransformersProvider(InferenceProvider):
         new_tokens = outputs[0][input_len:]
         text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
         total_tokens = outputs.shape[1]
+        new_token_count = len(new_tokens)
+
+        # Detect truncation: generated exactly max_tokens means cut off
+        finish_reason = "length" if new_token_count >= max_tokens else "stop"
 
         return GenerationResult(
             text=text,
             model=self._model_name,
             adapter_id=self._active_adapter,
             token_count=total_tokens,
-            finish_reason="stop",
+            finish_reason=finish_reason,
         )
+
+    def _format_prompt(self, prompt: str, system_prompt: str | None = None) -> str:
+        """Format prompt using the tokenizer's chat template when available.
+
+        Constructs a messages list and applies the tokenizer's chat template
+        so instruction-tuned models receive properly structured input.
+        Falls back to plain concatenation when no chat template exists.
+        """
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "user", "content": f"{system_prompt}\n\n{prompt}"})
+        else:
+            messages.append({"role": "user", "content": prompt})
+
+        try:
+            return self._tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+        except Exception:
+            # Tokenizer has no chat template — fall back to raw concat
+            if system_prompt:
+                return f"{system_prompt}\n\n{prompt}"
+            return prompt
 
     def _activate_adapter(self, adapter_id: str) -> None:
         """Activate a loaded PEFT adapter.

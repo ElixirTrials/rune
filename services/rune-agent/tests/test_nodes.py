@@ -368,6 +368,65 @@ async def test_execute_node_real_testcase_passes() -> None:
     assert result["tests_ran"] is True
 
 
+async def test_build_prompt_no_double_render() -> None:
+    """_build_prompt with phase set renders template once, not double."""
+    from rune_agent.nodes import _build_prompt
+
+    state: dict[str, Any] = {
+        "task_description": "Build X",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 0,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "phase": "decompose",
+        "prompt_context": None,
+    }
+
+    result = _build_prompt(state)
+    # "Build X" should appear exactly once — no double rendering
+    assert result.count("Build X") == 1
+    # Should contain the template's structural text
+    assert "Decompose" in result or "decompose" in result.lower()
+
+
+async def test_build_prompt_with_prompt_context() -> None:
+    """_build_prompt passes prompt_context vars to retry templates."""
+    from rune_agent.nodes import _build_prompt
+
+    state: dict[str, Any] = {
+        "task_description": "Fix sorting",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 1,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 1,
+        "phase": "code_retry",
+        "prompt_context": {
+            "subtask_name": "Sort algorithm",
+            "project_label": "Build a sorting library.",
+            "passed": 2,
+            "total": 5,
+            "error_summary": "IndexError in test_edge",
+            "fix_guidance": "3 test(s) failing. Fix them.",
+        },
+    }
+
+    result = _build_prompt(state)
+    assert "Sort algorithm" in result
+    assert "sorting library" in result
+    assert "2/5" in result
+    assert "3 test(s) failing" in result
+    # error_summary flows through adapter weights, not the prompt
+    assert "IndexError" not in result
+
+
 async def test_execute_node_testcase_without_main_auto_injected() -> None:
     """execute_node: TestCase without unittest.main() gets auto-injected and passes."""
     state: dict[str, Any] = {
