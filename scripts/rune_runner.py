@@ -161,6 +161,11 @@ _count_test_results = count_test_results
 _extract_failed_tests = extract_failed_tests
 
 
+def _safe_adapter_id(name: str) -> str:
+    """Sanitize a name for use in adapter IDs (no dots or special chars)."""
+    return re.sub(r"[^\w\-]", "_", name)
+
+
 # ---------------------------------------------------------------------------
 # Output parsers
 # ---------------------------------------------------------------------------
@@ -716,7 +721,7 @@ async def run_phased_pipeline(
                     f"{best_plans[subtask['name']][:300]}"
                 )
 
-            plan_ad = str(adapter_dir / f"phase2_plan_{subtask['name']}_v{evo}")
+            plan_ad = str(adapter_dir / f"phase2_plan_{_safe_adapter_id(subtask['name'])}_v{evo}")
             plan_path = run_hypernetwork(
                 trajectory_text=traj,
                 output_dir=plan_ad,
@@ -726,7 +731,7 @@ async def run_phased_pipeline(
             )
             plan_aid: str | None = None
             if plan_path:
-                plan_aid = f"phase2-plan-{subtask['name']}-v{evo}"
+                plan_aid = f"phase2-plan-{_safe_adapter_id(subtask['name'])}-v{evo}"
                 await _load_adapter(plan_aid, plan_path, None)
                 _register_adapter(
                     registry,
@@ -911,7 +916,7 @@ async def run_phased_pipeline(
                     )
 
             code_adapter_dir = str(
-                adapter_dir / f"phase3_code_{subtask['name']}_v{attempt}"
+                adapter_dir / f"phase3_code_{_safe_adapter_id(subtask['name'])}_v{attempt}"
             )
             code_adapter_path = run_hypernetwork(
                 trajectory_text=traj,
@@ -923,7 +928,7 @@ async def run_phased_pipeline(
 
             code_adapter_id: str | None = None
             if code_adapter_path:
-                code_adapter_id = f"phase3-code-{subtask['name']}-v{attempt}"
+                code_adapter_id = f"phase3-code-{_safe_adapter_id(subtask['name'])}-v{attempt}"
                 await _load_adapter(
                     code_adapter_id, code_adapter_path, loaded_code_adapter
                 )
@@ -931,7 +936,7 @@ async def run_phased_pipeline(
                 _register_adapter(
                     registry,
                     adapter_id=code_adapter_id,
-                    task_type=f"phase3-code-{subtask['name']}",
+                    task_type=f"phase3-code-{_safe_adapter_id(subtask['name'])}",
                     base_model_id=base_model_id,
                     file_path=code_adapter_path,
                     session_id=session_id,
@@ -940,7 +945,7 @@ async def run_phased_pipeline(
                 registered_adapters.append(
                     {
                         "adapter_id": code_adapter_id,
-                        "task_type": f"phase3-code-{subtask['name']}",
+                        "task_type": f"phase3-code-{_safe_adapter_id(subtask['name'])}",
                         "phase": "code",
                     }
                 )
@@ -1083,7 +1088,7 @@ async def run_phased_pipeline(
     code_passed_count = sum(1 for r in code_subtask_results.values() if r["passed"])
     evolution_stats["phase_iterations"]["code"] = max_code_attempts
     evolution_stats["best_adapters"]["code"] = {
-        name: f"phase3-code-{name}-v{r['attempts'] - 1}"
+        name: f"phase3-code-{_safe_adapter_id(name)}-v{r['attempts'] - 1}"
         for name, r in code_subtask_results.items()
         if r["passed"]
     }
@@ -1384,7 +1389,7 @@ async def run_phased_pipeline(
                 project=project_prompt,
             )
             repair_adapter_dir = str(
-                adapter_dir / f"phase5_repair_{repair_name}_v{repair_iter}"
+                adapter_dir / f"phase5_repair_{_safe_adapter_id(repair_name)}_v{repair_iter}"
             )
             repair_adapter_path = run_hypernetwork(
                 trajectory_text=repair_traj,
@@ -1396,7 +1401,7 @@ async def run_phased_pipeline(
 
             repair_aid: str | None = None
             if repair_adapter_path:
-                repair_aid = f"phase5-repair-{repair_name}-v{repair_iter}"
+                repair_aid = f"phase5-repair-{_safe_adapter_id(repair_name)}-v{repair_iter}"
                 await _load_adapter(repair_aid, repair_adapter_path, None)
 
             iteration_counter += 1
