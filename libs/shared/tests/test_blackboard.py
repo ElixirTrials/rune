@@ -38,23 +38,33 @@ class TestExtractInterfaces:
 class TestBlackboard:
     def test_publish_and_get(self) -> None:
         bb = Blackboard()
-        bb.publish(SubtaskArtifact(
-            name="A", code="x=1", interfaces="class A:", tests_passed=True
-        ))
+        bb.publish(
+            SubtaskArtifact(
+                name="A", code="x=1", interfaces="class A:", tests_passed=True
+            )
+        )
         assert bb.get("A") is not None
         assert bb.get("A").interfaces == "class A:"  # type: ignore[union-attr]
         assert bb.get("B") is None
 
     def test_dependency_interfaces(self) -> None:
         bb = Blackboard()
-        bb.publish(SubtaskArtifact(
-            name="Model", code="", interfaces="class Model:\n    id: int",
-            tests_passed=True,
-        ))
-        bb.publish(SubtaskArtifact(
-            name="Store", code="", interfaces="class Store:\n    def save():",
-            tests_passed=True,
-        ))
+        bb.publish(
+            SubtaskArtifact(
+                name="Model",
+                code="",
+                interfaces="class Model:\n    id: int",
+                tests_passed=True,
+            )
+        )
+        bb.publish(
+            SubtaskArtifact(
+                name="Store",
+                code="",
+                interfaces="class Store:\n    def save():",
+                tests_passed=True,
+            )
+        )
         subtask = {"name": "API", "depends_on": ["Model", "Store"]}
         result = bb.get_dependency_interfaces(subtask)
         assert "class Model:" in result
@@ -67,12 +77,12 @@ class TestBlackboard:
 
     def test_all_interfaces(self) -> None:
         bb = Blackboard()
-        bb.publish(SubtaskArtifact(
-            name="A", code="", interfaces="class A:", tests_passed=True
-        ))
-        bb.publish(SubtaskArtifact(
-            name="B", code="", interfaces="class B:", tests_passed=True
-        ))
+        bb.publish(
+            SubtaskArtifact(name="A", code="", interfaces="class A:", tests_passed=True)
+        )
+        bb.publish(
+            SubtaskArtifact(name="B", code="", interfaces="class B:", tests_passed=True)
+        )
         result = bb.all_interfaces()
         assert "class A:" in result
         assert "class B:" in result
@@ -83,29 +93,25 @@ class TestParseDependencies:
         assert parse_dependencies("1. Foo — bar", ["Foo", "Bar"]) == []
 
     def test_depends_none(self) -> None:
-        assert parse_dependencies(
-            "1. Foo — bar [depends: none]", ["Foo"]
-        ) == []
+        assert parse_dependencies("1. Foo — bar [depends: none]", ["Foo"]) == []
 
     def test_depends_indices(self) -> None:
         names = ["Data Model", "EventStore", "Ledger"]
-        result = parse_dependencies(
-            "3. Ledger — impl [depends: 1, 2]", names
-        )
+        result = parse_dependencies("3. Ledger — impl [depends: 1, 2]", names)
         assert result == ["Data Model", "EventStore"]
 
     def test_depends_name_match(self) -> None:
         names = ["Data Model", "EventStore"]
-        result = parse_dependencies(
-            "2. EventStore — impl [depends: Data Model]", names
-        )
+        result = parse_dependencies("2. EventStore — impl [depends: Data Model]", names)
         assert result == ["Data Model"]
 
 
 class TestBuildExecutionLayers:
     def test_no_deps_single_layer(self) -> None:
         subtasks = [
-            {"name": "A"}, {"name": "B"}, {"name": "C"},
+            {"name": "A"},
+            {"name": "B"},
+            {"name": "C"},
         ]
         layers = build_execution_layers(subtasks)
         assert len(layers) == 1

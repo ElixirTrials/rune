@@ -15,7 +15,7 @@ uv run mypy libs/ services/      # type check
 
 ## Key Entry Points
 
-- `scripts/rune_runner.py` — Single pipeline run (5-phase: decompose → plan → code → integrate → repair)
+- `scripts/rune_runner.py` — Single pipeline run (5-phase: decompose → plan → code → integrate → diagnose/repair) with DAG-ordered code execution
 - `scripts/swarm.py` — Multi-agent swarm orchestrator (agents + training pool + evolution + watchdog)
 - `scripts/e2e_test.py` — End-to-end test exercising full pipeline
 - `scripts/benchmark_challenging.py` — 3-task end-to-end benchmark
@@ -44,6 +44,7 @@ The scripts layer is the primary execution path. Services provide REST APIs but 
 ## Important Files
 
 - `libs/shared/src/shared/pipeline_config.py` — PipelineConfig frozen dataclass (adapter, generation, prompt, trajectory settings)
+- `libs/shared/src/shared/blackboard.py` — Typed blackboard for DAG-ordered code phase (SubtaskArtifact, interface extraction, topological sort)
 - `libs/shared/src/shared/rune_models.py` — Cross-service data contracts (CodingSession, SwarmConfig, PipelinePhase, etc.)
 - `libs/shared/src/shared/templates/*.j2` — Jinja2 templates for each pipeline phase
 - `libs/model-training/src/model_training/sakana_d2l.py` — Sakana Doc-to-LoRA adapter generation (HyperLoRA perceiver → PEFT adapter)
@@ -80,6 +81,22 @@ Pipeline phase templates live in `libs/shared/src/shared/templates/`:
 Prompts orient the model (subtask name, project label, format directive). Adapters carry domain context via trajectory templates. See `instructions/adapter-research-findings.md` for detailed design rationale.
 
 Templates are rendered via `shared.template_loader.render_trajectory()` and `render_prompt()`.
+
+## DAG-Ordered Code Phase
+
+Subtasks execute in dependency order via a typed blackboard (`libs/shared/src/shared/blackboard.py`):
+- Decompose phase outputs `[depends: 1, 2]` declarations parsed by `_parse_subtask_list`
+- `build_execution_layers()` topologically sorts subtasks into layers
+- Layer 0 (no deps) runs first, publishes interfaces to blackboard
+- Layer N reads predecessor interfaces from blackboard via adapter trajectory
+- Backward compatible: missing `[depends:]` puts all subtasks in layer 0 (parallel)
+
+## Two-Step Diagnose→Repair
+
+When code fails, the retry loop uses a two-step approach:
+1. **Diagnose:** Error in prompt ("crashes with: NameError..."), code in adapter → model produces concise fix instruction
+2. **Repair:** Model's own diagnosis becomes the fix_guidance in prompt, domain stays in adapter → produces fixed code
+This avoids the prompt-adapter tension where domain context and error details compete for model attention.
 
 ## Adapter Research
 

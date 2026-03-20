@@ -246,6 +246,12 @@ def load_sakana_checkpoint(
         device=device,
     )
     logger.info("HyperLoRA dtype resolved to %s", hypernet_dtype)
+    # Suppress "Flash Attention 2 without specifying a torch dtype" warning
+    # by setting the dtype on the config before HyperLoRA instantiation.
+    if hasattr(hc, "aggregator_config"):
+        ac = hc.aggregator_config
+        if hasattr(ac, "torch_dtype"):
+            ac.torch_dtype = hypernet_dtype
     hypernet = HyperLoRA(hc).to(hypernet_dtype)
 
     # Load ALL hypernet weights from checkpoint (not just a prefix subset).

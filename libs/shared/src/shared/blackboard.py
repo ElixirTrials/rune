@@ -69,11 +69,15 @@ def extract_interfaces(code: str, max_lines: int = 60) -> str:
     result: list[str] = []
     for line in code.splitlines():
         stripped = line.strip()
-        if stripped.startswith((
-            "import ", "from ",
-            "class ", "def ",
-            "@",
-        )):
+        if stripped.startswith(
+            (
+                "import ",
+                "from ",
+                "class ",
+                "def ",
+                "@",
+            )
+        ):
             result.append(line)
         elif stripped.startswith(('"""', "'''")):
             result.append(line)

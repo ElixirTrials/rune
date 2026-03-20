@@ -1,4 +1,9 @@
+{% if error_line %}
+This code crashes with: {{ error_line }}
+What is the fix? Answer in one sentence.
+{% else %}
 You are diagnosing integration failures.
 Project: {{ project_label }}
 Which subtasks need repair? Output ONLY a numbered list:
 1. subtask name — what is wrong and how to fix it
+{% endif %}

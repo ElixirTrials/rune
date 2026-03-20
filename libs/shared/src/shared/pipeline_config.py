@@ -72,9 +72,7 @@ class PipelineConfig:
         """Serialize to a plain dict."""
         d = asdict(self)
         # Convert tuple back for JSON compatibility
-        d["calibration"]["scaling_range"] = list(
-            d["calibration"]["scaling_range"]
-        )
+        d["calibration"]["scaling_range"] = list(d["calibration"]["scaling_range"])
         return d
 
     def save(self, path: Path | None = None) -> Path:
