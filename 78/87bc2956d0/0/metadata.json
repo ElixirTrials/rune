@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "7887bc2956d0",
+  "session_id": "3fb7721f-7a2a-4fed-9c7f-69c5d9d0022f",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-20T18:03:39.184409827Z",
+  "branch": "feat/fix-codegen-quality-test-validation",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "scripts/benchmark_challenging.py",
+    "scripts/experiment_harness.py",
+    "scripts/optimization/run_optimization.py",
+    "scripts/optimization/template_library.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "ff4d8871307a",
+  "checkpoint_transcript_start": 3829,
+  "transcript_lines_at_start": 3829,
+  "token_usage": {
+    "input_tokens": 15,
+    "cache_creation_tokens": 813630,
+    "cache_read_tokens": 9748835,
+    "output_tokens": 1775,
+    "api_call_count": 13
+  },
+  "session_metrics": {
+    "turn_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-20T18:03:30.70827452Z",
+    "agent_lines": 72,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 72,
+    "agent_percentage": 100
+  }
+}
