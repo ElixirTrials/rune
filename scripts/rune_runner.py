@@ -171,15 +171,15 @@ def _safe_adapter_id(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _parse_subtask_list(model_output: str) -> list[dict[str, str]]:
-    """Parse Phase 1 output into [{name, description}, ...].
+def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
+    """Parse Phase 1 output into [{name, description, depends_on}, ...].
 
-    Expects numbered list format: ``1. name — description``
-    Also accepts ``1. name - description``, ``1. name: description``,
-    ``1. **name:** description`` (markdown bold), or ``1. description sentence``
-    (no separator).
+    Expects numbered list format: ``1. name — description [depends: none]``
+    Also accepts lines without dependency declarations (backward compatible).
     """
-    subtasks: list[dict[str, str]] = []
+    from shared.blackboard import parse_dependencies
+
+    raw_lines: list[tuple[str, str, str]] = []  # (name, desc, original_line)
     for line in model_output.splitlines():
         line = line.strip()
         # Strip markdown bold markers
@@ -187,30 +187,34 @@ def _parse_subtask_list(model_output: str) -> list[dict[str, str]]:
         # Primary: "1. name — description" or "1. name - desc" or "1. name: desc"
         match = re.match(r"^\d+\.\s*(.+?)\s*(?:—|-|:)\s*(.+)$", line)
         if match:
-            subtasks.append(
-                {
-                    "name": match.group(1).strip(),
-                    "description": match.group(2).strip(),
-                }
-            )
+            raw_lines.append((match.group(1).strip(), match.group(2).strip(), line))
             continue
         # Fallback: "1. description sentence" (no separator)
         match = re.match(r"^\d+\.\s*(.+?)\.?\s*$", line)
         if match and len(match.group(1).strip()) > 3:
-            subtasks.append(
-                {
-                    "name": match.group(1).strip(),
-                    "description": "",
-                }
-            )
-    if not subtasks:
-        # Fallback: treat entire output as a single subtask
-        subtasks.append(
+            raw_lines.append((match.group(1).strip(), "", line))
+
+    if not raw_lines:
+        return [
             {
                 "name": "implementation",
                 "description": model_output[:200].strip(),
+                "depends_on": [],
             }
-        )
+        ]
+
+    # First pass: collect all names
+    all_names = [name for name, _, _ in raw_lines]
+
+    # Second pass: resolve dependencies
+    subtasks: list[dict[str, Any]] = []
+    for name, desc, original_line in raw_lines:
+        deps = parse_dependencies(original_line, all_names)
+        subtasks.append({
+            "name": name,
+            "description": desc,
+            "depends_on": deps,
+        })
     return subtasks
 
 
@@ -846,7 +850,7 @@ async def run_phased_pipeline(
     code_subtask_results: dict[str, dict[str, Any]] = {}
 
     async def _code_subtask(
-        idx: int, subtask: dict[str, str]
+        idx: int, subtask: dict[str, str], dep_interfaces: str = ""
     ) -> tuple[str, str, dict[str, Any]]:
         """Code a single subtask with evolutionary retry loop."""
         plan = plans.get(subtask["name"], "")
@@ -864,6 +868,7 @@ async def run_phased_pipeline(
                     plan=plan,
                     existing_code=existing_code,
                     project=project_prompt,
+                    dependency_interfaces=dep_interfaces,
                 )
             else:
                 assert last_state is not None  # guaranteed by attempt > 0
@@ -930,6 +935,7 @@ async def run_phased_pipeline(
                         fix_guidance=fix_guidance,
                         history=None,
                         project=project_prompt,
+                        dependency_interfaces=dep_interfaces,
                     )
 
             code_adapter_dir = str(
@@ -1087,12 +1093,57 @@ async def run_phased_pipeline(
             {"passed": False, "attempts": iters_code},
         )
 
-    # Run coding in parallel
-    code_tasks = [_code_subtask(i, st) for i, st in enumerate(subtasks)]
-    code_results = await asyncio.gather(*code_tasks)
-    for name, code_text, subtask_result in code_results:
-        code_outputs[name] = code_text
-        code_subtask_results[name] = subtask_result
+    # Run coding layer-by-layer (DAG-ordered).
+    # Subtasks within each layer run in parallel; layers execute sequentially.
+    # After each layer completes, interfaces are published to the blackboard
+    # so dependent subtasks in the next layer can see them.
+    from shared.blackboard import (
+        Blackboard,
+        SubtaskArtifact,
+        build_execution_layers,
+        extract_interfaces,
+    )
+
+    blackboard = Blackboard()
+    layers = build_execution_layers(subtasks)
+    logger.info(
+        "Code execution: %d layer(s) — %s",
+        len(layers),
+        [len(layer) for layer in layers],
+    )
+
+    global_idx = 0
+    for layer_num, layer in enumerate(layers):
+        # Build dependency interfaces for each subtask in this layer
+        layer_tasks = []
+        for st in layer:
+            dep_ifaces = blackboard.get_dependency_interfaces(st)
+            layer_tasks.append(_code_subtask(global_idx, st, dep_ifaces))
+            global_idx += 1
+
+        layer_results = await asyncio.gather(*layer_tasks)
+
+        # Publish results to blackboard
+        for name, code_text, subtask_result in layer_results:
+            code_outputs[name] = code_text
+            code_subtask_results[name] = subtask_result
+            blackboard.publish(SubtaskArtifact(
+                name=name,
+                code=code_text,
+                interfaces=extract_interfaces(code_text),
+                tests_passed=subtask_result.get("passed", False),
+                dependencies=next(
+                    (st.get("depends_on", []) for st in layer if st["name"] == name),
+                    [],
+                ),
+            ))
+
+        logger.info(
+            "  Layer %d: %d subtasks completed",
+            layer_num,
+            len(layer_results),
+        )
+
     iteration_counter += len(subtasks) * iters_code
 
     # Post-code evolution sweep

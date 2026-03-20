@@ -30,6 +30,7 @@ ANTI-PATTERNS (do NOT produce these):
 - Single monolithic subtask covering everything (too coarse, untestable in isolation)
 - 10+ micro-subtasks with heavy overlap (too fine, creates dependency spaghetti)
 
-Output a numbered list in exactly this format:
-1. name — one-line description
-2. name — one-line description
+Output a numbered list with dependency declarations:
+1. name — one-line description [depends: none]
+2. name — one-line description [depends: 1]
+3. name — one-line description [depends: 1, 2]

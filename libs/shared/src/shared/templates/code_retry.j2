@@ -3,6 +3,10 @@ ROLE: python-coder
 {% endif %}SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
 {% if subtask.description %}DESCRIPTION: {{ subtask.description[:200] }}
 {% endif %}
+{% if dependency_interfaces %}
+COMPLETED DEPENDENCIES (use these interfaces):
+{{ dependency_interfaces[:400] }}
+{% endif %}
 PLAN:
 {{ plan[:600] }}
 {% if existing_code %}
