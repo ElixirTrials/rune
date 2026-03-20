@@ -145,11 +145,13 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
     phase = state.get("phase")
     system_prompt = _PHASE_SYSTEM_PROMPTS.get(phase or "", DEFAULT_SYSTEM_PROMPT)
 
+    max_tokens = int(os.environ.get("RUNE_MAX_TOKENS", "1024"))
+
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,
         model=model,
         adapter_id=adapter_id,
-        max_tokens=4096,
+        max_tokens=max_tokens,
         system_prompt=system_prompt,
     )
 

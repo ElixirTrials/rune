@@ -506,7 +506,8 @@ def generate_adapter_from_sakana(
     variant: str = DEFAULT_VARIANT,
     base_model_name: str | None = None,
     device: str = "cpu",
-    max_length: int = 2048,
+    max_length: int = 512,
+    scaling_factor: float = 0.16,
 ) -> str:
     """End-to-end: text → base model activations → HyperLoRA → PEFT adapter.
 
@@ -524,6 +525,7 @@ def generate_adapter_from_sakana(
         base_model_name: Override base model. If None, uses the one from checkpoint.
         device: Device for computation.
         max_length: Maximum token sequence length for activation extraction.
+        scaling_factor: Adapter scaling multiplier (0-1, default from config).
 
     Returns:
         Path to the saved adapter directory.
@@ -575,6 +577,7 @@ def generate_adapter_from_sakana(
         output_dir=output_dir,
         base_model_name=base_model_name,
         hc=hc,
+        scaling_factor=scaling_factor,
     )
 
     # Free hypernet VRAM — it's not needed after adapter weights are saved
@@ -590,6 +593,7 @@ def _save_sakana_adapter(
     output_dir: str,
     base_model_name: str,
     hc: Any,
+    scaling_factor: float = 0.16,
 ) -> None:
     """Save Sakana's HyperLoRA output as a PEFT-compatible adapter.
 
@@ -601,6 +605,7 @@ def _save_sakana_adapter(
         output_dir: Directory to write adapter files.
         base_model_name: Base model identifier for adapter config.
         hc: HypernetConfig with lora rank and target modules.
+        scaling_factor: Multiplier for adapter influence strength (0-1).
     """
     from safetensors.torch import save_file  # noqa: PLC0415
 
@@ -656,7 +661,7 @@ def _save_sakana_adapter(
     checkpoint_alpha = getattr(
         hc.lora_config, "lora_alpha", hc.lora_config.r * 2
     ) if hc is not None else actual_rank * 2
-    peft_alpha = checkpoint_alpha * actual_rank
+    peft_alpha = checkpoint_alpha * actual_rank * scaling_factor
 
     adapter_config = {
         "peft_type": "LORA",

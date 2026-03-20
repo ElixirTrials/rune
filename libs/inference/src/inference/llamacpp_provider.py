@@ -103,15 +103,24 @@ class LlamaCppProvider(InferenceProvider):
         model: str,
         adapter_id: str | None = None,
         max_tokens: int = 4096,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
     ) -> GenerationResult:
         """Generate text using llama-cpp-python with optional LoRA adapter.
 
         Args:
-            prompt: The input prompt.
+            prompt: The user-facing input prompt.
             model: Ignored (model is set at construction via model_path).
             adapter_id: LoRA adapter ID to apply. Must be loaded via
                 load_adapter() before use.
             max_tokens: Maximum tokens to generate.
+            system_prompt: Optional system-level instruction. Prepended to
+                the prompt for llama.cpp (no native chat template support).
+            temperature: Sampling temperature override.
+            top_p: Nucleus sampling threshold override.
+            repetition_penalty: Repetition penalty override.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -130,8 +139,9 @@ class LlamaCppProvider(InferenceProvider):
 
         self._load_model_if_needed(lora_path=lora_path)
 
+        full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
         response = self._llm(  # type: ignore[union-attr]
-            prompt,
+            full_prompt,
             max_tokens=max_tokens,
             stop=_STOP_SEQUENCES,
         )

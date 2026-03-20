@@ -11,6 +11,7 @@ per INFRA-05 pattern so that this module is importable in CPU-only CI.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from inference.provider import GenerationResult, InferenceProvider
@@ -86,7 +87,7 @@ class TransformersProvider(InferenceProvider):
                 v = getattr(config, "vocab_size", 32000)
                 n = getattr(config, "num_hidden_layers", 24)
                 param_count = v * h + n * 12 * h * h
-            resolved_dtype = resolve_model_dtype(
+            resolved_dtype = resolve_model_dtype(  # type: ignore[assignment]
                 param_count=param_count, device=self._device
             )
             logger.info("Inference model dtype resolved to %s", resolved_dtype)
@@ -107,6 +108,9 @@ class TransformersProvider(InferenceProvider):
         adapter_id: str | None = None,
         max_tokens: int = 4096,
         system_prompt: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
@@ -118,6 +122,9 @@ class TransformersProvider(InferenceProvider):
             max_tokens: Maximum tokens to generate.
             system_prompt: Optional system-level instruction prepended via
                 the tokenizer's chat template when available.
+            temperature: Sampling temperature (default from pipeline config).
+            top_p: Nucleus sampling threshold (default from pipeline config).
+            repetition_penalty: Repetition penalty (default 1.0 = off).
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -128,6 +135,16 @@ class TransformersProvider(InferenceProvider):
         import torch  # noqa: PLC0415
 
         self._load_model_if_needed()
+
+        # Apply defaults from pipeline config
+        if temperature is None:
+            temperature = float(os.environ.get("RUNE_TEMPERATURE", "0.25"))
+        if top_p is None:
+            top_p = float(os.environ.get("RUNE_TOP_P", "0.9"))
+        if repetition_penalty is None:
+            repetition_penalty = float(
+                os.environ.get("RUNE_REPETITION_PENALTY", "1.04")
+            )
 
         # Validate adapter before switching
         if adapter_id and adapter_id not in self._loaded_adapters:
@@ -150,15 +167,18 @@ class TransformersProvider(InferenceProvider):
         inputs = {k: v.to(self._device) for k, v in inputs.items()}
         input_len = inputs["input_ids"].shape[1]
 
+        gen_kwargs: dict[str, object] = {
+            "max_new_tokens": max_tokens,
+            "do_sample": temperature > 0,
+            "temperature": max(temperature, 0.01),
+            "top_p": top_p,
+            "pad_token_id": self._tokenizer.pad_token_id,
+        }
+        if repetition_penalty > 1.0:
+            gen_kwargs["repetition_penalty"] = repetition_penalty
+
         with torch.no_grad():
-            outputs = self._model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                pad_token_id=self._tokenizer.pad_token_id,
-            )
+            outputs = self._model.generate(**inputs, **gen_kwargs)
 
         new_tokens = outputs[0][input_len:]
         text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)

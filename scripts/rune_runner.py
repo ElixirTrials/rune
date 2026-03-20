@@ -323,6 +323,7 @@ def run_hypernetwork(
     base_model_id: str,
     checkpoint_path: str | None = None,
     device: str = "cpu",
+    scaling_factor: float = 0.16,
 ) -> str | None:
     """Run the hypernetwork to produce a new adapter from trajectory.
 
@@ -371,6 +372,7 @@ def run_hypernetwork(
             checkpoint_path=checkpoint_path,
             base_model_name=base_model_id,
             device=device,
+            scaling_factor=scaling_factor,
         )
     else:
         from model_training.hypernetwork import (
@@ -541,7 +543,20 @@ async def run_phased_pipeline(
 
     # Import evolution sweep
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    # Load pipeline config and apply optimized defaults via env vars.
+    # These are read by TransformersProvider and generate_node at call time.
+    from shared.pipeline_config import load_config as _load_config
     from swarm_evolution import evolution_sweep
+
+    _pipeline_cfg = _load_config()
+    os.environ.setdefault("RUNE_TEMPERATURE", str(_pipeline_cfg.generation.temperature))
+    os.environ.setdefault("RUNE_TOP_P", str(_pipeline_cfg.generation.top_p))
+    os.environ.setdefault(
+        "RUNE_REPETITION_PENALTY",
+        str(_pipeline_cfg.generation.repetition_penalty),
+    )
+    os.environ.setdefault("RUNE_MAX_TOKENS", str(_pipeline_cfg.generation.max_tokens))
+    adapter_scaling = _pipeline_cfg.adapter.scaling
 
     # Extract first sentence as project label for prompts.
     # The full project spec flows through adapter weights; prompts only
@@ -580,6 +595,7 @@ async def run_phased_pipeline(
             base_model_id=base_model_id,
             checkpoint_path=checkpoint_path,
             device=device,
+            scaling_factor=adapter_scaling,
         )
 
         adapter_id: str | None = None
@@ -728,6 +744,7 @@ async def run_phased_pipeline(
                 base_model_id=base_model_id,
                 checkpoint_path=checkpoint_path,
                 device=device,
+                scaling_factor=adapter_scaling,
             )
             plan_aid: str | None = None
             if plan_path:
@@ -924,6 +941,7 @@ async def run_phased_pipeline(
                 base_model_id=base_model_id,
                 checkpoint_path=checkpoint_path,
                 device=device,
+                scaling_factor=adapter_scaling,
             )
 
             code_adapter_id: str | None = None
@@ -1162,6 +1180,7 @@ async def run_phased_pipeline(
             base_model_id=base_model_id,
             checkpoint_path=checkpoint_path,
             device=device,
+            scaling_factor=adapter_scaling,
         )
 
         integrate_aid: str | None = None
@@ -1321,6 +1340,7 @@ async def run_phased_pipeline(
             base_model_id=base_model_id,
             checkpoint_path=checkpoint_path,
             device=device,
+            scaling_factor=adapter_scaling,
         )
 
         diagnose_aid: str | None = None
@@ -1397,6 +1417,7 @@ async def run_phased_pipeline(
                 base_model_id=base_model_id,
                 checkpoint_path=checkpoint_path,
                 device=device,
+                scaling_factor=adapter_scaling,
             )
 
             repair_aid: str | None = None
@@ -1463,6 +1484,7 @@ async def run_phased_pipeline(
             base_model_id=base_model_id,
             checkpoint_path=checkpoint_path,
             device=device,
+            scaling_factor=adapter_scaling,
         )
 
         reintegrate_aid: str | None = None
