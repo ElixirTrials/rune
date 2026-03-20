@@ -94,7 +94,7 @@ class TransformersProvider(InferenceProvider):
 
         self._model = AutoModelForCausalLM.from_pretrained(
             self._model_name,
-            torch_dtype=resolved_dtype,
+            dtype=resolved_dtype,
         )
         self._model.to(self._device)
         self._model.eval()

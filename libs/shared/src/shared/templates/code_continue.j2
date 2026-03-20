@@ -3,6 +3,10 @@ ROLE: python-coder (continue)
 {% endif %}SUBTASK: {{ subtask.name }} (continuation {{ attempt }}/{{ max_retries }})
 {% if subtask.description %}DESCRIPTION: {{ subtask.description[:200] }}
 {% endif %}
+{% if dependency_interfaces %}
+COMPLETED DEPENDENCIES (use these interfaces in your code):
+{{ dependency_interfaces[:600] }}
+{% endif %}
 CODE SO FAR:
 {{ existing_code[:1200] }}
 

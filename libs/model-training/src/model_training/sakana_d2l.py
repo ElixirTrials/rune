@@ -480,7 +480,7 @@ def extract_activations(
 
     model: Any = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        torch_dtype=activation_dtype,
+        dtype=activation_dtype,
     )
     model = model.to(device)  # type: ignore[assignment]
     model.eval()

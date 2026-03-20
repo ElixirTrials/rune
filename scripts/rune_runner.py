@@ -206,13 +206,17 @@ def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
     # First pass: collect all names
     all_names = [name for name, _, _ in raw_lines]
 
-    # Second pass: resolve dependencies
+    # Second pass: resolve dependencies and clean descriptions
+    from shared.blackboard import _DEPENDS_RE
+
     subtasks: list[dict[str, Any]] = []
     for name, desc, original_line in raw_lines:
         deps = parse_dependencies(original_line, all_names)
+        # Strip [depends: ...] from description text
+        desc_clean = _DEPENDS_RE.sub("", desc).strip()
         subtasks.append({
             "name": name,
-            "description": desc,
+            "description": desc_clean,
             "depends_on": deps,
         })
     return subtasks
@@ -690,7 +694,7 @@ async def run_phased_pipeline(
     raw_subtasks = _parse_subtask_list(best_decompose_state.get("generated_code", ""))
     # Deduplicate subtasks by name
     seen: set[str] = set()
-    subtasks: list[dict[str, str]] = []
+    subtasks: list[dict[str, Any]] = []
     for st in raw_subtasks:
         key = st["name"].lower().strip()
         if key not in seen:
@@ -724,7 +728,7 @@ async def run_phased_pipeline(
         iter_plans: dict[str, str] = {}
 
         async def _plan_subtask(
-            idx: int, subtask: dict[str, str], evo: int
+            idx: int, subtask: dict[str, Any], evo: int
         ) -> tuple[str, str, str | None]:
             """Plan a single subtask — runs as a parallel coroutine."""
             traj = render_trajectory(
@@ -850,7 +854,7 @@ async def run_phased_pipeline(
     code_subtask_results: dict[str, dict[str, Any]] = {}
 
     async def _code_subtask(
-        idx: int, subtask: dict[str, str], dep_interfaces: str = ""
+        idx: int, subtask: dict[str, Any], dep_interfaces: str = ""
     ) -> tuple[str, str, dict[str, Any]]:
         """Code a single subtask with evolutionary retry loop."""
         plan = plans.get(subtask["name"], "")
@@ -885,6 +889,7 @@ async def run_phased_pipeline(
                         plan=plan,
                         existing_code=existing_code,
                         project=project_prompt,
+                        dependency_interfaces=dep_interfaces,
                     )
                 else:
                     # Retry: code was complete but tests failed or code errored.
