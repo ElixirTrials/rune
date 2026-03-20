@@ -74,9 +74,7 @@ def setup() -> None:
     dtype = resolve_model_dtype(param_count=param_count, device=DEVICE)
     print(f"Inference dtype: {dtype}")
 
-    _model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME, torch_dtype=dtype
-    )
+    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=dtype)
     _model.to(DEVICE)
     _model.eval()
     print("Model loaded.\n")
@@ -265,9 +263,7 @@ DIAGNOSE_SYSTEM = (
     "Output ONLY a numbered list, never code."
 )
 
-CODE_SYSTEM = (
-    "You are a Python code generator. Output only code, no explanation."
-)
+CODE_SYSTEM = "You are a Python code generator. Output only code, no explanation."
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +409,9 @@ def experiment_2a_code_with_prior_subtask():
         "if __name__ == '__main__': unittest.main()"
     )
 
-    return run_experiment("2a_prior_context", trajectory, prompt, CODE_SYSTEM, max_tokens=1024)
+    return run_experiment(
+        "2a_prior_context", trajectory, prompt, CODE_SYSTEM, max_tokens=1024
+    )
 
 
 def experiment_2b_sequential_generation():
@@ -465,10 +463,7 @@ def experiment_2b_sequential_generation():
         project=PROJECT_PROMPT,
     )
     # Inject prior subtask code into trajectory
-    es_traj += (
-        "\n\nCOMPLETED DEPENDENCY (Data Model Design):\n"
-        f"{dm_code[:800]}"
-    )
+    es_traj += f"\n\nCOMPLETED DEPENDENCY (Data Model Design):\n{dm_code[:800]}"
 
     es_prompt = (
         "You are implementing the subtask: EventStore Implementation\n"
@@ -686,9 +681,7 @@ def experiment_2f_hybrid():
         "if __name__ == '__main__': unittest.main()"
     )
 
-    return run_experiment(
-        "2f_hybrid", trajectory, prompt, CODE_SYSTEM, max_tokens=1024
-    )
+    return run_experiment("2f_hybrid", trajectory, prompt, CODE_SYSTEM, max_tokens=1024)
 
 
 def experiment_2g_short_trajectory():
@@ -827,7 +820,8 @@ def _score_code(code: str) -> dict[str, bool]:
         "TestCase": "TestCase" in code,
         "dataclass": "dataclass" in code,
         "inline_def": (
-            "class LedgerEvent" in code and "from " not in code.split("class LedgerEvent")[0][-100:]
+            "class LedgerEvent" in code
+            and "from " not in code.split("class LedgerEvent")[0][-100:]
         ),
         "replay": "replay" in code.lower(),
     }
@@ -873,8 +867,11 @@ def experiment_3a_adapter_influence_measurement():
     # Without adapter
     print("  [no adapter]")
     no_adapter = generate_text(
-        prompt=prompt, system_prompt=CODE_SYSTEM,
-        adapter_path=None, max_tokens=1024, temperature=0.3,
+        prompt=prompt,
+        system_prompt=CODE_SYSTEM,
+        adapter_path=None,
+        max_tokens=1024,
+        temperature=0.3,
     )
     print(f"    Score: {_score_code(no_adapter)}")
     for line in no_adapter.splitlines()[:8]:
@@ -884,16 +881,22 @@ def experiment_3a_adapter_influence_measurement():
     adapter_path = generate_adapter(trajectory, label="3a")
     print("  [with adapter]")
     with_adapter = generate_text(
-        prompt=prompt, system_prompt=CODE_SYSTEM,
-        adapter_path=adapter_path, adapter_name="3a",
-        max_tokens=1024, temperature=0.3,
+        prompt=prompt,
+        system_prompt=CODE_SYSTEM,
+        adapter_path=adapter_path,
+        adapter_name="3a",
+        max_tokens=1024,
+        temperature=0.3,
     )
     print(f"    Score: {_score_code(with_adapter)}")
     for line in with_adapter.splitlines()[:8]:
         print(f"    {line}")
 
     print()
-    return {"no_adapter": _score_code(no_adapter), "with_adapter": _score_code(with_adapter)}
+    return {
+        "no_adapter": _score_code(no_adapter),
+        "with_adapter": _score_code(with_adapter),
+    }
 
 
 def experiment_3b_trajectory_as_exemplar_code():
@@ -1078,9 +1081,12 @@ def experiment_3e_ab_test_different_adapters():
     adapter_a = generate_adapter(traj_a, label="3e_bank")
     print("  [Adapter A: bank ledger]")
     out_a = generate_text(
-        prompt=prompt, system_prompt=CODE_SYSTEM,
-        adapter_path=adapter_a, adapter_name="3e_bank",
-        max_tokens=512, temperature=0.3,
+        prompt=prompt,
+        system_prompt=CODE_SYSTEM,
+        adapter_path=adapter_a,
+        adapter_name="3e_bank",
+        max_tokens=512,
+        temperature=0.3,
     )
     for line in out_a.splitlines()[:10]:
         print(f"    {line}")
@@ -1088,16 +1094,23 @@ def experiment_3e_ab_test_different_adapters():
     adapter_b = generate_adapter(traj_b, label="3e_router")
     print("  [Adapter B: HTTP router]")
     out_b = generate_text(
-        prompt=prompt, system_prompt=CODE_SYSTEM,
-        adapter_path=adapter_b, adapter_name="3e_router",
-        max_tokens=512, temperature=0.3,
+        prompt=prompt,
+        system_prompt=CODE_SYSTEM,
+        adapter_path=adapter_b,
+        adapter_name="3e_router",
+        max_tokens=512,
+        temperature=0.3,
     )
     for line in out_b.splitlines()[:10]:
         print(f"    {line}")
 
     # Check what each produced
-    a_has_bank = any(w in out_a.lower() for w in ["ledger", "bank", "event", "transaction", "sqlite"])
-    b_has_router = any(w in out_b.lower() for w in ["router", "route", "path", "http", "url", "match"])
+    a_has_bank = any(
+        w in out_a.lower() for w in ["ledger", "bank", "event", "transaction", "sqlite"]
+    )
+    b_has_router = any(
+        w in out_b.lower() for w in ["router", "route", "path", "http", "url", "match"]
+    )
     print(f"\n  A talks about banking: {a_has_bank}")
     print(f"  B talks about routing: {b_has_router}")
     print(f"  Adapters discriminate: {a_has_bank and b_has_router}")
@@ -1144,9 +1157,12 @@ def experiment_3f_low_temperature():
     for temp in [0.1, 0.3, 0.7]:
         print(f"  [temp={temp}]")
         out = generate_text(
-            prompt=prompt, system_prompt=CODE_SYSTEM,
-            adapter_path=adapter_path, adapter_name="3f",
-            max_tokens=1024, temperature=temp,
+            prompt=prompt,
+            system_prompt=CODE_SYSTEM,
+            adapter_path=adapter_path,
+            adapter_name="3f",
+            max_tokens=1024,
+            temperature=temp,
         )
         scores = _score_code(out)
         hits = sum(1 for v in scores.values() if v)

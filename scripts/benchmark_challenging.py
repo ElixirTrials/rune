@@ -124,7 +124,9 @@ def evaluate_code(code: str, timeout: int = 60) -> dict[str, Any]:
 
     script = code
     if has_unittest_classes(script) and "unittest.main" not in script:
-        script += "\n\nimport unittest\nif __name__ == '__main__':\n    unittest.main()\n"
+        script += (
+            "\n\nimport unittest\nif __name__ == '__main__':\n    unittest.main()\n"
+        )
 
     backend = get_sandbox_backend()
     result = backend.run(script, timeout=timeout)
@@ -162,9 +164,9 @@ async def main() -> None:
     results: list[dict[str, Any]] = []
 
     for ti, task in enumerate(TASKS):
-        print(f"\n{'='*70}")
-        print(f"  Task {ti+1}/{len(TASKS)}: {task['name']}")
-        print(f"{'='*70}\n")
+        print(f"\n{'=' * 70}")
+        print(f"  Task {ti + 1}/{len(TASKS)}: {task['name']}")
+        print(f"{'=' * 70}\n")
 
         t0 = time.time()
 
@@ -226,17 +228,19 @@ async def main() -> None:
         print(f"  Time: {elapsed:.1f}s")
         print(f"  Subtasks: {len(subtasks)} — {subtasks}")
         print(f"  Decompose score: {decompose_info.get('best_score', 0):.2f}")
-        print(f"  Code: {eval_result['lines']} lines, "
-              f"{eval_result['passed']}/{eval_result['total']} tests passed")
+        print(
+            f"  Code: {eval_result['lines']} lines, "
+            f"{eval_result['passed']}/{eval_result['total']} tests passed"
+        )
         print(f"  Integration score: {integrate_info.get('best_score', 0):.2f}")
         print(f"  Pipeline passed: {pipeline_result.get('final_tests_passed', False)}")
 
     # -------------------------------------------------------------------
     # Aggregate summary
     # -------------------------------------------------------------------
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("  AGGREGATE SUMMARY")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     header = (
         f"  {'Task':<30} {'Subtasks':>8} {'Lines':>6} "
@@ -268,8 +272,10 @@ async def main() -> None:
     print()
     print(f"  Total lines generated: {total_lines}")
     print(f"  Total tests: {total_passed}/{total_tests} passed")
-    print(f"  Tasks with pipeline pass: "
-          f"{sum(1 for r in results if r['pipeline']['final_tests_passed'])}/{len(results)}")
+    print(
+        f"  Tasks with pipeline pass: "
+        f"{sum(1 for r in results if r['pipeline']['final_tests_passed'])}/{len(results)}"
+    )
 
     # Assessment
     print("\n  Assessment:")
@@ -285,7 +291,9 @@ async def main() -> None:
             test_quality = f"{c['tests_passed']}/{c['tests_total']} tests passed"
         else:
             test_quality = "no tests passed"
-        print(f"    [{status}] {r['task']}: {quality} code ({c['final_lines']}L), {test_quality}")
+        print(
+            f"    [{status}] {r['task']}: {quality} code ({c['final_lines']}L), {test_quality}"
+        )
 
     # Save results
     out_path = Path(__file__).parent / "benchmark_challenging_results.json"

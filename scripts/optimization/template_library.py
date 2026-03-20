@@ -101,7 +101,9 @@ def get_prompt(style: str, task: EvalTask) -> str:
     """Render a prompt by style name."""
     fn = PROMPT_STYLES.get(style)
     if fn is None:
-        raise ValueError(f"Unknown prompt style: {style}. Choose from {list(PROMPT_STYLES)}")
+        raise ValueError(
+            f"Unknown prompt style: {style}. Choose from {list(PROMPT_STYLES)}"
+        )
     return fn(task)
 
 
@@ -112,11 +114,7 @@ def get_prompt(style: str, task: EvalTask) -> str:
 
 def trajectory_prose(task: EvalTask) -> str:
     """Natural language description."""
-    return (
-        f"PROJECT: {task.project}\n"
-        f"SUBTASK: {task.subtask}\n"
-        f"PLAN: {task.plan}\n"
-    )
+    return f"PROJECT: {task.project}\nSUBTASK: {task.subtask}\nPLAN: {task.plan}\n"
 
 
 def trajectory_exemplar(task: EvalTask) -> str:

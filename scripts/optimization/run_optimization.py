@@ -142,9 +142,7 @@ def _generate_with_adapter(
 
         # Load adapter
         safe_name = f"opt_{id(trajectory) % 10000}"
-        model = PeftModel.from_pretrained(
-            _model, adapter_path, adapter_name=safe_name
-        )
+        model = PeftModel.from_pretrained(_model, adapter_path, adapter_name=safe_name)
         model.to(DEVICE)
         model.eval()
 
