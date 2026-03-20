@@ -1,23 +1,26 @@
 # Rune
 
-Local-first coding agent that encodes coding trajectories into LoRA adapters, building persistent weight-space episodic memory. 4-phase pipeline (decompose → plan → code → integrate), parallel swarm orchestration, Doc-to-LoRA hypernetwork, TIES/DARE merging, adapter registry with lineage tracking.
+Local-first coding agent that encodes coding trajectories into LoRA adapters, building persistent weight-space episodic memory. 5-phase pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, Doc-to-LoRA hypernetwork with Sakana perceiver, TIES/DARE merging, adapter registry with lineage tracking.
 
 ## Running Tests
 
 ```bash
 uv sync --all-extras
-uv run pytest                    # 301+ tests, ~1 min on CPU
+uv run pytest                    # 314+ tests, ~30s on GPU
 uv run pytest -x                 # stop on first failure
 uv run pytest tests/             # root-level integration tests only
 uv run ruff check                # lint
-uv run mypy                      # type check
+uv run mypy libs/ services/      # type check
 ```
 
 ## Key Entry Points
 
-- `scripts/rune_runner.py` — Single pipeline run (4-phase: decompose → plan → code → integrate)
+- `scripts/rune_runner.py` — Single pipeline run (5-phase: decompose → plan → code → integrate → repair)
 - `scripts/swarm.py` — Multi-agent swarm orchestrator (agents + training pool + evolution + watchdog)
 - `scripts/e2e_test.py` — End-to-end test exercising full pipeline
+- `scripts/benchmark_challenging.py` — 3-task end-to-end benchmark
+- `scripts/optimization/run_optimization.py` — Bayesian parameter optimization (Optuna)
+- `scripts/experiment_harness.py` — Isolated adapter/prompt experiments (~15s/trial)
 - `scripts/swarm_workers.py` — Training pool manager (QLoRA in subprocess, vLLM sleep/wake)
 - `scripts/swarm_evolution.py` — Evolution worker (TIES/DARE merge, pruning, lineage)
 
@@ -40,20 +43,48 @@ The scripts layer is the primary execution path. Services provide REST APIs but 
 
 ## Important Files
 
+- `libs/shared/src/shared/pipeline_config.py` — PipelineConfig frozen dataclass (adapter, generation, prompt, trajectory settings)
 - `libs/shared/src/shared/rune_models.py` — Cross-service data contracts (CodingSession, SwarmConfig, PipelinePhase, etc.)
 - `libs/shared/src/shared/templates/*.j2` — Jinja2 templates for each pipeline phase
+- `libs/model-training/src/model_training/sakana_d2l.py` — Sakana Doc-to-LoRA adapter generation (HyperLoRA perceiver → PEFT adapter)
 - `libs/model-training/src/model_training/hypernetwork.py` — DocToLoraHypernetwork (Perceiver-based)
 - `libs/model-training/src/model_training/merging.py` — TIES/DARE adapter merging
 - `libs/adapter-registry/src/adapter_registry/registry.py` — AdapterRegistry (SQLite CRUD)
-- `libs/inference/src/inference/provider.py` — InferenceProvider ABC
+- `libs/inference/src/inference/provider.py` — InferenceProvider ABC (with temperature/top_p/repetition_penalty)
 - `libs/shared/src/shared/sandbox.py` — SubprocessBackend for code execution
+
+## Pipeline Configuration
+
+Configuration lives at `~/.rune/pipeline_config.json`, loaded by `shared.pipeline_config.load_config()`. Key settings (from Bayesian optimization):
+
+- `adapter.scaling`: 0.16 — adapter influence strength (Sakana's 45.25x is too aggressive)
+- `adapter.use_bias`: true — concatenate bias as extra rank dimensions
+- `generation.temperature`: 0.25 — low temperature for consistent output
+- `generation.max_tokens`: 1024 — sufficient for subtask code
+- `generation.repetition_penalty`: 1.04 — mild anti-repetition
+- `prompt.style`: skeleton — code skeleton prompts dominate (20/20 in top optimization trials)
+- `trajectory.style`: prose — natural language trajectories work best for adapter encoding
+
+Override via env vars: `RUNE_TEMPERATURE`, `RUNE_MAX_TOKENS`, `RUNE_REPETITION_PENALTY`, `RUNE_TOP_P`.
 
 ## Template Editing
 
 Pipeline phase templates live in `libs/shared/src/shared/templates/`:
-- `decompose.j2` / `prompt_decompose.j2`
+- `decompose.j2` / `prompt_decompose.j2` / `prompt_decompose_concise.j2`
 - `plan.j2` / `prompt_plan.j2`
-- `code.j2` / `code_retry.j2` / `prompt_code.j2`
+- `code.j2` / `code_retry.j2` / `code_continue.j2` / `prompt_code.j2`
 - `integrate.j2` / `prompt_integrate.j2`
+- `diagnose.j2` / `prompt_diagnose.j2` — Phase 5 failure diagnosis
+- `code_repair.j2` / `prompt_code_repair.j2` — Targeted subtask repair
+
+Prompts orient the model (subtask name, project label, format directive). Adapters carry domain context via trajectory templates. See `instructions/adapter-research-findings.md` for detailed design rationale.
 
 Templates are rendered via `shared.template_loader.render_trajectory()` and `render_prompt()`.
+
+## Adapter Research
+
+Comprehensive findings documented in `instructions/adapter-research-findings.md`:
+- Three bugs fixed in Sakana D2L → PEFT conversion (combine_lora, alpha scaling, module paths)
+- Adapter scaling 0.16x is optimal (full 45.25x causes degenerate repetition)
+- Skeleton prompts + prose trajectories is the winning combination
+- 200-trial Bayesian optimization across 5 diverse coding tasks
