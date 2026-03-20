@@ -572,9 +572,7 @@ def generate_adapter_from_sakana(
     from ctx_to_lora.modeling.lora_merger import combine_lora as _combine_lora
 
     n_chunks = torch.ones(1, dtype=torch.int32)
-    lora_bias = (
-        hypernet.get_head_bias() if hypernet.config.use_bias else None
-    )
+    lora_bias = hypernet.get_head_bias() if hypernet.config.use_bias else None
     lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
 
     # Save as PEFT adapter
@@ -664,9 +662,11 @@ def _save_sakana_adapter(
     # as PEFT does). To compensate, set PEFT lora_alpha = checkpoint_alpha *
     # actual_rank so that PEFT's alpha/r division recovers the original
     # scaling factor.
-    checkpoint_alpha = getattr(
-        hc.lora_config, "lora_alpha", hc.lora_config.r * 2
-    ) if hc is not None else actual_rank * 2
+    checkpoint_alpha = (
+        getattr(hc.lora_config, "lora_alpha", hc.lora_config.r * 2)
+        if hc is not None
+        else actual_rank * 2
+    )
     peft_alpha = checkpoint_alpha * actual_rank * scaling_factor
 
     adapter_config = {
