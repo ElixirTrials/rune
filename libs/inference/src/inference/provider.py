@@ -58,15 +58,25 @@ class InferenceProvider(ABC):
         model: str,
         adapter_id: str | None = None,
         max_tokens: int = 4096,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
     ) -> GenerationResult:
         """Generate text from a prompt.
 
         Args:
-            prompt: The input prompt to send to the model.
+            prompt: The user-facing input prompt.
             model: The model identifier to use for generation.
             adapter_id: Optional LoRA adapter to apply during generation.
                 If None, uses the base model directly.
             max_tokens: Maximum number of tokens to generate.
+            system_prompt: Optional system-level instruction. Providers that
+                support chat templates will format this as a system message.
+
+            temperature: Sampling temperature override.
+            top_p: Nucleus sampling threshold override.
+            repetition_penalty: Repetition penalty override.
 
         Returns:
             A GenerationResult containing the generated text and metadata.

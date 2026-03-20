@@ -169,6 +169,73 @@ class NsjailBackend(SandboxBackend):
                 )
 
 
+def count_test_results(stdout: str, stderr: str) -> tuple[int, int]:
+    """Parse unittest output to count (passed, total) tests.
+
+    Args:
+        stdout (str): Captured standard output from test execution.
+        stderr (str): Captured standard error from test execution.
+
+    Returns:
+        tuple[int, int]: (passed_count, total_count). Returns (0, 0)
+            if no unittest output is detected.
+    """
+    import re as _re
+
+    total = 0
+    failed = 0
+
+    ran_match = _re.search(r"Ran (\d+) test", stderr or "")
+    if ran_match:
+        total = int(ran_match.group(1))
+
+    fail_match = _re.search(r"failures=(\d+)", stderr or "")
+    err_match = _re.search(r"errors=(\d+)", stderr or "")
+    if fail_match:
+        failed += int(fail_match.group(1))
+    if err_match:
+        failed += int(err_match.group(1))
+
+    passed = max(0, total - failed)
+    return passed, total
+
+
+def extract_failed_tests(stderr: str) -> str:
+    """Extract names of failing tests from unittest stderr.
+
+    Args:
+        stderr (str): Captured standard error from test execution.
+
+    Returns:
+        str: Semicolon-separated string of up to 5 failed test names.
+            Empty string if no failures found.
+    """
+    if not stderr:
+        return ""
+    lines = stderr.strip().splitlines()
+    failed = [
+        ln.strip()
+        for ln in lines
+        if ln.strip().startswith("FAIL:") or ln.strip().startswith("ERROR:")
+    ]
+    return "; ".join(failed[:5])
+
+
+def has_unittest_classes(code: str) -> bool:
+    """Check whether code contains unittest.TestCase subclasses.
+
+    Args:
+        code (str): Python source code string.
+
+    Returns:
+        bool: True if the code contains at least one TestCase class
+            definition.
+    """
+    import re as _re
+
+    return bool(_re.search(r"class\s+\w+\s*\(.*\bTestCase\b.*\)", code))
+
+
 def get_sandbox_backend() -> SandboxBackend:
     """Return the appropriate sandbox backend based on environment.
 

@@ -141,6 +141,84 @@ class HardwareProbe:
         )
 
 
+# Bytes per parameter for each dtype
+_BYTES_PER_PARAM = {
+    "float32": 4,
+    "bfloat16": 2,
+    "float16": 2,
+}
+
+# VRAM safety margin — reserve 30% for KV cache, activations during forward
+# pass, and CUDA memory fragmentation.
+_VRAM_MARGIN = 0.70
+
+
+def resolve_model_dtype(
+    param_count: int,
+    device: str = "cuda",
+    available_vram_bytes: int = 0,
+    overhead_bytes: int = 0,
+    dtype_override: str | None = None,
+) -> object:
+    """Pick the highest precision dtype that fits in available VRAM.
+
+    Resolution order:
+      1. ``dtype_override`` parameter (explicit caller override)
+      2. ``RUNE_DTYPE_OVERRIDE`` env var (global user override)
+      3. Auto-detect: pick fp32 if it fits, otherwise bf16
+
+    On CPU, always returns float32 (no VRAM constraint).
+
+    Args:
+        param_count: Number of model parameters.
+        device: Target device (``"cuda"``, ``"cpu"``, ``"mps"``).
+        available_vram_bytes: Total VRAM available on the device in bytes.
+            If 0 and device is ``"cuda"``, queries the GPU automatically.
+        overhead_bytes: Additional VRAM already in use or reserved by other
+            models (e.g. an inference model already loaded).
+        dtype_override: Manual override. One of ``"float32"``,
+            ``"bfloat16"``, ``"float16"``.
+
+    Returns:
+        A ``torch.dtype`` suitable for loading the model.
+    """
+    import os  # noqa: PLC0415
+
+    import torch  # noqa: PLC0415
+
+    dtype_map = {
+        "float32": torch.float32,
+        "fp32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+        "float16": torch.float16,
+        "fp16": torch.float16,
+    }
+
+    # 1. Check explicit override
+    override = dtype_override or os.environ.get("RUNE_DTYPE_OVERRIDE")
+    if override and override in dtype_map:
+        return dtype_map[override]
+
+    # 2. CPU — always fp32, no VRAM constraint
+    if device == "cpu":
+        return torch.float32
+
+    # 3. Auto-detect VRAM if not provided
+    if available_vram_bytes <= 0 and device == "cuda" and torch.cuda.is_available():
+        props = torch.cuda.get_device_properties(0)
+        allocated = torch.cuda.memory_allocated(0)
+        available_vram_bytes = props.total_memory - allocated
+
+    usable_vram = int((available_vram_bytes - overhead_bytes) * _VRAM_MARGIN)
+    fp32_bytes = param_count * _BYTES_PER_PARAM["float32"]
+
+    if fp32_bytes <= usable_vram:
+        return torch.float32
+
+    return torch.bfloat16
+
+
 def get_best_device() -> str:
     """Return the best available compute device: ``cuda`` > ``mps`` > ``cpu``.
 

@@ -57,6 +57,10 @@ class VLLMProvider(InferenceProvider):
         model: str,
         adapter_id: str | None = None,
         max_tokens: int = 4096,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
     ) -> GenerationResult:
         """Generate text from a prompt, optionally using a loaded LoRA adapter.
 
@@ -65,11 +69,15 @@ class VLLMProvider(InferenceProvider):
         LoRA adapters (the adapter is referenced by its lora_name).
 
         Args:
-            prompt: The input prompt to send to the model.
+            prompt: The user-facing input prompt.
             model: Base model identifier. Used as-is when no adapter is given.
             adapter_id: Name of a loaded LoRA adapter to apply. When set,
                 this value replaces model in the API call.
             max_tokens: Maximum number of tokens to generate.
+            system_prompt: Optional system-level instruction.
+            temperature: Sampling temperature override.
+            top_p: Nucleus sampling threshold override.
+            repetition_penalty: Repetition penalty override.
 
         Returns:
             GenerationResult with the generated text and metadata.
@@ -86,9 +94,13 @@ class VLLMProvider(InferenceProvider):
             max_tokens,
         )
 
+        messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+
         response = await self._client.chat.completions.create(
             model=effective_model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,  # type: ignore[arg-type]
             max_tokens=max_tokens,
         )
 

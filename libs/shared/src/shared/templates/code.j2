@@ -1,11 +1,70 @@
 ROLE: python-coder
-SUBTASK: {{ subtask.name }} ({{ subtask_index }}/{{ total_subtasks }})
+{% if project %}PROJECT: {{ project[:300] }}
+{% endif %}SUBTASK: {{ subtask.name }} ({{ subtask_index }}/{{ total_subtasks }})
+{% if subtask.description %}DESCRIPTION: {{ subtask.description[:300] }}
+{% endif %}
+{% if dependency_interfaces %}
+COMPLETED DEPENDENCIES (use these interfaces in your code):
+{{ dependency_interfaces[:600] }}
+{% endif %}
 PLAN:
-{{ plan[:500] }}
+{{ plan[:800] }}
 {% if existing_code %}
 EXISTING CODE:
-{{ existing_code[:400] }}
+{{ existing_code[:800] }}
 {% endif %}
 PRACTICES: Use dataclasses for models, type annotations on all signatures,
 unittest.TestCase for tests, clean layered architecture, no stubs or
 placeholders, no dead code, specific exceptions with context.
+
+TEST-FIRST PATTERN: Write tests BEFORE implementation. The test class
+defines the contract; the implementation fulfills it.
+
+EXAMPLE (correct ordering):
+```
+import unittest
+from dataclasses import dataclass
+
+class TestStack(unittest.TestCase):
+    def test_push_and_pop(self):
+        s = Stack()
+        s.push(1)
+        self.assertEqual(s.pop(), 1)
+
+    def test_pop_empty_raises(self):
+        s = Stack()
+        with self.assertRaises(IndexError):
+            s.pop()
+
+    def test_peek(self):
+        s = Stack()
+        s.push(42)
+        self.assertEqual(s.peek(), 42)
+        self.assertEqual(len(s), 1)
+
+@dataclass
+class Stack:
+    _items: list = None
+
+    def __post_init__(self):
+        self._items = self._items or []
+
+    def push(self, item) -> None:
+        self._items.append(item)
+
+    def pop(self):
+        if not self._items:
+            raise IndexError("pop from empty stack")
+        return self._items.pop()
+
+    def peek(self):
+        if not self._items:
+            raise IndexError("peek at empty stack")
+        return self._items[-1]
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+if __name__ == '__main__':
+    unittest.main()
+```

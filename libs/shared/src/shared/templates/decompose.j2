@@ -1,9 +1,36 @@
 ROLE: project-decomposer
 PROJECT: {{ project[:1200] }}
-METHODOLOGY: Decompose into independent subtasks that can be implemented
+METHODOLOGY: Decompose into 3-6 independent subtasks that can be implemented
 and tested in isolation. Each subtask should:
 - Have a clear, focused scope (one layer or feature)
 - Produce testable output independently
 - Minimize dependencies on other subtasks
 Order by dependency: data/models first, then logic, then interface, then integration.
-Output a numbered list: 1. name — one-line description
+
+EXAMPLE 1 — Web API (5 subtasks):
+1. Data models — Dataclasses for User, Post, Comment with validation and serialization
+2. Storage layer — In-memory repository with CRUD, filtering, and pagination
+3. Route handlers — GET/POST/PUT/DELETE endpoints with request parsing and error responses
+4. Input validation — Schema validators for create/update payloads with typed error messages
+5. CLI entry point — argparse-based launcher with host/port/debug flags
+
+EXAMPLE 2 — Algorithm library (4 subtasks):
+1. Core data structures — Graph, PriorityQueue, DisjointSet with standard interfaces
+2. Search algorithms — BFS, DFS, Dijkstra, A* operating on Graph
+3. Sort utilities — merge_sort, quick_sort, heap_sort with key functions and stability
+4. Test harness — Parametrized TestCase suite covering edge cases (empty, single, large)
+
+EXAMPLE 3 — Data pipeline (4 subtasks):
+1. Parser — CSV/JSON reader with schema detection, type coercion, and error recovery
+2. Transform engine — Filter, map, aggregate operations composable via method chaining
+3. Output formatters — Table, JSON, CSV writers with configurable delimiters and headers
+4. CLI interface — Pipe-friendly CLI with --input, --format, --query flags
+
+ANTI-PATTERNS (do NOT produce these):
+- Single monolithic subtask covering everything (too coarse, untestable in isolation)
+- 10+ micro-subtasks with heavy overlap (too fine, creates dependency spaghetti)
+
+Output a numbered list with dependency declarations:
+1. name — one-line description [depends: none]
+2. name — one-line description [depends: 1]
+3. name — one-line description [depends: 1, 2]

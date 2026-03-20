@@ -9,3 +9,33 @@ METHODOLOGY: Design a concrete architecture plan. Specify:
 - Error handling strategy
 - Test strategy: what to test, edge cases
 Output sections: CLASSES, DATA FLOW, TESTS, DEPENDENCIES.
+
+EXAMPLE PLAN (for subtask "Storage layer — In-memory repository with CRUD"):
+CLASSES:
+  class Repository:
+    def __init__(self) -> None  # initializes dict[str, dict]
+    def create(self, collection: str, id: str, data: dict) -> dict  # raises DuplicateKeyError
+    def read(self, collection: str, id: str) -> dict  # raises NotFoundError
+    def update(self, collection: str, id: str, data: dict) -> dict  # partial merge
+    def delete(self, collection: str, id: str) -> None  # raises NotFoundError
+    def list(self, collection: str, filter_fn: Callable | None = None) -> list[dict]
+  class DuplicateKeyError(Exception): ...
+  class NotFoundError(Exception): ...
+DATA FLOW:
+  create → validate id uniqueness → store copy in _data[collection][id] → return stored
+  read → lookup → raise or return copy
+  list → iterate collection → apply filter_fn → return list
+TESTS:
+  - test_create_and_read: round-trip create then read
+  - test_create_duplicate_raises: DuplicateKeyError on same id
+  - test_delete_then_read_raises: NotFoundError after delete
+  - test_list_with_filter: filter_fn selects subset
+  - test_update_partial_merge: only specified keys changed
+DEPENDENCIES: none (self-contained)
+
+NOT A PLAN (do not output raw code):
+  def create(self, collection, id, data):
+      if id in self._data[collection]: raise ...
+      self._data[collection][id] = data
+      return data
+This is implementation, not architecture. Plans describe structure and contracts.

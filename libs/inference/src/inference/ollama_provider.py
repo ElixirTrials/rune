@@ -56,6 +56,10 @@ class OllamaProvider(InferenceProvider):
         model: str,
         adapter_id: str | None = None,
         max_tokens: int = 4096,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
     ) -> GenerationResult:
         """Generate text from a prompt using the base Ollama model.
 
@@ -63,10 +67,14 @@ class OllamaProvider(InferenceProvider):
         Ollama does not support LoRA adapters. The base model is always used.
 
         Args:
-            prompt: The input prompt to send to the model.
+            prompt: The user-facing input prompt.
             model: The Ollama model identifier (e.g. "qwen2.5-coder:7b").
             adapter_id: Ignored. If provided, a warning is logged.
             max_tokens: Maximum number of tokens to generate.
+            system_prompt: Optional system-level instruction.
+            temperature: Sampling temperature override.
+            top_p: Nucleus sampling threshold override.
+            repetition_penalty: Repetition penalty override.
 
         Returns:
             GenerationResult with adapter_id=None (Ollama has no adapter concept).
@@ -84,9 +92,13 @@ class OllamaProvider(InferenceProvider):
 
         logger.debug("generate: model=%s max_tokens=%d", model, max_tokens)
 
+        messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+
         response = await self._client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,  # type: ignore[arg-type]
             max_tokens=max_tokens,
         )
 

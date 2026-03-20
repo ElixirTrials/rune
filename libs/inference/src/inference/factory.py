@@ -93,9 +93,11 @@ def get_provider(
 
             _provider_cache[cache_key] = LlamaCppProvider(model_path=resolved_url)
         elif ptype == "transformers":
+            from shared.hardware import get_best_device
+
             from inference.transformers_provider import TransformersProvider
 
-            device = os.environ.get("TRANSFORMERS_DEVICE", "cpu")
+            device = os.environ.get("TRANSFORMERS_DEVICE", get_best_device())
             _provider_cache[cache_key] = TransformersProvider(
                 model_name=resolved_url, device=device
             )

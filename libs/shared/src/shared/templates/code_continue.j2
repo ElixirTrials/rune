@@ -1,0 +1,15 @@
+ROLE: python-coder (continue)
+{% if project %}PROJECT: {{ project[:300] }}
+{% endif %}SUBTASK: {{ subtask.name }} (continuation {{ attempt }}/{{ max_retries }})
+{% if subtask.description %}DESCRIPTION: {{ subtask.description[:200] }}
+{% endif %}
+{% if dependency_interfaces %}
+COMPLETED DEPENDENCIES (use these interfaces in your code):
+{{ dependency_interfaces[:600] }}
+{% endif %}
+CODE SO FAR:
+{{ existing_code[:1200] }}
+
+CONTINUE from where this code was cut off. Do NOT repeat any code above.
+Output ONLY the remaining functions, classes, and tests needed to complete
+this subtask. The output will be appended to the code above.

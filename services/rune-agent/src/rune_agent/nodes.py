@@ -7,13 +7,45 @@ from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
-from shared.sandbox import get_sandbox_backend
+from shared.sandbox import count_test_results, get_sandbox_backend, has_unittest_classes
 
 from .state import RuneState
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanation."
+_PHASE_SYSTEM_PROMPTS: dict[str, str] = {
+    "decompose": (
+        "You are a project decomposer. Break projects into subtasks. "
+        "Output ONLY a numbered list, never code."
+    ),
+    "decompose_concise": (
+        "You are a project decomposer. Break projects into subtasks. "
+        "Output ONLY a numbered list, never code."
+    ),
+    "plan": (
+        "You are a software architect. Output ONLY architecture plans "
+        "with class signatures, data flow, and test strategy. Never output code."
+    ),
+    "code": "You are a Python code generator. Output only code, no explanation.",
+    "code_retry": "You are a Python code generator. Output only code, no explanation.",
+    "code_continue": (
+        "You are a Python code generator. Output only code, no explanation."
+    ),
+    "diagnose": (
+        "You are a code diagnostician. Identify which subtasks have bugs. "
+        "Output ONLY a numbered list, never code."
+    ),
+    "code_repair": (
+        "You are a Python code generator. Output only code, no explanation."
+    ),
+    "integrate": "You are a Python code generator. Output only code, no explanation.",
+    "integrate_retry": (
+        "You are a Python code generator. Output only code, no explanation."
+    ),
+}
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a Python code generator. Output only code, no explanation."
+)
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 
@@ -39,7 +71,8 @@ def _build_prompt(state: RuneState) -> str:
     if phase is not None:
         from shared.template_loader import render_prompt
 
-        return render_prompt(phase, task_description=state["task_description"])
+        ctx = state.get("prompt_context") or {}
+        return render_prompt(phase, task_description=state["task_description"], **ctx)
 
     task = state["task_description"]
     test_suite = state["test_suite"]
@@ -109,25 +142,30 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
 
     provider = get_provider()
     user_prompt = _build_prompt(state)
-    full_prompt = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
+    phase = state.get("phase")
+    system_prompt = _PHASE_SYSTEM_PROMPTS.get(phase or "", DEFAULT_SYSTEM_PROMPT)
+
+    max_tokens = int(os.environ.get("RUNE_MAX_TOKENS", "1024"))
 
     result: GenerationResult = await provider.generate(
-        prompt=full_prompt,
+        prompt=user_prompt,
         model=model,
         adapter_id=adapter_id,
-        max_tokens=4096,
+        max_tokens=max_tokens,
+        system_prompt=system_prompt,
     )
 
     extracted = _extract_code(result.text)
     logger.info(
-        "generate_node: attempt=%d, model=%s, adapter_id=%s, tokens=%d",
+        "generate_node: attempt=%d, model=%s, adapter_id=%s, tokens=%d, finish=%s",
         state["attempt_count"],
         result.model,
         result.adapter_id,
         result.token_count,
+        result.finish_reason,
     )
 
-    return {"generated_code": extracted}
+    return {"generated_code": extracted, "finish_reason": result.finish_reason}
 
 
 async def execute_node(state: RuneState) -> dict[str, Any]:
@@ -152,18 +190,41 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     timeout: int = int(os.environ.get("RUNE_EXEC_TIMEOUT", DEFAULT_TIMEOUT))
 
     script = state["generated_code"] + "\n\n" + state["test_suite"]
+
+    # Auto-inject unittest.main() if TestCase classes exist but no runner
+    if has_unittest_classes(script) and not re.search(r"unittest\.main\s*\(", script):
+        script += (
+            "\n\nimport unittest\nif __name__ == '__main__':\n    unittest.main()\n"
+        )
+
     backend = get_sandbox_backend()
     result = backend.run(script, timeout=timeout)
 
     stdout = result.stdout
     stderr = result.stderr
     exit_code = result.exit_code
-    tests_passed = result.exit_code == 0 and not result.is_timed_out
+
+    # Determine test validation based on unittest output
+    combined = state["generated_code"] + "\n" + state["test_suite"]
+    has_tests = has_unittest_classes(combined)
+    passed_count, total_count = count_test_results(stdout, stderr)
+    tests_ran = total_count > 0
+
+    if has_tests and tests_ran and exit_code == 0 and not result.is_timed_out:
+        tests_passed = True
+    elif has_tests and not tests_ran:
+        tests_passed = False
+    elif not has_tests:
+        tests_passed = False
+    else:
+        tests_passed = False
 
     logger.info(
-        "execute_node: exit_code=%d, tests_passed=%s",
+        "execute_node: exit_code=%d, tests_passed=%s, test_count=%d, tests_ran=%s",
         exit_code,
         tests_passed,
+        total_count,
+        tests_ran,
     )
 
     return {
@@ -171,6 +232,8 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
         "stderr": stderr,
         "exit_code": exit_code,
         "tests_passed": tests_passed,
+        "test_count": total_count,
+        "tests_ran": tests_ran,
     }
 
 

@@ -141,14 +141,14 @@ async def test_generate_node_with_adapter() -> None:
 
 
 async def test_execute_node_passing_script() -> None:
-    """execute_node: simple passing script returns tests_passed=True, exit_code=0."""
+    """execute_node: bare assert (no TestCase) returns tests_passed=False."""
     state: dict[str, Any] = {
         "generated_code": "x = 1",
         "test_suite": "assert x == 1",
     }
     result = await execute_node(state)
 
-    assert result["tests_passed"] is True
+    assert result["tests_passed"] is False  # no unittest.TestCase
     assert result["exit_code"] == 0
     assert isinstance(result["stdout"], str)
     assert isinstance(result["stderr"], str)
@@ -271,7 +271,7 @@ async def test_execute_node_uses_sandbox_backend() -> None:
     """execute_node delegates to the sandbox backend from get_sandbox_backend()."""
     mock_result = MagicMock()
     mock_result.stdout = "ok\n"
-    mock_result.stderr = ""
+    mock_result.stderr = "Ran 1 test in 0.001s\n\nOK\n"
     mock_result.exit_code = 0
     mock_result.is_timed_out = False
 
@@ -279,8 +279,12 @@ async def test_execute_node_uses_sandbox_backend() -> None:
     mock_backend.run.return_value = mock_result
 
     state: dict[str, Any] = {
-        "generated_code": "x = 1",
-        "test_suite": "assert x == 1",
+        "generated_code": (
+            "import unittest\n"
+            "class TestX(unittest.TestCase):\n"
+            "    def test_x(self): self.assertEqual(1, 1)\n"
+        ),
+        "test_suite": "",
     }
 
     with patch("rune_agent.nodes.get_sandbox_backend", return_value=mock_backend):
@@ -289,6 +293,8 @@ async def test_execute_node_uses_sandbox_backend() -> None:
     mock_backend.run.assert_called_once()
     assert result["tests_passed"] is True
     assert result["stdout"] == "ok\n"
+    assert result["test_count"] == 1
+    assert result["tests_ran"] is True
 
 
 async def test_save_trajectory_node_exhausted(
@@ -322,3 +328,118 @@ async def test_save_trajectory_node_exhausted(
         task_type="function",
         adapter_ids=["adapter-1"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Test validation tests (Part B)
+# ---------------------------------------------------------------------------
+
+
+async def test_execute_node_no_testcase_returns_false() -> None:
+    """execute_node: code without TestCase classes returns tests_passed=False."""
+    state: dict[str, Any] = {
+        "generated_code": "print('hello world')",
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+
+    assert result["tests_passed"] is False
+    assert result["test_count"] == 0
+    assert result["tests_ran"] is False
+
+
+async def test_execute_node_real_testcase_passes() -> None:
+    """execute_node: real TestCase with passing tests returns tests_passed=True."""
+    state: dict[str, Any] = {
+        "generated_code": (
+            "import unittest\n\n"
+            "class TestAdd(unittest.TestCase):\n"
+            "    def test_one_plus_one(self):\n"
+            "        self.assertEqual(1 + 1, 2)\n\n"
+            "if __name__ == '__main__':\n"
+            "    unittest.main()\n"
+        ),
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+
+    assert result["tests_passed"] is True
+    assert result["test_count"] >= 1
+    assert result["tests_ran"] is True
+
+
+async def test_build_prompt_no_double_render() -> None:
+    """_build_prompt with phase set renders template once, not double."""
+    from rune_agent.nodes import _build_prompt
+
+    state: dict[str, Any] = {
+        "task_description": "Build X",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 0,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "phase": "decompose",
+        "prompt_context": None,
+    }
+
+    result = _build_prompt(state)
+    # "Build X" should appear exactly once — no double rendering
+    assert result.count("Build X") == 1
+    # Should contain the template's structural text
+    assert "Decompose" in result or "decompose" in result.lower()
+
+
+async def test_build_prompt_with_prompt_context() -> None:
+    """_build_prompt passes prompt_context vars to retry templates."""
+    from rune_agent.nodes import _build_prompt
+
+    state: dict[str, Any] = {
+        "task_description": "Fix sorting",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 1,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 1,
+        "phase": "code_retry",
+        "prompt_context": {
+            "subtask_name": "Sort algorithm",
+            "project_label": "Build a sorting library.",
+            "passed": 2,
+            "total": 5,
+            "error_summary": "IndexError in test_edge",
+            "fix_guidance": "3 test(s) failing. Fix them.",
+        },
+    }
+
+    result = _build_prompt(state)
+    assert "Sort algorithm" in result
+    assert "sorting library" in result
+    assert "2/5" in result
+    assert "3 test(s) failing" in result
+    # error_summary flows through adapter weights, not the prompt
+    assert "IndexError" not in result
+
+
+async def test_execute_node_testcase_without_main_auto_injected() -> None:
+    """execute_node: TestCase without unittest.main() gets auto-injected and passes."""
+    state: dict[str, Any] = {
+        "generated_code": (
+            "import unittest\n\n"
+            "class TestMath(unittest.TestCase):\n"
+            "    def test_add(self):\n"
+            "        self.assertEqual(2 + 2, 4)\n"
+        ),
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+
+    assert result["tests_passed"] is True
+    assert result["test_count"] >= 1
+    assert result["tests_ran"] is True

@@ -213,6 +213,14 @@ def load_sakana_checkpoint(
 
     _patch_flash_attention()
 
+    # Pre-import flash_attn before torch.load — the unpickler triggers
+    # ctx_to_lora module imports in a context that breaks flash_attn
+    # resolution if it hasn't been imported yet.
+    try:
+        import flash_attn.flash_attn_interface  # noqa: F401,PLC0415
+    except ImportError:
+        pass
+
     if checkpoint_path is None:
         checkpoint_path = download_checkpoint(variant)
 
@@ -228,8 +236,23 @@ def load_sakana_checkpoint(
     )
 
     from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
+    from shared.hardware import resolve_model_dtype  # noqa: PLC0415
 
-    hypernet = HyperLoRA(hc).to(torch.float32)
+    hypernet_param_count = sum(
+        v.numel() for v in sd.values() if isinstance(v, torch.Tensor)
+    )
+    hypernet_dtype = resolve_model_dtype(
+        param_count=hypernet_param_count,
+        device=device,
+    )
+    logger.info("HyperLoRA dtype resolved to %s", hypernet_dtype)
+    # Suppress "Flash Attention 2 without specifying a torch dtype" warning
+    # by setting the dtype on the config before HyperLoRA instantiation.
+    if hasattr(hc, "aggregator_config"):
+        ac = hc.aggregator_config
+        if hasattr(ac, "torch_dtype"):
+            ac.torch_dtype = hypernet_dtype
+    hypernet = HyperLoRA(hc).to(hypernet_dtype)
 
     # Load ALL hypernet weights from checkpoint (not just a prefix subset).
     # The checkpoint contains aggregator.*, head.*, scaler_{A,B}.*,
@@ -429,15 +452,41 @@ def extract_activations(
         attention_mask shape: (1, seq_len)
     """
     import torch  # noqa: PLC0415
+    from shared.hardware import resolve_model_dtype  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
     from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
 
     logger.info("Loading base model %s for activation extraction...", base_model_name)
     tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+
+    # Estimate param count from model config to resolve dtype
+    from transformers import AutoConfig  # noqa: PLC0415
+
+    config = AutoConfig.from_pretrained(base_model_name)
+    estimated_params = getattr(config, "num_parameters", None)
+    if estimated_params is None:
+        # Rough estimate: vocab_size * hidden + num_layers * 4 * hidden^2
+        vocab = getattr(config, "vocab_size", 256000)
+        hidden = getattr(config, "hidden_size", 2304)
+        n_layers = getattr(config, "num_hidden_layers", 26)
+        estimated_params = vocab * hidden + n_layers * 4 * hidden * hidden
+
+    # Account for inference model already on GPU as overhead
+    overhead = 0
+    if device != "cpu" and torch.cuda.is_available():
+        overhead = torch.cuda.memory_allocated(0)
+
+    activation_dtype = resolve_model_dtype(
+        param_count=estimated_params,
+        device=device,
+        overhead_bytes=overhead,
+    )
+    logger.info("Activation extraction dtype resolved to %s", activation_dtype)
+
     model: Any = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        torch_dtype=torch.float32,
+        dtype=activation_dtype,
     )
     model = model.to(device)  # type: ignore[assignment]
     model.eval()
@@ -463,6 +512,8 @@ def generate_adapter_from_sakana(
     variant: str = DEFAULT_VARIANT,
     base_model_name: str | None = None,
     device: str = "cpu",
+    max_length: int = 512,
+    scaling_factor: float = 0.16,
 ) -> str:
     """End-to-end: text → base model activations → HyperLoRA → PEFT adapter.
 
@@ -479,6 +530,8 @@ def generate_adapter_from_sakana(
         variant: HF checkpoint variant if downloading.
         base_model_name: Override base model. If None, uses the one from checkpoint.
         device: Device for computation.
+        max_length: Maximum token sequence length for activation extraction.
+        scaling_factor: Adapter scaling multiplier (0-1, default from config).
 
     Returns:
         Path to the saved adapter directory.
@@ -505,7 +558,7 @@ def generate_adapter_from_sakana(
         base_model_name=base_model_name,
         layer_indices=layer_indices,
         device=device,
-        max_length=512,
+        max_length=max_length,
     )
 
     # Generate LoRA weights via perceiver
@@ -513,13 +566,28 @@ def generate_adapter_from_sakana(
     with torch.no_grad():
         lora_dict, layernorm_dict = hypernet.generate_weights(features, attn_mask, None)
 
+    # Combine generated weights with bias — Sakana concatenates bias as extra
+    # rank dimensions (rank 8 → 16 for single chunk). This is how the
+    # checkpoint was trained and evaluated.
+    from ctx_to_lora.modeling.lora_merger import combine_lora as _combine_lora
+
+    n_chunks = torch.ones(1, dtype=torch.int32)
+    lora_bias = hypernet.get_head_bias() if hypernet.config.use_bias else None
+    lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
+
     # Save as PEFT adapter
     _save_sakana_adapter(
         lora_dict=lora_dict,
         output_dir=output_dir,
         base_model_name=base_model_name,
         hc=hc,
+        scaling_factor=scaling_factor,
     )
+
+    # Free hypernet VRAM — it's not needed after adapter weights are saved
+    del hypernet, lora_dict, layernorm_dict, features, attn_mask
+    if device != "cpu":
+        torch.cuda.empty_cache()
 
     return output_dir
 
@@ -529,6 +597,7 @@ def _save_sakana_adapter(
     output_dir: str,
     base_model_name: str,
     hc: Any,
+    scaling_factor: float = 0.16,
 ) -> None:
     """Save Sakana's HyperLoRA output as a PEFT-compatible adapter.
 
@@ -540,6 +609,7 @@ def _save_sakana_adapter(
         output_dir: Directory to write adapter files.
         base_model_name: Base model identifier for adapter config.
         hc: HypernetConfig with lora rank and target modules.
+        scaling_factor: Multiplier for adapter influence strength (0-1).
     """
     from safetensors.torch import save_file  # noqa: PLC0415
 
@@ -553,26 +623,34 @@ def _save_sakana_adapter(
 
     layer_indices = list(hc.layer_indices)
     target_modules = list(hc.lora_config.target_modules)
-    rank = hc.lora_config.r
+
+    # Determine actual rank from the combined weights (may be 2*base_rank
+    # after combine_lora concatenates bias as extra rank dimensions).
+    first_mod = next(iter(lora_dict))
+    actual_rank = lora_dict[first_mod]["A"].shape[-2]
+
+    # Module path prefix: attention modules use self_attn, MLP uses mlp
+    _attn_modules = {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"}
 
     # Convert Sakana format → PEFT flat state_dict
     # Sakana: lora_dict[module_name]["A"] shape (batch, num_layers, rank, in)
-    # PEFT: .layers.{i}.mlp.{module}.lora_A.weight (rank, in_features)
+    # PEFT: .layers.{i}.{prefix}.{module}.lora_A.weight (rank, in_features)
     state_dict = {}
     for mod_name, weights in lora_dict.items():
         if mod_name not in target_modules:
             continue
         a_weights = weights["A"]  # (batch, num_layers, rank, in_features)
         b_weights = weights["B"]  # (batch, num_layers, rank, out_features)
+        prefix = "self_attn" if mod_name in _attn_modules else "mlp"
 
         for layer_pos, layer_idx in enumerate(layer_indices):
             key_a = (
                 f"base_model.model.model.layers.{layer_idx}"
-                f".mlp.{mod_name}.lora_A.weight"
+                f".{prefix}.{mod_name}.lora_A.weight"
             )
             key_b = (
                 f"base_model.model.model.layers.{layer_idx}"
-                f".mlp.{mod_name}.lora_B.weight"
+                f".{prefix}.{mod_name}.lora_B.weight"
             )
             # Take first batch element, transpose B to (out_features, rank)
             state_dict[key_a] = a_weights[0, layer_pos].contiguous()
@@ -580,10 +658,21 @@ def _save_sakana_adapter(
 
     save_file(state_dict, str(output_path / "adapter_model.safetensors"))
 
+    # Sakana's lora_forward uses scaling = lora_alpha directly (not alpha/r
+    # as PEFT does). To compensate, set PEFT lora_alpha = checkpoint_alpha *
+    # actual_rank so that PEFT's alpha/r division recovers the original
+    # scaling factor.
+    checkpoint_alpha = (
+        getattr(hc.lora_config, "lora_alpha", hc.lora_config.r * 2)
+        if hc is not None
+        else actual_rank * 2
+    )
+    peft_alpha = checkpoint_alpha * actual_rank * scaling_factor
+
     adapter_config = {
         "peft_type": "LORA",
-        "r": rank,
-        "lora_alpha": rank * 2,
+        "r": actual_rank,
+        "lora_alpha": peft_alpha,
         "target_modules": target_modules,
         "lora_dropout": 0.0,
         "bias": "none",
@@ -600,6 +689,6 @@ def _save_sakana_adapter(
         "Saved PEFT adapter: %d tensors, %d layers, rank=%d, targets=%s",
         len(state_dict),
         len(layer_indices),
-        rank,
+        actual_rank,
         target_modules,
     )

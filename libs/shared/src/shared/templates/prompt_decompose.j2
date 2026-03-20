@@ -1,4 +1,13 @@
-Decompose this project into independent, testable subtasks.
-Output a numbered list: 1. name — description
+Decompose this project into 3-6 subtasks with dependencies.
+Do NOT write code. Output ONLY a numbered list in this exact format:
+1. name — one-line description [depends: none]
+2. name — one-line description [depends: 1]
+3. name — one-line description [depends: 1, 2]
+
+Example output:
+1. Data models — Dataclasses with validation and serialization [depends: none]
+2. Storage layer — SQLite-backed repository with CRUD operations [depends: 1]
+3. Business logic — Service class enforcing domain rules [depends: 1, 2]
+4. CLI interface — argparse subcommands for user interaction [depends: 3]
 
 Project: {{ task_description }}

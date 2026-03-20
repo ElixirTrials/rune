@@ -118,7 +118,10 @@ async def main() -> dict:
         "stderr": "",
         "exit_code": 0,
         "tests_passed": False,
+        "test_count": 0,
+        "tests_ran": False,
         "trajectory": [],
+        "phase": None,
         "outcome": None,
     }
 

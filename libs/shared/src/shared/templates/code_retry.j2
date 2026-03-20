@@ -1,10 +1,17 @@
 ROLE: python-coder
-SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
+{% if project %}PROJECT: {{ project[:200] }}
+{% endif %}SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
+{% if subtask.description %}DESCRIPTION: {{ subtask.description[:200] }}
+{% endif %}
+{% if dependency_interfaces %}
+COMPLETED DEPENDENCIES (use these interfaces):
+{{ dependency_interfaces[:400] }}
+{% endif %}
 PLAN:
-{{ plan[:400] }}
+{{ plan[:600] }}
 {% if existing_code %}
 EXISTING CODE:
-{{ existing_code[:300] }}
+{{ existing_code[:600] }}
 {% endif %}
 TESTS: {{ passed }}/{{ total }} {{ "PASSING" if tests_passed else "FAILING" }}
 ERRORS:

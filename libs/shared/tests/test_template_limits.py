@@ -18,10 +18,10 @@ def _env() -> Environment:
 
 
 def test_code_template_plan_limit() -> None:
-    """code.j2 should include at least 500 chars of plan text."""
+    """code.j2 should include at least 800 chars of plan text."""
     env = _env()
     tmpl = env.get_template("code.j2")
-    long_plan = "P" * 600
+    long_plan = "P" * 900
     rendered = tmpl.render(
         subtask={"name": "test"},
         subtask_index=1,
@@ -29,15 +29,15 @@ def test_code_template_plan_limit() -> None:
         plan=long_plan,
         existing_code="",
     )
-    assert "P" * 500 in rendered
-    assert "P" * 501 not in rendered
+    assert "P" * 800 in rendered
+    assert "P" * 801 not in rendered
 
 
 def test_code_template_existing_code_limit() -> None:
-    """code.j2 should include at least 400 chars of existing_code."""
+    """code.j2 should include at least 800 chars of existing_code."""
     env = _env()
     tmpl = env.get_template("code.j2")
-    long_code = "C" * 500
+    long_code = "C" * 900
     rendered = tmpl.render(
         subtask={"name": "test"},
         subtask_index=1,
@@ -45,15 +45,15 @@ def test_code_template_existing_code_limit() -> None:
         plan="short plan",
         existing_code=long_code,
     )
-    assert "C" * 400 in rendered
-    assert "C" * 401 not in rendered
+    assert "C" * 800 in rendered
+    assert "C" * 801 not in rendered
 
 
 def test_code_retry_template_plan_limit() -> None:
-    """code_retry.j2 should include at least 400 chars of plan text."""
+    """code_retry.j2 should include at least 600 chars of plan text."""
     env = _env()
     tmpl = env.get_template("code_retry.j2")
-    long_plan = "P" * 500
+    long_plan = "P" * 700
     rendered = tmpl.render(
         subtask={"name": "test"},
         attempt=1,
@@ -68,8 +68,8 @@ def test_code_retry_template_plan_limit() -> None:
         fix_guidance="fix it",
         history="",
     )
-    assert "P" * 400 in rendered
-    assert "P" * 401 not in rendered
+    assert "P" * 600 in rendered
+    assert "P" * 601 not in rendered
 
 
 def test_code_retry_template_error_limit() -> None:
@@ -118,3 +118,31 @@ def test_plan_template_description_limit() -> None:
     )
     assert "X" * 500 in rendered
     assert "X" * 501 not in rendered
+
+
+def test_integrate_template_skeleton_limit() -> None:
+    """integrate.j2 should include at least 1000 chars of skeleton text."""
+    env = _env()
+    tmpl = env.get_template("integrate.j2")
+    long_skeleton = "S" * 1100
+    rendered = tmpl.render(
+        project="test project",
+        subtask_count=1,
+        skeletons={"task1": long_skeleton},
+    )
+    assert "S" * 1000 in rendered
+    assert "S" * 1001 not in rendered
+
+
+def test_integrate_template_project_limit() -> None:
+    """integrate.j2 should include at least 800 chars of project text."""
+    env = _env()
+    tmpl = env.get_template("integrate.j2")
+    long_project = "P" * 900
+    rendered = tmpl.render(
+        project=long_project,
+        subtask_count=1,
+        skeletons={"task1": "skeleton"},
+    )
+    assert "P" * 800 in rendered
+    assert "P" * 801 not in rendered

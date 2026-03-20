@@ -3,7 +3,7 @@ name = "rune"
 version = "0.1.0"
 description = "Local-first coding agent with LoRA weight-space episodic memory"
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "aiohttp>=3.10.0",
     "httpx>=0.28.1",
@@ -30,7 +30,6 @@ dependencies = [
     "openai>=1.0.0",
     "psutil>=5.9.0",
     "llama-cpp-python>=0.3.0",
-    "torch>=2.10.0",
     "safetensors>=0.7.0",
     "peft>=0.15",
     "transformers>=4.57,<4.58",
@@ -39,6 +38,7 @@ dependencies = [
     "einops>=0.8.2",
     "jaxtyping>=0.3.9",
     "datasets>=4.6.1",
+    "torch>=2.10.0",
 ]
 
 [project.optional-dependencies]
@@ -81,6 +81,9 @@ members = [
     "libs/shared",
     "libs/adapter-registry",
 ]
+
+[tool.uv]
+no-build-isolation-package = ["setuptools"]
 
 [tool.ruff]
 target-version = "py312"
@@ -195,6 +198,8 @@ module = [
     "llama_cpp.*",
     "ctx_to_lora",
     "ctx_to_lora.*",
+    "flash_attn",
+    "flash_attn.*",
 ]
 ignore_missing_imports = true
 

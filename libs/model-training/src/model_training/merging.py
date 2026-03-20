@@ -119,4 +119,4 @@ def load_adapter_state_dict(adapter_path: str | Path) -> dict[str, Any]:
     """
     from safetensors.torch import load_file
 
-    return load_file(str(adapter_path))
+    return load_file(str(adapter_path), device="cpu")
