@@ -62,7 +62,7 @@ def test_load_adapter_state_dict_calls_safetensors() -> None:
 
         result = load_adapter_state_dict("/fake/path.safetensors")
         mock_safetensors_torch.load_file.assert_called_once_with(
-            "/fake/path.safetensors"
+            "/fake/path.safetensors", device="cpu"
         )
         assert result == {"w": "fake"}
     finally:
