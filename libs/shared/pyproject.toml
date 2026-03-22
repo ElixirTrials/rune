@@ -8,6 +8,9 @@ dependencies = [
     "pydantic>=2.0.0",
     "sqlmodel>=0.0.16",
     "jinja2>=3.1.0",
+    "jupyter_client>=8.0.0",
+    "psutil>=7.2.2",
+    "ipykernel>=7.2.0",
 ]
 
 [build-system]
@@ -32,3 +35,6 @@ exclude = ["venv", ".venv", "docs"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "--cov=shared --cov-branch --cov-report=term-missing"
+markers = [
+    "slow: marks tests as slow (deselect with -m 'not slow')",
+]
