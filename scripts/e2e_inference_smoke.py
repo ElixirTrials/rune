@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""End-to-end smoke test for Rune v5.0 milestone.
+"""End-to-end inference smoke test for Rune.
 
-Exercises the full pipeline WITHOUT GPU or network:
+Exercises the inference and service pipeline WITHOUT GPU or network:
   1. Adapter Registry — CRUD lifecycle
   2. Inference — provider factory, ABC contracts
   3. Agent Loop — trajectory persistence, node functions
@@ -9,7 +9,7 @@ Exercises the full pipeline WITHOUT GPU or network:
   5. Evaluation — pass@k, kill-switch gate, HumanEval subset
   6. Training Service — HTTP endpoints via TestClient
 
-Run: uv run python scripts/e2e_smoke.py
+Run: uv run python scripts/e2e_inference_smoke.py
 """
 
 # ruff: noqa: E402

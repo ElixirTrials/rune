@@ -556,8 +556,10 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
     hypernet = transfer_aggregator_weights(hypernet, config.sakana_checkpoint_path)
     hypernet.train()
 
-    # Device selection
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Device selection: cuda > mps > cpu
+    from shared.hardware import get_best_device  # noqa: PLC0415
+
+    device = torch.device(get_best_device())
     logger.info("Using device: %s", device)
     base_model = base_model.to(device)
     hypernet = hypernet.to(device)
