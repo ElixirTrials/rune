@@ -70,6 +70,7 @@ def evolution_sweep(registry: "AdapterRegistry") -> dict[str, Any]:
         # Merge top adapters if we have enough
         if len(active) >= MERGE_MIN_ADAPTERS:
             top = registry.query_best_for_task(task_type, top_k=MERGE_TOP_K)
+            top = [a for a in top if a.fitness_score is not None]
             if len(top) >= 2:
                 parent_ids = [a.id for a in top]
                 try:

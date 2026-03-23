@@ -112,6 +112,7 @@ class SwarmCheckpointDB:
                 select(CheckpointRecord)
                 .where(
                     CheckpointRecord.task_hash == task_hash,
+                    CheckpointRecord.run_id == self._run_id,
                     CheckpointRecord.status == "running",
                 )
                 .limit(1)
@@ -158,6 +159,7 @@ class SwarmCheckpointDB:
                 select(CheckpointRecord)
                 .where(
                     CheckpointRecord.task_hash == task_hash,
+                    CheckpointRecord.run_id == self._run_id,
                     CheckpointRecord.agent_id == agent_id,
                     CheckpointRecord.status == "running",
                 )
@@ -204,6 +206,7 @@ class SwarmCheckpointDB:
                 select(CheckpointRecord)
                 .where(
                     CheckpointRecord.task_hash == task_hash,
+                    CheckpointRecord.run_id == self._run_id,
                     CheckpointRecord.status == "completed",
                 )
                 .limit(1)
