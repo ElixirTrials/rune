@@ -459,7 +459,11 @@ async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> dict[str, Any
     registry_engine = create_engine(config.db_url)
     registry = AdapterRegistry(engine=registry_engine)
     checkpoint_engine = create_engine("sqlite:///swarm_checkpoints.db")
-    checkpoint_db = SwarmCheckpointDB(checkpoint_engine)
+    import uuid as _uuid
+
+    run_id = config.run_id or str(_uuid.uuid4())
+    logger.info("Swarm run_id: %s", run_id)
+    checkpoint_db = SwarmCheckpointDB(checkpoint_engine, run_id=run_id)
 
     # Load tasks
     tasks = load_task_pool(config.task_source)

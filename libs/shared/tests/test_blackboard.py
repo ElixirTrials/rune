@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from shared.blackboard import (
     Blackboard,
     SubtaskArtifact,
@@ -150,13 +151,24 @@ class TestBuildExecutionLayers:
         assert len(layers) == 1
         assert layers[0][0]["name"] == "A"
 
-    def test_cycle_falls_back_to_single_layer(self) -> None:
-        """Cyclic dependencies should produce a single flat layer."""
+    def test_cycle_raises_cycle_error(self) -> None:
+        """Cyclic dependencies should raise CycleError, not degrade."""
+        from graphlib import CycleError
+
         subtasks = [
             {"name": "A", "depends_on": ["B"]},
             {"name": "B", "depends_on": ["A"]},
         ]
-        layers = build_execution_layers(subtasks)
-        assert len(layers) == 1
-        names = {st["name"] for st in layers[0]}
-        assert names == {"A", "B"}
+        with pytest.raises(CycleError):
+            build_execution_layers(subtasks)
+
+    def test_self_cycle_raises_cycle_error(self) -> None:
+        """Self-referencing dependency should raise CycleError."""
+        from graphlib import CycleError
+
+        subtasks = [
+            {"name": "A", "depends_on": ["A"]},
+            {"name": "B", "depends_on": []},
+        ]
+        with pytest.raises(CycleError):
+            build_execution_layers(subtasks)

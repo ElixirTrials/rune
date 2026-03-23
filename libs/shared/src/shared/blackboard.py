@@ -101,7 +101,7 @@ def build_execution_layers(
     Returns:
         List of layers, each a list of subtask dicts.
     """
-    from graphlib import CycleError, TopologicalSorter
+    from graphlib import TopologicalSorter
 
     name_to_subtask = {str(st["name"]): st for st in subtasks}
     known_names = set(name_to_subtask.keys())
@@ -117,15 +117,7 @@ def build_execution_layers(
         graph[name] = valid_deps
 
     sorter = TopologicalSorter(graph)
-    try:
-        sorter.prepare()
-    except CycleError as exc:
-        logger.warning(
-            "Cycle detected in subtask dependencies (%s); "
-            "falling back to single-layer execution.",
-            exc,
-        )
-        return [subtasks]
+    sorter.prepare()  # raises CycleError if dependencies form a cycle
 
     layers: list[list[dict[str, object]]] = []
     while sorter.is_active():

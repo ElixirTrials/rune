@@ -113,8 +113,8 @@ def test_evolution_sweep_excludes_null_fitness_from_merge() -> None:
     with patch("swarm_evolution._ties_merge_adapters") as mock_merge:
         mock_merge.return_value = "merged-id"
         evolution_sweep(registry)
-        if mock_merge.called:
-            parent_ids = mock_merge.call_args[0][0]
-            for aid in parent_ids:
-                record = registry.retrieve_by_id(aid)
-                assert record.fitness_score is not None
+        mock_merge.assert_called_once()
+        parent_ids = mock_merge.call_args[0][0]
+        for aid in parent_ids:
+            record = registry.retrieve_by_id(aid)
+            assert record.fitness_score is not None

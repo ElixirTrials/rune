@@ -149,6 +149,8 @@ class SwarmConfig(BaseModel):
         sandbox_backend: Execution backend ('subprocess' or 'nsjail').
         base_model_id: HuggingFace model identifier for inference.
         hypernetwork_checkpoint: Path to pretrained hypernetwork checkpoint.
+        run_id: Unique identifier for this swarm run (for checkpoint isolation).
+            Auto-generated UUID if not provided.
     """
 
     db_url: str = "sqlite:///rune_swarm.db"
@@ -161,6 +163,7 @@ class SwarmConfig(BaseModel):
     base_model_id: str = "Qwen/Qwen2.5-Coder-7B"
     device: str = "cpu"
     hypernetwork_checkpoint: str | None = None
+    run_id: str | None = None
 
 
 class SwarmCheckpoint(BaseModel):

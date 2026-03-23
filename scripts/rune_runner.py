@@ -704,6 +704,95 @@ async def run_phased_pipeline(
         if key not in seen:
             seen.add(key)
             subtasks.append(st)
+
+    # Validate dependency graph is acyclic; retry decompose if not
+    from graphlib import CycleError
+
+    from shared.blackboard import build_execution_layers
+
+    max_cycle_retries = 2
+    for cycle_attempt in range(max_cycle_retries):
+        try:
+            build_execution_layers(subtasks)  # validation only
+            break  # acyclic — proceed
+        except CycleError as exc:
+            logger.warning(
+                "Cycle in decomposition (attempt %d/%d): %s",
+                cycle_attempt + 1,
+                max_cycle_retries,
+                exc,
+            )
+            if cycle_attempt + 1 >= max_cycle_retries:
+                raise RuntimeError(
+                    f"Decompose phase could not produce cycle-free "
+                    f"subtasks after {max_cycle_retries} retries: {exc}"
+                ) from exc
+
+            # Re-run decompose with cycle correction context
+            correction_traj = render_trajectory(
+                "decompose", project=project_prompt
+            )
+            prior_output = best_decompose_state.get("generated_code", "")
+            correction_traj += (
+                f"\n\n[ERROR: Your prior decomposition had circular "
+                f"dependencies: {exc}. Fix the [depends:] declarations "
+                f"to remove the cycle.]\n{prior_output[:500]}"
+            )
+
+            iter_adapter_dir = str(
+                adapter_dir / f"phase1_decompose_cycle_fix_{cycle_attempt}"
+            )
+            adapter_path = run_hypernetwork(
+                trajectory_text=correction_traj,
+                output_dir=iter_adapter_dir,
+                base_model_id=base_model_id,
+                checkpoint_path=checkpoint_path,
+                device=device,
+                scaling_factor=adapter_scaling,
+            )
+
+            cycle_adapter_id: str | None = None
+            if adapter_path:
+                cycle_adapter_id = (
+                    f"phase1-decompose-cycle-fix-{cycle_attempt}"
+                )
+                await _load_adapter(
+                    cycle_adapter_id, adapter_path, loaded_adapter_id
+                )
+                loaded_adapter_id = cycle_adapter_id
+
+            iteration_counter += 1
+            retry_phase = (
+                "decompose_concise" if cycle_adapter_id else "decompose"
+            )
+            retry_state = await run_iteration(
+                graph=graph,
+                project_prompt=project_prompt,
+                adapter_id=cycle_adapter_id,
+                session_id=session_id,
+                iteration=iteration_counter,
+                phase=retry_phase,
+            )
+
+            # Re-parse and deduplicate
+            raw_subtasks = _parse_subtask_list(
+                retry_state.get("generated_code", "")
+            )
+            seen = set()
+            subtasks = []
+            for st in raw_subtasks:
+                key = st["name"].lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    subtasks.append(st)
+            best_decompose_state = retry_state
+            logger.info(
+                "Cycle-fix attempt %d produced %d subtasks: %s",
+                cycle_attempt + 1,
+                len(subtasks),
+                [s["name"] for s in subtasks],
+            )
+
     evolution_stats["best_adapters"]["decompose"] = best_decompose_adapter_id
 
     logger.info(
