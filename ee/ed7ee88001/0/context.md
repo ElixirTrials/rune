@@ -1,0 +1,23 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+<task-notification>
+<task-id>bz7ip2ppg</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/903b583a-5baf-43b3-ae43-ea24ba831a47/tasks/bz7ip2ppg.output</output-file>
+<status>completed</status>
+<summary>Background command "Watch CI checks" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/903b583a-5baf-43...
+
+### Prompt 2
+
+Go over the code review comments.
+
+### Prompt 3
+
+Make a plan for addressing or rejecting them and then marking them as resolved or commenting on them.
+

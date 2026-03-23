@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "eeed7ee88001",
+  "session_id": "903b583a-5baf-43b3-ae43-ea24ba831a47",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-23T14:24:07.292799Z",
+  "branch": "fix/algorithmic-review-issues",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/adapter-registry/tests/test_registry.py",
+    "scripts/rune_runner.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "767a751290e7",
+  "checkpoint_transcript_start": 424,
+  "transcript_lines_at_start": 424,
+  "token_usage": {
+    "input_tokens": 15,
+    "cache_creation_tokens": 5291,
+    "cache_read_tokens": 1296571,
+    "output_tokens": 2148,
+    "api_call_count": 15
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-23T14:24:07.067556Z",
+    "agent_lines": 6,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 6,
+    "agent_percentage": 100
+  }
+}
