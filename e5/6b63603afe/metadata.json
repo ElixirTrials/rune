@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "e56b63603afe",
+  "strategy": "manual-commit",
+  "branch": "feat/dag-blackboard",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "libs/model-training/src/model_training/sakana_d2l.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e5/6b63603afe/0/metadata.json",
+      "transcript": "/e5/6b63603afe/0/full.jsonl",
+      "content_hash": "/e5/6b63603afe/0/content_hash.txt",
+      "prompt": "/e5/6b63603afe/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1009,
+    "cache_creation_tokens": 2722668,
+    "cache_read_tokens": 391877184,
+    "output_tokens": 287033,
+    "api_call_count": 860
+  }
+}
