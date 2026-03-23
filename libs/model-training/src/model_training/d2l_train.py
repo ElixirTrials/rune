@@ -169,20 +169,21 @@ def _compute_kl_ce_loss(
     alpha = config.alpha
     temp = config.temperature
 
-    # Causal LM shift: logits at position k predict token k+1, so the logit
-    # that predicts the first answer token is at position answer_start - 1.
-    logit_start = max(0, answer_start - 1)
-
-    # Guard against empty answer span (truncation pushed answer beyond seq_len)
+    # Guard against empty answer span (truncation pushed answer beyond seq_len).
+    # answer_start >= seq_len means no answer tokens exist in the sequence.
     seq_len = student_logits.shape[1]
-    if logit_start >= seq_len:
+    if answer_start >= seq_len:
         logger.warning(
-            "Answer span empty: logit_start=%d >= seq_len=%d. Returning zero loss.",
-            logit_start,
+            "Answer span empty: answer_start=%d >= seq_len=%d. Returning zero loss.",
+            answer_start,
             seq_len,
         )
         zero = torch.tensor(0.0, device=student_logits.device, requires_grad=True)
         return zero, {"kl_loss": 0.0, "ce_loss": 0.0, "total_loss": 0.0}
+
+    # Causal LM shift: logits at position k predict token k+1, so the logit
+    # that predicts the first answer token is at position answer_start - 1.
+    logit_start = max(0, answer_start - 1)
 
     # Slice to answer span only (shift-aware)
     s = student_logits[:, logit_start:, :]

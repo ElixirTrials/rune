@@ -134,11 +134,14 @@ def _ties_merge_adapters(
     )
     output_dir = str(base_path / "merged" / merged_id)
 
+    safetensors_path = Path(output_dir) / "adapter_model.safetensors"
+    if safetensors_path.exists():
+        raise FileExistsError(f"Merged adapter already exists: {safetensors_path}")
+
     os.makedirs(output_dir, exist_ok=True)
 
     from safetensors.torch import save_file
 
-    safetensors_path = Path(output_dir) / "adapter_model.safetensors"
     save_file(merged_sd, str(safetensors_path))
 
     # Compute file metadata
@@ -157,7 +160,7 @@ def _ties_merge_adapters(
         base_model_id=adapters[0].base_model_id,
         rank=adapters[0].rank,
         created_at=created_at,
-        file_path=str(safetensors_path),
+        file_path=output_dir,
         file_hash=file_hash,
         file_size_bytes=file_size_bytes,
         source="evolution",

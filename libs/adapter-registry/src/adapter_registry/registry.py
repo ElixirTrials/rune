@@ -289,6 +289,11 @@ class AdapterRegistry:
 
         Returns:
             Dict mapping each ancestor adapter ID to its list of parent IDs.
+            Unknown IDs encountered during traversal are recorded with an
+            empty parent list (no exception raised).
+
+        Raises:
+            None. Missing adapter IDs are silently treated as leaf nodes.
         """
         from collections import deque
 

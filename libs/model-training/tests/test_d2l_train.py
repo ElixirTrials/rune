@@ -446,13 +446,27 @@ class TestCausalShiftAwareLoss:
         student = torch.randn(1, 5, 10)
         teacher = torch.randn(1, 5, 10)
 
-        # answer_start=6 exceeds seq_len=5 → logit_start=5 >= 5
+        # answer_start=6 exceeds seq_len=5
         loss, metrics = _compute_kl_ce_loss(
             student, teacher, answer_start=6, config=config
         )
 
         assert loss.item() == 0.0, f"Expected zero loss, got {loss.item()}"
         assert loss.requires_grad, "Zero loss must still have requires_grad=True"
+        assert metrics["kl_loss"] == 0.0
+
+    def test_compute_kl_ce_loss_boundary_answer_start_equals_seq_len(self) -> None:
+        """When answer_start == seq_len, no answer tokens exist → zero loss."""
+        config = self._make_config()
+        student = torch.randn(1, 5, 10)
+        teacher = torch.randn(1, 5, 10)
+
+        # answer_start=5 == seq_len=5 → no answer tokens
+        loss, metrics = _compute_kl_ce_loss(
+            student, teacher, answer_start=5, config=config
+        )
+
+        assert loss.item() == 0.0, f"Expected zero loss, got {loss.item()}"
         assert metrics["kl_loss"] == 0.0
         assert metrics["ce_loss"] == 0.0
         assert metrics["total_loss"] == 0.0

@@ -144,14 +144,21 @@ def dare_merge(
 
 
 def load_adapter_state_dict(adapter_path: str | Path) -> dict[str, Any]:
-    """Load a LoRA adapter state dict from a safetensors file.
+    """Load a LoRA adapter state dict from a safetensors file or directory.
+
+    Accepts either a direct ``.safetensors`` file path or a PEFT adapter
+    directory containing ``adapter_model.safetensors``.
 
     Args:
-        adapter_path: Path to the adapter .safetensors file.
+        adapter_path: Path to a ``.safetensors`` file or a directory
+            containing ``adapter_model.safetensors``.
 
     Returns:
         State dict mapping parameter names to tensors.
     """
     from safetensors.torch import load_file
 
-    return load_file(str(adapter_path), device="cpu")
+    path = Path(adapter_path)
+    if path.is_dir():
+        path = path / "adapter_model.safetensors"
+    return load_file(str(path), device="cpu")
