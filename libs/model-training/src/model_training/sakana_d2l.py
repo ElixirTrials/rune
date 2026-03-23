@@ -451,6 +451,11 @@ def extract_activations(
         features shape: (1, num_layers, seq_len, hidden_dim)
         attention_mask shape: (1, seq_len)
     """
+    if not text or not text.strip():
+        raise ValueError(
+            "extract_activations called with empty text; adapter would be meaningless."
+        )
+
     import torch  # noqa: PLC0415
     from shared.hardware import resolve_model_dtype  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415

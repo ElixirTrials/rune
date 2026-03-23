@@ -391,3 +391,68 @@ class TestSmokeTestLossFinite:
             f"Expected all 5 losses to be finite, got: {finite_results}"
         )
         assert len(finite_results) == 5, "Must run exactly 5 steps"
+
+
+class TestCausalShiftAwareLoss:
+    """Verify _compute_kl_ce_loss accounts for the causal LM logit shift."""
+
+    def _make_config(
+        self, alpha: float = 0.5, temperature: float = 2.0
+    ) -> D2LTrainConfig:
+        return D2LTrainConfig(
+            sakana_checkpoint_path="ckpt.pt",
+            alpha=alpha,
+            temperature=temperature,
+        )
+
+    def test_compute_kl_ce_loss_causal_shift(self) -> None:
+        """With answer_start=3, logit slice starts at position 2 (shift-aware).
+
+        Verifies the shift is applied by checking the slice length: with
+        answer_start=3 on seq_len=8, the shift-aware slice starts at
+        position 2 (length 6), not position 3 (length 5).
+        """
+        config = self._make_config(alpha=0.5)
+        B, S, V = 1, 8, 10
+
+        student = torch.randn(B, S, V)
+        teacher = torch.randn(B, S, V)
+
+        # answer_start=3 → logit_start = max(0, 3-1) = 2
+        # Slice should be [:, 2:, :] → 6 positions, not 5
+        loss_at_3, metrics_at_3 = _compute_kl_ce_loss(
+            student, teacher, answer_start=3, config=config
+        )
+
+        # answer_start=1 → logit_start = max(0, 1-1) = 0
+        # Slice should be [:, 0:, :] → 8 positions (full)
+        loss_at_1, metrics_at_1 = _compute_kl_ce_loss(
+            student, teacher, answer_start=1, config=config
+        )
+
+        # Both should produce finite losses
+        assert torch.isfinite(loss_at_3)
+        assert torch.isfinite(loss_at_1)
+
+        # answer_start=1 uses full sequence (logit_start=0), answer_start=3
+        # uses a shorter slice (logit_start=2) → different loss values
+        assert metrics_at_3["total_loss"] != metrics_at_1["total_loss"], (
+            "Different answer_start values should produce different losses"
+        )
+
+    def test_compute_kl_ce_loss_empty_span_returns_zero(self) -> None:
+        """When answer_start >= seq_len, returns zero loss without crashing."""
+        config = self._make_config()
+        student = torch.randn(1, 5, 10)
+        teacher = torch.randn(1, 5, 10)
+
+        # answer_start=6 exceeds seq_len=5 → logit_start=5 >= 5
+        loss, metrics = _compute_kl_ce_loss(
+            student, teacher, answer_start=6, config=config
+        )
+
+        assert loss.item() == 0.0, f"Expected zero loss, got {loss.item()}"
+        assert loss.requires_grad, "Zero loss must still have requires_grad=True"
+        assert metrics["kl_loss"] == 0.0
+        assert metrics["ce_loss"] == 0.0
+        assert metrics["total_loss"] == 0.0

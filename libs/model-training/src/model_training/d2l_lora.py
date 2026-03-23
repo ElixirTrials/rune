@@ -146,6 +146,16 @@ class _FunctionalLoRAContext:
 
             logger.debug("Patched %s (layer_pos=%d)", module_path, layer_pos)
 
+        expected_count = len(layer_indices_list) * len(target_modules)
+        if len(self._patched_modules) != expected_count:
+            logger.warning(
+                "Functional LoRA patched %d modules, expected %d "
+                "(layers=%d x targets=%d). Some target modules may be missing.",
+                len(self._patched_modules),
+                expected_count,
+                len(layer_indices_list),
+                len(target_modules),
+            )
         logger.info("Functional LoRA applied to %d modules", len(self._patched_modules))
         return self
 

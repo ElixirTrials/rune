@@ -136,3 +136,52 @@ def test_dare_merge_drop_rate_validation() -> None:
         dare_merge(sd, drop_rate=1.0)
     with pytest.raises(ValueError, match="drop_rate must be in"):
         dare_merge(sd, drop_rate=-0.1)
+
+
+@requires_torch
+def test_ties_merge_preserves_bfloat16() -> None:
+    """TIES merge preserves bfloat16 dtype through float32 computation."""
+    import torch
+    from model_training.merging import ties_merge
+
+    sd1 = {"weight": torch.randn(4, 4).to(torch.bfloat16)}
+    sd2 = {"weight": torch.randn(4, 4).to(torch.bfloat16)}
+    result = ties_merge([sd1, sd2], density=0.5)
+    assert result["weight"].dtype == torch.bfloat16, (
+        f"Expected bfloat16, got {result['weight'].dtype}"
+    )
+
+
+@requires_torch
+def test_dare_merge_preserves_dtype() -> None:
+    """DARE merge preserves float16 dtype through float32 computation."""
+    import torch
+    from model_training.merging import dare_merge
+
+    sd1 = {"weight": torch.randn(4, 4).to(torch.float16)}
+    sd2 = {"weight": torch.randn(4, 4).to(torch.float16)}
+    result = dare_merge([sd1, sd2], drop_rate=0.1)
+    assert result["weight"].dtype == torch.float16, (
+        f"Expected float16, got {result['weight'].dtype}"
+    )
+
+
+@requires_torch
+def test_dare_merge_seed_reproducibility() -> None:
+    """DARE merge with same seed produces identical results."""
+    import torch
+    from model_training.merging import dare_merge
+
+    sd1 = {"weight": torch.randn(8, 8)}
+    sd2 = {"weight": torch.randn(8, 8)}
+
+    result_a = dare_merge([sd1, sd2], drop_rate=0.3, seed=42)
+    result_b = dare_merge([sd1, sd2], drop_rate=0.3, seed=42)
+    assert torch.equal(result_a["weight"], result_b["weight"]), (
+        "Same seed should produce identical DARE merge results"
+    )
+
+    result_c = dare_merge([sd1, sd2], drop_rate=0.3, seed=99)
+    assert not torch.equal(result_a["weight"], result_c["weight"]), (
+        "Different seeds should produce different DARE merge results"
+    )

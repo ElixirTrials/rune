@@ -278,6 +278,40 @@ class AdapterRegistry:
 
         return chain
 
+    def get_lineage_dag(self, adapter_id: str) -> dict[str, list[str]]:
+        """Return the full multi-parent lineage DAG as an adjacency dict.
+
+        Unlike ``get_lineage`` which follows only the first parent, this
+        method does BFS over all parents to capture the complete merge tree.
+
+        Args:
+            adapter_id: Starting adapter ID.
+
+        Returns:
+            Dict mapping each ancestor adapter ID to its list of parent IDs.
+        """
+        from collections import deque
+
+        adjacency: dict[str, list[str]] = {}
+        queue: deque[str] = deque([adapter_id])
+        visited: set[str] = {adapter_id}
+
+        while queue:
+            current_id = queue.popleft()
+            with Session(self._engine, expire_on_commit=False) as session:
+                record = session.get(AdapterRecord, current_id)
+                if record is None or record.parent_ids is None:
+                    adjacency[current_id] = []
+                    continue
+                parent_list: list[str] = json.loads(record.parent_ids)
+                adjacency[current_id] = parent_list
+                for pid in parent_list:
+                    if pid not in visited:
+                        visited.add(pid)
+                        queue.append(pid)
+
+        return adjacency
+
     def query_unevaluated(self, task_type: str | None = None) -> list[AdapterRecord]:
         """Return adapters that have not been evaluated (pass_rate IS NULL).
 
