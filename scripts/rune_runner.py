@@ -729,9 +729,7 @@ async def run_phased_pipeline(
                 ) from exc
 
             # Re-run decompose with cycle correction context
-            correction_traj = render_trajectory(
-                "decompose", project=project_prompt
-            )
+            correction_traj = render_trajectory("decompose", project=project_prompt)
             prior_output = best_decompose_state.get("generated_code", "")
             correction_traj += (
                 f"\n\n[ERROR: Your prior decomposition had circular "
@@ -753,18 +751,12 @@ async def run_phased_pipeline(
 
             cycle_adapter_id: str | None = None
             if adapter_path:
-                cycle_adapter_id = (
-                    f"phase1-decompose-cycle-fix-{cycle_attempt}"
-                )
-                await _load_adapter(
-                    cycle_adapter_id, adapter_path, loaded_adapter_id
-                )
+                cycle_adapter_id = f"phase1-decompose-cycle-fix-{cycle_attempt}"
+                await _load_adapter(cycle_adapter_id, adapter_path, loaded_adapter_id)
                 loaded_adapter_id = cycle_adapter_id
 
             iteration_counter += 1
-            retry_phase = (
-                "decompose_concise" if cycle_adapter_id else "decompose"
-            )
+            retry_phase = "decompose_concise" if cycle_adapter_id else "decompose"
             retry_state = await run_iteration(
                 graph=graph,
                 project_prompt=project_prompt,
@@ -775,9 +767,7 @@ async def run_phased_pipeline(
             )
 
             # Re-parse and deduplicate
-            raw_subtasks = _parse_subtask_list(
-                retry_state.get("generated_code", "")
-            )
+            raw_subtasks = _parse_subtask_list(retry_state.get("generated_code", ""))
             seen = set()
             subtasks = []
             for st in raw_subtasks:

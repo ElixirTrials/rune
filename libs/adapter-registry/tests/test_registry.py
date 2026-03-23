@@ -171,9 +171,7 @@ def test_query_best_for_task_excludes_null_fitness(
     registry.store(
         make_adapter_record(id="a1", task_type="bug-fix", fitness_score=None)
     )
-    registry.store(
-        make_adapter_record(id="a2", task_type="bug-fix", fitness_score=0.7)
-    )
+    registry.store(make_adapter_record(id="a2", task_type="bug-fix", fitness_score=0.7))
     results = registry.query_best_for_task("bug-fix")
     assert len(results) == 1
     assert results[0].id == "a2"
