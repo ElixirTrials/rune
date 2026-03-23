@@ -1,7 +1,9 @@
 {
   "cli_version": "0.4.8",
   "checkpoint_id": "10fb96d01ad5",
+  "session_id": "unknown",
   "strategy": "manual-commit",
+  "created_at": "2026-03-23T12:57:52.42938Z",
   "branch": "fix/algorithmic-review-issues",
   "checkpoints_count": 2,
   "files_touched": [
@@ -16,27 +18,24 @@
     "scripts/swarm_evolution.py",
     "tests/test_swarm_evolution.py"
   ],
-  "sessions": [
-    {
-      "metadata": "/10/fb96d01ad5/0/metadata.json",
-      "transcript": "/10/fb96d01ad5/0/full.jsonl",
-      "context": "",
-      "content_hash": "/10/fb96d01ad5/0/content_hash.txt",
-      "prompt": ""
-    },
-    {
-      "metadata": "/10/fb96d01ad5/1/metadata.json",
-      "transcript": "/10/fb96d01ad5/1/full.jsonl",
-      "context": "/10/fb96d01ad5/1/context.md",
-      "content_hash": "/10/fb96d01ad5/1/content_hash.txt",
-      "prompt": "/10/fb96d01ad5/1/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "turn_id": "c1eb1bd62b9c",
+  "checkpoint_transcript_start": 4,
+  "transcript_lines_at_start": 4,
   "token_usage": {
-    "input_tokens": 7,
-    "cache_creation_tokens": 7533,
-    "cache_read_tokens": 723257,
-    "output_tokens": 1214,
-    "api_call_count": 7
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-23T12:57:52.426274Z",
+    "agent_lines": 781,
+    "human_added": 12071,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 12852,
+    "agent_percentage": 6.076875194522254
   }
 }
