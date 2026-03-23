@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "95df32e489a8",
+  "strategy": "manual-commit",
+  "branch": "feat/fix-training-algo",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/adapter-registry/src/adapter_registry/registry.py",
+    "libs/model-training/src/model_training/merging.py",
+    "libs/model-training/tests/test_d2l_train.py",
+    "scripts/swarm_evolution.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/95/df32e489a8/0/metadata.json",
+      "transcript": "/95/df32e489a8/0/full.jsonl",
+      "context": "/95/df32e489a8/0/context.md",
+      "content_hash": "/95/df32e489a8/0/content_hash.txt",
+      "prompt": "/95/df32e489a8/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 192,
+    "cache_creation_tokens": 334151,
+    "cache_read_tokens": 22166189,
+    "output_tokens": 58895,
+    "api_call_count": 162
+  }
+}
