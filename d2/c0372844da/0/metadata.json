@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "d2c0372844da",
+  "session_id": "13e30f0f-fb21-4aec-8341-a56e6f430208",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-23T15:29:18.423945Z",
+  "branch": "feat/fix-training-algo",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/model-training/tests/test_d2l_train.py",
+    "scripts/swarm_evolution.py",
+    "libs/model-training/src/model_training/d2l_train.py",
+    "libs/model-training/src/model_training/hypernetwork.py",
+    "libs/model-training/src/model_training/trainer.py",
+    "libs/model-training/tests/test_merging.py",
+    "libs/adapter-registry/src/adapter_registry/registry.py",
+    "libs/adapter-registry/tests/test_registry.py",
+    "libs/model-training/src/model_training/d2l_lora.py",
+    "libs/model-training/src/model_training/merging.py",
+    "libs/model-training/src/model_training/sakana_d2l.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "8141b86e4425",
+  "token_usage": {
+    "input_tokens": 57,
+    "cache_creation_tokens": 113711,
+    "cache_read_tokens": 4410365,
+    "output_tokens": 21147,
+    "api_call_count": 51
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-23T15:29:18.018504Z",
+    "agent_lines": 0,
+    "human_added": 241,
+    "human_modified": 17,
+    "human_removed": 0,
+    "total_committed": 241,
+    "agent_percentage": 0
+  }
+}
