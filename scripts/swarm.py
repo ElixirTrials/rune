@@ -352,7 +352,8 @@ async def agent_supervisor(
             break
 
         # Backoff on failure
-        await asyncio.sleep(min(2**consecutive_failures, _MAX_BACKOFF_SECONDS))
+        if consecutive_failures > 0:
+            await asyncio.sleep(min(2**consecutive_failures, _MAX_BACKOFF_SECONDS))
 
     return {
         "agent_id": agent_id,

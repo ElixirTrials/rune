@@ -220,6 +220,7 @@ class AdapterRegistry:
             .where(
                 AdapterRecord.task_type == task_type,
                 AdapterRecord.is_archived == False,  # noqa: E712
+                col(AdapterRecord.fitness_score).isnot(None),
             )
             .order_by(col(AdapterRecord.fitness_score).desc())
             .limit(top_k)

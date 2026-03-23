@@ -18,8 +18,8 @@ def ties_merge(
     """Merge adapter state dicts using TIES-Merging.
 
     Trim-Elect-Sign-Disjoint merge: for each parameter, trims values
-    below density threshold, elects the majority sign, then averages
-    only the values matching the elected sign.
+    below density threshold, elects the majority sign (ignoring trimmed
+    values), then averages only the values matching the elected sign.
 
     Args:
         state_dicts: List of state dicts (tensors) to merge.
@@ -27,11 +27,17 @@ def ties_merge(
 
     Returns:
         Merged state dict with same keys and shapes as inputs.
+
+    Raises:
+        ValueError: If *state_dicts* is empty or *density* is outside
+            ``[0.0, 1.0]``.
     """
     if not state_dicts:
         raise ValueError(
             "state_dicts must not be empty; TIES-merge of zero inputs is undefined."
         )
+    if not (0.0 <= density <= 1.0):
+        raise ValueError(f"density must be between 0.0 and 1.0, got {density}")
 
     import torch
 
@@ -42,6 +48,9 @@ def ties_merge(
         tensors = [sd[key].float() for sd in state_dicts]
         stacked = torch.stack(tensors)
 
+        # Track which values survived trimming (True = kept)
+        keep_mask = torch.ones_like(stacked, dtype=torch.bool)
+
         # Trim: zero out values below density threshold per tensor
         for i in range(len(tensors)):
             flat = stacked[i].abs().flatten()
@@ -50,14 +59,26 @@ def ties_merge(
             k_keep = max(1, int(flat.numel() * density))
             threshold = torch.topk(flat, k_keep).values[-1]
             mask = stacked[i].abs() >= threshold
+            keep_mask[i] = mask
             stacked[i] = stacked[i] * mask.float()
 
-        # Elect sign: majority vote across state dicts
-        sign_sum = torch.sign(stacked).sum(dim=0)
+        # Elect sign: majority vote using only surviving (non-trimmed) values
+        signs = torch.sign(stacked)
+        signs_masked = signs * keep_mask.float()
+        sign_sum = signs_masked.sum(dim=0)
         elected_sign = torch.sign(sign_sum)
 
+        # Where elected_sign == 0 (true tie), average all surviving values
+        tie_mask = elected_sign == 0
+
         # Disjoint merge: average only values matching elected sign
-        matching = (torch.sign(stacked) == elected_sign.unsqueeze(0)).float()
+        matching = (signs == elected_sign.unsqueeze(0)).float()
+        # For tied positions, include all values that survived trimming
+        matching = torch.where(
+            tie_mask.unsqueeze(0),
+            keep_mask.float(),
+            matching,
+        )
         matching_vals = stacked * matching
         count = matching.sum(dim=0).clamp(min=1)
         merged[key] = (matching_vals.sum(dim=0) / count).to(tensors[0].dtype)
@@ -76,21 +97,28 @@ def dare_merge(
 
     Args:
         state_dicts: List of state dicts to merge.
-        drop_rate: Fraction of values to drop per parameter (0.0 to 1.0).
+        drop_rate: Fraction of values to drop per parameter. Must be in
+            ``[0.0, 1.0)``.
 
     Returns:
         Merged state dict with same keys and shapes as inputs.
+
+    Raises:
+        ValueError: If *state_dicts* is empty or *drop_rate* is outside
+            ``[0.0, 1.0)``.
     """
     if not state_dicts:
         raise ValueError(
             "state_dicts must not be empty; DARE-merge of zero inputs is undefined."
         )
+    if not (0.0 <= drop_rate < 1.0):
+        raise ValueError(f"drop_rate must be in [0.0, 1.0), got {drop_rate}")
 
     import torch
 
     merged: dict[str, Any] = {}
     keys = state_dicts[0].keys()
-    scale = 1.0 / (1.0 - drop_rate) if drop_rate < 1.0 else 1.0
+    scale = 1.0 / (1.0 - drop_rate)
 
     for key in keys:
         tensors = [sd[key].float() for sd in state_dicts]

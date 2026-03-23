@@ -42,6 +42,31 @@ def test_mark_completed_without_running() -> None:
     assert db.is_completed("task-1") is True
 
 
+def test_run_id_scoping() -> None:
+    """Operations on one run_id must not see records from another."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    db_run1 = SwarmCheckpointDB(engine, run_id="run-1")
+    db_run2 = SwarmCheckpointDB(engine, run_id="run-2")
+
+    # Complete a task in run-1
+    db_run1.mark_running("task-1", "agent-1")
+    db_run1.mark_completed("task-1", "success")
+
+    # run-2 should NOT see it as completed
+    assert db_run2.is_completed("task-1") is False
+
+    # run-2 marks the same task_hash running + failed
+    db_run2.mark_running("task-1", "agent-2")
+    db_run2.mark_failed("task-1", "agent-2")
+
+    # run-1's record should still be completed
+    assert db_run1.is_completed("task-1") is True
+
+
 def test_concurrent_access(tmp_path) -> None:
     db_path = tmp_path / "concurrent.db"
     engine = create_engine(f"sqlite:///{db_path}")

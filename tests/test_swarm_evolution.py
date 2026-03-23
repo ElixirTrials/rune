@@ -99,3 +99,22 @@ def test_evolution_sweep_no_prune_above_threshold() -> None:
     evolution_sweep(registry)
     record = registry.retrieve_by_id("a1")
     assert record.is_archived is False
+
+
+def test_evolution_sweep_excludes_null_fitness_from_merge() -> None:
+    """Adapters with NULL fitness should not be selected for merging."""
+    registry = _make_registry()
+    # Create enough adapters to trigger merge — some with NULL fitness
+    for i in range(MERGE_MIN_ADAPTERS):
+        if i < 2:
+            _make_record(registry, f"a{i}", fitness=None)
+        else:
+            _make_record(registry, f"a{i}", fitness=0.5 + i * 0.05)
+    with patch("swarm_evolution._ties_merge_adapters") as mock_merge:
+        mock_merge.return_value = "merged-id"
+        evolution_sweep(registry)
+        if mock_merge.called:
+            parent_ids = mock_merge.call_args[0][0]
+            for aid in parent_ids:
+                record = registry.retrieve_by_id(aid)
+                assert record.fitness_score is not None

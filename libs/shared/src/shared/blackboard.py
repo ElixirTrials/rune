@@ -7,8 +7,11 @@ blackboard, which then flow through adapter trajectories.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -98,7 +101,7 @@ def build_execution_layers(
     Returns:
         List of layers, each a list of subtask dicts.
     """
-    from graphlib import TopologicalSorter
+    from graphlib import CycleError, TopologicalSorter
 
     name_to_subtask = {str(st["name"]): st for st in subtasks}
     known_names = set(name_to_subtask.keys())
@@ -114,7 +117,15 @@ def build_execution_layers(
         graph[name] = valid_deps
 
     sorter = TopologicalSorter(graph)
-    sorter.prepare()
+    try:
+        sorter.prepare()
+    except CycleError as exc:
+        logger.warning(
+            "Cycle detected in subtask dependencies (%s); "
+            "falling back to single-layer execution.",
+            exc,
+        )
+        return [subtasks]
 
     layers: list[list[dict[str, object]]] = []
     while sorter.is_active():
