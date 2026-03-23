@@ -413,10 +413,10 @@ class TestCausalShiftAwareLoss:
         position 2 (length 6), not position 3 (length 5).
         """
         config = self._make_config(alpha=0.5)
-        B, S, V = 1, 8, 10
+        batch, seq, vocab = 1, 8, 10
 
-        student = torch.randn(B, S, V)
-        teacher = torch.randn(B, S, V)
+        student = torch.randn(batch, seq, vocab)
+        teacher = torch.randn(batch, seq, vocab)
 
         # answer_start=3 → logit_start = max(0, 3-1) = 2
         # Slice should be [:, 2:, :] → 6 positions, not 5
