@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.8",
+  "checkpoint_id": "138417e96561",
+  "session_id": "13e30f0f-fb21-4aec-8341-a56e6f430208",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-23T17:01:20.534583Z",
+  "branch": "feat/fix-training-algo",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "libs/model-training/src/model_training/d2l_train.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "eb2fba0ffc28",
+  "token_usage": {
+    "input_tokens": 139,
+    "cache_creation_tokens": 291988,
+    "cache_read_tokens": 14244071,
+    "output_tokens": 34542,
+    "api_call_count": 121
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-23T17:01:19.947348Z",
+    "agent_lines": 0,
+    "human_added": 840,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 840,
+    "agent_percentage": 0
+  }
+}
