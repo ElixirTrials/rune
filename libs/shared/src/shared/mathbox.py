@@ -274,3 +274,90 @@ class MathSandbox:
                 continue
             clean.append(frame)
         return "".join(clean)
+
+
+# ---------------------------------------------------------------------------
+# Tool schema + agentic-loop helpers
+# ---------------------------------------------------------------------------
+
+# JSON schema forwarded to apply_chat_template so models can call the sandbox.
+MATH_TOOLS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_python",
+            "description": (
+                "Execute Python code in a stateful IPython kernel. "
+                "State persists across calls. "
+                "Pre-imported: math, numpy, sympy, itertools, collections, "
+                "mpmath (mp.dps=64). Always use print() to display results."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"code": {"type": "string"}},
+                "required": ["code"],
+            },
+        },
+    }
+]
+
+# XML tool-call format emitted by Qwen-style models.
+_TOOL_RE = re.compile(
+    r"<tool_call>\s*<function=(\w+)>(.*?)</function>\s*</tool_call>", re.DOTALL
+)
+_PARAM_RE = re.compile(r"<parameter=(\w+)>(.*?)</parameter>", re.DOTALL)
+_FLOAT_RE = re.compile(r"[-+]?\d+\.\d{4,}")
+
+# Guard: refuse code blocks longer than this before submitting to the sandbox.
+MAX_CODE_LINES = 300
+
+# Tolerance for detecting float results that are essentially integers.
+_NEAR_INT_TOL = 1e-4
+
+
+def parse_tool_calls(text: str) -> list[dict]:
+    """Parse ``<tool_call>…</tool_call>`` blocks from a model response.
+
+    Args:
+        text: Raw model output that may contain one or more tool-call blocks.
+
+    Returns:
+        List of ``{"name": str, "arguments": dict}`` dicts, one per call.
+    """
+    return [
+        {
+            "name": m.group(1),
+            "arguments": {
+                p.group(1): p.group(2).strip()
+                for p in _PARAM_RE.finditer(m.group(2))
+            },
+        }
+        for m in _TOOL_RE.finditer(text)
+    ]
+
+
+def near_int_hint(result: str) -> str:
+    """Return a boxed-integer hint when a sandbox result is very close to an int.
+
+    Appended to tool output so the model knows it can state a clean integer
+    answer rather than a rounded float.
+
+    Args:
+        result: Captured stdout from a sandbox execution.
+
+    Returns:
+        A hint string starting with ``"\\n[HINT] …"`` if a near-integer float
+        was detected, otherwise an empty string.
+    """
+    for m in _FLOAT_RE.finditer(result):
+        try:
+            val = float(m.group())
+        except ValueError:
+            continue
+        n = round(val)
+        if abs(val - n) < _NEAR_INT_TOL and 0 <= n <= 99999:
+            return (
+                f"\n[HINT] {val:.6f} ≈ {n}. "
+                f"If your analysis supports this, use \\boxed{{{n}}}."
+            )
+    return ""

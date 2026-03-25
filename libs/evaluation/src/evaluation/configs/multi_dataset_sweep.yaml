@@ -1,0 +1,44 @@
+# Multi-dataset sweep: OlymMATH easy + hard in a single run.
+# The model is loaded once; both datasets are evaluated back-to-back.
+
+output_dir: benchmark_results
+
+system_prompt_template: math_prompt_v2.j2
+template_vars:
+  answer_range: "0 to 99999"
+
+model:
+  model_id: /root/.cache/huggingface/hub/models--Qwen--Qwen3.5-9B/snapshots/c202236235762e1c871ad0ccb60c8ee5ba337b9a
+  provider: vllm
+  tensor_parallel_size: 2
+  max_model_len: 32768
+  dtype: float16
+  enable_prefix_caching: true
+  language_model_only: true
+  temperature: 0.6
+  max_new_tokens: 32768
+  enable_thinking: false
+  use_tools: true
+  max_iterations: 15
+  sandbox_timeout: 60.0
+  batch_size: 3
+  n_samples: 1
+
+datasets:
+  - name: olym_math_easy
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: 9       # bump to null for a full run
+
+  - name: olym_math_hard
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: 9

@@ -1,0 +1,81 @@
+# Benchmark: Qwen3.5-9B  ×  OlymMATH easy split
+#
+# Run with:
+#   cd /workspace/rune
+#   uv run python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/qwen3_5_olym_easy.yaml
+#
+# Smoke-test (10 problems):
+#   uv run python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/qwen3_5_olym_easy.yaml \
+#       --n-problems 10
+#
+# Or from Python:
+#   from evaluation.benchmark_runner import BenchmarkRunner, load_config
+#   BenchmarkRunner(load_config("libs/evaluation/src/evaluation/configs/qwen3_5_olym_easy.yaml")).run()
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output_dir: benchmark_results
+
+# ── System prompt  ────────────────────────────────────────────────────────────
+# Rendered from libs/shared/src/shared/templates/math_prompt_v2.j2
+system_prompt_template: math_prompt_v2.j2
+template_vars:
+  answer_range: "0 to 99999"
+
+# ── Model / provider ──────────────────────────────────────────────────────────
+model:
+  model_id: /root/.cache/huggingface/hub/models--Qwen--Qwen3.5-9B/snapshots/c202236235762e1c871ad0ccb60c8ee5ba337b9a
+
+  provider: vllm          # "vllm" (in-process) | "ollama" | "transformers"
+  base_url: null          # set to http://host:port/v1 to use a running server
+
+  # Hardware
+  tensor_parallel_size: 2 # use both GPUs
+  max_model_len: 32768
+  dtype: float16
+  enable_prefix_caching: true
+  language_model_only: true  # skip VL vision encoder init
+
+  # Generation
+  temperature: 0.6
+  max_new_tokens: 32768
+  enable_thinking: false
+
+  # Agentic tool-calling loop (generate → execute_python → repeat)
+  use_tools: true          # set false for simple single-pass inference
+  max_iterations: 15       # max agentic loop steps per problem
+  sandbox_timeout: 60.0    # code execution wall-clock timeout (seconds)
+
+  # Throughput / sampling (only used when use_tools=false)
+  batch_size: 5 # 1=1133.8s  3~=800s   5 ~=651 , all with n_samples = 1          # problems packed into one llm.generate() call
+  n_samples: 2             # majority vote samples (use_tools=true forces 1)
+
+
+#  olym_math_easy                     8/9     acc=88.9%  errors=0  avg_tok/s=120  wall=510.1s
+#  olym_math_hard                     4/9     acc=44.4%  errors=0  avg_tok/s=91  wall=1673.0s
+
+# ── Datasets ──────────────────────────────────────────────────────────────────
+datasets:
+  - name: olym_math_easy
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id           # stable ID column in the Arrow dataset
+    scorer: boxed_extract       # extract \boxed{} then match numerically
+
+    # Integer-answer filter — skip rows whose answer is LaTeX / non-integer
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+
+    # Problem limit — 9 for quick dev/smoke runs; set null for a full eval
+    n_samples: 2
+    # data_path: /workspace/rune/libs/evaluation/src/evaluation/data/olym_math/en-easy/test
+
+  - name: olym_math_hard
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: 2

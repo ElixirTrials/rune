@@ -1,0 +1,14 @@
+{
+  "run_id": "20260324_193035_15431334",
+  "dataset": "olym_math_easy",
+  "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3.5-9B/snapshots/c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+  "n_samples": 1,
+  "total": 9,
+  "correct": 9,
+  "errors": 0,
+  "accuracy": 1.0,
+  "total_tokens": 61276,
+  "avg_tok_per_sec": 106.6235354830332,
+  "wall_time_s": 651.6068516541272,
+  "avg_time_per_problem_s": 72.40076129490302
+}

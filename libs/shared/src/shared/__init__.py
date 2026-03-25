@@ -26,8 +26,11 @@ from shared.sandbox import (
     SubprocessBackend,
     get_sandbox_backend,
 )
-from shared.storage_utils import create_service_engine, set_wal_mode
 from shared.template_loader import render_prompt, render_trajectory
+
+# storage_utils is intentionally NOT imported at module level (INFRA-05 pattern):
+# it pulls sqlalchemy/sqlmodel which are heavy DB deps not needed by lightweight
+# consumers like the benchmark runner or inference provider.  Import on demand.
 
 __all__ = [
     "AdapterRef",
@@ -54,6 +57,17 @@ __all__ = [
     "render_trajectory",
     "set_wal_mode",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Lazy-load heavy DB symbols to avoid sqlalchemy import at startup."""
+    if name in ("create_service_engine", "set_wal_mode"):
+        from shared.storage_utils import create_service_engine, set_wal_mode  # noqa: PLC0415
+
+        globals()["create_service_engine"] = create_service_engine
+        globals()["set_wal_mode"] = set_wal_mode
+        return globals()[name]
+    raise AttributeError(f"module 'shared' has no attribute {name!r}")
 
 
 def get_prompts_dir() -> Path:

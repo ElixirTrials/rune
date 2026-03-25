@@ -8,6 +8,8 @@ dependencies = [
     "shared",
     "pandas>=2.0.0",
     "datasets>=4.8.3",
+    "inference",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
@@ -27,7 +29,7 @@ packages = ["src/evaluation"]
 strict = true
 exclude = ["venv", ".venv", "docs"]
 plugins = []
-mypy_path = ["../shared/src"]
+mypy_path = ["../shared/src", "../inference/src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "../shared/src"]
@@ -36,3 +38,4 @@ addopts = "--cov=evaluation --cov-branch --cov-report=term-missing"
 
 [tool.uv.sources]
 shared = { workspace = true }
+inference = { workspace = true }

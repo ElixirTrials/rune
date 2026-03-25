@@ -1,0 +1,14 @@
+{
+  "run_id": "20260325_014054_57627943_math_prompt_v2",
+  "dataset": "olym_math_hard",
+  "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3.5-9B/snapshots/c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+  "n_samples": 3,
+  "total": 41,
+  "correct": 23,
+  "errors": 0,
+  "accuracy": 0.5609756097560976,
+  "total_tokens": 1570954,
+  "avg_tok_per_sec": 421.7347497567707,
+  "wall_time_s": 13802.413244259544,
+  "avg_time_per_problem_s": 336.644225469745
+}

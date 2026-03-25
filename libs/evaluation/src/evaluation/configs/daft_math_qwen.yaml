@@ -1,0 +1,40 @@
+# Benchmark: Qwen3.5-9B  ×  DAFT-MATH (ultra-hard integer-answer problems)
+#
+# DAFT-MATH uses different column names; answers are integers with no \boxed{}
+# wrapping in the ground truth, so scorer = "numeric".
+
+output_dir: benchmark_results
+
+system_prompt_template: math_prompt_v2.j2
+template_vars:
+  answer_range: "0 to 99999"
+
+model:
+  model_id: /root/.cache/huggingface/hub/models--Qwen--Qwen3.5-9B/snapshots/c202236235762e1c871ad0ccb60c8ee5ba337b9a
+  provider: vllm
+  tensor_parallel_size: 2
+  max_model_len: 32768
+  dtype: float16
+  enable_prefix_caching: true
+  language_model_only: true
+  temperature: 0.6
+  max_new_tokens: 32768
+  enable_thinking: false
+  use_tools: true
+  max_iterations: 15
+  sandbox_timeout: 60.0
+  batch_size: 3
+  n_samples: 1
+
+datasets:
+  - name: daft_math
+    prompt_key: "Integer Answer Variant Question"
+    answer_key: "Integer Variant Answer"
+    scorer: numeric
+
+    # daft_math answers are already integers — filter still useful as a guard
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+
+    # 9 for dev; raise to 50+ for a real eval
+    n_samples: 9
