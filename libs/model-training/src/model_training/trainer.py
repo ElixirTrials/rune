@@ -112,7 +112,7 @@ def train_qlora(
         lr_scheduler_type="cosine",
         bf16=True,
         per_device_train_batch_size=1,
-        gradient_accumulation_steps=4,
+        gradient_accumulation_steps=1,
         save_strategy="no",
         logging_steps=1,
         report_to="none",

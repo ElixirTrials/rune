@@ -145,8 +145,10 @@ def _compute_kl_ce_loss(
 ) -> tuple[Any, dict[str, float]]:
     """Compute blended KL-divergence and cross-entropy loss over the answer span.
 
-    Slices both logit tensors to ``[:, answer_start:, :]`` so that loss is
-    computed only on answer-span tokens (context tokens are masked out).
+    Accounts for the causal LM shift: logits at position ``k`` predict token
+    ``k+1``, so we slice starting at ``answer_start - 1`` (clamped to 0).
+    Returns a zero-loss tensor when the answer span is empty (e.g. truncation
+    pushed ``answer_start`` beyond the sequence length).
 
     Args:
         student_logits: Student model logits of shape (batch, seq_len, vocab).
@@ -161,14 +163,31 @@ def _compute_kl_ce_loss(
         - metrics: Dict with keys ``kl_loss``, ``ce_loss``, ``total_loss``
           (Python floats, suitable for MLflow logging).
     """
+    import torch  # noqa: PLC0415
     import torch.nn.functional as functional  # noqa: PLC0415
 
     alpha = config.alpha
     temp = config.temperature
 
-    # Slice to answer span only
-    s = student_logits[:, answer_start:, :]
-    t = teacher_logits[:, answer_start:, :]
+    # Guard against empty answer span (truncation pushed answer beyond seq_len).
+    # answer_start >= seq_len means no answer tokens exist in the sequence.
+    seq_len = student_logits.shape[1]
+    if answer_start >= seq_len:
+        logger.warning(
+            "Answer span empty: answer_start=%d >= seq_len=%d. Returning zero loss.",
+            answer_start,
+            seq_len,
+        )
+        zero = torch.tensor(0.0, device=student_logits.device, requires_grad=True)
+        return zero, {"kl_loss": 0.0, "ce_loss": 0.0, "total_loss": 0.0}
+
+    # Causal LM shift: logits at position k predict token k+1, so the logit
+    # that predicts the first answer token is at position answer_start - 1.
+    logit_start = max(0, answer_start - 1)
+
+    # Slice to answer span only (shift-aware)
+    s = student_logits[:, logit_start:, :]
+    t = teacher_logits[:, logit_start:, :]
 
     vocab = s.shape[-1]
 
@@ -538,8 +557,10 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
     hypernet = transfer_aggregator_weights(hypernet, config.sakana_checkpoint_path)
     hypernet.train()
 
-    # Device selection
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Device selection: cuda > mps > cpu
+    from shared.hardware import get_best_device  # noqa: PLC0415
+
+    device = torch.device(get_best_device())
     logger.info("Using device: %s", device)
     base_model = base_model.to(device)
     hypernet = hypernet.to(device)
@@ -575,6 +596,9 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
             len(records),
             config.dataset_path,
         )
+
+    if not records:
+        raise ValueError("No training records loaded; cannot train on empty dataset.")
 
     # MLflow setup and training loop
     _setup_mlflow(config)

@@ -114,7 +114,11 @@ def _ties_merge_adapters(
     Returns:
         ID of the newly registered merged adapter.
     """
+    import hashlib
     import json
+    import os
+    from datetime import datetime, timezone
+    from pathlib import Path
 
     from model_training.merging import load_adapter_state_dict, ties_merge
 
@@ -122,17 +126,28 @@ def _ties_merge_adapters(
     state_dicts = [load_adapter_state_dict(a.file_path) for a in adapters]
     merged_sd = ties_merge(state_dicts)
 
-    # Save merged adapter
+    # Save merged adapter to configurable directory
     merged_id = str(uuid.uuid4())
-    output_dir = f"/tmp/rune_merged/{merged_id}"
+    adapter_base = os.environ.get("RUNE_ADAPTER_DIR")
+    base_path = (
+        Path(adapter_base) if adapter_base else Path.home() / ".rune" / "adapters"
+    )
+    output_dir = str(base_path / "merged" / merged_id)
 
-    import os
+    safetensors_path = Path(output_dir) / "adapter_model.safetensors"
+    if safetensors_path.exists():
+        raise FileExistsError(f"Merged adapter already exists: {safetensors_path}")
 
     os.makedirs(output_dir, exist_ok=True)
 
     from safetensors.torch import save_file
 
-    save_file(merged_sd, f"{output_dir}/adapter_model.safetensors")
+    save_file(merged_sd, str(safetensors_path))
+
+    # Compute file metadata
+    file_hash = hashlib.sha256(safetensors_path.read_bytes()).hexdigest()
+    file_size_bytes = safetensors_path.stat().st_size
+    created_at = datetime.now(tz=timezone.utc).isoformat()
 
     # Register merged adapter
     from adapter_registry.models import AdapterRecord
@@ -144,10 +159,10 @@ def _ties_merge_adapters(
         task_type=task_type,
         base_model_id=adapters[0].base_model_id,
         rank=adapters[0].rank,
-        created_at="",
-        file_path=f"{output_dir}/adapter_model.safetensors",
-        file_hash="",
-        file_size_bytes=0,
+        created_at=created_at,
+        file_path=output_dir,
+        file_hash=file_hash,
+        file_size_bytes=file_size_bytes,
         source="evolution",
         session_id="merge",
         parent_ids=json.dumps(adapter_ids),

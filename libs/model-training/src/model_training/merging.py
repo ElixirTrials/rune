@@ -45,6 +45,7 @@ def ties_merge(
     keys = state_dicts[0].keys()
 
     for key in keys:
+        original_dtype = state_dicts[0][key].dtype
         tensors = [sd[key].float() for sd in state_dicts]
         stacked = torch.stack(tensors)
 
@@ -81,7 +82,7 @@ def ties_merge(
         )
         matching_vals = stacked * matching
         count = matching.sum(dim=0).clamp(min=1)
-        merged[key] = (matching_vals.sum(dim=0) / count).to(tensors[0].dtype)
+        merged[key] = (matching_vals.sum(dim=0) / count).to(original_dtype)
 
     return merged
 
@@ -89,6 +90,7 @@ def ties_merge(
 def dare_merge(
     state_dicts: list[dict[str, Any]],
     drop_rate: float = 0.1,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     """Merge adapter state dicts using DARE-Merging.
 
@@ -99,6 +101,7 @@ def dare_merge(
         state_dicts: List of state dicts to merge.
         drop_rate: Fraction of values to drop per parameter. Must be in
             ``[0.0, 1.0)``.
+        seed: Optional RNG seed for reproducible merges.
 
     Returns:
         Merged state dict with same keys and shapes as inputs.
@@ -116,11 +119,15 @@ def dare_merge(
 
     import torch
 
+    if seed is not None:
+        torch.manual_seed(seed)
+
     merged: dict[str, Any] = {}
     keys = state_dicts[0].keys()
     scale = 1.0 / (1.0 - drop_rate)
 
     for key in keys:
+        original_dtype = state_dicts[0][key].dtype
         tensors = [sd[key].float() for sd in state_dicts]
         stacked = torch.stack(tensors)
 
@@ -131,20 +138,27 @@ def dare_merge(
                 stacked[i] = stacked[i] * mask * scale
 
         # Average across state dicts
-        merged[key] = stacked.mean(dim=0).to(tensors[0].dtype)
+        merged[key] = stacked.mean(dim=0).to(original_dtype)
 
     return merged
 
 
 def load_adapter_state_dict(adapter_path: str | Path) -> dict[str, Any]:
-    """Load a LoRA adapter state dict from a safetensors file.
+    """Load a LoRA adapter state dict from a safetensors file or directory.
+
+    Accepts either a direct ``.safetensors`` file path or a PEFT adapter
+    directory containing ``adapter_model.safetensors``.
 
     Args:
-        adapter_path: Path to the adapter .safetensors file.
+        adapter_path: Path to a ``.safetensors`` file or a directory
+            containing ``adapter_model.safetensors``.
 
     Returns:
         State dict mapping parameter names to tensors.
     """
     from safetensors.torch import load_file
 
-    return load_file(str(adapter_path), device="cpu")
+    path = Path(adapter_path)
+    if path.is_dir():
+        path = path / "adapter_model.safetensors"
+    return load_file(str(path), device="cpu")

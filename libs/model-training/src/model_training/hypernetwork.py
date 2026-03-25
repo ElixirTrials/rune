@@ -283,9 +283,19 @@ def trajectory_to_tokens(
     Returns:
         Token ID tensor of shape (1, max_length) ready for hypernetwork forward().
     """
+    import logging as _logging  # noqa: PLC0415
     import zlib  # noqa: PLC0415
 
     import torch  # noqa: PLC0415
+
+    min_trajectory_chars = 10
+    if len(trajectory_text) < min_trajectory_chars:
+        _logging.getLogger(__name__).warning(
+            "Trajectory text is very short (%d chars < %d minimum). "
+            "Generated adapter may be meaningless.",
+            len(trajectory_text),
+            min_trajectory_chars,
+        )
 
     tokens: list[int] = []
     for i in range(0, len(trajectory_text) - 2):

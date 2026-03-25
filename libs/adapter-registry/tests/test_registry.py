@@ -335,3 +335,31 @@ def test_concurrent_writes_no_deadlock(tmp_path, make_adapter_record) -> None:
 
     assert errors == [], f"Concurrent writes produced errors: {errors}"
     assert len(conc_registry.list_all()) == 5
+
+
+# --- get_lineage_dag() ---
+
+
+def test_get_lineage_dag_multi_parent(registry, make_adapter_record) -> None:
+    """get_lineage_dag traverses all parents in a diamond merge DAG."""
+    import json
+
+    registry.store(make_adapter_record(id="root"))
+    registry.store(make_adapter_record(id="A", parent_ids=json.dumps(["root"])))
+    registry.store(make_adapter_record(id="B", parent_ids=json.dumps(["root"])))
+    registry.store(make_adapter_record(id="merged", parent_ids=json.dumps(["A", "B"])))
+
+    dag = registry.get_lineage_dag("merged")
+
+    assert dag["merged"] == ["A", "B"]
+    assert dag["A"] == ["root"]
+    assert dag["B"] == ["root"]
+    assert dag["root"] == []
+    assert len(dag) == 4
+
+
+def test_get_lineage_dag_single_node(registry, make_adapter_record) -> None:
+    """get_lineage_dag returns {id: []} for node with no parents."""
+    registry.store(make_adapter_record(id="solo"))
+    dag = registry.get_lineage_dag("solo")
+    assert dag == {"solo": []}
