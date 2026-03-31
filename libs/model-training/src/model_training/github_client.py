@@ -51,26 +51,25 @@ class GitHubClient:
         if token is not None:
             self._headers["Authorization"] = f"Bearer {token}"
 
-    def get(
+    def _get_response(
         self,
-        path: str,
+        url: str,
         params: dict[str, Any] | None = None,
         max_retries: int = 3,
-    ) -> Any:
-        """GET a single API endpoint with rate-limit retry.
+    ) -> httpx.Response:
+        """GET with rate-limit retry, returning the raw response.
 
         Args:
-            path: API path relative to base_url (e.g. ``/repos/owner/repo``).
+            url: Full URL to request.
             params: Optional query parameters.
             max_retries: Maximum number of retries on rate-limit 403.
 
         Returns:
-            Parsed JSON response body.
+            The successful httpx.Response.
 
         Raises:
             httpx.HTTPStatusError: On non-rate-limit error responses.
         """
-        url = f"{self._base_url}{path}"
         for attempt in range(max_retries + 1):
             resp = httpx.get(
                 url,
@@ -95,10 +94,32 @@ class GitHubClient:
                     time.sleep(wait)
                     continue
             resp.raise_for_status()
-            return resp.json()
+            return resp
         # Unreachable in normal flow, but satisfies type checker.
         resp.raise_for_status()  # pragma: no cover
-        return resp.json()  # pragma: no cover
+        return resp  # pragma: no cover
+
+    def get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        max_retries: int = 3,
+    ) -> Any:
+        """GET a single API endpoint with rate-limit retry.
+
+        Args:
+            path: API path relative to base_url (e.g. ``/repos/owner/repo``).
+            params: Optional query parameters.
+            max_retries: Maximum number of retries on rate-limit 403.
+
+        Returns:
+            Parsed JSON response body.
+
+        Raises:
+            httpx.HTTPStatusError: On non-rate-limit error responses.
+        """
+        url = f"{self._base_url}{path}"
+        return self._get_response(url, params=params, max_retries=max_retries).json()
 
     def get_paginated(
         self,
@@ -127,13 +148,7 @@ class GitHubClient:
         for _ in range(max_pages):
             if url is None:
                 break
-            resp = httpx.get(
-                url,
-                headers=self._headers,
-                params=merged_params,
-                timeout=30.0,
-            )
-            resp.raise_for_status()
+            resp = self._get_response(url, params=merged_params)
             items.extend(resp.json())
 
             # After the first request, params are baked into the Link URL.
