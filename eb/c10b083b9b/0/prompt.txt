@@ -1,0 +1,150 @@
+Use this markdown: /Users/noahdolevelixir/Code/rune/instructions/training_data_mining.md to create a markdown plan for filling in the stubs and completing the mining implementation
+
+---
+
+Proceed
+
+---
+
+/plan Definitely 1. But more important than that is that we do thorough research on the best way to structure the training. We want the LoRA to learn how to    
+  embed a iterative process of coding so that we can use it to inform a hypernetwork. Go over our repo's documentation, look at doc2lora and how we plan to  
+  adapt the method. Then research online. In the end, make sure our plan is comprehensive and well-reasoned with respect to how we will do our fine          
+  tuning.
+
+---
+
+<task-notification>
+<task-id>ab74172e5fe4465be</task-id>
+<tool-use-id>toolu_01Gr7ZXnwK628VtZZAoitwbn</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/68b67e29-3577-47fd-9220-01acacba2363/tasks/ab74172e5fe4465be.output</output-file>
+<status>completed</status>
+<summary>Agent "Code review Task 2: GitHubClient" completed</summary>
+<result>Perfect. Now let me display this review clearly:
+
+---
+
+# CODE REVIEW: GitHubClient Implementation
+
+**Commit:** 986dba6  
+**Task:** Task 2 - Create GitHub API Client Helper  
+**Review Date:** 2026-03-31
+
+## EXECUTIVE SUMMARY
+
+The GitHubClient implementation successfully fulfills all Task 2 requirements: thin GitHub REST API wrapper with auth, pagination, and rate-limit handling. Code quality is excellent with full type hints, clean interfaces, 95% test coverage, and all linting/typing checks passing.
+
+**Overall Assessment: GOOD - Approve with one important fix before merging**
+
+---
+
+## PLAN ALIGNMENT
+
+All planned functionality implemented:
+- Authentication headers (Bearer token)
+- Paginated list endpoints (Link rel=next)
+- Rate-limit 403 retry with Retry-After header
+- 6 unit tests covering core paths
+
+**Beneficial Deviation:** Test helper uses real `httpx.Response` objects instead of `MagicMock`, which is superior for testing actual httpx behavior.
+
+---
+
+## STRENGTHS
+
+1. **Clean, focused interface:** Two well-named methods (`get()`, `get_paginated()`) with clear Google-style docstrings
+2. **Full type safety:** Modern Python syntax (str|None), passes mypy --strict
+3. **Robust error handling:** Defensive JSON parsing, proper raise_for_status() usage, keyword-based rate-limit detection
+4. **Correct pagination logic:** Proper Link header regex, parameter injection on first request only, graceful single-page handling
+5. **Standards compliance:** Passes ruff check, mypy --strict, 95% test coverage
+6. **Good test quality:** Real httpx.Response objects, focused tests, proper mocking with @patch
+
+---
+
+## ISSUES
+
+### IMPORTANT: Rate-limit handling in get_paginated()
+
+**Location:** `/Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/github_client.py`, lines 130-137
+
+**Problem:** The `get_paginated()` method calls `httpx.get()` directly without retry logic. If any page after the first hits a rate-limit 403, the entire operation fails and the caller loses the data already fetched from previous pages.
+
+**Impact:** MODERATE - Reliability issue for mining operations fetching multiple pages
+
+**Fix:** Refactor to use `self.get()` internally instead of calling `httpx.get()` directly:
+
+```python
+# Current (line 130):
+resp = httpx.get(url, headers=self._headers, params=merged_params, timeout=30.0)
+
+# Should be:
+resp = self.get(url, params=merged_params)  # Reuses get()'s retry logic
+```
+
+**Effort:** Low (1-2 lines)
+
+---
+
+### SUGGESTIONS (Nice to Have)
+
+1. **Test max_retries exhaustion:** Add test verifying the client gives up after max_retries and raises HTTPStatusError
+2. **Test single-page pagination:** Verify get_paginated() handles responses with no Link header correctly
+3. **Test non-rate-limit 403:** Explicit test that non-rate-limit 403 (auth failure) raises immediately without retry
+
+---
+
+## CODE ORGANIZATION
+
+- **Single Responsibility:** YES - One clear purpose: GitHub API HTTP access
+- **Module Size:** APPROPRIATE - 146 lines (impl), 111 lines (tests)
+- **Not exported from __init__.py:** CORRECT - Internal utility for mining module
+- **Dependencies:** CLEAN - Only logging, re, time, httpx (all in pyproject.toml)
+
+---
+
+## SECURITY REVIEW
+
+- Token handling: Correct (Bearer header, no logging)
+- Rate-limit backoff: Respects Retry-After header, has max_retries limit
+- HTTPS enforced: Yes (default and no fallback)
+
+---
+
+## TESTING
+
+| Test | Result |
+|------|--------|
+| test_auth_header_set_when_token_provided | PASS |
+| test_auth_header_absent_when_no_token | PASS |
+| test_get_returns_json | PASS |
+| test_get_paginated_follows_link_header | PASS |
+| test_get_paginated_respects_max_pages | PASS |
+| test_rate_limit_retries_on_403 | PASS |
+
+**Coverage:** 95% (48/51 statements, 2 uncovered lines marked # pragma: no cover for unreachable mypy-required paths)
+
+---
+
+## KEY FILES
+
+- **Implementation:** `/Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/github_client.py`
+- **Tests:** `/Users/noahdolevelixir/Code/rune/libs/model-training/tests/test_github_client.py`
+
+---
+
+## RECOMMENDATION
+
+**Approve for merge after fixing IMPORTANT ISSUE 1.** The fix is straightforward and critical for reliability of multi-page mining operations. Once fixed, the implementation is production-ready and properly prepared for use by the mining module (Task 3).</result>
+<usage><total_tokens>83393</total_tokens><tool_uses>68</tool_uses><duration_ms>321428</duration_ms></usage>
+</task-notification>
+
+---
+
+Let me see the data and what it looks like
+
+---
+
+Do you think we should mine and then filter or filter and then mine? The idea is to end the process with a very high quality corpus?
+
+---
+
+/plan Implement a quality filter so as to minimize API calls and maximily improve the corpus both in terms of quality and size.
