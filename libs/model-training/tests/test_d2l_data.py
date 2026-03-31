@@ -372,3 +372,174 @@ def test_augmented_and_original_records_zero_task_id_leakage() -> None:
     overlap = train_ids & test_ids
     assert overlap == set(), f"Expected zero task_id overlap, got: {overlap}"
     assert len(train) + len(test) == len(all_records)
+
+
+# ---------------------------------------------------------------------------
+# Test 11: normalize_mined_trajectory – merged PR becomes success
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_mined_trajectory_merged_pr_becomes_success() -> None:
+    """Merged PR trajectory normalizes to outcome='success' with correct prefixes."""
+    from model_training.d2l_data import normalize_mined_trajectory
+
+    mined: dict[str, Any] = {
+        "task_id": "pr_owner/repo_42",
+        "task_description": "Add caching layer to API",
+        "outcome": "merged",
+        "steps": [
+            {
+                "type": "commit",
+                "description": "initial implementation",
+                "content": "def cache(): pass",
+            },
+            {
+                "type": "review",
+                "description": "",
+                "content": "Needs error handling",
+            },
+            {
+                "type": "commit",
+                "description": "address review feedback",
+                "content": "def cache():\n    try: ...\n    except: ...",
+            },
+        ],
+    }
+
+    result = normalize_mined_trajectory(mined)
+
+    assert result["outcome"] == "success"
+    assert result["task_id"] == "pr_owner/repo_42"
+    assert result["session_id"] == "pr_owner/repo_42"
+    assert result["task_description"] == "Add caching layer to API"
+
+    steps = result["steps"]
+    assert len(steps) == 3
+
+    # First commit step
+    assert steps[0]["description"].startswith("[Commit]")
+    assert steps[0]["tests_passed"] is False
+    assert "canonical_solution" not in steps[0]
+
+    # Review step
+    assert steps[1]["description"].startswith("[Review]")
+    assert steps[1]["generated_code"] == ""
+    assert steps[1]["tests_passed"] is False
+
+    # Last commit step — tests_passed=True and canonical_solution set
+    assert steps[2]["description"].startswith("[Commit]")
+    assert steps[2]["tests_passed"] is True
+    expected_code = "def cache():\n    try: ...\n    except: ..."
+    assert steps[2]["canonical_solution"] == expected_code
+
+
+# ---------------------------------------------------------------------------
+# Test 12: normalize_mined_trajectory – closed unmerged PR becomes failure
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_mined_trajectory_closed_unmerged_pr_becomes_failure() -> None:
+    """Closed (unmerged) PR trajectory normalizes to outcome='failure'."""
+    from model_training.d2l_data import normalize_mined_trajectory
+
+    mined: dict[str, Any] = {
+        "task_id": "pr_owner/repo_99",
+        "task_description": "Refactor auth module",
+        "outcome": "closed",
+        "steps": [
+            {
+                "type": "commit",
+                "description": "refactor attempt",
+                "content": "class Auth: ...",
+            },
+        ],
+    }
+
+    result = normalize_mined_trajectory(mined)
+
+    assert result["outcome"] == "failure"
+    # Last commit step should NOT have tests_passed=True for failure outcome
+    assert result["steps"][0]["tests_passed"] is False
+    assert "canonical_solution" not in result["steps"][0]
+
+
+# ---------------------------------------------------------------------------
+# Test 13: normalized trajectory produces distillation records
+# ---------------------------------------------------------------------------
+
+
+def test_normalized_mined_trajectory_produces_distillation_records() -> None:
+    """Normalized merged PR passes through format_for_distillation correctly."""
+    from model_training.d2l_data import (
+        format_for_distillation,
+        normalize_mined_trajectory,
+    )
+
+    mined: dict[str, Any] = {
+        "task_id": "pr_owner/repo_5",
+        "task_description": "Implement retry logic",
+        "outcome": "merged",
+        "steps": [
+            {
+                "type": "commit",
+                "description": "add retry decorator",
+                "content": "@retry\ndef fetch(): ...",
+            },
+            {
+                "type": "review",
+                "description": "",
+                "content": "LGTM",
+            },
+            {
+                "type": "commit",
+                "description": "final cleanup",
+                "content": "@retry(max=3)\ndef fetch(): return get()",
+            },
+        ],
+    }
+
+    normalized = normalize_mined_trajectory(mined)
+    records = format_for_distillation(normalized)
+
+    assert len(records) >= 1, "Expected at least 1 distillation record"
+
+    record = records[0]
+    assert "task_id" in record
+    assert "activation_text" in record
+    assert "teacher_text" in record
+
+    # activation_text should contain [Commit] from step descriptions
+    assert "[Commit]" in record["activation_text"]
+
+    # teacher_text should extend activation_text
+    assert record["teacher_text"].startswith(record["activation_text"])
+    assert len(record["teacher_text"]) > len(record["activation_text"])
+
+
+# ---------------------------------------------------------------------------
+# Test 14: normalize_mined_trajectory – closed issue becomes success
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_mined_trajectory_closed_issue_becomes_success() -> None:
+    """Closed issue trajectory normalizes to outcome='success' (opposite of PR)."""
+    from model_training.d2l_data import normalize_mined_trajectory
+
+    mined: dict[str, Any] = {
+        "task_id": "issue_owner/repo_7",
+        "task_description": "Fix memory leak in worker pool",
+        "outcome": "closed",
+        "steps": [
+            {
+                "type": "commit",
+                "description": "fix pool cleanup",
+                "content": "pool.shutdown(wait=True)",
+            },
+        ],
+    }
+
+    result = normalize_mined_trajectory(mined)
+
+    assert result["outcome"] == "success", (
+        "Closed issue must map to 'success' (unlike closed PR which is 'failure')"
+    )
