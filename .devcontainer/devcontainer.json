@@ -10,7 +10,10 @@
       "username": "vscode"
     },
     "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
   },
   "customizations": {
     "vscode": {
@@ -24,7 +27,7 @@
       ]
     }
   },
-  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=\"$HOME/.local/bin:$PATH\" && uv sync --all-extras 2>/dev/null || true",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
   "remoteEnv": {
     "PATH": "${containerEnv:PATH}:${containerEnv:HOME}/.local/bin:/usr/local/cuda/bin",
     "LD_LIBRARY_PATH": "/usr/local/cuda/lib64:${containerEnv:LD_LIBRARY_PATH}",
