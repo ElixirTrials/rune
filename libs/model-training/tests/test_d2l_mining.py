@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import patch
 
-from model_training.d2l_mining import mine_issue_commit_chains, mine_pr_diff_chains
+from model_training.d2l_mining import (
+    mine_issue_commit_chains,
+    mine_pr_diff_chains,
+    search_quality_prs,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -261,3 +265,114 @@ class TestMineIssueCommitChains:
 
         assert len(result) == 1
         assert result[0]["task_id"] == "issue_owner/repo_21"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for search_quality_prs
+# ---------------------------------------------------------------------------
+
+
+def _make_search_item(
+    number: int, labels: list[str] | None = None, comments: int = 3
+) -> dict[str, Any]:
+    return {
+        "number": number,
+        "title": f"PR #{number}",
+        "body": "description",
+        "state": "closed",
+        "pull_request": {"merged_at": "2026-01-01T00:00:00Z"},
+        "labels": [{"name": lbl} for lbl in (labels or [])],
+        "comments": comments,
+    }
+
+
+# ---------------------------------------------------------------------------
+# TestSearchQualityPrs
+# ---------------------------------------------------------------------------
+
+
+@patch("model_training.d2l_mining.GitHubClient")
+class TestSearchQualityPrs:
+    """Tests for search_quality_prs."""
+
+    def test_search_returns_merged_prs_only(self, mock_cls: Any) -> None:
+        client = mock_cls.return_value
+        client.get.side_effect = [
+            # search results
+            {
+                "total_count": 2,
+                "items": [_make_search_item(10), _make_search_item(20)],
+            },
+            # PR detail for #10
+            {"number": 10, "commits": 3},
+            # PR detail for #20
+            {"number": 20, "commits": 3},
+        ]
+
+        result = search_quality_prs("owner/repo", max_results=10)
+
+        assert result == [10, 20]
+
+    def test_excludes_labeled_prs(self, mock_cls: Any) -> None:
+        client = mock_cls.return_value
+        client.get.side_effect = [
+            {
+                "total_count": 2,
+                "items": [
+                    _make_search_item(10, labels=["dependencies"]),
+                    _make_search_item(20, labels=["feature"]),
+                ],
+            },
+            # Only PR #20 passes label filter, so only its detail is fetched
+            {"number": 20, "commits": 2},
+        ]
+
+        result = search_quality_prs("owner/repo", max_results=10)
+
+        assert result == [20]
+
+    def test_min_commits_filter(self, mock_cls: Any) -> None:
+        client = mock_cls.return_value
+        client.get.side_effect = [
+            {
+                "total_count": 2,
+                "items": [_make_search_item(10), _make_search_item(20)],
+            },
+            {"number": 10, "commits": 1},
+            {"number": 20, "commits": 3},
+        ]
+
+        result = search_quality_prs("owner/repo", min_commits=2)
+
+        assert result == [20]
+
+    def test_empty_search_returns_empty(self, mock_cls: Any) -> None:
+        client = mock_cls.return_value
+        client.get.return_value = {"total_count": 0, "items": []}
+
+        result = search_quality_prs("owner/repo")
+
+        assert result == []
+
+    def test_mine_with_pr_numbers(self, mock_cls: Any) -> None:
+        client = mock_cls.return_value
+        pr_data = _make_pr(number=42, title="Quality PR", body="Good stuff")
+        client.get.side_effect = [
+            pr_data,  # individual PR fetch
+            _make_commit_detail("sha42", "+quality"),  # commit detail
+        ]
+        client.get_paginated.side_effect = [
+            [_make_commit("sha42", "quality commit")],  # commits
+            [_make_review_comment("LGTM")],  # reviews
+        ]
+
+        result = mine_pr_diff_chains("owner/repo", pr_numbers=[42])
+
+        # Verify get_paginated was NOT called with the pulls list endpoint
+        for call in client.get_paginated.call_args_list:
+            path = call[0][0]
+            assert path != "/repos/owner/repo/pulls" or (
+                "commits" in path or "comments" in path
+            )
+        assert len(result) == 1
+        assert result[0]["task_id"] == "pr_owner/repo_42"

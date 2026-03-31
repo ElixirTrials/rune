@@ -16,17 +16,112 @@ from model_training.github_client import GitHubClient
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["mine_pr_diff_chains", "mine_issue_commit_chains"]
+__all__ = ["mine_pr_diff_chains", "mine_issue_commit_chains", "search_quality_prs"]
 
 _FIXES_RE = re.compile(
     r"(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE
 )
+
+_DEFAULT_EXCLUDE_LABELS = frozenset(
+    {
+        "dependencies",
+        "documentation",
+        "docs",
+        "chore",
+        "ci",
+        "bot",
+    }
+)
+
+
+def search_quality_prs(
+    repo: str,
+    max_results: int = 100,
+    github_token: str | None = None,
+    min_review_comments: int = 1,
+    min_commits: int = 2,
+    exclude_labels: list[str] | None = None,
+) -> list[int]:
+    """Search for high-quality merged PRs using the GitHub Search API.
+
+    Pre-filters PRs by review approval, comment count, label exclusion,
+    and minimum commit count to identify PRs with meaningful review
+    trajectories suitable for distillation.
+
+    Args:
+        repo: GitHub repository in "owner/repo" format.
+        max_results: Maximum number of qualifying PR numbers to return.
+        github_token: Personal access token for GitHub API authentication.
+        min_review_comments: Minimum number of comments for search query.
+        min_commits: Minimum number of commits a PR must have.
+        exclude_labels: Labels to exclude. Defaults to common non-code labels.
+
+    Returns:
+        List of qualifying PR numbers.
+    """
+    client = GitHubClient(token=github_token)
+    labels_to_exclude = (
+        frozenset(exclude_labels)
+        if exclude_labels is not None
+        else _DEFAULT_EXCLUDE_LABELS
+    )
+
+    query = (
+        f"repo:{repo} is:pr is:merged review:approved comments:>{min_review_comments}"
+    )
+    per_page = min(max_results, 100)
+    pages_needed = math.ceil(max_results / 100)
+
+    all_items: list[dict[str, Any]] = []
+    for page in range(1, pages_needed + 1):
+        data = client.get(
+            "/search/issues",
+            params={
+                "q": query,
+                "sort": "updated",
+                "order": "desc",
+                "per_page": per_page,
+                "page": page,
+            },
+        )
+        items = data.get("items", [])
+        all_items.extend(items)
+        if len(items) < per_page:
+            break
+
+    total = len(all_items)
+
+    # Label filter
+    after_label: list[dict[str, Any]] = []
+    for item in all_items:
+        item_labels = {lbl["name"] for lbl in item.get("labels", [])}
+        if not item_labels & labels_to_exclude:
+            after_label.append(item)
+
+    # Commit count filter
+    result: list[int] = []
+    for item in after_label:
+        pr_number = item["number"]
+        detail = client.get(f"/repos/{repo}/pulls/{pr_number}")
+        if detail.get("commits", 0) >= min_commits:
+            result.append(pr_number)
+        if len(result) >= max_results:
+            break
+
+    logger.info(
+        "Search found %d candidates, %d after label filter, %d after commit filter",
+        total,
+        len(after_label),
+        len(result),
+    )
+    return result
 
 
 def mine_pr_diff_chains(
     repo: str,
     max_prs: int = 100,
     github_token: str | None = None,
+    pr_numbers: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Extract PR diff chains from a GitHub repository.
 
@@ -45,18 +140,24 @@ def mine_pr_diff_chains(
         repo: GitHub repository in "owner/repo" format.
         max_prs: Maximum number of PRs to process. Defaults to 100.
         github_token: Personal access token for GitHub API authentication.
+        pr_numbers: Optional list of specific PR numbers to mine. When
+            provided, skips the paginated PR list fetch and fetches each
+            PR individually.
 
     Returns:
         List of trajectory dicts representing PR diff chains.
     """
     client = GitHubClient(token=github_token)
 
-    prs = client.get_paginated(
-        f"/repos/{repo}/pulls",
-        params={"state": "closed", "sort": "updated", "direction": "desc"},
-        max_pages=math.ceil(max_prs / 100),
-    )
-    prs = prs[:max_prs]
+    if pr_numbers is not None:
+        prs = [client.get(f"/repos/{repo}/pulls/{n}") for n in pr_numbers[:max_prs]]
+    else:
+        prs = client.get_paginated(
+            f"/repos/{repo}/pulls",
+            params={"state": "closed", "sort": "updated", "direction": "desc"},
+            max_pages=math.ceil(max_prs / 100),
+        )
+        prs = prs[:max_prs]
 
     if not prs:
         return []
