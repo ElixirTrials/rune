@@ -45,6 +45,8 @@ dependencies = [
 gpu = [
     "bitsandbytes>=0.45.0",
     "trl>=0.16.0",
+    "flash-attn>=2.8.0",
+    "flash-attn-3>=3.0.0",
 ]
 
 [dependency-groups]
@@ -62,6 +64,8 @@ dev = [
 
 [tool.uv.sources]
 ctx-to-lora = { git = "https://github.com/SakanaAI/doc-to-lora.git" }
+flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl" }
+flash-attn-3 = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn_3-3.0.0+cu130torch2.11gite2743ab-cp39-abi3-linux_x86_64.whl" }
 
 [[tool.uv.dependency-metadata]]
 name = "ctx-to-lora"
