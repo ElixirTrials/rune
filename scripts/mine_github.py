@@ -72,6 +72,31 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Normalize trajectories for distillation compatibility.",
     )
+    parser.add_argument(
+        "--quality",
+        action="store_true",
+        help="Pre-filter PRs via GitHub Search API for quality (merged, reviewed, multi-commit).",
+    )
+    parser.add_argument(
+        "--min-reviews",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Minimum review comments for quality filter.",
+    )
+    parser.add_argument(
+        "--min-commits",
+        type=int,
+        default=2,
+        metavar="N",
+        help="Minimum commits for quality filter.",
+    )
+    parser.add_argument(
+        "--exclude-labels",
+        default=None,
+        metavar="L1,L2,...",
+        help="Comma-separated labels to exclude (default: dependencies,documentation,docs,chore,ci,bot).",
+    )
     return parser.parse_args()
 
 
@@ -88,12 +113,39 @@ def main() -> None:
         sys.exit(1)
 
     from model_training.d2l_data import normalize_mined_trajectory
-    from model_training.d2l_mining import mine_issue_commit_chains, mine_pr_diff_chains
+    from model_training.d2l_mining import (
+        mine_issue_commit_chains,
+        mine_pr_diff_chains,
+        search_quality_prs,
+    )
+
+    exclude_labels: list[str] | None = None
+    if args.exclude_labels:
+        exclude_labels = [lbl.strip() for lbl in args.exclude_labels.split(",")]
 
     trajectories: list[dict] = []
 
     # Mine PR diff chains
     if args.mode in ("prs", "both"):
+        pr_numbers: list[int] | None = None
+
+        if args.quality:
+            logger.info(
+                "Searching for quality PRs in %s (min_reviews=%d, min_commits=%d)...",
+                args.repo,
+                args.min_reviews,
+                args.min_commits,
+            )
+            pr_numbers = search_quality_prs(
+                args.repo,
+                max_results=args.max_items,
+                github_token=token,
+                min_review_comments=args.min_reviews,
+                min_commits=args.min_commits,
+                exclude_labels=exclude_labels,
+            )
+            logger.info("Quality filter selected %d PR(s).", len(pr_numbers))
+
         logger.info(
             "Mining PR diff chains from %s (max=%d)...", args.repo, args.max_items
         )
@@ -101,6 +153,7 @@ def main() -> None:
             args.repo,
             max_prs=args.max_items,
             github_token=token,
+            pr_numbers=pr_numbers,
         )
         logger.info("Mined %d PR diff chain(s).", len(pr_trajectories))
         trajectories.extend(pr_trajectories)
