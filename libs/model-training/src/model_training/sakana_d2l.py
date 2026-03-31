@@ -29,35 +29,57 @@ DEFAULT_VARIANT = "gemma_demo"
 DEFAULT_HF_FILENAME = f"{DEFAULT_VARIANT}/checkpoint-80000/pytorch_model.bin"
 LOCAL_CACHE_DIR = Path.home() / ".cache" / "rune" / "sakana_d2l"
 
+_flash_attention_patched = False
 
-def _patch_flash_attention() -> None:
+
+def _patch_flash_attention() -> None:  # noqa: C901
     """Patch Sakana's idefics2 module to work without flash_attn.
 
     Replaces flash attention classes and assertions with eager equivalents
-    so the perceiver can run on CPU/MPS/CUDA without flash_attn installed.
+    so the perceiver can run on CPU/MPS/CUDA regardless of flash_attn
+    availability.
     """
+    global _flash_attention_patched  # noqa: PLW0603
+    if _flash_attention_patched:
+        return
+    _flash_attention_patched = True
+
     import sys  # noqa: PLC0415
     import types  # noqa: PLC0415
 
-    # Install a stub flash_attn module so transformers' import check
-    # succeeds.  The actual forward pass uses our patched eager path,
-    # so the real package is never called.
+    # Prefer the real flash_attn package when installed (GPU env).
+    # Fall back to a stub so the module stays importable in CPU-only CI.
     if "flash_attn" not in sys.modules:
-        import importlib.machinery  # noqa: PLC0415
+        try:
+            import flash_attn  # noqa: PLC0415, F811, F401
+        except ImportError:
+            import importlib.machinery  # noqa: PLC0415
+            import importlib.metadata as _imeta  # noqa: PLC0415
 
-        stub = types.ModuleType("flash_attn")
-        stub.__version__ = "2.6.3"  # type: ignore[attr-defined]  # satisfies version checks
-        stub.__spec__ = importlib.machinery.ModuleSpec("flash_attn", None)
-        sys.modules["flash_attn"] = stub
+            stub = types.ModuleType("flash_attn")
+            stub.__version__ = "2.6.3"  # type: ignore[attr-defined]
+            stub.__spec__ = importlib.machinery.ModuleSpec("flash_attn", None)
+            sys.modules["flash_attn"] = stub
 
-        # Submodule stub for flash_attn.bert_padding (imported by ctx_to_lora)
-        bert_stub = types.ModuleType("flash_attn.bert_padding")
-        bert_stub.__spec__ = importlib.machinery.ModuleSpec(
-            "flash_attn.bert_padding", None
-        )
-        bert_stub.unpad_input = lambda *a, **kw: None  # type: ignore[attr-defined]  # noqa: ARG005
-        stub.bert_padding = bert_stub  # type: ignore[attr-defined]
-        sys.modules["flash_attn.bert_padding"] = bert_stub
+            # Submodule stub for flash_attn.bert_padding (imported by ctx_to_lora)
+            bert_stub = types.ModuleType("flash_attn.bert_padding")
+            bert_stub.__spec__ = importlib.machinery.ModuleSpec(
+                "flash_attn.bert_padding", None
+            )
+            bert_stub.unpad_input = lambda *a, **kw: None  # type: ignore[attr-defined]  # noqa: ARG005
+            stub.bert_padding = bert_stub  # type: ignore[attr-defined]
+            sys.modules["flash_attn.bert_padding"] = bert_stub
+
+            # Patch importlib.metadata.version so transformers'
+            # `_is_package_available("flash_attn")` succeeds with the stub.
+            _orig_meta_version = _imeta.version
+
+            def _patched_meta_version(name: str) -> str:
+                if name == "flash_attn":
+                    return "2.6.3"
+                return _orig_meta_version(name)
+
+            _imeta.version = _patched_meta_version  # type: ignore[assignment]
 
     import ctx_to_lora.modeling.idefics2 as idefics2_mod  # noqa: PLC0415
     import torch  # noqa: PLC0415
@@ -118,11 +140,12 @@ def _patch_flash_attention() -> None:
 
     Idefics2PerceiverResampler.forward = _eager_resampler_forward
 
-    # Patch resampler __init__ to bypass flash_attention_2 assertion
+    # Patch resampler __init__ to use eager attention (avoids triggering
+    # transformers' flash_attention_2 validation chain)
     _orig_resampler_init = Idefics2PerceiverResampler.__init__
 
     def _patched_resampler_init(self: Any, config: Any) -> None:
-        config._attn_implementation = "flash_attention_2"
+        config._attn_implementation = "eager"
         _orig_resampler_init(self, config)
         self._use_flash_attention_2 = False
 
