@@ -1,0 +1,5 @@
+Use this markdown: /Users/noahdolevelixir/Code/rune/instructions/training_data_mining.md to create a markdown plan for filling in the stubs and completing the mining implementation
+
+---
+
+Proceed
