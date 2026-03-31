@@ -29,6 +29,20 @@ if ! command -v claude &>/dev/null; then
 fi
 
 # Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
+# Pull HuggingFace token from AWS Secrets Manager
+if command -v aws &>/dev/null; then
+  HF_TOKEN="$(aws secretsmanager get-secret-value \
+    --secret-id "elixirtrials/dev/huggingface-token" \
+    --region eu-west-2 \
+    --query 'SecretString' --output text 2>/dev/null || true)"
+  if [ -n "$HF_TOKEN" ]; then
+    echo "export HF_TOKEN=\"$HF_TOKEN\"" >> ~/.bashrc
+    export HF_TOKEN
+    echo "HuggingFace token loaded from Secrets Manager."
+  fi
+fi
+
+# Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
 if [ -f pyproject.toml ]; then
   echo "Installing rune dependencies (with GPU extras)..."
   uv sync --extra gpu 2>/dev/null || echo "uv sync failed — run manually: uv sync --extra gpu"
