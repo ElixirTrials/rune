@@ -2,6 +2,9 @@
 # Post-create script for rune devcontainer
 set -e
 
+# Ensure feature-installed tools are on PATH (Node, Python, etc.)
+export PATH="/usr/local/bin:/usr/local/share/nvm/current/bin:$HOME/.local/bin:$PATH"
+
 # Install uv (Python package manager)
 if ! command -v uv &>/dev/null; then
   echo "Installing uv..."
