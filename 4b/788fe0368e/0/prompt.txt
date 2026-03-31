@@ -1,0 +1,12 @@
+Use this markdown: /Users/noahdolevelixir/Code/rune/instructions/training_data_mining.md to create a markdown plan for filling in the stubs and completing the mining implementation
+
+---
+
+Proceed
+
+---
+
+/plan Definitely 1. But more important than that is that we do thorough research on the best way to structure the training. We want the LoRA to learn how to    
+  embed a iterative process of coding so that we can use it to inform a hypernetwork. Go over our repo's documentation, look at doc2lora and how we plan to  
+  adapt the method. Then research online. In the end, make sure our plan is comprehensive and well-reasoned with respect to how we will do our fine          
+  tuning.
