@@ -1,6 +1,6 @@
 {
   "name": "rune GPU Dev",
-  "image": "nvidia/cuda:13.0.2-cudnn-runtime-ubuntu22.04",
+  "image": "nvidia/cuda:13.0.2-cudnn-devel-ubuntu22.04",
   "runArgs": ["--gpus", "all", "--shm-size=8g"],
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
@@ -8,6 +8,9 @@
       "installOhMyZsh": false,
       "upgradePackages": false,
       "username": "vscode"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
     },
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},

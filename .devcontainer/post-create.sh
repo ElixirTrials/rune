@@ -19,8 +19,9 @@ if ! command -v claude &>/dev/null; then
   echo "Run 'claude login' to authenticate (opens a URL to paste in your browser)."
 fi
 
-# Install rune dependencies
+# Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
 if [ -f pyproject.toml ]; then
-  echo "Installing rune dependencies..."
-  uv sync --all-extras 2>/dev/null || true
+  echo "Installing rune dependencies (with GPU extras)..."
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync --extra gpu 2>/dev/null || echo "uv sync failed — run manually: uv sync --extra gpu"
 fi
