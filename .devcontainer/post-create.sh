@@ -2,8 +2,14 @@
 # Post-create script for rune devcontainer
 set -e
 
-# Ensure feature-installed tools are on PATH (Node, Python, etc.)
-export PATH="/usr/local/bin:/usr/local/share/nvm/current/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+
+# Install Node.js LTS (for Claude Code CLI)
+if ! command -v node &>/dev/null; then
+  echo "Installing Node.js..."
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+fi
 
 # Install uv (Python package manager)
 if ! command -v uv &>/dev/null; then
@@ -16,7 +22,7 @@ fi
 # Install Claude Code
 if ! command -v claude &>/dev/null; then
   echo "Installing Claude Code..."
-  npm install -g @anthropic-ai/claude-code
+  sudo npm install -g @anthropic-ai/claude-code
   echo ""
   echo "=== Claude Code installed ==="
   echo "Run 'claude login' to authenticate (opens a URL to paste in your browser)."
@@ -25,6 +31,5 @@ fi
 # Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
 if [ -f pyproject.toml ]; then
   echo "Installing rune dependencies (with GPU extras)..."
-  export PATH="$HOME/.local/bin:$PATH"
   uv sync --extra gpu 2>/dev/null || echo "uv sync failed — run manually: uv sync --extra gpu"
 fi
