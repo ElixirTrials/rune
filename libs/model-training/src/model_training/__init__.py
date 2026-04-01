@@ -35,3 +35,6 @@ __all__ = [
 #
 # Functional LoRA injection (torch/ctx_to_lora deferred):
 #   from model_training.d2l_lora import apply_functional_lora
+#
+# Diff compression utility (no GPU deps, but kept out of top-level for consistency):
+#   from model_training.d2l_diff import compress_diff
