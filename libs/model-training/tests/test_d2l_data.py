@@ -574,7 +574,7 @@ def _make_mined_trajectory(
 
 
 # ---------------------------------------------------------------------------
-# Test 11-19: normalize_mined_pairs
+# Tests 15-22: normalize_mined_pairs
 # ---------------------------------------------------------------------------
 
 
@@ -586,7 +586,8 @@ def test_normalize_mined_pairs_single_commit_produces_step0() -> None:
     pairs = normalize_mined_pairs(trajectory)
 
     assert len(pairs) == 1
-    assert pairs[0]["task_id"] == "pr_owner/repo_42_step_0"
+    assert pairs[0]["task_id"] == "pr_owner/repo_42"
+    assert pairs[0]["metadata"]["step_index"] == 0
     assert "Add widget support" in pairs[0]["activation_text"]
     assert "+def widget(): pass" in pairs[0]["teacher_text"]
     assert "## Implementation" in pairs[0]["teacher_text"]
@@ -614,10 +615,12 @@ def test_normalize_mined_pairs_review_revision_cycle() -> None:
     pairs = normalize_mined_pairs(trajectory)
 
     assert len(pairs) == 2
-    assert pairs[0]["task_id"] == "pr_owner/repo_42_step_0"
+    assert pairs[0]["task_id"] == "pr_owner/repo_42"
+    assert pairs[0]["metadata"]["step_index"] == 0
     assert "## Task" in pairs[0]["activation_text"]
     assert "## Implementation" in pairs[0]["teacher_text"]
-    assert pairs[1]["task_id"] == "pr_owner/repo_42_step_1"
+    assert pairs[1]["task_id"] == "pr_owner/repo_42"
+    assert pairs[1]["metadata"]["step_index"] == 1
     assert "## Current Code" in pairs[1]["activation_text"]
     assert "+v1 code" in pairs[1]["activation_text"]
     assert "## Review Feedback" in pairs[1]["activation_text"]
@@ -678,7 +681,8 @@ def test_normalize_mined_pairs_trailing_reviews_skipped() -> None:
     pairs = normalize_mined_pairs(trajectory)
 
     assert len(pairs) == 1
-    assert pairs[0]["task_id"] == "pr_owner/repo_42_step_0"
+    assert pairs[0]["task_id"] == "pr_owner/repo_42"
+    assert pairs[0]["metadata"]["step_index"] == 0
 
 
 def test_normalize_mined_pairs_empty_steps_returns_empty() -> None:
@@ -706,7 +710,7 @@ def test_normalize_mined_pairs_metadata_includes_outcome_and_language() -> None:
 
 
 def test_normalize_mined_pairs_compatible_with_split_by_task_id() -> None:
-    """Output records work with existing split_by_task_id."""
+    """All steps from the same PR land in the same split."""
     from model_training.d2l_data import normalize_mined_pairs, split_by_task_id
 
     t1 = _make_mined_trajectory(
@@ -727,9 +731,10 @@ def test_normalize_mined_pairs_compatible_with_split_by_task_id() -> None:
     all_pairs = normalize_mined_pairs(t1) + normalize_mined_pairs(t2)
     train, test = split_by_task_id(all_pairs, test_fraction=0.5, seed=42)
 
-    train_ids = {r["task_id"] for r in train}
-    test_ids = {r["task_id"] for r in test}
-    assert not train_ids & test_ids
+    # All steps from same PR must be in same split — no source_task_id overlap
+    train_sources = {r["metadata"]["source_task_id"] for r in train}
+    test_sources = {r["metadata"]["source_task_id"] for r in test}
+    assert not train_sources & test_sources
 
 
 def test_normalize_mined_pairs_multiple_rounds() -> None:
@@ -750,9 +755,9 @@ def test_normalize_mined_pairs_multiple_rounds() -> None:
     pairs = normalize_mined_pairs(trajectory)
 
     assert len(pairs) == 4
-    assert pairs[0]["task_id"].endswith("_step_0")
-    assert pairs[1]["task_id"].endswith("_step_1")
-    assert pairs[2]["task_id"].endswith("_step_2")
-    assert pairs[3]["task_id"].endswith("_step_3")
+    assert pairs[0]["metadata"]["step_index"] == 0
+    assert pairs[1]["metadata"]["step_index"] == 1
+    assert pairs[2]["metadata"]["step_index"] == 2
+    assert pairs[3]["metadata"]["step_index"] == 3
     assert "+v2" in pairs[2]["activation_text"]
     assert "+v1" not in pairs[2]["activation_text"]
