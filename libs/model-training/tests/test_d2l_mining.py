@@ -32,8 +32,13 @@ def _make_pr(
     }
 
 
-def _make_commit(sha: str, message: str) -> dict[str, Any]:
-    return {"sha": sha, "commit": {"message": message}}
+def _make_commit(
+    sha: str, message: str, date: str = "2026-01-01T00:00:00Z"
+) -> dict[str, Any]:
+    return {
+        "sha": sha,
+        "commit": {"message": message, "committer": {"date": date}},
+    }
 
 
 def _make_commit_detail(sha: str, patch: str) -> dict[str, Any]:
@@ -133,16 +138,18 @@ class TestMinePrDiffChains:
         client = mock_cls.return_value
         client.get_paginated.side_effect = [
             [_make_pr(number=4)],
-            [_make_commit("ccc", "code change")],
-            [_make_review_comment("Please add tests")],
+            [_make_commit("ccc", "code change", date="2026-01-01T02:00:00Z")],
+            [_make_review_comment("Please add tests", "2026-01-01T01:00:00Z")],
         ]
         client.get.return_value = _make_commit_detail("ccc", "+impl")
 
         result = mine_pr_diff_chains("owner/repo")
 
-        review_steps = [s for s in result[0]["steps"] if s["type"] == "review"]
-        assert len(review_steps) == 1
-        assert review_steps[0]["content"] == "Please add tests"
+        steps = result[0]["steps"]
+        # Review (01:00) should come BEFORE commit (02:00) chronologically
+        assert steps[0]["type"] == "review"
+        assert steps[0]["content"] == "Please add tests"
+        assert steps[1]["type"] == "commit"
 
     def test_empty_repo_returns_empty_list(self, mock_cls: Any) -> None:
         client = mock_cls.return_value

@@ -80,7 +80,8 @@ class GitHubClient:
             if resp.status_code == 403:
                 try:
                     body = resp.json()
-                except Exception:
+                except (ValueError, KeyError):
+                    logger.debug("Non-JSON 403 body, skip rate-limit check")
                     body = {}
                 message = body.get("message", "")
                 if "rate limit" in message.lower() and attempt < max_retries:

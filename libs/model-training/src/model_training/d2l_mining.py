@@ -178,11 +178,13 @@ def mine_pr_diff_chains(
             max_pages=3,
         )
 
-        steps: list[dict[str, str]] = []
+        # Build timestamped steps for chronological interleaving
+        timed_steps: list[tuple[str, dict[str, str]]] = []
 
         for commit in commits:
             sha = commit["sha"]
             msg = commit["commit"]["message"]
+            ts = commit["commit"].get("committer", {}).get("date", "")
             detail = client.get(f"/repos/{repo}/commits/{sha}")
             files = detail.get("files", [])
             patches = []
@@ -190,22 +192,29 @@ def mine_pr_diff_chains(
                 patch = f.get("patch", "")
                 if patch:
                     patches.append(f"--- {f['filename']} ---\n{patch}")
-            steps.append(
+            timed_steps.append((
+                ts,
                 {
                     "type": "commit",
                     "description": msg,
                     "content": "\n".join(patches),
-                }
-            )
+                },
+            ))
 
         for comment in reviews:
-            steps.append(
+            ts = comment.get("created_at", "")
+            timed_steps.append((
+                ts,
                 {
                     "type": "review",
                     "description": "Review comment",
                     "content": comment.get("body", ""),
-                }
-            )
+                },
+            ))
+
+        # Sort by timestamp so commits and reviews interleave chronologically
+        timed_steps.sort(key=lambda x: x[0])
+        steps = [step for _, step in timed_steps]
 
         outcome = "merged" if pr.get("merged_at") is not None else "closed"
 
