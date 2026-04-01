@@ -1,0 +1,32 @@
+Use this: '/Users/noahdolevelixir/Code/rune/instructions/repos.md' and this  
+  '/Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/d2l_mining.py' to workout a dataset for training. Consider carefully the          
+  sources, the dataset structure and the training plan. I'm about to launch our training project. Interview me until you have 95% confidence about what I    
+  actually want rather than what you think I want.
+
+---
+
+1a. 2. Qwen 3.5 Coder 9B. And to use DeltaCoder LoRa as a starting point. 3. The goal is that a small model can be made to complete complex coding projects successfully using hypernetworks to encode where we are, where we want to be and what we already tried for a particular step so as to conserve context window. We want to show that using hypernetworks this way instead of using context by writing markdowns will ultimately lead to much better performance for any given base model. 4. I am not sure how many trajectories we need to get a very effective hypernetwork adapter finally. But the more heterogenous "good examples", the better. We'll have to stop as we get to diminishing returns.
+
+---
+
+5.a. We have multiple signals. The most important is that the generated adapter helps the base model produce the next correct step in the trajectory. That we ultimately manage to complete the project and that we reliably manage to embed and contextualize the state and trajectory. E.g., how well can the model retrieve where we are, what we tried and where we want to go from the hypernetwork. 6. DeltaCoder is the starting point for fine tuning our LoRA which we'll use to supervise the hypernetwork training. Look here to better understand: '/Users/noahdolevelixir/Code/rune/instructions/Report_2_LoRA_Fine_Tuning_Strategy.md'. 7. Heterogenous means languages, task types, complexity levels, domains, all of that and more. 8. I am not sure. Ultimately, we want the best performing coding agent using adapters. It's hard to know in advance what will be the best strategy. I leave it to you to research and make an educated guess.
+
+---
+
+Wait, what do you mean by stage 1? I think we should use the github mining as our primary training strategy. And 15 steps are fine. 10. I think training pairs is probably best. But I am open to recommendations. 11. The adapters should do well at encoding trajectory independent of the language which is why we want heterogeniety. That being said, most projects will probably be python. 12. We can mine on a CPU machine, prepare the data to S3 and then train on an L4. I don't know the rate limits for the github API. 13. Failed trajectories are negative training signals. We don't need many of these and I am not sure how to use them in the training.
+
+---
+
+That matches my understanding. 14.a I think. 15. I leave it to you to decide. 16. We are not trying to embed a 15-step PR trajectory. Each adapter is used for one step. E.g., step 1 could be the project definition and planning. step 2 could be creating the "DAG" step 3 could be one of the subtasks. So we'd be embedding the first step, where we are and where we want to end up for that step. But there is no reason to have a fixed activation extraction window number of tokens. 17. Yes, that's how I am thinking.
+
+---
+
+18. We probably just need the diff of the final step, rather than each increment. We'll probably want to use an "rtk" style compressor and to do away as much as possible with irrelevant parts of the diff. 19 one training pair. 20. I think we should try to progress from the existing. Minimum changes to best achieve our goals while keeping clean code, DRY and KISS principles.
+
+---
+
+/plan Perfect. Given our conversation and documentation and repo list, put together a complete implementation plan. Remember that we'll prepare the dataset here (on a cpu machine, with the data put on s3) and we'll do the training on our GPU machine later.
+
+---
+
+1
