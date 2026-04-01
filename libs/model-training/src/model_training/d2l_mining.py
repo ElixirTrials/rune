@@ -192,25 +192,29 @@ def mine_pr_diff_chains(
                 patch = f.get("patch", "")
                 if patch:
                     patches.append(f"--- {f['filename']} ---\n{patch}")
-            timed_steps.append((
-                ts,
-                {
-                    "type": "commit",
-                    "description": msg,
-                    "content": "\n".join(patches),
-                },
-            ))
+            timed_steps.append(
+                (
+                    ts,
+                    {
+                        "type": "commit",
+                        "description": msg,
+                        "content": "\n".join(patches),
+                    },
+                )
+            )
 
         for comment in reviews:
             ts = comment.get("created_at", "")
-            timed_steps.append((
-                ts,
-                {
-                    "type": "review",
-                    "description": "Review comment",
-                    "content": comment.get("body", ""),
-                },
-            ))
+            timed_steps.append(
+                (
+                    ts,
+                    {
+                        "type": "review",
+                        "description": "Review comment",
+                        "content": comment.get("body", ""),
+                    },
+                )
+            )
 
         # Sort by timestamp so commits and reviews interleave chronologically
         timed_steps.sort(key=lambda x: x[0])
