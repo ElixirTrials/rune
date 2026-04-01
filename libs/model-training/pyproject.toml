@@ -8,6 +8,7 @@ dependencies = [
     "shared",
     "adapter-registry",
     "mlflow>=3.0.0",
+    "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]

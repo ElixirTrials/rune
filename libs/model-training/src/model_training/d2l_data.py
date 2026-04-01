@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "format_for_distillation",
+    "normalize_mined_trajectory",
     "generate_needle_dataset",
     "generate_trajectory_dataset",
     "augment_trajectories",
@@ -335,6 +336,86 @@ def format_for_distillation(trajectory: dict[str, Any]) -> list[dict[str, str]]:
         )
 
     return records
+
+
+def normalize_mined_trajectory(mined: dict[str, Any]) -> dict[str, Any]:
+    """Convert a GitHub-mined trajectory dict into distillation-ready format.
+
+    Maps the mining pipeline's output (PR/issue metadata with commit and review
+    steps) into the schema expected by ``format_for_distillation``.
+
+    Outcome mapping:
+        - ``pr_*`` task_ids: ``"merged"`` -> ``"success"``, else ``"failure"``
+        - ``issue_*`` task_ids: ``"closed"`` -> ``"success"``, else ``"failure"``
+        - Fallback: ``"merged"`` or ``"closed"`` -> ``"success"``, else ``"failure"``
+
+    Step mapping:
+        - Commit steps get ``[Commit]`` prefix in description and their content
+          as ``generated_code``.
+        - Review steps get ``[Review]`` prefix with content inlined into
+          description and empty ``generated_code``.
+        - Only the **last** commit step receives ``tests_passed=True`` and
+          ``canonical_solution`` (and only when the overall outcome is success).
+
+    Args:
+        mined: Dict from the GitHub mining pipeline with keys ``task_id``,
+            ``task_description``, ``outcome``, and ``steps`` (list of dicts
+            with ``type``, ``description``, and ``content`` fields).
+
+    Returns:
+        Trajectory dict ready for ``format_for_distillation``.
+    """
+    task_id: str = mined.get("task_id", "")
+    raw_outcome: str = mined.get("outcome", "")
+    raw_steps: list[dict[str, Any]] = mined.get("steps", [])
+
+    # --- Determine normalized outcome ---
+    if task_id.startswith("pr_"):
+        normalized_outcome = "success" if raw_outcome == "merged" else "failure"
+    elif task_id.startswith("issue_"):
+        normalized_outcome = "success" if raw_outcome == "closed" else "failure"
+    else:
+        normalized_outcome = (
+            "success" if raw_outcome in ("merged", "closed") else "failure"
+        )
+
+    # --- Identify commit steps to find the last one ---
+    commit_steps = [s for s in raw_steps if s.get("type") == "commit"]
+
+    # --- Normalize steps ---
+    normalized_steps: list[dict[str, Any]] = []
+    for step in raw_steps:
+        step_type = step.get("type", "")
+        step_description = step.get("description", "")
+        step_content = step.get("content", "")
+
+        if step_type == "commit":
+            is_last_commit = commit_steps and step is commit_steps[-1]
+            tests_passed = is_last_commit and normalized_outcome == "success"
+            entry: dict[str, Any] = {
+                "description": f"[Commit] {step_description}",
+                "generated_code": step_content,
+                "tests_passed": tests_passed,
+            }
+            if is_last_commit and normalized_outcome == "success":
+                entry["canonical_solution"] = step_content
+            normalized_steps.append(entry)
+        elif step_type == "review":
+            normalized_steps.append(
+                {
+                    "description": f"[Review] {step_content}",
+                    "generated_code": "",
+                    "tests_passed": False,
+                }
+            )
+
+    return {
+        "task_id": task_id,
+        "session_id": task_id,
+        "task_description": mined.get("task_description", ""),
+        "steps": normalized_steps,
+        "outcome": normalized_outcome,
+    }
 
 
 def generate_needle_dataset(n: int = 20) -> list[dict[str, str]]:
