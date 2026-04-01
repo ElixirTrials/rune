@@ -15,6 +15,8 @@ import random
 from pathlib import Path
 from typing import Any
 
+from model_training.d2l_diff import compress_diff
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -26,6 +28,7 @@ __all__ = [
     "save_jsonl",
     "load_jsonl",
     "split_by_task_id",
+    "normalize_mined_pairs",
 ]
 
 # ---------------------------------------------------------------------------
@@ -650,3 +653,127 @@ def split_by_task_id(
     train = [r for r in records if r["task_id"] not in test_ids]
     test = [r for r in records if r["task_id"] in test_ids]
     return train, test
+
+
+def _group_steps_into_blocks(
+    steps: list[dict[str, Any]],
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Group contiguous steps of the same type into (type, steps) blocks."""
+    blocks: list[tuple[str, list[dict[str, Any]]]] = []
+    cur_type: str | None = None
+    cur_block: list[dict[str, Any]] = []
+    for step in steps:
+        stype = step.get("type", "")
+        if stype != cur_type:
+            if cur_block:
+                blocks.append((cur_type or "", cur_block))
+            cur_type = stype
+            cur_block = [step]
+        else:
+            cur_block.append(step)
+    if cur_block:
+        blocks.append((cur_type or "", cur_block))
+    return blocks
+
+
+def _make_pair_record(
+    task_id: str,
+    outcome: str,
+    language: str | None,
+    idx: int,
+    activation: str,
+    teacher: str,
+) -> dict[str, Any]:
+    """Build a single training pair record."""
+    return {
+        "task_id": f"{task_id}_step_{idx}",
+        "activation_text": activation,
+        "teacher_text": teacher,
+        "metadata": {
+            "outcome": outcome,
+            "step_index": idx,
+            "language": language,
+            "source_task_id": task_id,
+        },
+    }
+
+
+def normalize_mined_pairs(
+    trajectory: dict[str, Any],
+    compress: bool = True,
+    max_diff_lines: int = 500,
+    language: str | None = None,
+) -> list[dict[str, Any]]:
+    """Convert a mined PR trajectory into per-step training pairs.
+
+    Each review-to-revision cycle becomes one training record with
+    activation_text (task + current code + review feedback) and
+    teacher_text (activation + revision diff). Compatible with
+    ``augment_trajectories``, ``split_by_task_id``, and ``save_jsonl``.
+
+    The algorithm groups contiguous commits and reviews into blocks,
+    then pairs each reviews-block with the following commits-block.
+    Multiple commits in a block: the last commit is used (the state
+    the reviewer actually saw). Multiple reviews: concatenated.
+
+    Args:
+        trajectory: Raw mined trajectory from ``mine_pr_diff_chains``.
+        compress: Apply diff compression via ``compress_diff``.
+        max_diff_lines: Max lines per compressed diff.
+        language: Language tag for metadata (from repos config).
+
+    Returns:
+        List of training pair records with task_id, activation_text,
+        teacher_text, and metadata fields.
+    """
+    task_id: str = trajectory.get("task_id", "")
+    task_desc: str = trajectory.get("task_description", "")
+    raw_steps: list[dict[str, Any]] = trajectory.get("steps", [])
+    outcome: str = trajectory.get("outcome", "")
+
+    if not raw_steps:
+        return []
+
+    blocks = _group_steps_into_blocks(raw_steps)
+
+    def _diff(step: dict[str, Any]) -> str:
+        raw = step.get("content", "")
+        return compress_diff(raw, max_lines=max_diff_lines) if compress else raw
+
+    def _record(idx: int, activation: str, teacher: str) -> dict[str, Any]:
+        return _make_pair_record(task_id, outcome, language, idx, activation, teacher)
+
+    records: list[dict[str, Any]] = []
+    step_idx = 0
+    prev_diff = ""
+    bi = 0  # block index
+
+    # --- Step 0: initial commits block ---
+    if blocks[0][0] == "commit":
+        last_commit = blocks[0][1][-1]
+        diff = _diff(last_commit)
+        activation = f"## Task\n{task_desc}"
+        teacher = f"{activation}\n\n## Implementation\n{diff}"
+        records.append(_record(step_idx, activation, teacher))
+        prev_diff = diff
+        step_idx += 1
+        bi = 1
+
+    # --- Subsequent (reviews, commits) pairs ---
+    while bi < len(blocks) - 1:
+        if blocks[bi][0] == "review" and blocks[bi + 1][0] == "commit":
+            review_text = "\n\n".join(r.get("content", "") for r in blocks[bi][1])
+            revision = _diff(blocks[bi + 1][1][-1])
+            activation = f"## Task\n{task_desc}"
+            if prev_diff:
+                activation += f"\n\n## Current Code\n{prev_diff}"
+            activation += f"\n\n## Review Feedback\n{review_text}"
+            teacher = f"{activation}\n\n## Revision\n{revision}"
+            records.append(_record(step_idx, activation, teacher))
+            prev_diff = revision
+            step_idx += 1
+            bi += 2
+        else:
+            bi += 1
+
+    return records
