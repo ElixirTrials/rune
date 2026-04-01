@@ -1,0 +1,22 @@
+{
+    "description": "Phase 1 Bootstrap: 10 repos across 4 languages, ~500 PRs",
+    "defaults": {
+        "max_prs": 50,
+        "quality": true,
+        "min_review_comments": 1,
+        "min_commits": 2,
+        "mode": "prs"
+    },
+    "repos": [
+        {"repo": "huggingface/transformers", "language": "python"},
+        {"repo": "scikit-learn/scikit-learn", "language": "python"},
+        {"repo": "fastapi/fastapi", "language": "python"},
+        {"repo": "apache/airflow", "language": "python"},
+        {"repo": "microsoft/TypeScript", "language": "typescript"},
+        {"repo": "vercel/next.js", "language": "javascript"},
+        {"repo": "denoland/deno", "language": "rust"},
+        {"repo": "rust-lang/rust-analyzer", "language": "rust"},
+        {"repo": "pingcap/tidb", "language": "go"},
+        {"repo": "kubernetes/kubernetes", "language": "go"}
+    ]
+}
