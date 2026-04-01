@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "86ad69e83dd4",
+  "strategy": "manual-commit",
+  "branch": "feat/data_mining",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/model-training/tests/test_d2l_diff.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/86/ad69e83dd4/0/metadata.json",
+      "transcript": "/86/ad69e83dd4/0/full.jsonl",
+      "content_hash": "/86/ad69e83dd4/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3,
+    "cache_creation_tokens": 7564,
+    "cache_read_tokens": 479788,
+    "output_tokens": 1772,
+    "api_call_count": 3
+  }
+}

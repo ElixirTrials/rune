@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "86ad69e83dd4",
+  "session_id": "a0f7c6c4-406d-4876-a579-cf2bb752c7b9",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-01T09:33:10.719894Z",
+  "branch": "feat/data_mining",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/model-training/tests/test_d2l_diff.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "0114166471fa",
+  "checkpoint_transcript_start": 132,
+  "transcript_lines_at_start": 132,
+  "token_usage": {
+    "input_tokens": 3,
+    "cache_creation_tokens": 7564,
+    "cache_read_tokens": 479788,
+    "output_tokens": 1772,
+    "api_call_count": 3
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-01T09:33:10.436765Z",
+    "agent_lines": 3,
+    "human_added": 3,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 6,
+    "agent_percentage": 50
+  }
+}
