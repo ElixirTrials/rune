@@ -686,7 +686,7 @@ def _make_pair_record(
 ) -> dict[str, Any]:
     """Build a single training pair record."""
     return {
-        "task_id": f"{task_id}_step_{idx}",
+        "task_id": task_id,
         "activation_text": activation,
         "teacher_text": teacher,
         "metadata": {
