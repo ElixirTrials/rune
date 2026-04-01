@@ -35,10 +35,7 @@ def test_compress_diff_filters_lockfiles() -> None:
     """Lockfiles are removed."""
     from model_training.d2l_diff import compress_diff
 
-    content = (
-        "--- src/main.py ---\n+real code\n"
-        "--- package-lock.json ---\n+lock noise"
-    )
+    content = "--- src/main.py ---\n+real code\n--- package-lock.json ---\n+lock noise"
     result = compress_diff(content)
     assert "src/main.py" in result
     assert "package-lock.json" not in result
@@ -50,8 +47,7 @@ def test_compress_diff_filters_generated_code() -> None:
     from model_training.d2l_diff import compress_diff
 
     content = (
-        "--- src/handler.go ---\n+real code\n"
-        "--- proto/service_pb2.py ---\n+generated"
+        "--- src/handler.go ---\n+real code\n--- proto/service_pb2.py ---\n+generated"
     )
     result = compress_diff(content)
     assert "handler.go" in result
@@ -62,10 +58,7 @@ def test_compress_diff_filters_binary_extensions() -> None:
     """Binary and media files are removed."""
     from model_training.d2l_diff import compress_diff
 
-    content = (
-        "--- src/app.ts ---\n+code\n"
-        "--- assets/logo.png ---\n+binary"
-    )
+    content = "--- src/app.ts ---\n+code\n--- assets/logo.png ---\n+binary"
     result = compress_diff(content)
     assert "app.ts" in result
     assert "logo.png" not in result
