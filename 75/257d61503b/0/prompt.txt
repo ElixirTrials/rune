@@ -1,0 +1,61 @@
+let's do an end to end test and see if it works. Also, look at the infra repo to see the s3 bucket we have setup.
+
+---
+
+Use the gh cli tool
+
+---
+
+Can use the aws cli to create the bucket (that can be accessed from our devpod)?
+
+---
+
+Prefix approach is good. And set this bucket location to some kind of environment variable or KMS so the path is automatically available from the devpod.
+
+---
+
+I refreshed the sso login.
+
+---
+
+yes, go ahead.
+
+---
+
+It needs to be a PR
+
+---
+
+Alright, so make the PR for rune as well.
+
+---
+
+Look at the CI. There are merge conflicts
+
+---
+
+Now I want to begin to run our mining. Let's do this piecewise with breaks so as not to run into github api rate issues. In the end, we want to save our training data to S3. Go ahead and start the process.
+
+---
+
+<task-notification>
+<task-id>b4g8r7avk</task-id>
+<tool-use-id>toolu_01QziaMafd9Ka8UQXdvrirz1</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/68b67e29-3577-47fd-9220-01acacba2363/tasks/b4g8r7avk.output</output-file>
+<status>completed</status>
+<summary>Background command "Mine fastapi/fastapi (Python, ~50 PRs)" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b4n7jwgwp</task-id>
+<tool-use-id>toolu_01B5m9MAqZLvdpLxo6AEBq8C</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/68b67e29-3577-47fd-9220-01acacba2363/tasks/b4n7jwgwp.output</output-file>
+<status>completed</status>
+<summary>Background command "Mine scikit-learn (Python, ~50 PRs)" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+It's currently stashed from when I switched to main
