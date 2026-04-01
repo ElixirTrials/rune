@@ -543,3 +543,221 @@ def test_normalize_mined_trajectory_closed_issue_becomes_success() -> None:
     assert result["outcome"] == "success", (
         "Closed issue must map to 'success' (unlike closed PR which is 'failure')"
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for normalize_mined_pairs tests
+# ---------------------------------------------------------------------------
+
+
+def _make_mined_trajectory(
+    task_id: str = "pr_owner/repo_42",
+    task_description: str = "Add widget support",
+    steps: list[dict[str, str]] | None = None,
+    outcome: str = "merged",
+) -> dict[str, Any]:
+    """Create a minimal mined trajectory dict for normalize_mined_pairs tests."""
+    if steps is None:
+        steps = [
+            {
+                "type": "commit",
+                "description": "Initial impl",
+                "content": "+def widget(): pass",
+            },
+        ]
+    return {
+        "task_id": task_id,
+        "task_description": task_description,
+        "steps": steps,
+        "outcome": outcome,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tests 15-22: normalize_mined_pairs
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_mined_pairs_single_commit_produces_step0() -> None:
+    """A single-commit PR produces one step_0 pair."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory()
+    pairs = normalize_mined_pairs(trajectory)
+
+    assert len(pairs) == 1
+    assert pairs[0]["task_id"] == "pr_owner/repo_42"
+    assert pairs[0]["metadata"]["step_index"] == 0
+    assert "Add widget support" in pairs[0]["activation_text"]
+    assert "+def widget(): pass" in pairs[0]["teacher_text"]
+    assert "## Implementation" in pairs[0]["teacher_text"]
+
+
+def test_normalize_mined_pairs_review_revision_cycle() -> None:
+    """A commit-review-commit trajectory produces step_0 + step_1."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory(
+        steps=[
+            {"type": "commit", "description": "V1", "content": "+v1 code"},
+            {
+                "type": "review",
+                "description": "Review",
+                "content": "Add error handling",
+            },
+            {
+                "type": "commit",
+                "description": "V2",
+                "content": "+v2 with error handling",
+            },
+        ]
+    )
+    pairs = normalize_mined_pairs(trajectory)
+
+    assert len(pairs) == 2
+    assert pairs[0]["task_id"] == "pr_owner/repo_42"
+    assert pairs[0]["metadata"]["step_index"] == 0
+    assert "## Task" in pairs[0]["activation_text"]
+    assert "## Implementation" in pairs[0]["teacher_text"]
+    assert pairs[1]["task_id"] == "pr_owner/repo_42"
+    assert pairs[1]["metadata"]["step_index"] == 1
+    assert "## Current Code" in pairs[1]["activation_text"]
+    assert "+v1 code" in pairs[1]["activation_text"]
+    assert "## Review Feedback" in pairs[1]["activation_text"]
+    assert "Add error handling" in pairs[1]["activation_text"]
+    assert "## Revision" in pairs[1]["teacher_text"]
+    assert "+v2 with error handling" in pairs[1]["teacher_text"]
+
+
+def test_normalize_mined_pairs_consecutive_commits_uses_last() -> None:
+    """Multiple commits before first review: last commit used for step_0."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory(
+        steps=[
+            {"type": "commit", "description": "Draft", "content": "+draft"},
+            {"type": "commit", "description": "Polish", "content": "+polished"},
+            {"type": "review", "description": "Review", "content": "Fix typo"},
+            {"type": "commit", "description": "Fixed", "content": "+fixed"},
+        ]
+    )
+    pairs = normalize_mined_pairs(trajectory)
+
+    assert len(pairs) == 2
+    assert "+polished" in pairs[0]["teacher_text"]
+    assert "+draft" not in pairs[0]["teacher_text"]
+    assert "+polished" in pairs[1]["activation_text"]
+
+
+def test_normalize_mined_pairs_consecutive_reviews_concatenated() -> None:
+    """Multiple reviews before a commit are concatenated."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory(
+        steps=[
+            {"type": "commit", "description": "V1", "content": "+v1"},
+            {"type": "review", "description": "R1", "content": "Fix A"},
+            {"type": "review", "description": "R2", "content": "Also fix B"},
+            {"type": "commit", "description": "V2", "content": "+v2"},
+        ]
+    )
+    pairs = normalize_mined_pairs(trajectory)
+
+    assert len(pairs) == 2
+    assert "Fix A" in pairs[1]["activation_text"]
+    assert "Also fix B" in pairs[1]["activation_text"]
+
+
+def test_normalize_mined_pairs_trailing_reviews_skipped() -> None:
+    """Reviews after the last commit are ignored."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory(
+        steps=[
+            {"type": "commit", "description": "V1", "content": "+v1"},
+            {"type": "review", "description": "Review", "content": "Needs work"},
+        ]
+    )
+    pairs = normalize_mined_pairs(trajectory)
+
+    assert len(pairs) == 1
+    assert pairs[0]["task_id"] == "pr_owner/repo_42"
+    assert pairs[0]["metadata"]["step_index"] == 0
+
+
+def test_normalize_mined_pairs_empty_steps_returns_empty() -> None:
+    """Empty steps list produces no pairs."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory(steps=[])
+    assert normalize_mined_pairs(trajectory) == []
+
+
+def test_normalize_mined_pairs_metadata_includes_outcome_and_language() -> None:
+    """Metadata captures outcome and language from caller."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    merged = _make_mined_trajectory(outcome="merged")
+    closed = _make_mined_trajectory(outcome="closed")
+
+    merged_pairs = normalize_mined_pairs(merged, language="python")
+    closed_pairs = normalize_mined_pairs(closed, language="go")
+
+    assert merged_pairs[0]["metadata"]["outcome"] == "merged"
+    assert merged_pairs[0]["metadata"]["language"] == "python"
+    assert closed_pairs[0]["metadata"]["outcome"] == "closed"
+    assert closed_pairs[0]["metadata"]["language"] == "go"
+
+
+def test_normalize_mined_pairs_compatible_with_split_by_task_id() -> None:
+    """All steps from the same PR land in the same split."""
+    from model_training.d2l_data import normalize_mined_pairs, split_by_task_id
+
+    t1 = _make_mined_trajectory(
+        task_id="pr_a/b_1",
+        steps=[
+            {"type": "commit", "description": "C1", "content": "+c1"},
+            {"type": "review", "description": "R1", "content": "Fix"},
+            {"type": "commit", "description": "C2", "content": "+c2"},
+        ],
+    )
+    t2 = _make_mined_trajectory(
+        task_id="pr_c/d_2",
+        steps=[
+            {"type": "commit", "description": "C1", "content": "+c1"},
+        ],
+    )
+
+    all_pairs = normalize_mined_pairs(t1) + normalize_mined_pairs(t2)
+    train, test = split_by_task_id(all_pairs, test_fraction=0.5, seed=42)
+
+    # All steps from same PR must be in same split — no source_task_id overlap
+    train_sources = {r["metadata"]["source_task_id"] for r in train}
+    test_sources = {r["metadata"]["source_task_id"] for r in test}
+    assert not train_sources & test_sources
+
+
+def test_normalize_mined_pairs_multiple_rounds() -> None:
+    """A complex PR with 3 review rounds produces 4 pairs."""
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory(
+        steps=[
+            {"type": "commit", "description": "V1", "content": "+v1"},
+            {"type": "review", "description": "R1", "content": "Fix X"},
+            {"type": "commit", "description": "V2", "content": "+v2"},
+            {"type": "review", "description": "R2", "content": "Fix Y"},
+            {"type": "commit", "description": "V3", "content": "+v3"},
+            {"type": "review", "description": "R3", "content": "Fix Z"},
+            {"type": "commit", "description": "V4", "content": "+v4"},
+        ]
+    )
+    pairs = normalize_mined_pairs(trajectory)
+
+    assert len(pairs) == 4
+    assert pairs[0]["metadata"]["step_index"] == 0
+    assert pairs[1]["metadata"]["step_index"] == 1
+    assert pairs[2]["metadata"]["step_index"] == 2
+    assert pairs[3]["metadata"]["step_index"] == 3
+    assert "+v2" in pairs[2]["activation_text"]
+    assert "+v1" not in pairs[2]["activation_text"]
