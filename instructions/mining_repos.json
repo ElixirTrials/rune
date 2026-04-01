@@ -5,7 +5,6 @@
         "quality": true,
         "min_review_comments": 1,
         "min_commits": 2,
-        "mode": "prs"
     },
     "repos": [
         {"repo": "huggingface/transformers", "language": "python"},
@@ -17,6 +16,6 @@
         {"repo": "denoland/deno", "language": "rust"},
         {"repo": "rust-lang/rust-analyzer", "language": "rust"},
         {"repo": "pingcap/tidb", "language": "go"},
-        {"repo": "kubernetes/kubernetes", "language": "go"}
-    ]
+        {"repo": "kubernetes/kubernetes", "language": "go"},
+    ],
 }
