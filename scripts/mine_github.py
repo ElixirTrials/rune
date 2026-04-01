@@ -220,6 +220,9 @@ def _run_batch(
 
     Processes each repo in the config, extracts training pairs via
     normalize_mined_pairs, and saves per-repo JSONL files.
+
+    Note: batch mode mines PRs only (not issues), because training pairs are
+    derived from review-comment → revision cycles found in PR diff chains.
     """
     from model_training.d2l_data import normalize_mined_pairs, save_jsonl
     from model_training.d2l_mining import mine_pr_diff_chains, search_quality_prs
@@ -233,47 +236,51 @@ def _run_batch(
 
     for repo_cfg in repos:
         repo = repo_cfg["repo"]
-        language = repo_cfg.get("language")
-        max_prs = repo_cfg.get("max_prs", defaults.get("max_prs", 50))
-        quality = repo_cfg.get("quality", defaults.get("quality", True))
-        min_reviews = repo_cfg.get(
-            "min_review_comments", defaults.get("min_review_comments", 1)
-        )
-        min_commits = repo_cfg.get("min_commits", defaults.get("min_commits", 2))
-
-        logger.info("Mining %s (max=%d, quality=%s)...", repo, max_prs, quality)
-
-        pr_numbers: list[int] | None = None
-        if quality:
-            pr_numbers = search_quality_prs(
-                repo,
-                max_results=max_prs,
-                github_token=token,
-                min_review_comments=min_reviews,
-                min_commits=min_commits,
+        try:
+            language = repo_cfg.get("language")
+            max_prs = repo_cfg.get("max_prs", defaults.get("max_prs", 50))
+            quality = repo_cfg.get("quality", defaults.get("quality", True))
+            min_reviews = repo_cfg.get(
+                "min_review_comments", defaults.get("min_review_comments", 1)
             )
-            logger.info("Quality filter: %d PRs for %s", len(pr_numbers), repo)
+            min_commits = repo_cfg.get("min_commits", defaults.get("min_commits", 2))
 
-        trajectories = mine_pr_diff_chains(
-            repo, max_prs=max_prs, github_token=token, pr_numbers=pr_numbers
-        )
-        logger.info("Mined %d trajectories from %s", len(trajectories), repo)
+            logger.info("Mining %s (max=%d, quality=%s)...", repo, max_prs, quality)
 
-        pairs: list[dict] = []
-        for traj in trajectories:
-            pairs.extend(
-                normalize_mined_pairs(
-                    traj,
-                    compress=compress,
-                    max_diff_lines=max_diff_lines,
-                    language=language,
+            pr_numbers: list[int] | None = None
+            if quality:
+                pr_numbers = search_quality_prs(
+                    repo,
+                    max_results=max_prs,
+                    github_token=token,
+                    min_review_comments=min_reviews,
+                    min_commits=min_commits,
                 )
-            )
+                logger.info("Quality filter: %d PRs for %s", len(pr_numbers), repo)
 
-        filename = repo.replace("/", "_") + ".jsonl"
-        save_jsonl(pairs, output_dir / filename)
-        logger.info("Saved %d pairs to %s", len(pairs), filename)
-        total_pairs += len(pairs)
+            trajectories = mine_pr_diff_chains(
+                repo, max_prs=max_prs, github_token=token, pr_numbers=pr_numbers
+            )
+            logger.info("Mined %d trajectories from %s", len(trajectories), repo)
+
+            pairs: list[dict] = []
+            for traj in trajectories:
+                pairs.extend(
+                    normalize_mined_pairs(
+                        traj,
+                        compress=compress,
+                        max_diff_lines=max_diff_lines,
+                        language=language,
+                    )
+                )
+
+            filename = repo.replace("/", "_") + ".jsonl"
+            save_jsonl(pairs, output_dir / filename)
+            logger.info("Saved %d pairs to %s", len(pairs), filename)
+            total_pairs += len(pairs)
+        except Exception:
+            logger.exception("Failed to mine %s, skipping", repo)
+            continue
 
     logger.info(
         "Batch complete: %d total pairs across %d repos", total_pairs, len(repos)
