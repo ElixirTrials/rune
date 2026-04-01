@@ -57,18 +57,18 @@ class GitHubClient:
         params: dict[str, Any] | None = None,
         max_retries: int = 3,
     ) -> httpx.Response:
-        """GET with rate-limit retry, returning the raw response.
+        """GET with retry on rate-limit (403) and server errors (5xx).
 
         Args:
             url: Full URL to request.
             params: Optional query parameters.
-            max_retries: Maximum number of retries on rate-limit 403.
+            max_retries: Maximum number of retries on transient errors.
 
         Returns:
             The successful httpx.Response.
 
         Raises:
-            httpx.HTTPStatusError: On non-rate-limit error responses.
+            httpx.HTTPStatusError: On non-retryable error responses.
         """
         for attempt in range(max_retries + 1):
             resp = httpx.get(
@@ -94,6 +94,17 @@ class GitHubClient:
                     )
                     time.sleep(wait)
                     continue
+            if resp.status_code >= 500 and attempt < max_retries:
+                wait = 2 ** attempt
+                logger.warning(
+                    "Server error %d, retrying in %ds (attempt %d/%d)",
+                    resp.status_code,
+                    wait,
+                    attempt + 1,
+                    max_retries,
+                )
+                time.sleep(wait)
+                continue
             resp.raise_for_status()
             return resp
         # Unreachable in normal flow, but satisfies type checker.
