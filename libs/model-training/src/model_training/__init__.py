@@ -1,10 +1,13 @@
 """Training pipelines for LoRA fine-tuning and trajectory management."""
 
 from model_training.d2l_train import D2LTrainConfig, train_d2l_qwen3
+from model_training.model_configs import ModelConfig, ModelRegistry
 from model_training.trajectory import format_for_sft, load_trajectory, record_trajectory
 
 __all__ = [
     "D2LTrainConfig",
+    "ModelConfig",
+    "ModelRegistry",
     "format_for_sft",
     "load_trajectory",
     "record_trajectory",

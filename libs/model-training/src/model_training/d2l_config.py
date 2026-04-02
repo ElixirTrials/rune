@@ -1,7 +1,8 @@
-"""Config helpers for Qwen3-Coder-Next hypernetwork training.
+"""Config helpers for hypernetwork training across model architectures.
 
-Requires transformers>=5.0 for Qwen3NextConfig (hybrid linear/full attention
-architecture). transformers 5.3.0 is installed in this project.
+Provides both model-specific (Qwen3-Coder-Next) and model-agnostic config
+builders. The model-agnostic build_hypernet_config() uses the model registry
+and probe cache to support any registered model.
 
 All heavy imports (transformers, ctx_to_lora, peft) are deferred to function
 bodies per project convention (INFRA-05) to avoid GPU imports at module level.
@@ -14,7 +15,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["get_d2l_qwen3_config", "build_qwen3_hypernet_config"]
+__all__ = [
+    "get_d2l_qwen3_config",
+    "build_qwen3_hypernet_config",
+    "build_hypernet_config",
+]
 
 
 def get_d2l_qwen3_config() -> dict[str, Any]:
@@ -138,6 +143,118 @@ def build_qwen3_hypernet_config(
         lora_config=lora_config,
         extra_modules=None,
         base_hidden_size=cfg.hidden_size,
+        layer_indices=layer_indices,
+        feature_sizes=feature_sizes,
+        aggregator_config=aggregator_config,
+    )
+
+
+def build_hypernet_config(
+    model_name: str,
+    lora_r: int | None = None,
+    target_modules: list[str] | None = None,
+    aggregator_config: Any = None,
+) -> Any:
+    """Construct HypernetConfig for any registered model.
+
+    Uses the model registry for architecture expectations and the probe cache
+    for actual layer indices and feature dimensions. For Qwen3-Coder-Next,
+    delegates to the specialized builder. For other models, builds config
+    from probe cache data.
+
+    Args:
+        model_name: Canonical model name from the registry (e.g. "qwen3.5-9b").
+        lora_r: LoRA rank. Defaults to the registry's default_lora_rank.
+        target_modules: LoRA target module names. Defaults to probe cache's
+            target_modules or ["q_proj", "v_proj"].
+        aggregator_config: Perceiver aggregator config from a Sakana checkpoint.
+
+    Returns:
+        HypernetConfig configured for the specified model.
+
+    Raises:
+        KeyError: If model_name is not in the registry.
+        RuntimeError: If no probe cache exists for a non-Qwen3-Coder-Next model.
+    """
+    from ctx_to_lora.modeling.hypernet import HypernetConfig  # noqa: PLC0415
+    from peft import LoraConfig  # noqa: PLC0415
+
+    from model_training.d2l_probe import load_probe_cache  # noqa: PLC0415
+    from model_training.model_configs import (  # noqa: PLC0415
+        ModelRegistry,
+        validate_against_probe,
+    )
+
+    mc = ModelRegistry.default().get(model_name)
+
+    # Qwen3-Coder-Next has specialized logic for hybrid attention discovery
+    if model_name == "qwen3-coder-next":
+        rank = lora_r if lora_r is not None else mc.default_lora_rank
+        return build_qwen3_hypernet_config(
+            lora_r=rank,
+            target_modules=target_modules,
+            aggregator_config=aggregator_config,
+        )
+
+    # Generic path: requires probe cache for layer indices and dimensions
+    cache = load_probe_cache(model_name)
+    if cache is None:
+        msg = (
+            f"No probe cache found for {model_name!r}. "
+            "Run probe_model() and save_probe_cache() before building "
+            "hypernet config for this model."
+        )
+        raise RuntimeError(msg)
+
+    validate_against_probe(mc, cache)
+
+    rank = lora_r if lora_r is not None else mc.default_lora_rank
+    layer_indices = cache["attention_layer_indices"]
+
+    # Resolve target modules from probe cache or fallback
+    if target_modules is None:
+        target_modules = cache.get("target_modules", ["q_proj", "v_proj"])
+
+    lora_config = LoraConfig(
+        r=rank,
+        lora_alpha=rank * 2,
+        target_modules=target_modules,
+        lora_dropout=0.0,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    # Build feature_sizes from probe cache
+    feature_sizes_raw = cache.get("feature_sizes", {})
+    in_sizes: dict[str, int] = {}
+    out_sizes: dict[str, int] = {}
+    for mod in target_modules:
+        if mod in feature_sizes_raw:
+            in_sizes[mod] = feature_sizes_raw[mod]["in"]
+            out_sizes[mod] = feature_sizes_raw[mod]["out"]
+        else:
+            in_sizes[mod] = mc.expected_hidden_size
+            out_sizes[mod] = mc.expected_hidden_size
+
+    feature_sizes: tuple[dict[str, int], dict[str, int]] = (
+        in_sizes,
+        out_sizes,
+    )
+
+    return HypernetConfig(
+        latent_size=512,
+        use_light_weight_lora=False,
+        light_weight_latent_size=128,
+        per_rank_gen=False,
+        use_per_rank_bias=False,
+        use_bias=True,
+        per_layer_processing=False,
+        use_token_mixing=False,
+        num_pre_head_layers=1,
+        dropout_rate=0.0,
+        lora_config=lora_config,
+        extra_modules=None,
+        base_hidden_size=mc.expected_hidden_size,
         layer_indices=layer_indices,
         feature_sizes=feature_sizes,
         aggregator_config=aggregator_config,

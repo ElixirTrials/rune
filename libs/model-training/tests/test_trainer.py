@@ -168,19 +168,207 @@ def _inject_fake_gpu_modules() -> None:
     fake_peft = ModuleType("peft")
     fake_peft.LoraConfig = MagicMock()  # type: ignore[attr-defined]
     fake_peft.get_peft_model = MagicMock()  # type: ignore[attr-defined]
+    fake_peft.PeftModel = MagicMock()  # type: ignore[attr-defined]
+
+    fake_bnb = ModuleType("bitsandbytes")
 
     sys.modules.setdefault("torch", fake_torch)
     sys.modules.setdefault("datasets", fake_datasets)
     sys.modules.setdefault("transformers", fake_transformers)
     sys.modules.setdefault("trl", fake_trl)
     sys.modules.setdefault("peft", fake_peft)
+    sys.modules.setdefault("bitsandbytes", fake_bnb)
 
 
 def _remove_fake_gpu_modules() -> None:
     """Remove injected fake modules (only if we injected them)."""
-    for mod in ("torch", "datasets", "transformers", "trl", "peft"):
+    for mod in ("torch", "datasets", "transformers", "trl", "peft", "bitsandbytes"):
         if mod in sys.modules and isinstance(sys.modules[mod], ModuleType):
             # Only remove if it's actually a fake (not the real package)
             m = sys.modules[mod]
             if getattr(m, "__file__", "FAKE") is None:
                 del sys.modules[mod]
+
+
+# ---------------------------------------------------------------------------
+# New tests: warm-start, registry config, loss masking, hyperparameters
+# ---------------------------------------------------------------------------
+
+
+def _force_inject_fake_gpu_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force-inject fake GPU modules via monkeypatch for test isolation.
+
+    Unlike _inject_fake_gpu_modules (which uses setdefault and won't override
+    real modules loaded by other test files), this uses monkeypatch.setitem
+    for reliable test-level isolation even when real torch/peft are loaded.
+    """
+    fake_torch = ModuleType("torch")
+    fake_torch.bfloat16 = MagicMock()  # type: ignore[attr-defined]
+
+    fake_datasets = ModuleType("datasets")
+    fake_dataset_cls = MagicMock()
+    fake_dataset_cls.from_list = staticmethod(lambda records: MagicMock())
+    fake_datasets.Dataset = fake_dataset_cls  # type: ignore[attr-defined]
+
+    fake_transformers = ModuleType("transformers")
+    fake_transformers.AutoModelForCausalLM = MagicMock()  # type: ignore[attr-defined]
+    fake_transformers.AutoTokenizer = MagicMock()  # type: ignore[attr-defined]
+    fake_transformers.BitsAndBytesConfig = MagicMock()  # type: ignore[attr-defined]
+
+    fake_trl = ModuleType("trl")
+    fake_trl.SFTConfig = MagicMock()  # type: ignore[attr-defined]
+    fake_trl.SFTTrainer = MagicMock()  # type: ignore[attr-defined]
+
+    fake_peft = ModuleType("peft")
+    fake_peft.LoraConfig = MagicMock()  # type: ignore[attr-defined]
+    fake_peft.get_peft_model = MagicMock()  # type: ignore[attr-defined]
+    fake_peft.PeftModel = MagicMock()  # type: ignore[attr-defined]
+
+    fake_bnb = ModuleType("bitsandbytes")
+
+    for name, mod in [
+        ("torch", fake_torch),
+        ("datasets", fake_datasets),
+        ("transformers", fake_transformers),
+        ("trl", fake_trl),
+        ("peft", fake_peft),
+        ("bitsandbytes", fake_bnb),
+    ]:
+        monkeypatch.setitem(sys.modules, name, mod)
+
+
+def test_train_qlora_with_warm_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Warm-start loads PeftModel.from_pretrained and skips fresh LoRA config."""
+    monkeypatch.setenv("RUNE_TRAJECTORY_DIR", str(tmp_path))
+    _make_trajectory(tmp_path, "sess-warm", outcome="success")
+    _force_inject_fake_gpu_modules(monkeypatch)
+
+    # Configure fake PeftModel to return a model with named_parameters
+    import peft as fake_peft
+
+    fake_wrapped = MagicMock()
+    fake_wrapped.named_parameters.return_value = [
+        ("lora_A.weight", MagicMock()),
+        ("lora_B.weight", MagicMock()),
+    ]
+    fake_peft.PeftModel.from_pretrained.return_value = fake_wrapped
+
+    # Configure fake SFTTrainer
+    import trl as fake_trl
+
+    fake_trainer_instance = MagicMock()
+    fake_trl.SFTTrainer.return_value = fake_trainer_instance
+
+    from model_training.trainer import train_qlora
+
+    train_qlora(
+        session_id="sess-warm",
+        adapter_id="warm-test",
+        output_dir=str(tmp_path / "out"),
+        warm_start_adapter_id="test/warm-adapter",
+    )
+
+    # PeftModel.from_pretrained was called
+    fake_peft.PeftModel.from_pretrained.assert_called_once()
+
+    # SFTTrainer was called with peft_config=None (warm-start skips it)
+    call_kwargs = fake_trl.SFTTrainer.call_args[1]
+    assert call_kwargs["peft_config"] is None
+
+
+def test_train_qlora_registry_config_sets_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """model_config_name populates defaults from registry."""
+    monkeypatch.setenv("RUNE_TRAJECTORY_DIR", str(tmp_path))
+    _make_trajectory(tmp_path, "sess-reg", outcome="success")
+    _force_inject_fake_gpu_modules(monkeypatch)
+
+    import transformers as fake_xf
+    import trl as fake_trl
+
+    fake_trainer_instance = MagicMock()
+    fake_trl.SFTTrainer.return_value = fake_trainer_instance
+
+    # Configure PeftModel for warm-start (qwen3.5-9b has warm_start)
+    import peft as fake_peft
+
+    fake_wrapped = MagicMock()
+    fake_wrapped.named_parameters.return_value = []
+    fake_peft.PeftModel.from_pretrained.return_value = fake_wrapped
+
+    from model_training.trainer import train_qlora
+
+    train_qlora(
+        session_id="sess-reg",
+        adapter_id="reg-test",
+        output_dir=str(tmp_path / "out"),
+        model_config_name="qwen3.5-9b",
+    )
+
+    # Model loaded with Qwen3.5-9B model ID and eager attention
+    load_call = fake_xf.AutoModelForCausalLM.from_pretrained
+    call_args = load_call.call_args
+    assert call_args[0][0] == "Qwen/Qwen3.5-9B"
+    assert call_args[1].get("attn_implementation") == "eager"
+
+    # SFTConfig called with strategy-aligned defaults
+    sft_config_call = fake_trl.SFTConfig.call_args[1]
+    assert sft_config_call["gradient_accumulation_steps"] == 16
+    assert sft_config_call["lr_scheduler_type"] == "constant"
+    assert sft_config_call["assistant_only_loss"] is True
+
+
+def test_train_qlora_assistant_only_loss_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """assistant_only_loss=True is always set in SFTConfig."""
+    monkeypatch.setenv("RUNE_TRAJECTORY_DIR", str(tmp_path))
+    _make_trajectory(tmp_path, "sess-loss", outcome="success")
+    _force_inject_fake_gpu_modules(monkeypatch)
+
+    import trl as fake_trl
+
+    fake_trainer_instance = MagicMock()
+    fake_trl.SFTTrainer.return_value = fake_trainer_instance
+
+    from model_training.trainer import train_qlora
+
+    train_qlora(
+        session_id="sess-loss",
+        adapter_id="loss-test",
+        output_dir=str(tmp_path / "out"),
+    )
+
+    sft_config_call = fake_trl.SFTConfig.call_args[1]
+    assert sft_config_call["assistant_only_loss"] is True
+
+
+def test_train_qlora_fresh_init_backward_compat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without model_config_name, fresh LoRA init with explicit params."""
+    monkeypatch.setenv("RUNE_TRAJECTORY_DIR", str(tmp_path))
+    _make_trajectory(tmp_path, "sess-fresh", outcome="success")
+    _force_inject_fake_gpu_modules(monkeypatch)
+
+    import trl as fake_trl
+
+    fake_trainer_instance = MagicMock()
+    fake_trl.SFTTrainer.return_value = fake_trainer_instance
+
+    from model_training.trainer import train_qlora
+
+    train_qlora(
+        session_id="sess-fresh",
+        adapter_id="fresh-test",
+        output_dir=str(tmp_path / "out"),
+        rank=32,
+        alpha=64,
+    )
+
+    # SFTTrainer was called with a peft_config (not None)
+    call_kwargs = fake_trl.SFTTrainer.call_args[1]
+    assert call_kwargs["peft_config"] is not None

@@ -85,3 +85,73 @@ def test_build_qwen3_hypernet_config_base_hidden_size() -> None:
 
     hypernet_cfg = build_qwen3_hypernet_config()
     assert hypernet_cfg.base_hidden_size == 2048
+
+
+# ---------------------------------------------------------------------------
+# build_hypernet_config tests (model-agnostic)
+# ---------------------------------------------------------------------------
+
+
+def test_build_hypernet_config_delegates_qwen3_coder_next() -> None:
+    """build_hypernet_config("qwen3-coder-next") produces same result as direct."""
+    from model_training.d2l_config import (
+        build_hypernet_config,
+        build_qwen3_hypernet_config,
+    )
+
+    direct = build_qwen3_hypernet_config()
+    via_registry = build_hypernet_config("qwen3-coder-next")
+    assert list(via_registry.layer_indices) == list(direct.layer_indices)
+    assert via_registry.base_hidden_size == direct.base_hidden_size
+
+
+def test_build_hypernet_config_qwen35_with_probe_cache(
+    tmp_path: object, monkeypatch: object,
+) -> None:
+    """build_hypernet_config("qwen3.5-9b") builds config from probe cache."""
+    import model_training.d2l_probe as probe_module
+    from model_training.d2l_probe import save_probe_cache
+
+    # Use tmp_path for probe cache
+    monkeypatch.setattr(probe_module, "PROBE_CACHE_DIR", tmp_path)  # type: ignore[arg-type]
+
+    # Populate a fake probe cache for qwen3.5-9b
+    probe_data = {
+        "attention_layer_indices": list(range(40)),
+        "feature_sizes": {
+            "q_proj": {"in": 3584, "out": 3584},
+            "v_proj": {"in": 3584, "out": 512},
+        },
+        "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+    }
+    save_probe_cache("qwen3.5-9b", probe_data)
+
+    from model_training.d2l_config import build_hypernet_config
+
+    hc = build_hypernet_config("qwen3.5-9b")
+    assert list(hc.layer_indices) == list(range(40))
+    assert hc.base_hidden_size == 3584
+
+
+def test_build_hypernet_config_unknown_model_raises() -> None:
+    """build_hypernet_config raises KeyError for unregistered model."""
+    import pytest
+    from model_training.d2l_config import build_hypernet_config
+
+    with pytest.raises(KeyError, match="nonexistent-model"):
+        build_hypernet_config("nonexistent-model")
+
+
+def test_build_hypernet_config_missing_probe_raises(
+    tmp_path: object, monkeypatch: object,
+) -> None:
+    """build_hypernet_config raises RuntimeError when no probe cache exists."""
+    import model_training.d2l_probe as probe_module
+    import pytest
+
+    monkeypatch.setattr(probe_module, "PROBE_CACHE_DIR", tmp_path)  # type: ignore[arg-type]
+
+    from model_training.d2l_config import build_hypernet_config
+
+    with pytest.raises(RuntimeError, match="probe cache"):
+        build_hypernet_config("qwen3.5-9b")
