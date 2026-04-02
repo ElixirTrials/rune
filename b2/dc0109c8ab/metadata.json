@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "b2dc0109c8ab",
+  "strategy": "manual-commit",
+  "branch": "fix/github-client-503-retry",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/model-training/src/model_training/github_client.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b2/dc0109c8ab/0/metadata.json",
+      "transcript": "/b2/dc0109c8ab/0/full.jsonl",
+      "content_hash": "/b2/dc0109c8ab/0/content_hash.txt",
+      "prompt": "/b2/dc0109c8ab/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 19794,
+    "cache_read_tokens": 213523,
+    "output_tokens": 1395,
+    "api_call_count": 8
+  }
+}
