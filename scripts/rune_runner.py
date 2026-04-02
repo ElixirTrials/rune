@@ -40,7 +40,7 @@ import re
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bootstrap import setup_path
@@ -1287,7 +1287,7 @@ async def run_phased_pipeline(
                     tests_passed=subtask_result.get("passed", False),
                     dependencies=next(
                         (
-                            st.get("depends_on", [])
+                            cast(list[str], st.get("depends_on", []))
                             for st in layer
                             if st["name"] == name
                         ),

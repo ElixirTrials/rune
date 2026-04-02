@@ -75,7 +75,7 @@ def setup() -> None:
     print(f"Inference dtype: {dtype}")
 
     _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=dtype)
-    _model.to(DEVICE)
+    _model.to(DEVICE)  # type: ignore[arg-type]
     _model.eval()
     print("Model loaded.\n")
 
@@ -109,13 +109,15 @@ def generate_text(
     temperature: float = 0.7,
 ) -> str:
     """Generate text, optionally with an adapter."""
+    assert _model is not None, "call setup() first"
+    assert _tokenizer is not None, "call setup() first"
     model = _model
 
     if adapter_path:
-        model = PeftModel.from_pretrained(
+        model = PeftModel.from_pretrained(  # type: ignore[assignment]
             _model, adapter_path, adapter_name=adapter_name
         )
-        model.to(DEVICE)
+        model.to(DEVICE)  # type: ignore[arg-type]
         model.eval()
 
     content = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt

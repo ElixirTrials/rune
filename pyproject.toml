@@ -204,6 +204,16 @@ module = [
     "ctx_to_lora.*",
     "flash_attn",
     "flash_attn.*",
+    "optuna",
+    "optuna.*",
+    "inference",
+    "inference.factory",
+    "inference.transformers_provider",
+    "evaluation",
+    "evaluation.metrics",
+    "scoring",
+    "task_pool",
+    "template_library",
 ]
 ignore_missing_imports = true
 
