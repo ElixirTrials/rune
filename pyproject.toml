@@ -111,7 +111,8 @@ pydocstyle.convention = "google"
 "**/scripts/**" = ["D", "C901", "E501", "E402"]
 
 [tool.mypy]
-exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks)/"
+exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks|scripts/eval|services/lora-server)/"
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "fastapi"
