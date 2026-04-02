@@ -67,6 +67,8 @@ class D2LTrainConfig(BaseModel):
     `.model_dump()` for MLflow experiment logging.
 
     Attributes:
+        model_config_name: Registry lookup key (e.g. "qwen3.5-9b"). Used to
+            resolve base_model_name from the model registry when not set.
         base_model_name: HuggingFace model name for the student/teacher base.
         sakana_checkpoint_path: Path to the Sakana hypernet checkpoint.
         num_steps: Total training steps.
@@ -86,7 +88,8 @@ class D2LTrainConfig(BaseModel):
         max_length: Maximum tokenizer sequence length.
     """
 
-    base_model_name: str = Field(default="Qwen/Qwen3-Coder-Next")
+    model_config_name: str = Field(default="qwen3.5-9b")
+    base_model_name: str = Field(default="")
     sakana_checkpoint_path: str
     num_steps: int = Field(default=100)
     lr: float = Field(default=2e-4)
@@ -103,6 +106,14 @@ class D2LTrainConfig(BaseModel):
     warmup_steps: int = Field(default=10)
     lora_r: int = Field(default=8)
     max_length: int = Field(default=512)
+
+    def model_post_init(self, __context: Any) -> None:
+        """Resolve base_model_name from registry when not explicitly set."""
+        if not self.base_model_name:
+            from model_training.model_configs import ModelRegistry
+
+            mc = ModelRegistry.default().get(self.model_config_name)
+            object.__setattr__(self, "base_model_name", mc.model_id)
 
     @field_validator("lr")
     @classmethod
@@ -377,10 +388,9 @@ def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
     import torch  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
-    from model_training.d2l_config import build_qwen3_hypernet_config  # noqa: PLC0415
+    from model_training.d2l_config import build_hypernet_config  # noqa: PLC0415
     from model_training.d2l_data import generate_needle_dataset  # noqa: PLC0415
     from model_training.d2l_probe import (  # noqa: PLC0415
-        QWEN3_NEXT_CANONICAL_NAME,
         extract_activations_with_model,
     )
     from model_training.sakana_d2l import (  # noqa: PLC0415
@@ -389,7 +399,7 @@ def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
     )
 
     # Guard: dry-run also requires probe cache to produce correct LoRA dimensions.
-    _require_probe_cache(QWEN3_NEXT_CANONICAL_NAME)
+    _require_probe_cache(config.model_config_name)
 
     logger.info("Dry-run: loading tokenizer and base model...")
     tokenizer = AutoTokenizer.from_pretrained(config.base_model_name)
@@ -399,7 +409,8 @@ def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
     ).eval()
 
     logger.info("Dry-run: building hypernet config and transferring weights...")
-    hc = build_qwen3_hypernet_config(
+    hc = build_hypernet_config(
+        config.model_config_name,
         aggregator_config=get_aggregator_config(config.sakana_checkpoint_path),
         lora_r=config.lora_r,
     )
@@ -503,13 +514,12 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
     )
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
-    from model_training.d2l_config import build_qwen3_hypernet_config  # noqa: PLC0415
+    from model_training.d2l_config import build_hypernet_config  # noqa: PLC0415
     from model_training.d2l_data import (  # noqa: PLC0415
         generate_needle_dataset,
         load_jsonl,
         split_by_task_id,
     )
-    from model_training.d2l_probe import QWEN3_NEXT_CANONICAL_NAME  # noqa: PLC0415
     from model_training.sakana_d2l import (  # noqa: PLC0415
         get_aggregator_config,
         transfer_aggregator_weights,
@@ -527,7 +537,7 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
     # Guard: require probe cache when not in smoke_test mode.
     # smoke_test uses generate_needle_dataset and may not have a real probe cache.
     if not config.smoke_test:
-        _require_probe_cache(QWEN3_NEXT_CANONICAL_NAME)
+        _require_probe_cache(config.model_config_name)
 
     num_steps = config.num_steps
     warmup_steps = config.warmup_steps
@@ -547,7 +557,8 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
         "Building hypernet config from checkpoint: %s",
         config.sakana_checkpoint_path,
     )
-    hc = build_qwen3_hypernet_config(
+    hc = build_hypernet_config(
+        config.model_config_name,
         aggregator_config=get_aggregator_config(config.sakana_checkpoint_path),
         lora_r=config.lora_r,
     )
@@ -696,7 +707,8 @@ if __name__ == "__main__":
     import argparse  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description="D2L distillation training")
-    parser.add_argument("--base-model-name", default="Qwen/Qwen3-Coder-Next")
+    parser.add_argument("--model-config-name", default="qwen3.5-9b")
+    parser.add_argument("--base-model-name", default="")
     parser.add_argument("--sakana-checkpoint-path", required=True)
     parser.add_argument("--num-steps", type=int, default=100)
     parser.add_argument("--lr", type=float, default=2e-4)
@@ -716,6 +728,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     cfg = D2LTrainConfig(
+        model_config_name=args.model_config_name,
         base_model_name=args.base_model_name,
         sakana_checkpoint_path=args.sakana_checkpoint_path,
         num_steps=args.num_steps,

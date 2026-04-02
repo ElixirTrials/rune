@@ -36,12 +36,43 @@ class _FakeAttnLayer(nn.Module):
         self.o_proj = nn.Linear(hidden * 2, hidden)
 
 
+class _FakeGDNLayer(nn.Module):
+    """Mimics a Qwen3.5 GDN layer with GDN projection children."""
+
+    def __init__(self, hidden: int = 16) -> None:
+        super().__init__()
+        self.in_proj_qkv = nn.Linear(hidden, hidden * 3)
+        self.in_proj_z = nn.Linear(hidden, hidden)
+        self.in_proj_b = nn.Linear(hidden, hidden)
+        self.in_proj_a = nn.Linear(hidden, hidden)
+        self.out_proj = nn.Linear(hidden, hidden)
+
+
+class _FakeMLPLayer(nn.Module):
+    """Mimics a transformer MLP block with gate/up/down projections."""
+
+    def __init__(self, hidden: int = 16) -> None:
+        super().__init__()
+        self.gate_proj = nn.Linear(hidden, hidden * 4)
+        self.up_proj = nn.Linear(hidden, hidden * 4)
+        self.down_proj = nn.Linear(hidden * 4, hidden)
+
+
 class _FakeDeltaNetLayer(nn.Module):
     """Mimics a DeltaNet linear-attention layer — no q/k/v/o_proj."""
 
     def __init__(self, hidden: int = 16) -> None:
         super().__init__()
         self.fc = nn.Linear(hidden, hidden)
+
+
+class _FakeFullLayer(nn.Module):
+    """Layer with attention + MLP children (standard transformer block)."""
+
+    def __init__(self, hidden: int = 16) -> None:
+        super().__init__()
+        self.self_attn = _FakeAttnLayer(hidden)
+        self.mlp = _FakeMLPLayer(hidden)
 
 
 class _FakeModel(nn.Module):
@@ -57,6 +88,22 @@ class _FakeModel(nn.Module):
                 _FakeAttnLayer(hidden),
             ]
         )
+
+
+class _FakeModelWithGDN(nn.Module):
+    """Model with GDN layers for target module discovery testing."""
+
+    def __init__(self, hidden: int = 16) -> None:
+        super().__init__()
+        self.layers = nn.ModuleList([_FakeGDNLayer(hidden), _FakeGDNLayer(hidden)])
+
+
+class _FakeModelFull(nn.Module):
+    """Model with attention + MLP layers for full module discovery."""
+
+    def __init__(self, hidden: int = 16) -> None:
+        super().__init__()
+        self.layers = nn.ModuleList([_FakeFullLayer(hidden), _FakeFullLayer(hidden)])
 
 
 class _FakeModelMultiAttn(nn.Module):
@@ -314,3 +361,97 @@ def test_extract_activations_with_model_raises_without_cache(
             layer_indices=None,
             model_name="uncached-model-xyz",
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 9: discover_target_modules finds attention projections
+# ---------------------------------------------------------------------------
+
+
+def test_discover_target_modules_finds_attn() -> None:
+    """discover_target_modules finds q/k/v/o_proj in attention layers."""
+    from model_training.d2l_probe import discover_target_modules
+
+    model = _FakeModel()
+    modules = discover_target_modules(model)
+    assert "q_proj" in modules
+    assert "k_proj" in modules
+    assert "v_proj" in modules
+    assert "o_proj" in modules
+
+
+# ---------------------------------------------------------------------------
+# Test 10: discover_target_modules finds GDN projections
+# ---------------------------------------------------------------------------
+
+
+def test_discover_target_modules_finds_gdn() -> None:
+    """discover_target_modules finds GDN projections (in_proj_qkv, etc.)."""
+    from model_training.d2l_probe import discover_target_modules
+
+    model = _FakeModelWithGDN()
+    modules = discover_target_modules(model)
+    assert "in_proj_qkv" in modules
+    assert "in_proj_z" in modules
+    assert "in_proj_b" in modules
+    assert "in_proj_a" in modules
+    assert "out_proj" in modules
+
+
+# ---------------------------------------------------------------------------
+# Test 11: discover_target_modules finds MLP projections
+# ---------------------------------------------------------------------------
+
+
+def test_discover_target_modules_finds_mlp() -> None:
+    """discover_target_modules finds MLP projections (gate/up/down_proj)."""
+    from model_training.d2l_probe import discover_target_modules
+
+    model = _FakeModelFull()
+    modules = discover_target_modules(model)
+    assert "gate_proj" in modules
+    assert "up_proj" in modules
+    assert "down_proj" in modules
+
+
+# ---------------------------------------------------------------------------
+# Test 12: discover_target_modules returns sorted unique list
+# ---------------------------------------------------------------------------
+
+
+def test_discover_target_modules_sorted_unique() -> None:
+    """discover_target_modules returns sorted, deduplicated module names."""
+    from model_training.d2l_probe import discover_target_modules
+
+    model = _FakeModelFull()
+    modules = discover_target_modules(model)
+    assert modules == sorted(set(modules))
+
+
+# ---------------------------------------------------------------------------
+# Test 13: probe_model includes target_modules key
+# ---------------------------------------------------------------------------
+
+
+def test_probe_model_includes_target_modules() -> None:
+    """probe_model result includes target_modules from discover_target_modules."""
+    from model_training.d2l_probe import probe_model
+
+    model = _FakeModel()
+    result = probe_model(model)
+    assert "target_modules" in result
+    assert "q_proj" in result["target_modules"]
+
+
+# ---------------------------------------------------------------------------
+# Test 14: discover on model with no known projections returns empty
+# ---------------------------------------------------------------------------
+
+
+def test_discover_target_modules_empty_for_unknown() -> None:
+    """discover_target_modules returns [] for model with no known projections."""
+    from model_training.d2l_probe import discover_target_modules
+
+    model = _FakeDeltaNetLayer()
+    modules = discover_target_modules(model)
+    assert modules == []

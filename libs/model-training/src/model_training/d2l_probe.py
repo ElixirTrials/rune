@@ -24,15 +24,20 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 ATTN_PROJECTIONS = {"q_proj", "k_proj", "v_proj", "o_proj"}
+GDN_PROJECTIONS = {"in_proj_qkv", "in_proj_z", "in_proj_b", "in_proj_a", "out_proj"}
+MLP_PROJECTIONS = {"gate_proj", "up_proj", "down_proj"}
+ALL_KNOWN_PROJECTIONS = ATTN_PROJECTIONS | GDN_PROJECTIONS | MLP_PROJECTIONS
 PROBE_CACHE_DIR = Path.home() / ".cache" / "rune" / "probes"
 QWEN3_NEXT_CANONICAL_NAME = "qwen3-coder-next"
 
 __all__ = [
     "probe_model",
+    "discover_target_modules",
     "extract_activations_with_model",
     "load_probe_cache",
     "save_probe_cache",
     "QWEN3_NEXT_CANONICAL_NAME",
+    "ALL_KNOWN_PROJECTIONS",
 ]
 
 
@@ -51,8 +56,32 @@ def _model_name_to_cache_path(model_name: str) -> Path:
     return PROBE_CACHE_DIR / f"{h}.json"
 
 
+def discover_target_modules(model: Any) -> list[str]:
+    """Discover all LoRA-targetable projection modules in a model.
+
+    Single-pass iteration over model.named_modules() collecting the short
+    names of any Linear modules whose names match known projection patterns
+    (attention, GDN, or MLP). Returns a sorted, deduplicated list.
+
+    Args:
+        model: Any nn.Module (typically a transformer model).
+
+    Returns:
+        Sorted list of unique projection names found (e.g.
+        ["down_proj", "gate_proj", "k_proj", "o_proj", "q_proj", ...]).
+    """
+    import torch.nn as nn  # noqa: PLC0415
+
+    found: set[str] = set()
+    for name, module in model.named_modules():
+        short = name.split(".")[-1]
+        if short in ALL_KNOWN_PROJECTIONS and isinstance(module, nn.Linear):
+            found.add(short)
+    return sorted(found)
+
+
 def probe_model(model: Any) -> dict[str, Any]:
-    """Probe a model's architecture to discover standard attention layers.
+    """Probe a model's architecture to discover attention layers and modules.
 
     Iterates model.named_modules() to find layers that have all four attention
     projection children (q_proj, k_proj, v_proj, o_proj). DeltaNet and other
@@ -61,6 +90,9 @@ def probe_model(model: Any) -> dict[str, Any]:
     For each discovered attention layer, captures the in/out dimensions of
     q_proj, k_proj, v_proj, and o_proj weights.
 
+    Also discovers all LoRA-targetable projection modules (attention, GDN,
+    MLP) via discover_target_modules().
+
     Args:
         model: Any nn.Module (typically a transformer model).
 
@@ -68,6 +100,7 @@ def probe_model(model: Any) -> dict[str, Any]:
         Dict with keys:
             - attention_layer_indices: sorted list of int layer indices
             - feature_sizes: dict mapping projection name to {"in": int, "out": int}
+            - target_modules: sorted list of discovered projection names
     """
     attention_layer_indices: list[int] = []
     feature_sizes: dict[str, dict[str, int]] = {}
@@ -102,6 +135,7 @@ def probe_model(model: Any) -> dict[str, Any]:
     return {
         "attention_layer_indices": sorted(attention_layer_indices),
         "feature_sizes": feature_sizes,
+        "target_modules": discover_target_modules(model),
     }
 
 
