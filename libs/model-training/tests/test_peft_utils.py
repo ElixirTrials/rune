@@ -1,4 +1,4 @@
-"""Green-phase tests for model_training.peft_utils module."""
+"""Tests for model_training.peft_utils module."""
 
 import sys
 from types import ModuleType
@@ -12,7 +12,23 @@ from model_training.peft_utils import (
 )
 
 
-@pytest.mark.xfail(reason="GPU libs not installed in CI", strict=False)
+def _gpu_available() -> bool:
+    """Check if real peft is importable."""
+    try:
+        import peft  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+requires_gpu = pytest.mark.skipif(
+    not _gpu_available(),
+    reason="peft not available",
+)
+
+
+@requires_gpu
 def test_build_qlora_config_returns_lora_config() -> None:
     """build_qlora_config returns a LoraConfig with the expected attributes."""
     result = build_qlora_config(rank=64, alpha=128, target_modules=["q_proj", "v_proj"])

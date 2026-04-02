@@ -111,7 +111,7 @@ pydocstyle.convention = "google"
 "**/scripts/**" = ["D", "C901", "E501", "E402"]
 
 [tool.mypy]
-exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks)/"
+exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks|scripts/eval|services/lora-server)/"
 
 [[tool.mypy.overrides]]
 module = "fastapi"
@@ -228,6 +228,7 @@ norecursedirs = ["site", "docs", ".venv", "venv", ".uv_cache", "node_modules", "
 markers = [
     "e2e: end-to-end API workflow tests",
     "integration: marks tests as integration tests",
+    "requires_gpu: test requires GPU libraries (torch, peft, trl)",
 ]
 filterwarnings = [
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
@@ -237,6 +238,7 @@ filterwarnings = [
     "ignore::pytest.PytestUnraisableExceptionWarning",
     "ignore:No data was collected:coverage.exceptions.CoverageWarning",
     "ignore:Use 'content=<...>' to upload raw bytes:DeprecationWarning:httpx",
+    "ignore:`torch.jit.script_method` is deprecated:DeprecationWarning",
 ]
 pythonpath = [
     "services/api-service/src",

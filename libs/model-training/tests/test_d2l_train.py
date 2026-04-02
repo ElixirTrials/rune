@@ -216,10 +216,6 @@ class TestTrainableHeadNonzeroGrad:
         assert model.head.bias.grad is not None, "Expected non-None grad for head.bias"
 
 
-@pytest.mark.xfail(
-    reason="torch triton library re-registration under pytest-xdist",
-    strict=False,
-)
 class TestOptimizerScopedToTrainable:
     """AdamW optimizer is scoped exclusively to trainable (head) params."""
 
@@ -244,10 +240,6 @@ class TestOptimizerScopedToTrainable:
         )
 
 
-@pytest.mark.xfail(
-    reason="torch triton library re-registration under pytest-xdist",
-    strict=False,
-)
 class TestCheckpointSaveLoadRoundtrip:
     """_save_checkpoint writes a file that torch.load can read back."""
 
