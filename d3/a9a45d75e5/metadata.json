@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "d3a9a45d75e5",
+  "strategy": "manual-commit",
+  "branch": "feat/model-registry-deltacoder-warmstart",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/model-training/src/model_training/d2l_config.py",
+    "libs/model-training/src/model_training/d2l_probe.py",
+    "libs/model-training/src/model_training/d2l_train.py",
+    "libs/model-training/src/model_training/trainer.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d3/a9a45d75e5/0/metadata.json",
+      "transcript": "/d3/a9a45d75e5/0/full.jsonl",
+      "content_hash": "/d3/a9a45d75e5/0/content_hash.txt",
+      "prompt": "/d3/a9a45d75e5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1734,
+    "cache_creation_tokens": 210328,
+    "cache_read_tokens": 5435814,
+    "output_tokens": 13111,
+    "api_call_count": 32
+  }
+}
