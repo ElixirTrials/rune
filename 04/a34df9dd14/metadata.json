@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "04a34df9dd14",
+  "strategy": "manual-commit",
+  "branch": "feat/coding-benchmark-evaluation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".gitignore",
+    "docs/superpowers/specs/2026-04-02-coding-benchmark-evaluation-design.md",
+    "pyproject.toml",
+    "scripts/eval/compare_results.py",
+    "scripts/eval/config.py",
+    "scripts/eval/generate_completions.py",
+    "scripts/eval/run_benchmarks.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/04/a34df9dd14/0/metadata.json",
+      "transcript": "/04/a34df9dd14/0/full.jsonl",
+      "content_hash": "/04/a34df9dd14/0/content_hash.txt",
+      "prompt": "/04/a34df9dd14/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 121,
+    "cache_creation_tokens": 116996,
+    "cache_read_tokens": 6971922,
+    "output_tokens": 29481,
+    "api_call_count": 107
+  }
+}

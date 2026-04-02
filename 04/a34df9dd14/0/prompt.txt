@@ -1,0 +1,577 @@
+/plan Considering our plan to finetune our hypernetwork for coding - make a plan for evaluating our model using common coding benchmarks. The idea is to be able to present how well we do compared to commercially available LLMs. Do all the necessary research.
+
+---
+
+<task-notification>
+<task-id>a68274d37eac0ecc5</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/68b67e29-3577-47fd-9220-01acacba2363/tasks/a68274d37eac0ecc5.output</output-file>
+<status>completed</status>
+<summary>Agent "Research coding benchmarks" completed</summary>
+<result>Perfect! I now have comprehensive information. Let me compile a detailed research report.
+
+## Comprehensive Research Report: Code Generation LLM Benchmarks
+
+Based on my extensive research of current web resources and Hugging Face, here's a detailed breakdown of the major coding benchmarks used to evaluate code generation LLMs:
+
+---
+
+## 1. **HumanEval** - OpenAI's Foundational Benchmark
+
+**Overview:** The gold-standard benchmark for functional code generation, released by OpenAI in 2021 alongside the Codex model.
+
+**Dataset Specs:**
+- **164 hand-crafted programming problems** (function-level)
+- **Python-focused** (original version)
+- **Difficulty:** Entry to intermediate level programming
+- **Test cases per problem:** ~7.7 on average
+
+**Metric:**
+- **Pass@k:** The probability that at least one of the top k-generated samples passes all unit tests
+  - Pass@1: First solution passes
+  - Pass@10: At least one of 10 attempts passes
+  - Pass@100: At least one of 100 attempts passes
+- Evaluates **functional correctness** (more practical than syntactic matching)
+
+**How to Run:**
+- **Official repository:** [openai/human-eval](https://github.com/openai/human-eval)
+- Installation: `pip install -e human-eval`
+- Requires Python 3.7+
+- **Critical security note:** Execution is commented out by default since it runs untrusted model code. Must be explicitly enabled with proper sandboxing.
+
+**Code Execution:** YES - requires actual code execution and test harness
+
+**Typical Scores (pass@1):**
+- Claude 3.5 Sonnet: 92%
+- GPT-4o: 91%
+- Claude 3 Opus: 84.9%
+- Llama 3.1 405B: 89%
+- Code Llama 70B: 67.8%
+
+**Access:** [github.com/openai/human-eval](https://github.com/openai/human-eval), [Hugging Face versions available](https://huggingface.co/datasets/openai_humaneval)
+
+**LoRA Evaluation:** Standard HumanEval can evaluate LoRA adapters through the [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) framework, which supports adapters via HuggingFace's PEFT library.
+
+---
+
+## 2. **HumanEval+ / EvalPlus** - Enhanced Rigorous Evaluation
+
+**Overview:** Addresses weaknesses in the original HumanEval by adding significantly more test cases to catch incorrect solutions.
+
+**Key Improvements:**
+- **80x more test cases** added to HumanEval → HumanEval+
+- **35x more test cases** for MBPP+ variant
+- Found and fixed **18 defects (11% of problems)** in original HumanEval ground truth (edge cases, bad logic, performance issues)
+
+**Performance Impact:**
+- Reduces pass@k scores by **19.3-28.9%** compared to original HumanEval
+- Catches "false positives" from LLM solutions that appeared correct on minimal tests
+
+**Additional Variants:**
+- **HumanEval+-Mini:** 47x reduction of test cases while maintaining similar testing effectiveness (faster evaluation)
+- **MBPP+:** Same test enhancement for MBPP benchmark
+
+**Metric:** Same pass@k as HumanEval, but much more reliable
+
+**Code Execution:** YES - requires code execution
+
+**Access:** [github.com/evalplus/evalplus](https://github.com/evalplus/evalplus), [PyPI: evalplus](https://pypi.org/project/evalplus/), [EvalPlus Leaderboard](https://evalplus.github.io/leaderboard.html)
+
+**Typical Scores (pass@1 on HumanEval+):**
+- Significantly lower than standard HumanEval due to stricter testing
+
+---
+
+## 3. **MBPP** (Mostly Basic Python Problems) - Google's Benchmark
+
+**Overview:** Crowdsourced Python programming problems designed for entry-level programmers, focusing on requirement comprehension and function design.
+
+**Dataset Specs:**
+- **~974 programming tasks**
+- **Python-only**
+- **Difficulty:** Basic/Entry-level (simpler than HumanEval)
+- **Test cases per problem:** 3 automated test cases each
+- Format: Natural language problem description + test cases (not function signatures)
+
+**Metric:**
+- Pass@k (same as HumanEval)
+- Pass@1 is standard metric
+
+**Code Execution:** YES
+
+**How to Run:** Available through HuggingFace Datasets library and lm-evaluation-harness
+
+**Access:** 
+- [github.com/google-research/mbpp](https://github.com/google-research/mbpp)
+- [Hugging Face Dataset: google-research-datasets/mbpp](https://huggingface.co/datasets/google-research-datasets/mbpp)
+
+**Typical Scores (Pass@1):**
+- GPT-4o: ~85%
+- Claude 3.5: ~88%
+- Llama 3.1 70B: ~75%
+- Code Llama 70B: ~60%
+
+---
+
+## 4. **BigCodeBench** - Newer Comprehensive Benchmark (ICLR'25)
+
+**Overview:** Designed to overcome HumanEval/MBPP saturation with realistic, complex, multi-tool tasks reflecting real-world programming.
+
+**Dataset Specs:**
+- **1,140 rich-context programming tasks**
+- **Coverage:** 723 function calls from 139 popular libraries
+- **Domains:** 7 different domains (data analysis, web development, etc.)
+- **Languages:** Primarily Python, can extend to others
+- **Difficulty:** Significantly harder than HumanEval
+- **Test cases:** ~5.6 per problem
+
+**Two Evaluation Variants:**
+1. **BigCodeBench-Complete:** Code completion from structured docstrings
+2. **BigCodeBench-Instruct:** Code generation from natural language instructions
+
+**Metric:** Pass@1 (functional correctness)
+
+**Code Execution:** YES - requires code execution and library calls
+
+**Key Finding:** 
+- GPT-4o solves only **60% of BigCodeBench-Complete** and **<50% of BigCodeBench-Instruct**
+- Demonstrates significant challenge in real-world code generation
+
+**Access:**
+- [github.com/bigcode-project/bigcodebench](https://github.com/bigcode-project/bigcodebench)
+- [Hugging Face Dataset: bigcode/bigcodebench](https://huggingface.co/datasets/bigcode/bigcodebench)
+- [BigCodeBench Leaderboard](https://bigcode-bench.github.io/)
+
+**Typical Scores (Pass@1):**
+- GPT-4o: ~60% (Complete), ~48% (Instruct)
+- Claude models: ~55-58% (Complete)
+- Code Llama 70B: ~45% (Complete)
+
+---
+
+## 5. **SWE-bench** - Real-World GitHub Issues
+
+**Overview:** Evaluates LLMs on resolving actual GitHub issues from real repositories - the most challenging benchmark.
+
+**Dataset Composition:**
+- **Full SWE-bench:** 2,294 task instances from 12 popular Python repositories
+- **Each instance:** GitHub issue + required code modifications to pass "Fail-to-Pass" tests
+- Each problem may require coordinating changes across multiple files/functions
+
+**Variants:**
+- **SWE-bench (Original):** Full 2,294 instances
+- **SWE-bench Lite:** 300 carefully curated instances (easier subset)
+- **SWE-bench Verified:** 500 instances manually verified by engineers as solvable (higher quality)
+
+**Key Differences:**
+- Lite: Subsampled for easier evaluation
+- Verified: Curated to remove infeasible samples; higher validation precision (46.9% median vs 31.5% for Lite)
+
+**Metric:** 
+- **Pass rate** (percentage of "Fail-to-Pass" tests that pass after model's fix)
+- Requires full diff/patch generation
+
+**Code Execution:** YES - requires Docker-based evaluation harness for consistency
+
+**Typical Scores (Resolve Rate):**
+- Claude 3.5: ~77.2% (SWE-bench Verified)
+- GPT-4.1: ~54.6% (SWE-bench Verified)
+- Claude 2: ~1.96% (original full dataset)
+- Best model (current): Claude dominates with 70%+
+
+**Access:** [github.com/SWE-bench/SWE-bench](https://github.com/SWE-bench/SWE-bench), [swebench.com](https://www.swebench.com/)
+
+---
+
+## 6. **LiveCodeBench** - Contamination-Free Benchmark
+
+**Overview:** Continuously updated benchmark that avoids data contamination by collecting problems from recent programming contests with release date annotations.
+
+**Dataset Specs:**
+- **600+ problems** (continuously updated)
+- **Time period:** Problems released May 2023 - Aug 2024
+- **Sources:** LeetCode, AtCoder, CodeForces (three major platforms)
+- **Languages:** Primarily Python, multi-language variants available
+- **Difficulty:** Mixed (easy to hard)
+
+**Key Innovation:** Contamination-free design
+- Problems annotated with release dates
+- Models evaluated only on problems released after their training cutoff
+- Robust detection of training data contamination across GPT-4o, Claude, DeepSeek, Codestral
+
+**Evaluation Scenarios (4 different modes):**
+1. Code generation
+2. Self-repair (fixing buggy code)
+3. Code execution (predicting output)
+4. Test output prediction
+
+**Metric:** Pass@1 and scenario-specific metrics
+
+**Code Execution:** YES
+
+**Access:** [livecodebench.github.io](https://livecodebench.github.io/), [GitHub: LiveCodeBench/LiveCodeBench](https://github.com/LiveCodeBench/LiveCodeBench), [LiveCodeBench Leaderboard](https://livecodebench.github.io/leaderboard.html)
+
+**Key Advantage:** Most reliable assessment of true model generalization on unseen problems
+
+---
+
+## 7. **MultiPL-E** - Multi-Language Code Generation
+
+**Overview:** Translates HumanEval and MBPP to 18 additional programming languages using a systematic translation approach.
+
+**Dataset Specs:**
+- **22 total programming languages supported**
+  - Core: Python
+  - Added: C++, TypeScript, Shell, C#, Go, Java, Lua, JavaScript, PHP, Perl, Racket, R, Rust, Scala, Swift, Ruby, D, Julia
+- **Two variants:** MultiPL-E HumanEval (~164 problems × 22 languages) and MultiPL-E MBPP
+- **Difficulty:** Same as source benchmarks (HumanEval/MBPP)
+
+**Key Features:**
+- Enables cross-lingual evaluation of code generation
+- Uses "little compilers" to translate problems while maintaining correctness
+- Language frequency and features can be studied
+
+**Metric:** Pass@k (per-language evaluation)
+
+**Code Execution:** YES
+
+**Key Findings:**
+- Models like Codex match or exceed Python performance on several other languages
+- Language frequency and type checking significantly impact performance
+- Wide variation in model performance across languages
+
+**Access:**
+- [github.com/nuprl/MultiPL-E](https://github.com/nuprl/MultiPL-E)
+- [Hugging Face Dataset: nuprl/MultiPL-E](https://huggingface.co/datasets/nuprl/MultiPL-E)
+- [MultiPL-E HumanEval Leaderboard](https://llm-stats.com/benchmarks/multipl-e-humaneval)
+
+---
+
+## 8. **DS-1000** - Data Science Code Generation
+
+**Overview:** Specialized benchmark for data science tasks with real-world problems from StackOverflow.
+
+**Dataset Specs:**
+- **1,000 data science problems**
+- **Libraries covered:** NumPy, Pandas, TensorFlow, PyTorch, SciPy, Scikit-learn, Matplotlib
+- **Source:** Real StackOverflow problems (ensuring realism)
+- **Difficulty:** Practical/Real-world
+- **Evaluation:** Multi-criteria (functional correctness + API constraints)
+
+**Key Features:**
+1. **Realistic:** Sourced from actual developer Q&A
+2. **Reliable:** High precision evaluation (98.2% of accepted solutions are correct)
+3. **Contamination defense:** Problems modified from source to prevent memorization
+
+**Metric:** 
+- Accuracy % (pass/fail)
+- Multi-criteria: Functional correctness + API usage/keyword constraints
+
+**Code Execution:** YES - requires actual code execution
+
+**Typical Scores:**
+- Codex-002: 43.3% accuracy
+- GPT-4: ~45-48%
+- Claude 3 Opus: ~42-45%
+
+**Access:**
+- [github.com/xlang-ai/DS-1000](https://github.com/xlang-ai/DS-1000)
+- [Hugging Face Dataset](https://huggingface.co/datasets/xlang-ai/DS-1000)
+
+---
+
+## **Code Completion vs. Code Generation Benchmarks**
+
+### Code Generation Benchmarks (Full Function/Module):
+- **HumanEval:** Generate function from specification
+- **MBPP:** Generate function from natural language description
+- **BigCodeBench:** Generate complex functions with library calls
+- **DS-1000:** Generate data science operations
+- Focus: Can the model synthesize correct code from requirements?
+
+### Code Completion Benchmarks (Fill-in-the-Middle):
+- **HumanEval-Infilling:** Complete single lines in context
+- **CrossCodeEval:** Complete code with cross-file dependencies
+- **ExecRepoBench:** Repository-level completions with unit tests
+- **RepoMasterEval:** Real repository completions
+
+Completion paradigm variations:
+- **Prefix-Suffix-Middle (PSM):** Given code before and after, fill the middle
+- **Suffix-Prefix-Middle (SPM):** Alternative ordering variant
+
+**Metrics for Completion:**
+- Pass@1, Exact Match (EM), Edit Similarity (ES), CodeBLEU, Prefix Match (PM)
+
+---
+
+## **Leaderboards**
+
+1. **BigCode Models Leaderboard:** [huggingface.co/spaces/bigcode/bigcode-models-leaderboard](https://huggingface.co/spaces/bigcode/bigcode-models-leaderboard)
+   - Interactive leaderboard of open-source code models
+   - Shows benchmark scores and throughput comparisons
+   - Featured models: WizardCoder-15B, OctoCoder, StarCoder, CodeLlama variants
+
+2. **BigCodeBench Leaderboard:** [huggingface.co/spaces/bigcode/bigcodebench-leaderboard](https://huggingface.co/spaces/bigcode/bigcodebench-leaderboard)
+   - Performance on 1,140 complex tasks
+
+3. **EvalPlus Leaderboard:** [evalplus.github.io/leaderboard.html](https://evalplus.github.io/leaderboard.html)
+   - Comprehensive model rankings on HumanEval+ and MBPP+
+
+4. **LiveCodeBench Leaderboard:** [livecodebench.github.io/leaderboard.html](https://livecodebench.github.io/leaderboard.html)
+   - Contamination-free benchmark results
+
+---
+
+## **Small Models (1-3B Parameters) Performance**
+
+**Recent Research Findings:**
+- Several 1-3B models achieve competitive performance on HumanEval/MBPP
+- Examples:
+  - **Qwen2.5-Coder 3.0B:** Pass@1 = 59% (top 5 performers)
+  - **OpenCodeInterpreter 1.3B:** Pass@1 = 53% (top 8)
+  - **Qwen2.5-Coder 1.5B:** Pass@1 = 54%
+  
+**Performance-Efficiency Tradeoff:**
+- Larger models offer 10% improvement for 4x VRAM usage
+- Smaller models are practical for memory-constrained deployments
+- Some 1-3B models outperform much larger models on specific tasks
+
+---
+
+## **LoRA Adapter Evaluation**
+
+**Key Frameworks:**
+- **lm-evaluation-harness:** Supports LoRA/adapter evaluation through HuggingFace PEFT library
+- **NVIDIA NIM Benchmarking:** Includes LoRA-specific evaluation tools
+- Standard benchmarks (HumanEval, MBPP, etc.) can evaluate LoRA adapters
+
+**Important Consideration:**
+- Most code generation benchmarks expect direct text completion/generation
+- LoRA adapters typically require merging with base model or integration with inference framework
+- Pass@k metrics work identically for LoRA-enhanced models vs. full models
+- Evaluation framework must support loading/merging PEFT adapters
+
+**Typical LoRA Training Hyperparameters (from benchmarks):**
+- LoRA rank: 8, 16, 32, or 64
+- Time savings: 62-78% vs. full fine-tuning on 7B-13B models
+- When aligning across 8+ diverse tasks, LoRA adapters may diverge in optimization direction
+
+---
+
+## **Quick Benchmark Comparison Table**
+
+| Benchmark | # Problems | Language(s) | Difficulty | Metric | Execution | Typical Top Score |
+|-----------|-----------|-----------|-----------|--------|-----------|------------------|
+| HumanEval | 164 | Python | Intermediate | Pass@1 | YES | 92% (Claude) |
+| HumanEval+ | 164 | Python | Intermediate | Pass@1 | YES | ~65-75% |
+| MBPP | 974 | Python | Basic | Pass@1 | YES | 88% (Claude) |
+| MBPP+ | 974 | Python | Basic | Pass@1 | YES | ~60-70% |
+| BigCodeBench | 1,140 | Python | Hard | Pass@1 | YES | 60% (GPT-4o) |
+| SWE-bench Verified | 500 | Python | Very Hard | Resolve % | YES | 77.2% (Claude) |
+| SWE-bench Lite | 300 | Python | Hard | Resolve % | YES | ~65% |
+| LiveCodeBench | 600+ | Multi | Mixed | Pass@1 | YES | ~70-80% |
+| MultiPL-E | 164/974 | 22 langs | Mixed | Pass@1 | YES | Varies by language |
+| DS-1000 | 1,000 | Python | Real-world | Accuracy % | YES | 48% (GPT-4o) |
+
+---
+
+## **Key Takeaways**
+
+1. **HumanEval** remains the de facto standard for initial benchmarking (saturated by state-of-the-art)
+2. **EvalPlus (HumanEval+)** provides more rigorous evaluation and catches overfitting to limited tests
+3. **BigCodeBench** is best for evaluating realistic, complex multi-tool tasks
+4. **SWE-bench** is the gold standard for real-world software engineering capability
+5. **LiveCodeBench** offers the most reliable contamination-free evaluation
+6. **DS-1000** is specialized for data science use cases
+7. Small models (1-3B) can be competitive with careful architecture and training
+8. Most benchmarks require actual code execution in sandboxed environments
+9. LoRA adapters can be evaluated on all these benchmarks through PEFT integration
+10. Code completion vs. code generation are distinct capabilities - check which matches your use case
+
+---
+
+**Sources:**
+- [OpenAI HumanEval](https://github.com/openai/human-eval)
+- [EvalPlus GitHub](https://github.com/evalplus/evalplus)
+- [BigCodeBench GitHub](https://github.com/bigcode-project/bigcodebench)
+- [SWE-bench Official](https://www.swebench.com/)
+- [LiveCodeBench GitHub](https://github.com/LiveCodeBench/LiveCodeBench)
+- [MultiPL-E GitHub](https://github.com/nuprl/MultiPL-E)
+- [DS-1000 GitHub](https://github.com/xlang-ai/DS-1000)
+- [BigCode Models Leaderboard](https://huggingface.co/spaces/bigcode/bigcode-models-leaderboard)
+- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)</result>
+<usage><total_tokens>68335</total_tokens><tool_uses>37</tool_uses><duration_ms>116933</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a476fe4f4ddf197ff</task-id>
+<tool-use-id>toolu_01SeuKEuUPZKMZxj8tFWMMct</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/68b67e29-3577-47fd-9220-01acacba2363/tasks/a476fe4f4ddf197ff.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore Rune evaluation infra" completed</summary>
+<result>Perfect! Now let me provide you with a comprehensive written summary:
+
+## Comprehensive Rune Codebase Exploration Report
+
+I've thoroughly explored the Rune codebase at `/Users/noahdolevelixir/Code/rune`. Here's what you need to know:
+
+### 1. EVALUATION INFRASTRUCTURE (`libs/evaluation/`)
+
+**What exists:**
+- **Metrics module** (`metrics.py`) with working implementations:
+  - `calculate_pass_at_k()` - unbiased Pass@k estimator from HumanEval paper
+  - `run_kill_switch_gate()` - compares baseline vs adapter with 5% relative improvement threshold
+  - `run_humaneval_subset()` - executes 20 bundled HumanEval tasks via subprocess
+  - `score_adapter_quality()` - combines pass_rate + generalization bonus (up to 10%)
+  - `evaluate_fitness()` - evolutionary fitness = 0.7×pass_rate + 0.3×diversity_score
+  
+- **OOD benchmark module** (`ood_benchmark.py`):
+  - `run_ood_benchmark()` - evaluates on 10 simple Python tasks
+  - `compute_generalization_delta()` - tracks in_distribution vs OOD performance gap
+
+- **Bundled evaluation datasets**:
+  - `humaneval_subset.json` - 20 HumanEval tasks (prompts, tests, canonical solutions)
+  - `ood_tasks.json` - 10 simpler OOD tasks (reverse_string, palindrome, flatten, etc.)
+
+**Evaluation execution pattern:** Task prompt + completion → written to temp file → executed via subprocess with 30s timeout → exit code 0 = pass
+
+**What's NOT implemented:**
+- `compare_adapters()` and `test_generalization()` are stubs returning placeholders
+- Inference wiring: `run_humaneval_subset()` expects a `completions` dict (task_id → code) but generation isn't integrated
+
+### 2. HYPERNETWORK ARCHITECTURE (`libs/model-training/`)
+
+**DocToLoraHypernetwork** (`hypernetwork.py`):
+- **Input:** Token IDs from trajectory (batch_size × seq_len)
+- **Output:** PEFT-compatible LoRA adapter state_dict
+
+**Architecture pipeline:**
+1. Lightweight token embedding (NOT the 7B base model's embedding - 32000 vocab size)
+2. Learnable latent array (32 latents, 256-dim each)
+3. Cross-attention: latents attend over token embeddings
+4. Self-attention stack: 4 layers over latents
+5. Linear head: projects flattened latents → all LoRA weight parameters
+
+**LoRA generation specifics:**
+- Target modules: `q_proj`, `v_proj` (configurable)
+- Rank: 8 (default, configurable)
+- Supports GQA models where v_proj has different dimensions than q_proj
+- Output keys follow pattern: `base_model.model.model.layers.{i}.self_attn.{module}.lora_{A|B}.weight`
+  - `lora_A`: (rank, in_features)
+  - `lora_B`: (out_features, rank)
+
+**Key functions:**
+- `trajectory_to_tokens()` - hash-based tokenization (character trigrams)
+- `generate_adapter()` - end-to-end trajectory → adapter pipeline
+- `save_hypernetwork_adapter()` - saves as PEFT format (safetensors + config.json)
+
+**Sakana D2L Integration** (`sakana_d2l.py`):
+- Wraps SakanaAI's pretrained Doc-to-LoRA checkpoint
+- Available variants: gemma_demo (default), gemma_2b_d2l, mistral_7b_d2l, qwen_4b_d2l
+- Downloads from HF repo: `SakanaAI/doc-to-lora`
+- Patches flash_attention for CPU/MPS compatibility
+
+**Model training stack** includes:
+- `d2l_train.py` - training loop
+- `d2l_data.py` - dataset loading
+- `trainer.py` - QLoRA fine-tuning wrapper
+- `merging.py` - TIES-Merge and DARE-Merge strategies
+
+### 3. INFERENCE PIPELINE (`libs/inference/`)
+
+**Provider Interface** (`provider.py`):
+```python
+async generate(prompt, model, adapter_id=None, max_tokens=4096, ...)
+async load_adapter(adapter_id, adapter_path)
+async unload_adapter(adapter_id)
+async list_adapters() → list[str]
+```
+
+**GenerationResult** dataclass contains:
+- text, model, adapter_id, token_count, finish_reason
+
+**Four concrete providers:**
+
+| Provider | Backend | LoRA Support |
+|----------|---------|-------------|
+| **VLLMProvider** | vLLM HTTP API | Full (hot-loading via proprietary endpoints) |
+| **TransformersProvider** | HF transformers + PEFT | Full (native PEFT, safetensors format) |
+| **OllamaProvider** | Ollama REST API | None (raises UnsupportedOperationError) |
+| **LlamaCppProvider** | llama-cpp-python | Model-level only |
+
+**Provider factory** (`factory.py`):
+- Default: INFERENCE_PROVIDER=vllm, VLLM_BASE_URL=http://localhost:8100/v1
+- Instance caching by (provider_type, base_url)
+
+### 4. DATA CONTRACTS (`libs/shared/`)
+
+**Rune Models** (`rune_models.py`):
+- **TaskStatus enum**: PENDING, QUEUED, RUNNING, COMPLETED, FAILED, SUCCESS, EXHAUSTED
+- **PipelinePhase enum**: DECOMPOSE, PLAN, CODE, INTEGRATE
+- **AdapterRef**: adapter_id, task_type, fitness_score
+- **CodingSession**: session_id, task_description, adapter_refs[], attempt_count, outcome
+
+**Pipeline Configuration** (`pipeline_config.py`):
+- **AdapterConfig**: scaling=0.075, use_bias=True, max_length=2048
+- **GenerationConfig**: temperature=0.3, max_tokens=1024, repetition_penalty=1.1, top_p=0.9
+- **PromptConfig**: style="must_include"
+- **TrajectoryConfig**: style="full_context"
+- **CalibrationConfig**: enabled=True, n_trials=5, scaling_range=(0.5, 1.5)
+
+### 5. ADAPTER REGISTRY (`libs/adapter-registry/`)
+
+**AdapterRecord** (SQLModel table):
+- Stores metadata: id, version, task_type, base_model_id, rank, created_at, file_path, file_hash
+- Evaluation fields: pass_rate, fitness_score
+- Lineage tracking: parent_ids, generation, source (distillation/evolution/manual)
+- Session tracking: session_id, agent_id
+
+**AdapterRegistry**:
+- SQLite backend via SQLModel
+- WAL mode enabled automatically
+- CRUD operations with query helpers
+
+### 6. BASE MODEL
+
+From `scripts/optimization/run_optimization.py`:
+- **Primary:** `google/gemma-2-2b-it` (Gemma 2 2B Instruct)
+- **Alternative:** `Qwen/Qwen2.5-Coder-7B` (for code-specific tasks)
+- Default hidden_size: 2048, num_layers: 24, vocab_size: 32000
+
+### 7. EXISTING BENCHMARK SCRIPTS
+
+**`e2e_benchmark.py`**: Tests full pipeline on 3 multi-phase tasks (LRU Cache, Matrix Ops, URL Shortener)
+
+**`optimization/run_optimization.py`**: Optuna-based hyperparameter search for:
+- Adapter scaling, prompt style, trajectory style, temperature, max_tokens, repetition_penalty
+- Evaluates on random task subset
+- Persists to SQLite for crash recovery
+
+### 8. KEY ARCHITECTURAL PATTERNS
+
+- **GPU import pattern (INFRA-05)**: All torch/transformers/peft imports deferred to function bodies for CPU-only CI compatibility
+- **Lazy provider loading**: Providers imported via `__getattr__` to avoid hard failures when backends missing
+- **Async inference**: All providers use async/await for non-blocking I/O
+
+### Critical Integration Points
+
+1. **Trajectory → Adapter**: trajectory_text → `trajectory_to_tokens()` → `DocToLoraHypernetwork.forward()` → `save_hypernetwork_adapter()` → PEFT files
+
+2. **Inference with adapters**: `provider.load_adapter(id, path)` → `provider.generate(prompt, model, adapter_id)` → provider routes to correct model+adapter
+
+3. **Evaluation**: completions dict → `run_humaneval_subset()` → subprocess execution → pass_rate → fitness score
+
+4. **Evolutionary loop**: fitness scores → parent selection → merging strategies (TIES/DARE) → offspring adapters → registry → next generation
+
+### File Paths (Key Files)
+
+- `/Users/noahdolevelixir/Code/rune/libs/evaluation/src/evaluation/metrics.py` - evaluation metrics
+- `/Users/noahdolevelixir/Code/rune/libs/model-training/src/model_training/hypernetwork.py` - hypernetwork implementation
+- `/Users/noahdolevelixir/Code/rune/libs/inference/src/inference/provider.py` - provider interface
+- `/Users/noahdolevelixir/Code/rune/libs/shared/src/shared/pipeline_config.py` - pipeline configuration
+- `/Users/noahdolevelixir/Code/rune/libs/adapter-registry/src/adapter_registry/models.py` - adapter metadata
+- `/Users/noahdolevelixir/Code/rune/libs/evaluation/src/evaluation/data/` - bundled benchmark datasets</result>
+<usage><total_tokens>106504</total_tokens><tool_uses>78</tool_uses><duration_ms>156158</duration_ms></usage>
+</task-notification>
