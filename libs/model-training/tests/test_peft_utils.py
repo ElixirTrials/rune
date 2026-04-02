@@ -12,7 +12,6 @@ from model_training.peft_utils import (
 )
 
 
-@pytest.mark.xfail(reason="GPU libs not installed in CI", strict=False)
 def test_build_qlora_config_returns_lora_config() -> None:
     """build_qlora_config returns a LoraConfig with the expected attributes."""
     result = build_qlora_config(rank=64, alpha=128, target_modules=["q_proj", "v_proj"])
