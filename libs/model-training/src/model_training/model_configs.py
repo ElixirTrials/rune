@@ -89,8 +89,7 @@ class ModelRegistry:
         if name not in self._presets:
             available = ", ".join(sorted(self._presets.keys()))
             raise KeyError(
-                f"No model config registered for {name!r}. "
-                f"Available: {available}"
+                f"No model config registered for {name!r}. Available: {available}"
             )
         return self._presets[name]
 
@@ -115,9 +114,7 @@ class ModelRegistry:
             ModelConfig(
                 canonical_name="qwen3.5-9b",
                 model_id="Qwen/Qwen3.5-9B",
-                warm_start_adapter_id=(
-                    "danielcherubini/Qwen3.5-DeltaCoder-9B"
-                ),
+                warm_start_adapter_id=("danielcherubini/Qwen3.5-DeltaCoder-9B"),
                 default_lora_rank=64,
                 default_lora_alpha=32,
                 attn_implementation="eager",
@@ -198,8 +195,6 @@ def validate_against_probe(
                 logger.warning(msg)
 
     if not warnings:
-        logger.info(
-            "Probe validation passed for %s", config.canonical_name
-        )
+        logger.info("Probe validation passed for %s", config.canonical_name)
 
     return warnings

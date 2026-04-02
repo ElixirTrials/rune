@@ -95,9 +95,7 @@ class _FakeModelWithGDN(nn.Module):
 
     def __init__(self, hidden: int = 16) -> None:
         super().__init__()
-        self.layers = nn.ModuleList(
-            [_FakeGDNLayer(hidden), _FakeGDNLayer(hidden)]
-        )
+        self.layers = nn.ModuleList([_FakeGDNLayer(hidden), _FakeGDNLayer(hidden)])
 
 
 class _FakeModelFull(nn.Module):
@@ -105,9 +103,7 @@ class _FakeModelFull(nn.Module):
 
     def __init__(self, hidden: int = 16) -> None:
         super().__init__()
-        self.layers = nn.ModuleList(
-            [_FakeFullLayer(hidden), _FakeFullLayer(hidden)]
-        )
+        self.layers = nn.ModuleList([_FakeFullLayer(hidden), _FakeFullLayer(hidden)])
 
 
 class _FakeModelMultiAttn(nn.Module):

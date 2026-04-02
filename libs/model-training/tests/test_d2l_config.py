@@ -106,7 +106,8 @@ def test_build_hypernet_config_delegates_qwen3_coder_next() -> None:
 
 
 def test_build_hypernet_config_qwen35_with_probe_cache(
-    tmp_path: object, monkeypatch: object,
+    tmp_path: object,
+    monkeypatch: object,
 ) -> None:
     """build_hypernet_config("qwen3.5-9b") builds config from probe cache."""
     import model_training.d2l_probe as probe_module
@@ -143,7 +144,8 @@ def test_build_hypernet_config_unknown_model_raises() -> None:
 
 
 def test_build_hypernet_config_missing_probe_raises(
-    tmp_path: object, monkeypatch: object,
+    tmp_path: object,
+    monkeypatch: object,
 ) -> None:
     """build_hypernet_config raises RuntimeError when no probe cache exists."""
     import model_training.d2l_probe as probe_module

@@ -318,9 +318,7 @@ def train_and_register(
 
         model_id = ModelRegistry.default().get(model_config_name).model_id
     if model_id is None:
-        model_id = os.environ.get(
-            "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
-        )
+        model_id = os.environ.get("RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct")
 
     output_dir = str(adapter_dir)
     train_qlora(
