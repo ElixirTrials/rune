@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "c21cea1ce973",
+  "strategy": "manual-commit",
+  "branch": "fix/training-devpod-readiness",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".devcontainer/post-create.sh",
+    "pyproject.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c2/1cea1ce973/0/metadata.json",
+      "transcript": "/c2/1cea1ce973/0/full.jsonl",
+      "content_hash": "/c2/1cea1ce973/0/content_hash.txt",
+      "prompt": "/c2/1cea1ce973/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5951,
+    "cache_creation_tokens": 48451,
+    "cache_read_tokens": 748773,
+    "output_tokens": 7448,
+    "api_call_count": 15
+  }
+}

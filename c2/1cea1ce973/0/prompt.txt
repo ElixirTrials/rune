@@ -1,0 +1,9 @@
+/code-review:code-review Check whether everything is ready for us to launch our devpod and begin training (from our DeltaCoder checkpoint). Make a checklist of everything that needs to be setup (hugging face tokens in our KMS, code, data, etc etc). Identify any gaps.
+
+---
+
+Devpod is configured in the infra repo. We don't have self-generated datasets. Go through everything and verify what needs verifying.
+
+---
+
+1, should be fixed from the pyproject.toml and not uv.lock. 4, yes. 5, yes.
