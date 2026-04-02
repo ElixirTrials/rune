@@ -1,0 +1,47 @@
+/code-review:code-review
+
+---
+
+Go through them and fix them
+
+---
+
+I merged to main but see some mypy failures: services/lora-server/config.py: error: Duplicate module named "config" (also at "./scripts/eval/config.py")
+services/lora-server/config.py: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#mapping-file-paths-to-modules for more info
+services/lora-server/config.py: note: Common resolutions include: a) using `--exclude` to avoid checking one of them, b) adding `__init__.py` somewhere, c) using `--explicit-package-bases` or adjusting MYPYPATH
+
+---
+
+I also see some pytest failures
+
+---
+
+418 passed, 11 xfailed, 3 xpassed, 70 warnings in 14.63s
+
+---
+
+Run "uv run pytest" and look at what comes out
+
+---
+
+Why aren't they failures?
+
+---
+
+Explain the 11 xfailed ?
+
+---
+
+Yes. Why do we even need a full gpu mocking chain? Do those tests have value?
+
+---
+
+Why mock the GPU to test the loader? Let's figure out how to write proper tests. If a test is important and requires a GPU, mark it as requires_gpu, skip it on a cpu machine (and in the ci)  and don't mock.
+
+---
+
+run uv run pytest and analyze the results
+
+---
+
+Solve the failures and warnings
