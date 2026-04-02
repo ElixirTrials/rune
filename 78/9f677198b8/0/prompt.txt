@@ -1,0 +1,5 @@
+In this PR: https://github.com/ElixirTrials/rune/pull/19 we implemented the data mining. Now we need to check our training process to see if we are ready to launch. We are based on: '/Users/noahdolevelixir/Code/rune/instructions/Report_2_LoRA_Fine_Tuning_Strategy.md' and most of the relevant code is here: '/Users/noahdolevelixir/Code/rune/libs/model-training' . Go over this material and check that we are on track to begin our fine tuning.
+
+---
+
+/plan Create an implementation plan to fix these gaps. Interview me with the goal of closing the gap between what you think I want and what I really want. Continue until you've reached 95% certainty as to what needs to be implemented.
