@@ -48,6 +48,9 @@ gpu = [
     "flash-attn>=2.8.0",
     "flash-attn-3>=3.0.0",
 ]
+eval = [
+    "evalplus>=0.3.0",
+]
 
 [dependency-groups]
 dev = [
@@ -214,6 +217,8 @@ module = [
     "scoring",
     "task_pool",
     "template_library",
+    "evalplus",
+    "evalplus.*",
 ]
 ignore_missing_imports = true
 
