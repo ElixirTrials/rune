@@ -33,3 +33,7 @@ Explain the 11 xfailed ?
 ---
 
 Yes. Why do we even need a full gpu mocking chain? Do those tests have value?
+
+---
+
+Why mock the GPU to test the loader? Let's figure out how to write proper tests. If a test is important and requires a GPU, mark it as requires_gpu, skip it on a cpu machine (and in the ci)  and don't mock.
