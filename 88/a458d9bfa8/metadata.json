@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "88a458d9bfa8",
+  "strategy": "manual-commit",
+  "branch": "fix/mypy-duplicate-module",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/88/a458d9bfa8/0/metadata.json",
+      "transcript": "/88/a458d9bfa8/0/full.jsonl",
+      "content_hash": "/88/a458d9bfa8/0/content_hash.txt",
+      "prompt": "/88/a458d9bfa8/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4660,
+    "cache_creation_tokens": 405144,
+    "cache_read_tokens": 22012058,
+    "output_tokens": 68164,
+    "api_call_count": 161
+  }
+}
