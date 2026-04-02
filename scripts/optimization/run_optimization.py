@@ -97,7 +97,7 @@ def _setup() -> None:
     dtype = resolve_model_dtype(param_count=param_count, device=DEVICE)
 
     _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=dtype)
-    _model.to(DEVICE)
+    _model.to(DEVICE)  # type: ignore[arg-type]
     _model.eval()
     logger.info("Model loaded (dtype=%s)", dtype)
 
@@ -118,6 +118,8 @@ def _generate_with_adapter(
     use_bias: bool,
 ) -> str:
     """Generate code using an adapter built from the trajectory."""
+    assert _model is not None, "call _setup() first"
+    assert _tokenizer is not None, "call _setup() first"
     tmpdir = tempfile.mkdtemp()
     try:
         adapter_dir = str(Path(tmpdir) / "adapter")
@@ -142,8 +144,8 @@ def _generate_with_adapter(
 
         # Load adapter
         safe_name = f"opt_{id(trajectory) % 10000}"
-        model = PeftModel.from_pretrained(_model, adapter_path, adapter_name=safe_name)
-        model.to(DEVICE)
+        model = PeftModel.from_pretrained(_model, adapter_path, adapter_name=safe_name)  # type: ignore[arg-type]
+        model.to(DEVICE)  # type: ignore[arg-type]
         model.eval()
 
         # Generate

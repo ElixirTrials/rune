@@ -77,6 +77,8 @@ async def main() -> dict:
         "tests_ran": False,
         "trajectory": [],
         "phase": None,
+        "prompt_context": None,
+        "finish_reason": None,
         "outcome": None,
     }
 
