@@ -45,5 +45,15 @@ fi
 # Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
 if [ -f pyproject.toml ]; then
   echo "Installing rune dependencies (with GPU extras)..."
-  uv sync --extra gpu 2>/dev/null || echo "uv sync failed — run manually: uv sync --extra gpu"
+  uv sync --extra gpu || { echo "ERROR: uv sync --extra gpu failed"; exit 1; }
+
+  # Verify GPU stack works
+  echo "Verifying GPU stack..."
+  uv run python -c "
+import torch
+assert torch.cuda.is_available(), 'CUDA not available'
+print(f'GPU OK: {torch.cuda.get_device_name(0)}')
+print(f'CUDA: {torch.version.cuda}')
+print(f'PyTorch: {torch.__version__}')
+" || { echo "WARNING: GPU verification failed — check CUDA drivers and torch installation"; }
 fi
