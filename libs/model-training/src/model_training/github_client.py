@@ -95,7 +95,7 @@ class GitHubClient:
                     time.sleep(wait)
                     continue
             if resp.status_code >= 500 and attempt < max_retries:
-                wait = 2 ** attempt
+                wait = 2**attempt
                 logger.warning(
                     "Server error %d, retrying in %ds (attempt %d/%d)",
                     resp.status_code,
