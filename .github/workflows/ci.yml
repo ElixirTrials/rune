@@ -14,8 +14,8 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -35,9 +35,9 @@ jobs:
     needs: paths-filter
     if: github.event_name == 'push' || needs.paths-filter.outputs.python == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
       - name: Install dependencies
         run: uv sync --all-extras
       - name: Lint with ruff
@@ -54,15 +54,15 @@ jobs:
     needs: [paths-filter, lint-and-type-check]
     if: github.event_name == 'push' || needs.paths-filter.outputs.python == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
       - name: Install dependencies
         run: uv sync --all-extras
       - name: Run tests
         run: uv run pytest --cov --cov-report=xml
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage.xml
 
@@ -71,9 +71,9 @@ jobs:
     needs: paths-filter
     if: github.event_name == 'push' || needs.paths-filter.outputs.docs == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
       - name: Install dependencies
         run: uv sync --all-extras
       - name: Build documentation
