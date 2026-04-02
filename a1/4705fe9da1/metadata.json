@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "a14705fe9da1",
+  "strategy": "manual-commit",
+  "branch": "fix/mypy-scripts-errors",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "pyproject.toml",
+    "scripts/demo_project.py",
+    "scripts/demo_run.py",
+    "scripts/experiment_harness.py",
+    "scripts/optimization/run_optimization.py",
+    "scripts/rune_runner.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a1/4705fe9da1/0/metadata.json",
+      "transcript": "/a1/4705fe9da1/0/full.jsonl",
+      "content_hash": "/a1/4705fe9da1/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1,
+    "cache_creation_tokens": 509,
+    "cache_read_tokens": 76077,
+    "output_tokens": 319,
+    "api_call_count": 1
+  }
+}
