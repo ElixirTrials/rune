@@ -67,6 +67,8 @@ class D2LTrainConfig(BaseModel):
     `.model_dump()` for MLflow experiment logging.
 
     Attributes:
+        model_config_name: Registry lookup key (e.g. "qwen3.5-9b"). Used to
+            resolve base_model_name from the model registry when not set.
         base_model_name: HuggingFace model name for the student/teacher base.
         sakana_checkpoint_path: Path to the Sakana hypernet checkpoint.
         num_steps: Total training steps.

@@ -59,9 +59,9 @@ def _model_name_to_cache_path(model_name: str) -> Path:
 def discover_target_modules(model: Any) -> list[str]:
     """Discover all LoRA-targetable projection modules in a model.
 
-    Iterates model.named_modules() and collects the short names of any
-    Linear children whose names match known projection patterns (attention,
-    GDN, or MLP). Returns a sorted, deduplicated list.
+    Single-pass iteration over model.named_modules() collecting the short
+    names of any Linear modules whose names match known projection patterns
+    (attention, GDN, or MLP). Returns a sorted, deduplicated list.
 
     Args:
         model: Any nn.Module (typically a transformer model).
@@ -73,11 +73,10 @@ def discover_target_modules(model: Any) -> list[str]:
     import torch.nn as nn  # noqa: PLC0415
 
     found: set[str] = set()
-    for _name, module in model.named_modules():
-        for child_name, child in module.named_children():
-            short = child_name.split(".")[-1]
-            if short in ALL_KNOWN_PROJECTIONS and isinstance(child, nn.Linear):
-                found.add(short)
+    for name, module in model.named_modules():
+        short = name.split(".")[-1]
+        if short in ALL_KNOWN_PROJECTIONS and isinstance(module, nn.Linear):
+            found.add(short)
     return sorted(found)
 
 

@@ -12,6 +12,20 @@ import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TypedDict
+
+
+class _ResolvedParams(TypedDict):
+    """Resolved training parameters after merging registry defaults."""
+
+    base_model_id: str | None
+    warm_start: str | None
+    rank: int
+    alpha: int
+    epochs: int
+    grad_accum: int
+    lr_sched: str
+    attn_impl: str | None
 
 
 def _resolve_training_params(
@@ -24,7 +38,7 @@ def _resolve_training_params(
     epochs: int | None,
     gradient_accumulation_steps: int | None,
     lr_scheduler_type: str | None,
-) -> dict[str, object]:
+) -> _ResolvedParams:
     """Resolve training parameters from registry defaults and explicit overrides.
 
     Args:
@@ -38,9 +52,12 @@ def _resolve_training_params(
         lr_scheduler_type: Explicit LR scheduler override.
 
     Returns:
-        Dict with resolved values for all training parameters.
+        _ResolvedParams with resolved values for all training parameters.
+
+    Raises:
+        KeyError: If model_config_name is not in the registry.
     """
-    resolved: dict[str, object] = {
+    resolved: _ResolvedParams = {
         "base_model_id": base_model_id,
         "warm_start": warm_start_adapter_id,
         "rank": rank if rank is not None else 64,
@@ -152,18 +169,18 @@ def train_qlora(
         lr_scheduler_type=lr_scheduler_type,
     )
     warm_start = params["warm_start"]
-    resolved_rank: int = params["rank"]  # type: ignore[assignment]
-    resolved_alpha: int = params["alpha"]  # type: ignore[assignment]
-    resolved_epochs: int = params["epochs"]  # type: ignore[assignment]
-    resolved_grad_accum: int = params["grad_accum"]  # type: ignore[assignment]
-    resolved_lr_sched: str = params["lr_sched"]  # type: ignore[assignment]
+    resolved_rank = params["rank"]
+    resolved_alpha = params["alpha"]
+    resolved_epochs = params["epochs"]
+    resolved_grad_accum = params["grad_accum"]
+    resolved_lr_sched = params["lr_sched"]
     attn_impl = params["attn_impl"]
 
     # Resolve model ID — read env var inside function body for monkeypatch testability
     resolved_model_id = params["base_model_id"]
-    model_id: str = resolved_model_id or os.environ.get(  # type: ignore[assignment]
+    model_id: str = resolved_model_id or os.environ.get(
         "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
-    )
+    )  # type: ignore[assignment]
 
     # Load and format trajectory
     trajectory = load_trajectory(session_id)  # raises FileNotFoundError if missing
@@ -320,6 +337,18 @@ def train_and_register(
     if model_id is None:
         model_id = os.environ.get("RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct")
 
+    # Resolve training params to get the actual rank used for training
+    resolved = _resolve_training_params(
+        model_config_name=model_config_name,
+        base_model_id=base_model_id,
+        warm_start_adapter_id=warm_start_adapter_id,
+        rank=rank,
+        alpha=alpha,
+        epochs=epochs,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        lr_scheduler_type=lr_scheduler_type,
+    )
+
     output_dir = str(adapter_dir)
     train_qlora(
         session_id=session_id,
@@ -342,13 +371,13 @@ def train_and_register(
     file_hash = hashlib.sha256(adapter_file.read_bytes()).hexdigest()
     file_size_bytes = adapter_file.stat().st_size
 
-    # Build the adapter record
+    # Build the adapter record with the registry-resolved rank
     record = AdapterRecord(
         id=adapter_id,
         version=1,
         task_type=task_type,
         base_model_id=model_id,
-        rank=rank if rank is not None else 64,
+        rank=resolved["rank"],
         created_at=datetime.now(tz=timezone.utc).isoformat(),
         file_path=output_dir,
         file_hash=file_hash,

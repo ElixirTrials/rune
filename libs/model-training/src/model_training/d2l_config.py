@@ -217,7 +217,7 @@ def build_hypernet_config(
 
     lora_config = LoraConfig(
         r=rank,
-        lora_alpha=rank * 2,
+        lora_alpha=mc.default_lora_alpha,
         target_modules=target_modules,
         lora_dropout=0.0,
         bias="none",
