@@ -1,0 +1,886 @@
+/plan Perform a thorough review of our documentation - from readme's to mkdocs - and the current state of the codebase. Identify places where the docs need to be updated. Rather than try to guess what I really want - interview me after doing your research - continue asking for qualifications until you hit 95% confidence. Then update all the docs.
+
+---
+
+<task-notification>
+<task-id>af9476071037a5f04</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/0daf8cb5-f685-486f-a3f7-90858e84289f/tasks/af9476071037a5f04.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore README files" completed</summary>
+<result>Perfect! I now have all the project READMEs. Let me create a comprehensive summary report.
+
+## Comprehensive README Analysis for Rune Repository
+
+I've found and analyzed **10 primary project READMEs** across the repository (excluding virtual environment and pytest cache files). Here is a detailed summary:
+
+---
+
+### **1. Root README**
+**Path:** `/Users/noahdolevelixir/Code/rune/README.md`
+
+**Project Claims:**
+- Rune enables "SoTA-level coding performance from a local SLM" by encoding experience into weight-space memory via LoRA adapters
+- Implements a 4-phase template-driven pipeline: decompose → plan → code → integrate
+- Supports parallel swarm orchestration and Doc-to-LoRA hypernetwork for single-forward-pass adapter generation
+- Uses TIES/DARE merging for adapter evolution with flat registry and lineage tracking
+- Includes 301+ tests, end-to-end pipeline validation, and inference providers for Transformers, llama.cpp, Ollama, and vLLM
+
+**Key Version/Path References:**
+- Docs hosted at: https://elixirtrials.github.io/rune/
+- Entry points: `scripts/rune_runner.py`, `scripts/swarm.py`
+- Base model example: `Qwen/Qwen2.5-Coder-7B`
+- Test command: `uv sync --all-extras &amp;&amp; uv run pytest`
+- Rank examples: rank-64 on 7B model (~50-200 MB adapters), rank-8 from hypernetwork
+
+**Specific Technical Details:**
+- Hardware: CUDA-capable GPU, ~4 GB VRAM for 7B model with QLoRA NF4 quantization
+- Multi-GPU: Uses pipeline parallelism (not tensor parallelism due to PCIe bandwidth and vLLM issue #21471)
+- LoRA structure: `ΔW = BA` where B, A are low-rank matrices
+- QLoRA quantization: 4-bit NF4 with double quantization
+- Uses Perceiver-style encoder for hypernetwork
+- Adapter registry: SQLite + filesystem with write-once enforcement
+- Sandbox execution: SubprocessBackend with resource limits
+- License: PolyForm Noncommercial License 1.0.0 (no commercial use)
+
+**Status Timestamp:**
+- As of 2026-03-17: All major components implemented, 301+ tests passing, awaiting GPU e2e validation
+- Stage marked as "Alpha"
+
+**Potentially Stale Sections:**
+- "What's next" section references "GPU end-to-end validation" as the next milestone — this may be partially or fully complete depending on current work
+- Multiple "Open Questions" (4 major research questions) frame the project as pre-validation
+
+**Referenced Papers:**
+- Doc-to-LoRA [1]: arXiv:2602.15902 (2026) — Charakorn et al.
+- S-LoRA [2]: arXiv:2311.03285 (2023) — Sheng et al.
+- QLoRA [3]: arXiv:2305.14314 (2023) — Dettmers et al.
+
+---
+
+### **2. Infra README**
+**Path:** `/Users/noahdolevelixir/Code/rune/infra/README.md`
+
+**Project Claims:**
+- Holds deployment-related config for local and optional cloud runs
+- Provides Docker Compose for full stack: API, UI, Postgres, MLflow, Pub/Sub emulator
+
+**Configuration Options:**
+- `API_PORT`, `UI_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- `VITE_API_BASE_URL` (default: `http://localhost:8000`)
+- `PUBSUB_EMULATOR_PORT`, `PUBSUB_PROJECT_ID`
+
+**Command Example:**
+```bash
+docker-compose -f infra/docker-compose.yml up --build
+```
+
+**Future Plans Noted:**
+- Terraform, K8s manifests, or env examples to be added
+- GitHub Actions config expected to stay at `.github/`
+
+**Potentially Stale:**
+- "Future" section is vague; unclear what the priority is for those additions
+
+---
+
+### **3. adapter-registry README**
+**Path:** `/Users/noahdolevelixir/Code/rune/libs/adapter-registry/README.md`
+
+**Project Claims:**
+- SQLite + filesystem store for LoRA adapter metadata with write-once enforcement
+
+**Key Classes &amp; Fields:**
+- `AdapterRecord`: Tracks id, version, task_type, base_model_id, rank, created_at, file_path, file_hash, file_size_bytes, pass_rate, fitness_score, source, session_id, is_archived, parent_ids, generation, training_task_hash, agent_id
+- `AdapterRegistry`: CRUD operations via SQLModel
+
+**API Methods Documented:**
+- `store(record)` — raises `AdapterAlreadyExistsError` on duplicate
+- `retrieve_by_id(id)` — raises `AdapterNotFoundError`
+- `query_by_task_type(type)`, `query_best_for_task(type, top_k)`
+- `update_fitness(id, pass_rate, fitness_score)` — metadata mutation allowed
+- `archive(id)` — soft-delete via `is_archived=True`
+- `get_lineage(id)` — walk parent_ids chain
+
+**Write-Once Policy:**
+- Weight files (`.safetensors`) and hashes immutable after creation
+- Metadata mutable, no `update()` or `overwrite()` method exists
+
+**Code Example Provided:**
+- Shows creation of `AdapterRecord` with base model `Qwen/Qwen2.5-Coder-7B`, rank 16
+
+---
+
+### **4. Evaluation README**
+**Path:** `/Users/noahdolevelixir/Code/rune/libs/evaluation/README.md`
+
+**Project Claims:**
+- Adapter benchmarking, fitness scoring, and out-of-distribution testing
+
+**Key Functions:**
+- `calculate_pass_at_k()` — Pass@k metric for code generation
+- `evaluate_fitness()` — composite evolutionary fitness score
+- `run_ood_benchmark()` — out-of-distribution benchmark
+- `compute_generalization_delta()` — delta between in-distribution and OOD
+- `run_humaneval_subset()` — HumanEval subset evaluation
+- `run_kill_switch_gate()` — phase 1 kill-switch threshold check
+
+**Data Reference:**
+- Task definitions in `data/ood_tasks.json`
+
+---
+
+### **5. events-py README**
+**Path:** `/Users/noahdolevelixir/Code/rune/libs/events-py/README.md`
+
+**Project Claims:**
+- Event envelope shapes and helpers for Python service communication
+
+**Event Types:**
+- `EventKind` enum: `CREATED`, `UPDATED`, `DELETED`
+- `EventEnvelope` TypedDict: id (UUID), kind (created/updated/deleted), payload (JSON), timestamp (ISO 8601 UTC)
+
+**Usage Example:**
+```python
+from events_py import EventKind, create_event
+event = create_event(EventKind.CREATED, {"adapter_id": "abc-123"})
+```
+
+**Consumers:** training-svc, evolution-svc, rune-agent, swarm orchestrator
+
+---
+
+### **6. Inference README**
+**Path:** `/Users/noahdolevelixir/Code/rune/libs/inference/README.md`
+
+**Project Claims:**
+- Provider-agnostic inference interface for LLM generation and LoRA adapter management
+
+**Provider Matrix:**
+| Provider | Backend | LoRA Support |
+|----------|---------|-------------|
+| `TransformersProvider` | HuggingFace Transformers + PEFT | Full |
+| `LlamaCppProvider` | llama-cpp-python | Model-level |
+| `OllamaProvider` | Ollama HTTP API | Base model only (raises `UnsupportedOperationError`) |
+| `VLLMProvider` | vLLM OpenAI-compatible API | Full (dynamic loading) |
+
+**Base Interface:**
+```python
+async def generate(prompt, model, adapter_id=None, max_tokens=4096) -&gt; GenerationResult
+async def load_adapter(adapter_id, adapter_path) -&gt; None
+async def unload_adapter(adapter_id) -&gt; None
+async def list_adapters() -&gt; list[str]
+```
+
+**GenerationResult** fields: text, model, adapter_id, token_count, finish_reason
+
+**Lazy Loading Pattern:** Module `__getattr__` defers imports to avoid failures when backends not installed
+
+---
+
+### **7. Model Training README**
+**Path:** `/Users/noahdolevelixir/Code/rune/libs/model-training/README.md`
+
+**Project Claims:**
+- Fine-tuning, hypernetwork, and adapter merging for Rune
+
+**Components:**
+
+**Hypernetwork:**
+- `DocToLoraHypernetwork` — Perceiver-based model generating rank-8 LoRA adapter weights in single forward pass
+- Default vocab size: 32000
+- Cross-attends over token embeddings with learned latents to produce PEFT-compatible lora_A and lora_B matrices
+
+**D2L Training Pipeline Modules:**
+- `d2l_train.py` — main loop
+- `d2l_data.py` — dataset preparation
+- `d2l_config.py` — configuration
+- `d2l_mining.py` — trajectory mining from sessions
+- `d2l_probe.py` — probing trained hypernetwork quality
+- `sakana_d2l.py` — Sakana AI Doc-to-LoRA integration
+
+**Merging Strategies:**
+- `ties_merge(state_dicts, density)` — trim-elect-sign-disjoint merge
+- `dare_merge(state_dicts, density)` — drop-and-rescale merge
+
+**GPU Import Pattern:** All GPU-dependent imports deferred inside functions per INFRA-05 pattern (CPU-only CI compatible)
+
+---
+
+### **8. Shared Component README**
+**Path:** `/Users/noahdolevelixir/Code/rune/libs/shared/README.md`
+
+**Project Claims:**
+- Common code for multiple components: data models, utilities, constants
+
+**Key Modules:**
+- `hardware.py` — `HardwareProbe` for CPU/RAM/GPU detection, `get_best_device()` for auto-selection
+- `checkpoint_db.py` — `SwarmCheckpointDB` for swarm task state tracking in SQLite
+- `sandbox.py` — `SubprocessBackend` for isolated code execution with timeout
+- `template_loader.py` — Jinja2 template rendering (`render_trajectory()`, `render_prompt()`)
+- `rune_models.py` — Cross-service contracts: `CodingSession`, `AdapterRef`, `EvolMetrics`, `SwarmConfig`, `SwarmCheckpoint`, `PipelinePhase`, `TaskStatus`
+- `storage_utils.py` — SQLite WAL mode and shared DB utilities
+
+**Pipeline Templates** (in `src/shared/templates/`):
+| Template | Phase | Purpose |
+|----------|-------|---------|
+| `decompose.j2` / `prompt_decompose.j2` | 1 | Break into subtasks |
+| `plan.j2` / `prompt_plan.j2` | 2 | Architecture plan |
+| `code.j2` / `code_retry.j2` / `prompt_code.j2` | 3 | Code generation + retry |
+| `integrate.j2` / `prompt_integrate.j2` | 4 | Merge subtask outputs |
+
+**Design Rules:**
+1. No business logic — just data models and utilities
+2. Minimal dependencies — shared module imported by everyone
+3. Everything must be typed
+
+---
+
+### **9. API Service README**
+**Path:** `/Users/noahdolevelixir/Code/rune/services/api-service/README.md`
+
+**Project Claims:**
+- Central orchestrator providing HTTP endpoints for frontend, database persistence, background agent tasks
+
+**Router Pattern Example:**
+- Create modules in `src/api_service/routers/` (e.g., `tasks.py`)
+- Register in `src/api_service/main.py` with `.include_router()`
+
+**Database:**
+- Uses SQLModel (Pydantic + SQLAlchemy)
+- Define models in `src/api_service/models.py` or `libs/shared/src/shared/models.py`
+- Migrations via Alembic:
+```bash
+uv run alembic revision --autogenerate -m "Add task table"
+uv run alembic upgrade head
+```
+
+**Best Practices:**
+- Dependency injection via `Depends()`
+- Long-running tasks via FastAPI.BackgroundTasks or proper queue (Celery/Arq)
+- Pydantic for all request/response bodies
+
+**Agent Integration:**
+- Use factories in `inference` or clean interfaces from agent packages
+- Example: `from rune_agent.graph import create_graph`
+
+---
+
+### **10. Evolution Service README**
+**Path:** `/Users/noahdolevelixir/Code/rune/services/evolution-svc/README.md`
+
+**Project Claims:**
+- Adapter evaluation, evolution, promotion, and pruning service
+
+**Endpoint Status:**
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| POST | `/evaluate` | Stub (501) | Evaluate adapter performance |
+| POST | `/evolve` | Stub (501) | Evolve adapters |
+| POST | `/promote` | Stub (501) | Promote high-fitness adapter |
+| POST | `/prune` | Stub (501) | Archive low-fitness adapters |
+
+**Current State (Important Note):**
+- REST endpoints are **stub implementations returning 501**
+- **Actual evolution logic runs in `scripts/swarm_evolution.py`** (not in this service)
+- Real functionality: TIES/DARE merging, fitness-based archival, generational tracking
+
+**Request Schemas Defined:**
+- `EvaluationRequest` — adapter_id, task_type
+- `EvolveRequest` — adapter_ids, task_type
+- `PromoteRequest` — adapter_id
+- `PruneRequest` — adapter_id or criteria
+
+**Run Command:**
+```bash
+uv run uvicorn evolution_svc.main:app --reload
+```
+
+**Potentially Stale:**
+- This entire service appears to be a partial/stub implementation; the README notes endpoint stubs but the real logic is elsewhere
+
+---
+
+### **11. Rune Agent README**
+**Path:** `/Users/noahdolevelixir/Code/rune/services/rune-agent/README.md`
+
+**Project Claims:**
+- LangGraph state graph implementing the recursive code generation loop
+
+**Architecture:**
+```
+START → generate → execute → reflect → [should_retry] → generate (retry) OR save_trajectory → END
+```
+
+**Two Graph Modes:**
+- `create_graph()` — Standard loop with retry logic (standalone use)
+- `create_single_iteration_graph()` — Single iteration: generate → execute → reflect → END (used by `scripts/rune_runner.py` where hypernetwork generates new adapter between iterations)
+
+**Key Files:**
+- `graph.py` — Graph construction and `should_retry` router
+- `nodes.py` — Node implementations
+- `state.py` — `RuneState` TypedDict
+
+**State Tracks:** task description, generated code, execution results, test pass/fail, attempt count, max attempts, trajectory history
+
+**Retry Logic:**
+- Tests passed → `save_trajectory` (success)
+- Attempts exhausted → `save_trajectory` (exhausted)
+- Otherwise → `generate` (retry)
+
+**Relationship to Pipeline:**
+- Outer 4-phase pipeline (`scripts/rune_runner.py`) uses `create_single_iteration_graph()` per iteration within a phase
+- Between iterations, hypernetwork can generate fresh adapter
+- Agent graph handles single cycle; pipeline handles phase sequencing
+
+---
+
+### **12. Training Service README**
+**Path:** `/Users/noahdolevelixir/Code/rune/services/training-svc/README.md`
+
+**Project Claims:**
+- FastAPI service for LoRA fine-tuning and hypernetwork training jobs
+
+**Endpoints:**
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/train/lora` | Submit LoRA fine-tuning job |
+| POST | `/train/hypernetwork` | Submit hypernetwork training job |
+| GET | `/jobs/{job_id}` | Check job status |
+
+**Job Model:**
+- In-memory tracking via `JOB_STORE`
+- States: `pending` → `running` → `completed` / `failed`
+
+**Request Schemas:**
+- `LoraTrainingRequest` — session_id, adapter_id, task_type, rank, epochs, learning_rate
+- `HypernetworkTrainingRequest` — hypernetwork parameters
+
+**Architecture:**
+- Background tasks via FastAPI's `BackgroundTasks`
+- GPU imports deferred inside job functions (INFRA-05 pattern, CPU-only compatible)
+- Adapter IDs validated against path-traversal characters before filesystem ops
+
+**Run Command:**
+```bash
+uv run uvicorn training_svc.main:app --reload
+```
+
+---
+
+## Summary of Stale/Potentially Problematic Sections
+
+1. **Root README – "Current Status" (2026-03-17):** Explicitly awaiting GPU e2e validation, which may or may not have happened since the documentation was written.
+
+2. **Evolution Service README:** Entire service is stub/partial; actual logic lives in `scripts/swarm_evolution.py`. This is a significant architectural inconsistency that users might find confusing.
+
+3. **Infra README – "Future" Section:** Vague about what's coming (Terraform, K8s, etc.); no clear timeline.
+
+4. **Multiple "Open Questions" in Root README:** 4 major research questions frame the project as pre-validation, suggesting the hypernetwork's real-world efficacy hasn't been proven yet at the time the README was written.
+
+---
+
+## Key Cross-Document Patterns
+
+- **Consistent entry points:** `scripts/rune_runner.py` (pipeline), `scripts/swarm.py` (orchestration), `scripts/e2e_test.py` (validation)
+- **Consistent test command:** `uv sync --all-extras &amp;&amp; uv run pytest`
+- **Consistent data model:** Qwen/Qwen2.5-Coder-7B, rank-8 (hypernetwork) and rank-16/64 (LoRA)
+- **Consistent infrastructure:** SQLite for registries/checkpoints, safetensors for adapter storage, Jinja2 for templates
+- **Deferred GPU imports:** INFRA-05 pattern across model-training and training-svc for CPU-only CI compatibility</result>
+<usage><total_tokens>64678</total_tokens><tool_uses>29</tool_uses><duration_ms>184854</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a733fc20c5dede182</task-id>
+<tool-use-id>toolu_01QZrPX7nrt4tSXWwyAKHaAw</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/0daf8cb5-f685-486f-a3f7-90858e84289f/tasks/a733fc20c5dede182.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore MkDocs documentation" completed</summary>
+<result>Perfect! Now I have a complete picture. Let me write the comprehensive exploration report.
+
+## Comprehensive MkDocs Documentation Exploration Report
+
+### 1. ROOT MKDOCS.YML CONFIGURATION
+
+**File:** `/Users/noahdolevelixir/Code/rune/mkdocs.yml`
+
+**Theme &amp; Setup:**
+- Theme: `mkdocs` (basic material theme)
+- Site Name: "Rune Documentation"
+- Site Description: "Architecture documentation and component reference for the Rune coding agent"
+- Site Author: Noah
+- Output Directory: `site/docs`
+
+**Plugins &amp; Extensions:**
+- `search` - Full-text search
+- `monorepo` - Multi-repo documentation support (critical for component include system)
+- `mkdocstrings` with Python handler:
+  - Paths configured to scan: `services/*/src` and `libs/*/src`
+  - Google-style docstring parsing
+  - Shows source, root headings, category headings, signature annotations, base classes
+  - Filters private members (`!^_`)
+  - Members ordered by source
+
+**Markdown Extensions:**
+- Admonition, details, superfences, tabbed content, tables, TOC with permalinks
+- MathJax + Arithmatex for math notation (both block and inline)
+- Footnotes and attribute lists
+- Mermaid diagrams via custom fence
+
+**Validation:**
+- Warns on: omitted files, absolute links, unrecognized links, anchor issues
+
+---
+
+### 2. NAVIGATION STRUCTURE (from mkdocs.yml nav)
+
+```
+Home (index.md)
+├── Implementation Plan (implementation-plan.md)
+├── Architecture/
+│   ├── Recursive Loop (architecture/recursive-loop.md)
+│   ├── Monorepo Mapping (architecture/monorepo-mapping.md)
+│   ├── Adapter Storage (architecture/adapter-storage.md)
+│   └── GPU Strategy (architecture/multi-gpu-strategy.md)
+├── Swarm Architecture (swarm-architecture.md)
+├── Appendices/
+│   ├── Risk Matrix (appendices/risk-matrix.md)
+│   └── Build Order (appendices/build-order.md)
+├── Scientific Article/
+│   ├── Overview (article/index.md)
+│   ├── Abstract (article/abstract.md)
+│   ├── Background (article/background.md)
+│   ├── Methods (article/methods.md)
+│   ├── Results (article/results.md)
+│   ├── Discussion (article/discussion.md)
+│   └── References (article/references.md)
+└── Components/
+    ├── Overview (components-overview.md)
+    └── [10 component includes via !include directive]
+```
+
+---
+
+### 3. ALL MARKDOWN FILES IN DOCS/
+
+**Total: 18 files across 5 directories (2,127 lines)**
+
+#### Root Level Files:
+| File | Lines | Content Summary |
+|------|-------|-----------------|
+| `index.md` | 21 | High-level intro to Rune system, links to key docs, overview of Core Subsystems |
+| `implementation-plan.md` | 322 | 5-phase implementation plan (Phase 0-4) with status updates (as of 2026-03-17), all phases marked ✅ Complete with notes on next milestone (GPU validation) |
+| `components-overview.md` | 18 | Table of all 10 components with brief descriptions and API reference links |
+| `rune-methodology.md` | 249 | **NOT IN NAV** - Agentic coding methodology: 4-phase template (architecture plan → implementation → validation → integration), code quality standards (types, naming, clean code principles) |
+| `swarm-architecture.md` | 62 | Single-process "fat orchestrator" design: HardwareProbe, SandboxBackend, SwarmCheckpointDB, Training Pool, Evolution Worker, GPU time-sharing mechanism |
+
+#### Architecture/ (4 files, 523 lines):
+| File | Lines | Key Claims |
+|------|-------|-----------|
+| `recursive-loop.md` | 142 | 4-phase pipeline (DECOMPOSE→PLAN→CODE→INTEGRATE), per-phase iteration via env vars, Jinja2 templates, trajectory schema mapping to `CodingSession`, integration points with Adapter Registry and Hypernetwork |
+| `monorepo-mapping.md` | 137 | Service mapping (rune-agent, training-svc, evolution-svc, api-service), library extensions (model-training, inference, shared, evaluation), GPU coordination via vLLM sleep/wake, scripts/ as fat orchestrator layer |
+| `adapter-storage.md` | 124 | Filesystem structure `~/.rune/adapters/{adapter_id}/`, SQLite schema with AdapterRecord table, write-once enforcement at API level, querying without GPU, storage budget (100 adapters ~20GB) |
+| `multi-gpu-strategy.md` | 120 | Pipeline parallelism recommended over tensor parallelism for PCIe GPUs, VRAM budget (serving ~10-20GB, training ~12-17GB), GPU lease protocol via `~/.rune/gpu_lease.json` |
+
+#### Appendices/ (2 files, 48 lines):
+| File | Lines | Content |
+|------|-------|---------|
+| `risk-matrix.md` | 13 | 3 primary risks: Hypernetwork mode collapse (High), Adapter composition interference (Medium), Catastrophic forgetting (Medium), with mitigations and warning signs |
+| `build-order.md` | 35 | Component dependency chain with status (✅/⚠️), dependency graph showing adapter-registry as root, detailed 8-step build sequence |
+
+#### Article/ (7 files, 894 lines - Research paper format):
+| File | Lines | Purpose |
+|------|-------|---------|
+| `index.md` | 29 | Pre-implementation research proposal warning, article sections index |
+| `abstract.md` | 11 | Claims Rune as parametric episodic memory using LoRA adapters, Doc-to-LoRA extension to trajectories is **proposed** (unvalidated), Evolution Operator specified |
+| `background.md` | 274 | Literature survey: token vs destructive vs composable weight-space memory, LoRA/QLoRA/S-LoRA, hypernetwork architectures, LoRA composition interference risks (Zhang, Zou), Programming by Backprop, trajectory modality argument |
+| `methods.md` | 228 | System architecture (5 services), Doc-to-LoRA hypernetwork mapping (new equation), Perceiver-based trajectory encoder, distillation pipeline (Phase 3 direct LoRA, Phase 4 hypernetwork), Evolution Operator with fitness function, 3-level hierarchy, training data strategy on trajectories, serving via vLLM QLoRA |
+| `results.md` | 178 | Phase 1 kill-switch: 20-30 HumanEval task subset, ≥5% Pass@1 improvement threshold, bfloat16 baseline (not QLoRA), 4 baseline conditions (vanilla, RAG, direct LoRA, hypernetwork), MLflow schema, diversity metrics (Frobenius norm, cosine similarity threshold 0.1), Phase 4 ablation targets |
+| `discussion.md` | 127 | Expected contributions (trajectory modality, episodic memory, fitness-driven lifecycle), limitations (pre-implementation status, adapter interference, mode collapse, cold-start corpus size), 4 open research questions, future work (QDoRA, cross-project transfer, online adaptation) |
+| `references.md` | 37 | 10 cited papers: LoRA (Hu 2021), QLoRA (Dettmers 2023), S-LoRA (Sheng 2023), HyperNetworks (Ha 2016), LoRA Soups (Prabhakar 2024), Doc-to-LoRA/Text-to-LoRA (Charakorn 2025-26), SHINE (Liu 2026), Pink et al. episodic memory (2025), PBB (Cook 2025), orthogonality/merging (Zhang, Zou 2025-26) |
+
+#### Superpowers/ (2 files, NOT IN NAV):
+| File | Lines | Content |
+|------|-------|---------|
+| `plans/2026-03-31-data-mining-implementation.md` | ~100+ | GitHub REST API mining plan for training data collection from PRs/issues/commits, stubs in `d2l_mining.py`, normalization bridge, test structure |
+| `specs/2026-04-02-coding-benchmark-evaluation-design.md` | ~100+ | Benchmark framework for Qwen 3.5 9B (or Gemma 2 2B for dev), HumanEval+, MBPP+, BigCodeBench, tiered execution (smoke test → mini → full), vLLM/Transformers backends, EvalPlus/BigCodeBench output formats |
+
+---
+
+### 4. COMPONENT DOCUMENTATION (via !include directives)
+
+**10 components, each with:**
+- `docs_dir: docs`
+- `nav: API Reference: api/index.md`
+- Shared exclude patterns (cache dirs, src/, tests/, scripts/, alembic/)
+
+**All include files verified to exist:**
+✓ `libs/adapter-registry/mkdocs.yml` (13 lines)
+✓ `libs/evaluation/mkdocs.yml` (15 lines)
+✓ `libs/events-py/mkdocs.yml` (4 lines)
+✓ `libs/inference/mkdocs.yml` (15 lines)
+✓ `libs/model-training/mkdocs.yml` (15 lines)
+✓ `libs/shared/mkdocs.yml` (15 lines)
+✓ `services/api-service/mkdocs.yml` (15 lines)
+✓ `services/evolution-svc/mkdocs.yml` (13 lines)
+✓ `services/rune-agent/mkdocs.yml` (15 lines)
+✓ `services/training-svc/mkdocs.yml` (13 lines)
+
+**All referenced api/index.md files verified to exist** ✓
+
+---
+
+### 5. FILES IN NAV vs FILES ON DISK
+
+**All 17 files referenced in mkdocs.yml nav exist:**
+- ✓ `index.md`
+- ✓ `implementation-plan.md`
+- ✓ 4 architecture docs
+- ✓ 2 appendices
+- ✓ 7 article files
+- ✓ `components-overview.md`
+- ✓ `swarm-architecture.md`
+
+**Files on disk NOT in nav:**
+- ✗ **`docs/rune-methodology.md`** (249 lines) - Contains 4-phase coding methodology, code quality standards, naming conventions, error handling, testing patterns
+
+---
+
+### 6. KEY ARCHITECTURAL CLAIMS &amp; SPECIFICATIONS
+
+**Status Markers Used Throughout:**
+- ✅ **Complete/Implemented** - Phase 0-4 all marked complete (as of 2026-03-17)
+- ⚠️ **Partial** - evolution-svc (REST stubs; logic in scripts/swarm_evolution.py)
+- 🔄 **Replaced** - lora-server → inference providers
+- **proposed** - Trajectory modality, multi-adapter composition
+- **expected** - Expected to work based on prior research
+- **TBD** - To be determined
+
+**Potential Outdated Claims to Verify:**
+
+1. **Implementation Plan Status** (dated 2026-03-17):
+   - Says Phase 0 complete but notes "GPU hardware pending"
+   - Phase 1 marks "e2e test exercises it" - verify if actual Pass@1 validation was done
+   - Phase 1 gate: "5% Pass@1 threshold" - unclear if this was actually validated
+
+2. **Environment Requirements** (multi-gpu-strategy.md):
+   - Recommends "vLLM issue #21471 workaround" for TP+LoRA on PCIe GPUs
+   - Specifies pipeline parallelism as default
+   - Mentions "vLLM may require compilation from source for newer features"
+
+3. **Serving Configuration** (methods.md):
+   - vLLM + QLoRA (NF4) + pipeline parallelism = "intended configuration **pending Phase 0 empirical validation**"
+   - States this is NOT confirmed compatible yet
+
+4. **Training Infrastructure** (methods.md):
+   - training-svc described as having "POST /train/lora, POST /train/hypernetwork, GET /jobs/{id}" endpoints
+   - GPU coordination via vLLM sleep/wake protocol (exact state file path: `~/.rune/gpu_lease.json`)
+
+5. **Phase Status Discrepancy** (implementation-plan.md):
+   - Claims Phase 3 "End-to-end test passes (task → adapter stored in registry)" as complete
+   - References `scripts/e2e_test.py` as existing artifact
+   - But article/discussion.md says "As of this writing, no training runs have been executed"
+
+---
+
+### 7. SPECIFIC FILE PATHS &amp; CLASSES MENTIONED
+
+**Key File Paths Referenced:**
+- `scripts/rune_runner.py` - 4-phase pipeline entry point
+- `scripts/swarm.py` - Multi-agent orchestrator
+- `scripts/swarm_workers.py` - Training pool, GPU coordination
+- `scripts/swarm_evolution.py` - Evolution worker (primary logic, not in evolution-svc stubs)
+- `scripts/e2e_test.py` - End-to-end test
+- `libs/shared/src/shared/templates/` - Jinja2 templates (decompose.j2, plan.j2, code.j2, code_retry.j2, integrate.j2, prompt_*.j2)
+- `libs/shared/src/shared/hardware.py` - HardwareProbe
+- `libs/shared/src/shared/sandbox.py` - SubprocessBackend
+- `libs/shared/src/shared/checkpoint_db.py` - SwarmCheckpointDB
+- `libs/shared/src/shared/rune_models.py` - CodingSession, SwarmConfig, PipelinePhase
+- `libs/adapter-registry/` - AdapterRegistry (dependency root)
+- `libs/model-training/src/model_training/hypernetwork.py` - DocToLoraHypernetwork
+- `libs/model-training/src/model_training/sakana_d2l.py` - Sakana D2L integration
+- `libs/model-training/src/model_training/merging.py` - TIES/DARE merging
+- `libs/model-training/src/model_training/d2l_train.py` - Hypernetwork training pipeline
+- `libs/inference/` - InferenceProvider ABC with backends: TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider
+- `~/.rune/adapters/` - Default adapter storage root
+- `~/.rune/adapter_registry.db` - SQLite database
+- `~/.rune/gpu_lease.json` - GPU lease state file
+
+**Database Schema Classes:**
+- `AdapterRecord` - Table `adapter_records` with 15 columns (id, version, task_type, base_model_id, rank, created_at, file_path, file_hash, file_size_bytes, pass_rate, fitness_score, source, session_id, is_archived, parent_ids, generation, training_task_hash, agent_id)
+- `CodingSession` - Trajectory schema with session_id, task_description, task_type, adapter_refs, attempt_count, outcome
+
+**API Endpoints Mentioned:**
+- vLLM: `POST /sleep`, `POST /wake_up`
+- api-service: `/adapters`, `/sessions`
+- training-svc: `POST /train/lora`, `POST /train/hypernetwork`, `GET /jobs/{id}`
+
+---
+
+### 8. POTENTIALLY OUTDATED CONTENT
+
+**Critical Discrepancies:**
+
+1. **Phase Completion Claims vs. Article Status:**
+   - implementation-plan.md: "Phase 1-4: ✅ Complete" (dated 2026-03-17)
+   - article/discussion.md: "As of this writing, no training runs have been executed... Phase 0 environment validation (vLLM + QLoRA compatibility) has not been confirmed."
+   - **Resolution needed:** Which is current? Are all phases really complete or is this aspirational documentation?
+
+2. **lora-server Status:**
+   - build-order.md says: "🔄 Replaced" by "inference providers"
+   - methods.md still describes "lora-server wraps vLLM with optional pipeline parallelism"
+   - **Issue:** Unclear if lora-server code still exists or if only inference providers are used
+
+3. **Evolution Service Status:**
+   - build-order.md: "⚠️ Partial" with note "REST stubs; evolution logic in scripts/swarm_evolution.py"
+   - components-overview.md lists evolution-svc API reference
+   - **Issue:** Are endpoints actually implemented or just stubs?
+
+4. **Hardware Validation:**
+   - Phase 0 deliverables list checks for specific GPU models and vLLM features
+   - But also notes "GPU hardware pending"
+   - **Issue:** Unclear if Phase 0 was actually validated on target hardware
+
+5. **Hypernetwork Training Data:**
+   - Methods section describes 50-100 trajectory corpus as input to Phase 4
+   - But article says "no training runs have been executed"
+   - **Issue:** Does the trajectory corpus actually exist?
+
+---
+
+### 9. DOCUMENTATION GAPS
+
+**Referenced but Not Documented:**
+- Exact Jinja2 template syntax and variables available in templates
+- vLLM integration specifics (configuration schema, exact API)
+- Database migration scripts (mentioned alembic/ but not documented)
+- How adapter selection logic queries the registry (referred to but not specified in detail)
+- QDoRA integration (mentioned in Discussion as future work)
+- Cross-project transfer mechanism (mentioned in Discussion but not designed)
+
+**No Standalone Docs For:**
+- How to run individual phases (Phase 0-4) manually
+- Troubleshooting guide for common failures
+- Benchmarking/evaluation instructions (some in superpowers/specs but not in nav)
+- API client libraries for external tools
+- Configuration reference for environment variables
+
+---
+
+### 10. SUMMARY TABLE
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| **Main mkdocs.yml** | ✓ Complete | All 17 nav files exist; monorepo plugin configured |
+| **Component Configs** | ✓ Complete | 10 components with api/index.md; all exist |
+| **Article** | ✓ Complete | 7-part research paper, pre-implementation status |
+| **Architecture Docs** | ✓ Complete | 4 core architectural docs; all comprehensive |
+| **Implementation Plan** | ⚠️ Conflicting | Claims all phases ✅ but article says no experiments conducted |
+| **Appendices** | ✓ Complete | Risk matrix and build order present |
+| **Orphaned Docs** | 1 file | `rune-methodology.md` exists but not in nav |
+| **Superpowers Docs** | Not in nav | 2 detailed specs (data mining, benchmarking) not linked |
+| **Consistency** | ⚠️ Conflicting | Phase completion status contradicts article status |
+| **Outdatedness Risk** | Medium-High | Several claims flagged as unvalidated/pending |
+
+---
+
+This concludes the comprehensive MkDocs exploration. All documentation files have been read and cross-referenced with the configuration structure.</result>
+<usage><total_tokens>107773</total_tokens><tool_uses>62</tool_uses><duration_ms>328238</duration_ms></usage>
+</task-notification>
+
+---
+
+Okay, synthesize the subagent's the research and then interview me.
+
+---
+
+<task-notification>
+<task-id>ad92ef969c5ba71db</task-id>
+<tool-use-id>toolu_014Q2n4p5iTR2Ca5Htgw1Bam</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/0daf8cb5-f685-486f-a3f7-90858e84289f/tasks/ad92ef969c5ba71db.output</output-file>
+<status>completed</status>
+<summary>Agent "Map current codebase state" completed</summary>
+<result>Perfect! I have created a comprehensive codebase state mapping document and saved it to the plan file. Here's a summary of what I've mapped:
+
+## Summary
+
+I've thoroughly explored the Rune codebase and created a detailed mapping document. Here are the key findings:
+
+### Core Structure
+- **6 libraries** in `libs/`: shared (central nervous system), inference, adapter-registry, model-training, evaluation, events-py
+- **4 FastAPI services** in `services/`: api-service, evolution-svc, training-svc, rune-agent
+- **27 scripts** including: rune_runner.py (main pipeline), swarm.py (orchestration), e2e_test.py, and various utilities
+
+### What's Fully Implemented
+✓ 5-phase pipeline (decompose → plan → code → integrate → diagnose/repair)
+✓ Doc-to-LoRA hypernetwork (Sakana perceiver-based)
+✓ All 4 inference providers (Transformers, llama.cpp, Ollama, vLLM)
+✓ Adapter registry with SQLite + lineage tracking
+✓ TIES/DARE merging for evolutionary composition
+✓ 18 Jinja2 templates for all pipeline phases
+✓ LangGraph agent workflow (generate → execute → reflect → retry)
+✓ 301+ passing tests
+✓ Full CI/CD with GitHub Actions (lint, test, docs deploy)
+
+### Known Gaps (Stubs/Not Implemented)
+⚠️ API service routers - all return 501 (Not Implemented)
+⚠️ Evolution &amp; training service routers - minimal implementation
+⚠️ rune-agent service - graph exists but no FastAPI wrapper
+⚠️ Database migrations (alembic/ is empty)
+
+The document is saved at `/Users/noahdolevelixir/.claude/plans/dreamy-scribbling-storm-agent-ad92ef969c5ba71db.md` with 17 comprehensive sections covering packages, services, scripts, configuration, templates, and exact status of every component.</result>
+<usage><total_tokens>110840</total_tokens><tool_uses>84</tool_uses><duration_ms>489720</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a974512cf6ef45af9</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/0daf8cb5-f685-486f-a3f7-90858e84289f/tasks/a974512cf6ef45af9.output</output-file>
+<status>completed</status>
+<summary>Agent "Update service READMEs and misc" completed</summary>
+<result>All edits look correct. Here is a summary of what was done:
+
+**Files edited:**
+
+1. `/Users/noahdolevelixir/Code/rune/services/api-service/README.md` -- Added an Endpoints table listing all 9 endpoints with their status (6 stubs returning 501, 3 implemented). Added a note that database infrastructure exists but business logic is not yet implemented.
+
+2. `/Users/noahdolevelixir/Code/rune/services/rune-agent/README.md` -- Updated the "Relationship to Pipeline" section: changed "4-phase" to "5-phase" and added the full phase list (decompose, plan, code, integrate, diagnose/repair).
+
+3. `/Users/noahdolevelixir/Code/rune/docs/components-overview.md` -- Added a Status column to the components table with implementation status for all components. Added `scripts/` as a new row. Updated table alignment to accommodate the new column.
+
+4. `/Users/noahdolevelixir/Code/rune/docs/appendices/build-order.md` -- Changed api-service status from "Implemented" to "Stubs" with clarification. Updated rune-agent row from "4-phase" to "5-phase". Updated the mermaid dependency graph to show api-service with the warning marker instead of checkmark.
+
+**Files verified (no changes needed):**
+
+5. `/Users/noahdolevelixir/Code/rune/services/evolution-svc/README.md` -- Already accurate: endpoints listed as Stub (501), real logic correctly attributed to `scripts/swarm_evolution.py`.
+
+6. `/Users/noahdolevelixir/Code/rune/services/training-svc/README.md` -- Already accurate: all three endpoints documented, job model, architecture notes correct.
+
+7. `/Users/noahdolevelixir/Code/rune/docs/swarm-architecture.md` -- Already accurate: no phase-count references, component table and architecture diagram are correct.
+
+8. `/Users/noahdolevelixir/Code/rune/infra/README.md` -- Already accurate for its scope.</result>
+<usage><total_tokens>29561</total_tokens><tool_uses>19</tool_uses><duration_ms>117235</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>acc9ee84daf3fee4a</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/0daf8cb5-f685-486f-a3f7-90858e84289f/tasks/acc9ee84daf3fee4a.output</output-file>
+<status>completed</status>
+<summary>Agent "Update library READMEs" completed</summary>
+<result>All edits look correct. Here is a summary of what was done:
+
+**Files updated (3):**
+
+1. `/Users/noahdolevelixir/Code/rune/libs/shared/README.md`
+   - Template table expanded from 4 rows to 6 rows, now covering all 18 `.j2` files across the 5-phase pipeline (added `prompt_decompose_concise.j2`, `code_continue.j2`, `prompt_code_retry.j2`, `prompt_code_continue.j2`, `prompt_integrate_retry.j2`, and the Phase 5 templates: `diagnose.j2`, `prompt_diagnose.j2`, `code_repair.j2`, `prompt_code_repair.j2`)
+   - Added `lazy_cache.py` and `models.py` to the Rune-Specific Modules table
+
+2. `/Users/noahdolevelixir/Code/rune/libs/evaluation/README.md`
+   - Added "Coding Benchmark Framework" section with benchmark table (HumanEval+, MBPP+, BigCodeBench), execution tiers (smoke/mini/full), entry points table, backend info, and usage example
+
+3. `/Users/noahdolevelixir/Code/rune/libs/model-training/README.md`
+   - Added "Model Registry" subsection for `model_configs.py` with DeltaCoder warm-start reference
+   - Added "Training Data Mining" subsection covering `d2l_mining.py` and `scripts/mine_github.py`
+
+**Files verified, no changes needed (3):**
+
+4. `/Users/noahdolevelixir/Code/rune/libs/inference/README.md` -- all 4 providers and module structure match the codebase
+5. `/Users/noahdolevelixir/Code/rune/libs/adapter-registry/README.md` -- models, registry, exceptions all accurate
+6. `/Users/noahdolevelixir/Code/rune/libs/events-py/README.md` -- event types and envelope structure accurate</result>
+<usage><total_tokens>29780</total_tokens><tool_uses>23</tool_uses><duration_ms>142066</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a728db8c62b92c063</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/0daf8cb5-f685-486f-a3f7-90858e84289f/tasks/a728db8c62b92c063.output</output-file>
+<status>completed</status>
+<summary>Agent "Update architecture docs" completed</summary>
+<result>All edits are complete. Here is a summary of what was done:
+
+**File 1: `/Users/noahdolevelixir/Code/rune/docs/architecture/recursive-loop.md`**
+- Updated title and overview from 4-phase to 5-phase pipeline
+- Updated Mermaid diagram to include Phase 5 (diagnose/repair) with conditional looping
+- Added Phase 5: DIAGNOSE/REPAIR section with the two-step pattern (diagnose then repair) and explanation of prompt-adapter tension avoidance
+- Added `RUNE_MAX_ITERATIONS_DIAGNOSE` environment variable to the iteration config table
+- Replaced the 9-template table with all 18 templates, including the new Phase 5 templates (`diagnose.j2`, `code_repair.j2`, `prompt_diagnose.j2`, `prompt_code_repair.j2`) and previously missing Phase 3/4 variants (`code_continue.j2`, `prompt_code_continue.j2`, `prompt_code_retry.j2`, `prompt_decompose_concise.j2`, `prompt_integrate_retry.j2`)
+
+**File 2: `/Users/noahdolevelixir/Code/rune/docs/architecture/monorepo-mapping.md`**
+- Updated service status: training-svc marked **Implemented**, evolution-svc marked **Stubs** (501), api-service added as **Stubs** (501, only health/ready work), rune-agent marked **Implemented** (LangGraph workflow)
+- Updated rune-agent description to reference 5-phase pipeline
+- Added 12 new scripts to the scripts table: `e2e_benchmark.py`, `e2e_inference_smoke.py`, `e2e_training_smoke.py`, `benchmark_challenging.py`, `compare_output.py`, `mine_github.py`, `demo_project.py`/`demo_run.py`, and the `eval/` directory entries
+- Updated monorepo layout tree with new scripts, eval directory, and corrected service status annotations
+- Updated api-service in Extended Existing Components to reflect stub status
+
+**File 3: `/Users/noahdolevelixir/Code/rune/docs/implementation-plan.md`**
+- Updated status date from 2026-03-17 to 2026-04-05
+- Updated Phase 3 description to reference 5-phase pipeline
+- Added caveat about 433+ tests passing but no real GPU end-to-end validation yet
+- Added "Recent Additions (post-plan)" table documenting PRs #22 (benchmark eval), #23 (model registry), #17/#19 (GitHub mining), and #7-#16/#25 (devcontainer hardening)</result>
+<usage><total_tokens>36558</total_tokens><tool_uses>15</tool_uses><duration_ms>217988</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab279313caf46d366</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/0daf8cb5-f685-486f-a3f7-90858e84289f/tasks/ab279313caf46d366.output</output-file>
+<status>completed</status>
+<summary>Agent "Update scientific article" completed</summary>
+<result>Everything looks good. Here is a summary of all changes made across the 7 files:
+
+### Summary of edits
+
+**`docs/article/abstract.md`**
+- Added mention of the five-phase pipeline (decompose, plan, code, integrate, diagnose/repair) with two-step diagnose-then-repair pattern
+- Added Gemma 2 2B as development model, Qwen as production target
+
+**`docs/article/background.md`**
+- Added new subsection "The Prompt-Adapter Tension in Error Recovery" between PBB and the Concurrent Hypernetwork Work sections
+- Explains the rationale for the 5th phase: single-step retry forces error context and domain knowledge to compete for model attention; two-step separation resolves this
+
+**`docs/article/methods.md`** (largest changes)
+- Rewrote rune-agent description: 4-node StateGraph replaced with five-phase pipeline description, DAG-ordered subtask execution, two-step diagnose/repair mechanism with cross-reference to new Background section
+- Listed all 18 Jinja2 templates by name
+- Updated lora-server: Gemma 2 2B as dev model with Sakana "gemma_demo" checkpoint, Qwen as production target
+- Updated training-svc: model registry with DeltaCoder warm-start
+- Updated evolution-svc: stubs in service layer, real logic in scripts/swarm_evolution.py (TIES/DARE merging, pruning, lineage)
+- Added api-service description with scripts/ as primary execution path
+- Updated claim tiers to reference 433+ tests
+- Added new "GitHub Mining Pipeline" subsection
+- Added new "Benchmark Evaluation Framework" subsection with HumanEval+, MBPP+, BigCodeBench and three execution tiers (smoke/mini/full)
+
+**`docs/article/results.md`**
+- Updated status banner from "Pre-Implementation" to "Pre-Validation" with 433+ tests reference
+- Rewrote evaluation benchmark section to reference the implemented benchmark framework and tiers
+- Added Gemma 2 2B as development evaluation target with Sakana gemma_demo checkpoint
+- Updated H1 hypothesis to reference both Gemma 2 2B (dev) and Qwen (prod)
+- Updated baseline comparison table with model names
+
+**`docs/article/discussion.md`**
+- Updated status banner to reflect built infrastructure (five-phase pipeline, benchmark framework, 433+ tests)
+- Rewrote "Pre-Implementation Status" to "Pre-Validation Status" reflecting current state: infrastructure built and tested, GPU validation pending
+- Updated broader implications to reference five-phase pipeline with two-step error recovery
+
+**`docs/article/references.md`**
+- No changes needed -- all existing references remain valid and no new academic citations were required
+
+**`docs/article/index.md`**
+- Updated status banner from "Pre-Implementation" to "Pre-Validation" with test count
+- Updated article description to mention five-phase pipeline and tiered benchmark framework</result>
+<usage><total_tokens>53558</total_tokens><tool_uses>25</tool_uses><duration_ms>331236</duration_ms></usage>
+</task-notification>
+
+---
+
+Create a branch, push and make a pr
