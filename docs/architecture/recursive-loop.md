@@ -98,7 +98,7 @@ Each phase runs up to N iterations (configurable per phase via environment varia
 | `RUNE_MAX_ITERATIONS_PLAN` | Phase 2 override |
 | `RUNE_MAX_ITERATIONS_CODE` | Phase 3 override |
 | `RUNE_MAX_ITERATIONS_INTEGRATE` | Phase 4 override |
-| `RUNE_MAX_ITERATIONS_DIAGNOSE` | Phase 5 override |
+| `RUNE_MAX_ITERATIONS_REPAIR` | Phase 5 override (covers diagnose + repair + re-integrate steps) |
 
 CLI flag `--max-phase-iterations` overrides the global env var. Hardcoded fallback is 5.
 
