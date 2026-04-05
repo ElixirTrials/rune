@@ -24,7 +24,7 @@
 
 ## Abstract
 
-Rune encodes coding trajectories into LoRA adapters so that a local Small Language Model accumulates procedural knowledge across sessions — debugging patterns, project conventions, execution feedback — in weight space rather than context tokens. The system implements a 4-phase template-driven pipeline (decompose → plan → code → integrate), parallel swarm orchestration, a Doc-to-LoRA hypernetwork for single-forward-pass adapter generation, TIES/DARE merging for adapter evolution, and a flat adapter registry with lineage tracking. The codebase includes 301+ tests, an end-to-end pipeline exercising all phases, and inference providers for Transformers, llama.cpp, Ollama, and vLLM. GPU end-to-end validation on real hardware is the next milestone.
+Rune encodes coding trajectories into LoRA adapters so that a local Small Language Model accumulates procedural knowledge across sessions — debugging patterns, project conventions, execution feedback — in weight space rather than context tokens. The system implements a 5-phase template-driven pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, a Doc-to-LoRA hypernetwork for single-forward-pass adapter generation, TIES/DARE merging for adapter evolution, and a flat adapter registry with lineage tracking. The codebase includes 433+ tests, an end-to-end pipeline exercising all phases, a coding benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench), a GitHub training data mining pipeline, and inference providers for Transformers, llama.cpp, Ollama, and vLLM. Development uses Gemma 2 2B for rapid iteration; Qwen 2.5 Coder 7B is the production target. GPU fine-tuning and benchmarking are the current priorities.
 
 ---
 
@@ -56,11 +56,11 @@ The weight update for a single LoRA adapter follows `ΔW = BA`, where `B` and `A
 
 ## Architecture Overview
 
-Rune's architecture consists of three interacting subsystems: the 4-phase pipeline, the adapter registry with evolutionary lifecycle, and the inference provider layer.
+Rune's architecture consists of three interacting subsystems: the 5-phase pipeline, the adapter registry with evolutionary lifecycle, and the inference provider layer.
 
-### The 4-Phase Pipeline
+### The 5-Phase Pipeline
 
-A coding task flows through four sequential phases. Phases 2 and 3 run as parallel swarms of agents; phases 1 and 4 run single-agent. Each phase is driven by a Jinja2 template that renders the trajectory/prompt, a hypernetwork H() that optionally generates an adapter, and an inference provider that produces the output. The recursive generate-execute-reflect loop happens *within* each phase via per-phase iteration with early stopping.
+A coding task flows through five sequential phases. Phases 2 and 3 run as parallel swarms of agents; phases 1, 4, and 5 run single-agent. Each phase is driven by a Jinja2 template that renders the trajectory/prompt, a hypernetwork H() that optionally generates an adapter, and an inference provider that produces the output. The recursive generate-execute-reflect loop happens *within* each phase via per-phase iteration with early stopping.
 
 ```mermaid
 flowchart LR
@@ -68,13 +68,18 @@ flowchart LR
     P1 --> P2[Phase 2: PLAN\nparallel swarm]
     P2 --> P3[Phase 3: CODE\nparallel swarm + retries]
     P3 --> P4[Phase 4: INTEGRATE\nsingle agent]
-    P4 --> Done([Integrated Code\n+ Adapters])
+    P4 --> P5{Tests pass?}
+    P5 -->|Yes| Done([Integrated Code\n+ Adapters])
+    P5 -->|No| P5a[Phase 5a: DIAGNOSE\nsingle agent]
+    P5a --> P5b[Phase 5b: REPAIR\nsingle agent]
+    P5b --> P5
 ```
 
-- **DECOMPOSE** — Breaks the project into subtasks (`decompose.j2` template)
-- **PLAN** — Generates an architecture plan per subtask in parallel (`plan.j2`)
-- **CODE** — Produces working code per subtask with retry on failure (`code.j2`, `code_retry.j2`)
-- **INTEGRATE** — Merges all subtask outputs into a coherent codebase (`integrate.j2`)
+- **DECOMPOSE** — Breaks the project into subtasks (`decompose.j2`, `prompt_decompose.j2`, `prompt_decompose_concise.j2`)
+- **PLAN** — Generates an architecture plan per subtask in parallel (`plan.j2`, `prompt_plan.j2`)
+- **CODE** — Produces working code per subtask with retry on failure (`code.j2`, `code_retry.j2`, `code_continue.j2`, `prompt_code.j2`, `prompt_code_retry.j2`, `prompt_code_continue.j2`)
+- **INTEGRATE** — Merges all subtask outputs into a coherent codebase (`integrate.j2`, `prompt_integrate.j2`, `prompt_integrate_retry.j2`)
+- **DIAGNOSE/REPAIR** — Two-step failure recovery. Diagnose: error context in prompt, domain knowledge in adapter → model produces a concise fix instruction. Repair: the model's own diagnosis becomes `fix_guidance` in the prompt, domain stays in the adapter → produces fixed code. This separation avoids prompt-adapter tension where error details and domain context compete for model attention. (`diagnose.j2`, `prompt_diagnose.j2`, `code_repair.j2`, `prompt_code_repair.j2`)
 
 Entry points: `scripts/rune_runner.py` (single pipeline run), `scripts/swarm.py` (multi-agent orchestration with training and evolution).
 
@@ -138,32 +143,35 @@ The swarm orchestrator defaults to single-GPU operation with sleep/wake time-sha
 
 ## Current Status
 
-**Stage:** Alpha (implementation complete, awaiting GPU e2e validation)
+**Stage:** Alpha (infrastructure complete, GPU fine-tuning and benchmarking in progress)
 
-As of 2026-03-17, the following components are implemented and tested (301+ tests passing):
+As of 2026-04-05, the following components are implemented and tested (433+ tests passing):
 
-- **4-phase pipeline** (`scripts/rune_runner.py`) — decompose → plan → code → integrate with Jinja2 templates, per-phase iteration, and early stopping
+- **5-phase pipeline** (`scripts/rune_runner.py`) — decompose → plan → code → integrate → diagnose/repair with 18 Jinja2 templates, per-phase iteration, DAG-ordered code execution, and early stopping
 - **Swarm orchestration** (`scripts/swarm.py`) — parallel agent execution, training pool, evolution worker, memory watchdog, checkpoint persistence
-- **Doc-to-LoRA hypernetwork** (`libs/model-training`) — Perceiver-based `DocToLoraHypernetwork` generating rank-8 LoRA adapters in a single forward pass
-- **Adapter registry** (`libs/adapter-registry`) — SQLite + filesystem store with write-once enforcement, lineage tracking, fitness queries
+- **Doc-to-LoRA hypernetwork** (`libs/model-training`) — Perceiver-based `DocToLoraHypernetwork` generating rank-8 LoRA adapters in a single forward pass; Sakana gemma_demo checkpoint for development
+- **Adapter registry** (`libs/adapter-registry`) — SQLite + filesystem store with write-once enforcement, lineage tracking, fitness queries, model registry with DeltaCoder warm-start
 - **TIES/DARE merging** (`libs/model-training/merging.py`) — evolutionary adapter combination
 - **Inference providers** (`libs/inference`) — TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider
 - **Sandbox execution** (`libs/shared/sandbox.py`) — SubprocessBackend for isolated code execution
 - **D2L training pipeline** (`libs/model-training`) — data preparation, LoRA mining, hypernetwork training, probing
-- **Evaluation** (`libs/evaluation`) — OOD benchmark, fitness scoring, Pass@k metrics
+- **GitHub training data mining** (`scripts/mine_github.py`) — mines PRs, issues, and commits from GitHub repositories for hypernetwork training corpus; diff compression, pair extraction, batch mining
+- **Coding benchmark evaluation** (`scripts/eval/`) — HumanEval+, MBPP+, BigCodeBench with tiered execution (smoke ~5min, mini ~30min, full ~2hr); supports Transformers and vLLM backends
+- **Evaluation** (`libs/evaluation`) — OOD benchmark, fitness scoring, Pass@k metrics, generalization delta
+- **GPU devcontainer** (`.devcontainer/`) — CUDA 13.0 runtime with flash-attn, Claude Code, DevPod-ready
 
-**What works:** All components pass unit and integration tests on CPU. The e2e test (`scripts/e2e_test.py`) exercises the full pipeline from task through all four phases to adapter storage.
+**What works:** All components pass unit and integration tests. The e2e test (`scripts/e2e_test.py`) exercises the full pipeline from task through all five phases to adapter storage. The benchmark evaluation framework provides standardized coding task evaluation. The GitHub mining pipeline collects training data from real repositories.
 
-**What's next:** GPU end-to-end validation on real hardware — confirming that the hypernetwork produces adapters that measurably improve coding task performance.
+**What's next:** GPU fine-tuning and benchmarking — training the hypernetwork on mined trajectory data, then measuring Pass@1 improvement on HumanEval+/MBPP+/BigCodeBench against baseline. Development uses Gemma 2 2B (`google/gemma-2-2b-it`) for rapid iteration; production target is Qwen 2.5 Coder 7B.
 
 ---
 
 ## Open Questions
 
-- **Does the hypernetwork produce adapters that improve Pass@1 on real hardware?** The hypernetwork architecture is implemented and tested on CPU. The critical validation — measuring Pass@1 improvement on held-out coding tasks vs the base model — requires GPU e2e runs.
+- **Does the hypernetwork produce adapters that improve Pass@1 on real hardware?** The hypernetwork architecture is implemented and tested. The benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench) is ready for systematic measurement. GPU validation is the current priority.
 - **How do TIES/DARE-merged adapters interact across task types?** Merging is implemented and tested for correctness. Whether merged adapters transfer constructively across task types (useful knowledge sharing) or destructively (interference) depends on task distribution correlation and remains an empirical question.
-- **What is the minimum adapter corpus size for effective hypernetwork training?** The D2L training pipeline is built. The cold-start question — how many diverse adapters are needed before the hypernetwork generalizes — will be answered by early GPU training runs.
-- **Does recursive refinement improve adapter quality?** The per-phase iteration loop with early stopping is implemented. Whether richer trajectories (more attempts, more error corrections) produce measurably better adapters than single-pass trajectories is an empirical question for GPU validation.
+- **What is the minimum adapter corpus size for effective hypernetwork training?** The D2L training pipeline and GitHub mining infrastructure are built. The cold-start question — how many diverse adapters are needed before the hypernetwork generalizes — will be answered by early GPU training runs using mined trajectory data.
+- **Does recursive refinement improve adapter quality?** The 5-phase pipeline with diagnose/repair and per-phase iteration is implemented. Whether richer trajectories (more attempts, more error corrections, diagnostic reasoning) produce measurably better adapters than single-pass trajectories is an empirical question for GPU validation.
 
 ---
 
@@ -183,17 +191,19 @@ Rune is structured as a monorepo with services, libraries, and a scripts-based o
 
 | Component | Status | Role |
 |-----------|--------|------|
-| `scripts/` | Implemented | Fat orchestrator: `rune_runner.py` (pipeline), `swarm.py` (multi-agent), `swarm_workers.py` (training pool), `swarm_evolution.py` (merging/pruning), `e2e_test.py` |
+| `scripts/` | Implemented | Fat orchestrator (primary execution path): `rune_runner.py` (5-phase pipeline), `swarm.py` (multi-agent), `swarm_workers.py` (training pool), `swarm_evolution.py` (merging/pruning), `mine_github.py` (training data mining), `e2e_test.py`, `e2e_benchmark.py`, `e2e_inference_smoke.py`, `e2e_training_smoke.py`, `experiment_harness.py` (adapter experiments), `benchmark_challenging.py`, `compare_output.py`, `demo_project.py`, `demo_run.py`, `bootstrap.py` |
+| `scripts/eval/` | Implemented | Coding benchmark evaluation: `run_benchmarks.py` (HumanEval+/MBPP+/BigCodeBench), `generate_completions.py`, `config.py` |
+| `scripts/optimization/` | Implemented | Bayesian parameter optimization (Optuna TPE): `run_optimization.py` (overnight runner), `scoring.py` (fitness scoring), `task_pool.py` (diverse task sampling), `template_library.py` (prompt/trajectory style variants) |
 | `services/rune-agent` | Implemented | LangGraph state graph: generate → execute → reflect → save, with single-iteration mode for outer loop control |
-| `services/training-svc` | Implemented | FastAPI service: POST /train/lora, POST /train/hypernetwork, GET /jobs/{id} |
-| `services/evolution-svc` | Partial | FastAPI service with endpoint stubs: /evaluate, /evolve, /promote, /prune. Evolution logic lives in `scripts/swarm_evolution.py` |
+| `services/training-svc` | Implemented | FastAPI service: POST /train/lora, POST /train/hypernetwork, GET /jobs/{id} — all endpoints functional with background job dispatch |
+| `services/evolution-svc` | Stubs | FastAPI service with 501 endpoint stubs: /evaluate, /evolve, /promote, /prune. Real evolution logic lives in `scripts/swarm_evolution.py` |
+| `services/api-service` | Stubs | FastAPI service with 501 endpoint stubs for /sessions and /adapters routes. Health/ready endpoints work. Database infrastructure exists but business logic not yet implemented |
 | `libs/adapter-registry` | Implemented | SQLite + filesystem adapter store with write-once enforcement, fitness queries, lineage tracking |
 | `libs/model-training` | Implemented | Hypernetwork, D2L training pipeline, TIES/DARE merging, QLoRA trainer, PEFT utilities |
 | `libs/inference` | Implemented | Provider-agnostic interface with Transformers, llama.cpp, Ollama, and vLLM backends |
-| `libs/shared` | Implemented | Hardware probe, sandbox, checkpoint DB, template loader, Rune data models, storage utils |
+| `libs/shared` | Implemented | Hardware probe, sandbox, checkpoint DB, template loader (18 Jinja2 templates), Rune data models, storage utils, lazy cache |
 | `libs/evaluation` | Implemented | OOD benchmark, Pass@k metrics, fitness scoring, generalization delta |
 | `libs/events-py` | Implemented | Event envelope (created/updated/deleted) with typed helpers |
-| `services/api-service` | Implemented | REST API with adapter and session routes |
 
 ---
 
@@ -201,9 +211,9 @@ Rune is structured as a monorepo with services, libraries, and a scripts-based o
 
 Contributions are welcome. To get started:
 
-1. **Run the tests:** `uv sync --all-extras && uv run pytest` (301+ tests, runs in ~1 minute on CPU)
+1. **Run the tests:** `uv sync --all-extras && uv run pytest` (433+ tests, runs in ~1 minute on CPU)
 2. **Follow conventions:** Google docstrings, `ruff` for linting, `mypy` for type checking, `uv` for dependency management
-3. **Key entry points:** `scripts/rune_runner.py` (pipeline), `scripts/swarm.py` (orchestrator), `scripts/e2e_test.py` (end-to-end)
+3. **Key entry points:** `scripts/rune_runner.py` (pipeline), `scripts/swarm.py` (orchestrator), `scripts/e2e_test.py` (end-to-end), `scripts/eval/run_benchmarks.py` (benchmarks)
 
 If you are working on hypernetwork training for procedural knowledge, LoRA episodic memory for agents, or local inference/training infrastructure on consumer hardware — this is adjacent territory. Discussion, critique, and GPU validation results are especially valuable at this stage.
 

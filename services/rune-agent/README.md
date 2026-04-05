@@ -35,4 +35,4 @@ Two graph modes:
 
 ## Relationship to Pipeline
 
-The outer 4-phase pipeline (`scripts/rune_runner.py`) uses `create_single_iteration_graph()` for each iteration within a phase. Between iterations, the hypernetwork can generate a fresh adapter. The agent graph handles a single generate-execute-reflect cycle; the pipeline handles phase sequencing and iteration.
+The outer 5-phase pipeline (`scripts/rune_runner.py`) uses `create_single_iteration_graph()` for each iteration within a phase. Between iterations, the hypernetwork can generate a fresh adapter. The agent graph handles a single generate-execute-reflect cycle; the pipeline handles phase sequencing (decompose → plan → code → integrate → diagnose/repair) and iteration.

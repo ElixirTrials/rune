@@ -1,8 +1,8 @@
-# 4-Phase Coding Pipeline
+# 5-Phase Coding Pipeline
 
 ## Overview
 
-Rune's execution model is a 4-phase sequential pipeline. Phases 2 and 3 run as parallel swarms; phases 1 and 4 run single-agent. Within each phase, a generate-execute-reflect loop iterates until tests pass or max attempts are reached. Each phase is driven by a Jinja2 template, optionally enhanced by a hypernetwork-generated LoRA adapter.
+Rune's execution model is a 5-phase sequential pipeline: decompose, plan, code, integrate, and diagnose/repair. Phases 2 and 3 run as parallel swarms; phases 1 and 4 run single-agent; phase 5 activates conditionally when code fails. Within each phase, a generate-execute-reflect loop iterates until tests pass or max attempts are reached. Each phase is driven by a Jinja2 template, optionally enhanced by a hypernetwork-generated LoRA adapter.
 
 For swarm orchestration details, see [Swarm Architecture](../swarm-architecture.md). For adapter storage, see [Adapter Storage](adapter-storage.md).
 
@@ -16,7 +16,9 @@ flowchart LR
     P1 --> P2[Phase 2: PLAN\nparallel swarm]
     P2 --> P3[Phase 3: CODE\nparallel swarm + retries]
     P3 --> P4[Phase 4: INTEGRATE\nsingle agent]
-    P4 --> Done([Integrated Code\n+ Adapters])
+    P4 --> P5{Phase 5: DIAGNOSE/REPAIR\nconditional}
+    P5 -->|failure| P5
+    P5 -->|success| Done([Integrated Code\n+ Adapters])
 ```
 
 ---
@@ -67,6 +69,22 @@ The retry template (`code_retry.j2`) includes error summaries and attempt histor
 
 Merges all subtask code outputs into a coherent final codebase.
 
+### Phase 5: DIAGNOSE/REPAIR (conditional)
+
+| Field | Description |
+|-------|-------------|
+| **Template** | `diagnose.j2` (trajectory), `prompt_diagnose.j2` (prompt), `code_repair.j2` (trajectory), `prompt_code_repair.j2` (prompt) |
+| **Input** | Failed code + error output from Phase 3 or Phase 4 |
+| **Output** | Fixed code per subtask |
+| **Adapter** | Domain adapter stays loaded; error context flows through prompt |
+
+Activates when code fails during the retry loop. Uses a two-step pattern to avoid prompt-adapter tension where domain context and error details compete for model attention:
+
+1. **Diagnose:** The error is placed in the prompt and the original code in the adapter trajectory. The model produces a concise fix instruction describing what went wrong and how to fix it.
+2. **Repair:** The model's own diagnosis becomes the `fix_guidance` in the prompt, while domain context stays in the adapter. The model produces fixed code guided by its own analysis.
+
+This separation keeps each inference call focused: diagnose concentrates on understanding the failure, repair concentrates on applying the fix with full domain context.
+
 ---
 
 ## Per-Phase Iteration
@@ -80,6 +98,7 @@ Each phase runs up to N iterations (configurable per phase via environment varia
 | `RUNE_MAX_ITERATIONS_PLAN` | Phase 2 override |
 | `RUNE_MAX_ITERATIONS_CODE` | Phase 3 override |
 | `RUNE_MAX_ITERATIONS_INTEGRATE` | Phase 4 override |
+| `RUNE_MAX_ITERATIONS_DIAGNOSE` | Phase 5 override |
 
 CLI flag `--max-phase-iterations` overrides the global env var. Hardcoded fallback is 5.
 
@@ -94,19 +113,28 @@ Within each iteration:
 
 ## Template System
 
-All phase instructions flow through Jinja2 templates in `libs/shared/src/shared/templates/`:
+All phase instructions flow through 18 Jinja2 templates in `libs/shared/src/shared/templates/`:
 
 | Template | Phase | Purpose |
 |----------|-------|---------|
 | `decompose.j2` | 1 | Trajectory context for decomposition |
 | `prompt_decompose.j2` | 1 | Model prompt for decomposition |
+| `prompt_decompose_concise.j2` | 1 | Concise model prompt variant for decomposition |
 | `plan.j2` | 2 | Trajectory context for planning |
 | `prompt_plan.j2` | 2 | Model prompt for planning |
 | `code.j2` | 3 | Trajectory context for first code attempt |
+| `code_continue.j2` | 3 | Trajectory context for continuation |
 | `code_retry.j2` | 3 | Trajectory context for retry (includes errors, history) |
 | `prompt_code.j2` | 3 | Model prompt for code generation |
+| `prompt_code_continue.j2` | 3 | Model prompt for code continuation |
+| `prompt_code_retry.j2` | 3 | Model prompt for code retry |
 | `integrate.j2` | 4 | Trajectory context for integration |
 | `prompt_integrate.j2` | 4 | Model prompt for integration |
+| `prompt_integrate_retry.j2` | 4 | Model prompt for integration retry |
+| `diagnose.j2` | 5 | Trajectory context for failure diagnosis |
+| `prompt_diagnose.j2` | 5 | Model prompt for diagnosis (error in prompt, code in adapter) |
+| `code_repair.j2` | 5 | Trajectory context for targeted repair |
+| `prompt_code_repair.j2` | 5 | Model prompt for repair (diagnosis becomes fix_guidance) |
 
 Templates are rendered via `shared.template_loader.render_trajectory()` and `render_prompt()`.
 

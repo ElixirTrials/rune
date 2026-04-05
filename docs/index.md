@@ -1,16 +1,16 @@
 # Rune Documentation
 
-Rune is a local-first coding agent that uses LoRA weight space as episodic memory. It implements a 4-phase template-driven pipeline (decompose → plan → code → integrate), parallel swarm orchestration, a Doc-to-LoRA hypernetwork, TIES/DARE adapter merging, and a flat adapter registry with lineage tracking.
+Rune is a local-first coding agent that uses LoRA weight space as episodic memory. It implements a 5-phase template-driven pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, a Doc-to-LoRA hypernetwork, TIES/DARE adapter merging, and a flat adapter registry with lineage tracking.
 
 ## Core Subsystems
 
-- **Pipeline** — 4-phase coding pipeline with Jinja2 templates, per-phase iteration, and early stopping. Entry: `scripts/rune_runner.py`
+- **Pipeline** — 5-phase coding pipeline with 18 Jinja2 templates, per-phase iteration, DAG-ordered code execution, and two-step diagnose/repair. Entry: `scripts/rune_runner.py`
 - **Adapter Registry** — SQLite + filesystem store for LoRA adapters with write-once enforcement, fitness queries, and lineage tracking. Entry: `libs/adapter-registry/`
 - **Hypernetwork** — Perceiver-based Doc-to-LoRA hypernetwork generating rank-8 LoRA adapters in a single forward pass. Entry: `libs/model-training/`
 
 ## Documentation
 
-- [Architecture: 4-Phase Pipeline](architecture/recursive-loop.md) — Pipeline phases, swarm execution, template system
+- [Architecture: 5-Phase Pipeline](architecture/recursive-loop.md) — Pipeline phases, swarm execution, template system
 - [Architecture: Adapter Storage](architecture/adapter-storage.md) — Registry schema, write-once policy, querying
 - [Architecture: Monorepo Mapping](architecture/monorepo-mapping.md) — Component layout, integration points
 - [Architecture: GPU Strategy](architecture/multi-gpu-strategy.md) — Multi-GPU coordination, pipeline parallelism

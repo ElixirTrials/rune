@@ -1,7 +1,9 @@
 ## Results
 
-!!! warning "Research Status: Pre-Implementation"
-    No experiments have been conducted. This section presents the planned
+!!! warning "Research Status: Pre-Validation"
+    The evaluation infrastructure is built and tested (433+ tests passing,
+    benchmark framework implemented), but no GPU training runs or adapter
+    evaluations have been conducted. This section presents the planned
     experimental design for Phase 1 hypothesis validation. All tables, figures,
     and metrics below describe proposed measurements, not observed results.
 
@@ -13,9 +15,13 @@ Phase 1 is a minimal hypothesis test that gates all subsequent infrastructure in
 
 #### Evaluation Benchmark
 
-The **specified** evaluation benchmark is HumanEval (Chen et al., 2021), a standard Python code generation benchmark consisting of 164 hand-written programming problems with deterministic test suites that enable unambiguous Pass@k computation. Phase 1 uses a held-out subset of 20--30 tasks from HumanEval, not the full 164-task benchmark, because Phase 1 is a minimal hypothesis test — statistical power over a small, well-controlled subset is sufficient to detect the **specified** threshold effect.
+Rune's benchmark evaluation framework (described in [Methods](methods.md#benchmark-evaluation-framework)) provides three benchmark suites — HumanEval+, MBPP+, and BigCodeBench — organized into three execution tiers (smoke ~5 min, mini ~30 min, full ~2 hr). The Phase 1 kill-switch evaluation uses this framework as follows:
+
+The **primary** evaluation benchmark is HumanEval+ (EvalPlus), an extended version of HumanEval (Chen et al., 2021) with additional test cases that reduce false positives from undertested solutions. Phase 1 uses a held-out subset of 20--30 tasks, not the full benchmark, because Phase 1 is a minimal hypothesis test — statistical power over a small, well-controlled subset is sufficient to detect the **specified** threshold effect. The smoke tier enables rapid iteration during hyperparameter tuning; the full tier provides definitive measurements for the kill-switch decision.
 
 Each task is evaluated with k=5 samples. Tasks in the held-out subset are excluded from the training trajectory corpus so that the evaluation measures generalization to unseen problems, not memorization of training data. The subset is selected to be diverse in task type (string manipulation, arithmetic, data structures, algorithms) to avoid biasing the evaluation toward a narrow skill distribution.
+
+The development evaluation target is Gemma 2 2B (google/gemma-2-2b-it), which fits within consumer GPU memory constraints and enables rapid iteration. The Sakana Doc-to-LoRA checkpoint includes a "gemma_demo" variant compatible with this model. Production-scale evaluation will target Qwen2.5-Coder-7B-Instruct on the full benchmark suite including MBPP+ and BigCodeBench.
 
 **Isolation note:** Phase 1 baseline runs in bfloat16 — NOT QLoRA.[^dettmers2023qlora] This isolation is deliberate: the Phase 1 experiment tests the trajectory-to-adapter hypothesis (does a Doc-to-LoRA hypernetwork[^charakorn2026doc2lora] trained on coding trajectories produce useful adapters?) independently of the quantization variable (does NF4 quantization degrade adapter quality?). QLoRA is introduced in Phase 2 after the bfloat16 baseline passes. Confounding these two variables in a single experiment would make a negative result uninterpretable.
 
@@ -30,7 +36,7 @@ Pass@1 for a single task is the probability that the first generated sample pass
 The formal hypothesis pair for the Phase 1 kill-switch gate:
 
 - **H\(_0\) (null):** A Doc-to-LoRA hypernetwork trained on coding trajectories produces adapters that do not improve Pass@1 over the baseline (improvement < 5%).
-- **H\(_1\) (alternative):** Trajectory-conditioned adapters improve Pass@1 by \(\geq\) 5% on the 20--30 task HumanEval subset compared to Qwen2.5-Coder-7B-Instruct with no adapter.
+- **H\(_1\) (alternative):** Trajectory-conditioned adapters improve Pass@1 by \(\geq\) 5% on the 20--30 task HumanEval+ subset compared to the base model (Gemma 2 2B for development evaluation, Qwen2.5-Coder-7B-Instruct for production evaluation) with no adapter.
 
 H\(_1\) passing is necessary but not sufficient to proceed to Phase 2. H\(_0\) acceptance terminates infrastructure development and triggers reassessment. The kill-switch is a research gate, not a quality bar — it tests whether the core hypothesis has empirical support, not whether the system is production-ready.
 
@@ -51,10 +57,10 @@ The **specified** training dataset protocol for Phase 1:
 
 | Condition | Description | Claim Tier |
 |-----------|-------------|-----------|
-| Vanilla model (bfloat16) | Qwen2.5-Coder-7B-Instruct, no adapter, bfloat16 | Planned baseline |
+| Vanilla model (bfloat16) | Gemma 2 2B (dev) / Qwen2.5-Coder-7B-Instruct (prod), no adapter, bfloat16 | Planned baseline |
 | RAG baseline | Retrieved trajectory snippets in context (no weight update) | Planned baseline |
 | Directly fine-tuned LoRA | Standard PEFT fine-tuning on same trajectory data (no hypernetwork) | Planned baseline |
-| Hypernetwork-generated adapter | Rune Phase 1 (Doc-to-LoRA on coding trajectories) | **Kill-switch condition** |
+| Hypernetwork-generated adapter | Rune Phase 1 (Doc-to-LoRA on coding trajectories, gemma_demo checkpoint) | **Kill-switch condition** |
 
 The four baselines isolate distinct variables. The **vanilla model** establishes the zero-adaptation reference — raw model capability on the held-out tasks without any trajectory signal. The **RAG baseline** tests whether in-context retrieval of trajectory snippets alone achieves the threshold, without modifying the model's weights — if RAG suffices, the hypernetwork adds no value over retrieval. The **directly fine-tuned LoRA** tests whether standard gradient-based adaptation on the same trajectory data matches or exceeds the hypernetwork — if direct fine-tuning achieves equivalent quality, the hypernetwork's value is inference-time speed, not adapter quality. Only the **hypernetwork-generated adapter** tests the full Rune hypothesis: that a single forward pass through a trajectory-conditioned hypernetwork produces adapters competitive with gradient-based methods.
 

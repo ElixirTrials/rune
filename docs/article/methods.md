@@ -8,19 +8,19 @@ Building on the theoretical foundations established in the Background section �
 
 Rune is structured as five services collaborating around a central adapter registry. Each service owns a single responsibility; inter-service communication occurs via HTTP APIs and a shared filesystem-backed adapter store.
 
-**rune-agent** is the core execution service. It implements a LangGraph `StateGraph` with four nodes — `generate`, `execute`, `reflect`, and `save_trajectory` — connected by conditional routing that terminates on test success or attempt exhaustion. The agent receives a task description and test suite, selects adapters from the registry based on task metadata, and runs the recursive generate-execute-reflect loop until a solution passes or attempts are exhausted. The complete trajectory is then persisted for downstream distillation. The loop structure is **specified** — it is implemented in the codebase and tested.
+**rune-agent** is the core execution service. It implements a five-phase pipeline — decompose, plan, code, integrate, diagnose/repair — with DAG-ordered subtask execution and a two-step error recovery mechanism. The agent receives a task description, decomposes it into dependency-ordered subtasks, plans each subtask, generates code in topological order (publishing interfaces to a typed blackboard for downstream subtasks), integrates the results, and applies diagnose-then-repair when code fails. The fifth phase (diagnose/repair) addresses the prompt-adapter tension described in [Background](background.md#the-prompt-adapter-tension-in-error-recovery): diagnosis places error context in the prompt and code in the adapter to produce a concise fix instruction; repair then uses that diagnosis as prompt guidance while the adapter retains domain context. This separation avoids forcing both error details and domain knowledge through the same channel. The pipeline is orchestrated by 18 Jinja2 templates (code.j2, code_continue.j2, code_repair.j2, code_retry.j2, decompose.j2, diagnose.j2, integrate.j2, plan.j2, prompt_code.j2, prompt_code_continue.j2, prompt_code_repair.j2, prompt_code_retry.j2, prompt_decompose.j2, prompt_decompose_concise.j2, prompt_diagnose.j2, prompt_integrate.j2, prompt_integrate_retry.j2, prompt_plan.j2), where each phase has both a trajectory template (adapter context) and a prompt template (model orientation). The pipeline structure is **specified** — it is implemented in the codebase and tested (433+ tests passing).
 
-**lora-server** wraps vLLM with optional pipeline parallelism and dynamic adapter loading following the S-LoRA unified paging pattern.[^sheng2023slora] It serves the base model (Qwen2.5-Coder-7B-Instruct) with QLoRA quantization and exposes an OpenAI-compatible API that accepts adapter selection metadata per request. The serving configuration is discussed in detail in the Training Data Strategy and Serving Architecture subsection.
+**lora-server** wraps vLLM with optional pipeline parallelism and dynamic adapter loading following the S-LoRA unified paging pattern.[^sheng2023slora] It serves the base model with QLoRA quantization and exposes an OpenAI-compatible API that accepts adapter selection metadata per request. Development and benchmarking use Gemma 2 2B (google/gemma-2-2b-it) with a Sakana "gemma_demo" checkpoint variant; the production target is Qwen2.5-Coder-7B-Instruct. The serving configuration is discussed in detail in the Training Data Strategy and Serving Architecture subsection.
 
-**training-svc** manages adapter production. In Phase 3, it runs direct LoRA fine-tuning on trajectory data using PEFT utilities. In Phase 4, it hosts the hypernetwork that replaces gradient descent with a single forward pass. Training jobs acquire a GPU lease from lora-server, which yields one GPU for the duration of the training job.
+**training-svc** manages adapter production and is the most complete service implementation. It runs direct LoRA fine-tuning on trajectory data using PEFT utilities and hosts the hypernetwork that replaces gradient descent with a single forward pass. A model registry with DeltaCoder warm-start capability enables incremental adapter training from existing checkpoints rather than cold-starting each training run. Training jobs acquire a GPU lease from lora-server, which yields one GPU for the duration of the training job.
 
-**evolution-svc** manages the adapter lifecycle — consolidation, update, archival, and experimental merging — using fitness-driven selection rather than naive composition. Its operations are detailed in the Evolution Operator subsection.
+**evolution-svc** manages the adapter lifecycle — consolidation, update, archival, and experimental merging — using fitness-driven selection rather than naive composition. The service layer contains stubs; the real evolution logic (TIES/DARE merging, pruning, lineage tracking) is implemented in the scripts layer (`scripts/swarm_evolution.py`). Operations are detailed in the Evolution Operator subsection.
+
+**api-service** provides REST API stubs for external integration. The primary execution path bypasses the service layer: `scripts/rune_runner.py` runs the five-phase pipeline directly, and `scripts/swarm.py` orchestrates multi-agent swarm execution with training pool management, evolution workers, and watchdog supervision.
 
 **adapter-registry** is the shared dependency root: a SQLite-backed metadata store paired with safetensors adapter files on the local filesystem. Every service reads from or writes to the registry. Adapters are write-once and immutable after creation; metadata fields (fitness score, archive status) are mutable. The three-level hierarchy (project, domain, task) is encoded in both the filesystem path convention and the SQLite schema.
 
-The agent loop is implemented as a LangGraph `StateGraph` with four nodes — `generate`, `execute`, `reflect`, and `save_trajectory` — connected by conditional routing that terminates on test success or attempt exhaustion.
-
-**Claim tiers:** The five-service architecture and loop structure are **specified** — they are implemented in the codebase. Phase 0 and Phase 1 empirical performance on coding tasks is **TBD**.
+**Claim tiers:** The five-service architecture and five-phase pipeline are **specified** — they are implemented in the codebase with 433+ tests passing. Phase 0 and Phase 1 empirical performance on coding tasks is **TBD**.
 
 ---
 
@@ -173,6 +173,34 @@ At inference time, the adapter router queries the registry by task metadata (`ta
 This compositional mode loads one adapter from each applicable hierarchy level and applies their weight deltas additively. It is the **ablation target** for Phase 5 and beyond. Multi-adapter composition will be tested against single-adapter selection once sufficient adapter diversity exists in the registry. The default remains single-adapter selection until empirical evidence supports multi-level composition.
 
 **Claim tiers:** The three-level hierarchy is **specified** — it is implemented in the adapter registry schema and filesystem layout. Single-adapter selection as the default retrieval mode is **specified**. Compositional accumulation across hierarchy levels is **proposed** and requires empirical validation of behavioral coherence. Multi-adapter composition semantics are an **ablation target** for Phase 5+.
+
+---
+
+### GitHub Mining Pipeline
+
+Training a hypernetwork on coding trajectories requires a corpus of real-world coding sessions with sufficient diversity in task type, failure mode, and correction pattern. Rune includes a GitHub mining pipeline that collects training data from public repositories by mining pull requests, issues, and commit histories. The pipeline extracts structured coding trajectories from PR review cycles — where a PR undergoes review feedback, revision, and re-review — capturing the same attempt-error-correction structure that the agent's own recursive loop produces. Mined trajectories are normalized into the same schema used by the agent's trajectory store, enabling the hypernetwork to train on both self-generated and externally-mined trajectories without schema conversion.
+
+The mining pipeline is **specified** — it is implemented in the codebase. The quality and diversity of mined trajectories relative to self-generated trajectories is an empirical question that will be evaluated during hypernetwork training.
+
+---
+
+### Benchmark Evaluation Framework
+
+Rune includes a coding benchmark evaluation framework for systematic measurement of adapter quality across standard code generation benchmarks. The framework supports three benchmark suites:
+
+- **HumanEval+** (EvalPlus): Extended HumanEval with additional test cases for more rigorous evaluation of functional correctness.
+- **MBPP+** (EvalPlus): Extended Mostly Basic Python Programming benchmark with augmented test suites.
+- **BigCodeBench**: A more challenging benchmark targeting complex, multi-step coding tasks that require API usage and library knowledge.
+
+Execution is organized into three tiers to support different evaluation contexts:
+
+- **Smoke** (~5 minutes): A minimal subset for rapid iteration during development. Sufficient to detect regressions and verify that the evaluation pipeline functions correctly.
+- **Mini** (~30 minutes): A medium-sized subset that provides statistically meaningful signal without requiring a full benchmark run. Used for comparing adapter variants and hyperparameter sweeps.
+- **Full** (~2 hours): The complete benchmark suite for final evaluation and publication-quality measurements.
+
+The development evaluation target is Gemma 2 2B (google/gemma-2-2b-it), which fits within consumer GPU memory constraints and enables rapid iteration. Production-scale evaluation will target Qwen2.5-Coder-7B-Instruct. The tiered execution structure allows the Phase 1 kill-switch evaluation to use the smoke tier for fast hypothesis testing and the full tier for definitive measurements.
+
+The benchmark framework is **specified** — it is implemented in the codebase and tested. Benchmark results on adapter-augmented models are **TBD** pending GPU validation runs.
 
 ---
 

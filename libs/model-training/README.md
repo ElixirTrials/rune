@@ -36,10 +36,19 @@ Adapter combination strategies for evolutionary merging:
 
 Both accept lists of adapter state dicts and return a single merged state dict.
 
+### Model Registry (`model_configs.py`)
+
+`ModelConfig` registry providing pre-configured model settings with DeltaCoder warm-start support. Includes configurations for models like Qwen3.5-9B with warm-start adapter from `danielcherubini/Qwen3.5-DeltaCoder-9B`.
+
 ### Trainer (`trainer.py`)
 
 QLoRA fine-tuning utilities:
 - `train_and_register()` — Fine-tune a LoRA adapter and register it in the adapter registry
+
+### Training Data Mining
+
+- `d2l_mining.py` — Trajectory mining from coding sessions for hypernetwork training data
+- `scripts/mine_github.py` — Mines GitHub PRs, issues, and commits for hypernetwork training data
 
 ### Other Modules
 

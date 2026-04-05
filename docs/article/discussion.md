@@ -1,10 +1,12 @@
 ## Discussion
 
 !!! note "Research Status"
-    Rune is a pre-implementation research proposal. The experiments described in
-    the Results section have not been conducted. All claims in this section are
-    qualified as **expected** (grounded in prior work) or **proposed** (requiring
-    empirical validation). No empirical claims are made.
+    Rune's infrastructure is built and tested (five-phase pipeline, benchmark
+    evaluation framework, adapter registry, model registry with DeltaCoder
+    warm-start, 433+ tests passing). GPU training runs and adapter evaluations
+    have not been conducted. All claims in this section are qualified as
+    **expected** (grounded in prior work) or **proposed** (requiring empirical
+    validation). No empirical claims are made.
 
 ---
 
@@ -22,11 +24,11 @@
 
 ### Limitations
 
-#### Pre-Implementation Status
+#### Pre-Validation Status
 
-As of this writing, no training runs have been executed, no adapters have been generated, and no Pass@1 measurements have been taken. This article presents a research proposal, not a completed study.
+As of this writing, the system infrastructure is substantially implemented: the five-phase pipeline (decompose, plan, code, integrate, diagnose/repair), adapter registry, model registry with DeltaCoder warm-start, benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench with smoke/mini/full tiers), GitHub mining pipeline, and swarm orchestration are all built and tested with 433+ tests passing. However, no GPU training runs have been executed, no adapters have been generated from real trajectories, and no Pass@1 measurements have been taken. This article presents a research proposal with substantial infrastructure validation, not a completed study.
 
-The system has not been implemented at the component level. All architectural decisions are **specified** but untested. Phase 0 environment validation (vLLM + QLoRA compatibility) has not been confirmed. The kill-switch gate outcome is unknown. Every **expected** claim in this article depends on Phase 1 passing. The experimental design in [Results](results.md) describes planned measurements; the Discussion interprets those planned measurements in terms of their implications — but neither the measurements nor the implications have been empirically grounded.
+Phase 0 environment validation (vLLM + QLoRA compatibility) has not been confirmed. The kill-switch gate outcome is unknown. Every **expected** claim in this article depends on Phase 1 passing. The experimental design in [Results](results.md) describes planned measurements using the implemented benchmark framework; the Discussion interprets those planned measurements in terms of their implications — but neither the measurements nor the implications have been empirically grounded.
 
 #### Adapter Interference Risk
 
@@ -98,7 +100,7 @@ Online adaptation is explicitly out of scope for the current implementation plan
 
 ### Broader Implications
 
-Pink et al. argue that episodic memory is the missing capability for long-term LLM agents.[^pink2025episodic] Rune's adapter-per-session design is one concrete instantiation of this position — each adapter is an episode, retrieved by task similarity, composable with other episodes. Whether this architecture achieves the episodic memory properties Pink et al. identify (persistence, selective retrieval, compositional combination) is **proposed** — it depends on Phase 1+ empirical validation.
+Pink et al. argue that episodic memory is the missing capability for long-term LLM agents.[^pink2025episodic] Rune's adapter-per-session design, operating within a five-phase pipeline (decompose, plan, code, integrate, diagnose/repair) with two-step error recovery, is one concrete instantiation of this position — each adapter is an episode, retrieved by task similarity, composable with other episodes. Whether this architecture achieves the episodic memory properties Pink et al. identify (persistence, selective retrieval, compositional combination) is **proposed** — it depends on Phase 1+ empirical validation.
 
 The trajectory modality argument extends PBB's procedural encoding insight:[^cook2025pbb] if instructions are efficient training signal, trajectories — which contain both the procedure and its execution context — may be the most information-dense substrate available for weight-based procedural encoding. This is distinct from the input modalities validated in related work: documents (Doc-to-LoRA[^charakorn2026doc2lora]), in-context examples (SHINE[^liu2026shine]), and text instructions (Text-to-LoRA[^charakorn2025t2l]). Each of these modalities has been validated independently; Rune's contribution is **proposed** as the trajectory extension of the same mechanism.
 

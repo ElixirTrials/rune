@@ -7,8 +7,8 @@ This appendix details the recommended component build order derived from archite
 | 1 | `libs/adapter-registry` | ✅ Implemented | Nothing | All components that store or retrieve adapters |
 | 2 | `services/lora-server` | 🔄 Replaced | adapter-registry | Replaced by `libs/inference` providers (TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider) |
 | 3 | `libs/model-training` (extend) | ✅ Implemented | inference providers | Hypernetwork, D2L pipeline, TIES/DARE merging, QLoRA trainer |
-| 4 | `services/api-service` (extend) | ✅ Implemented | adapter-registry | REST API for adapter management |
-| 5 | `services/rune-agent` | ✅ Implemented | inference, api-service, sandbox | LangGraph state graph; 4-phase pipeline in scripts/rune_runner.py |
+| 4 | `services/api-service` (extend) | ⚠️ Stubs | adapter-registry | REST API for adapter management (domain endpoints return 501; health checks work) |
+| 5 | `services/rune-agent` | ✅ Implemented | inference, api-service, sandbox | LangGraph state graph; 5-phase pipeline in scripts/rune_runner.py |
 | 6 | `services/evolution-svc` | ⚠️ Partial | adapter-registry, inference | REST stubs; evolution logic in scripts/swarm_evolution.py |
 | 7 | `services/training-svc` | ✅ Implemented | adapter-registry, model-training | POST /train/lora, POST /train/hypernetwork, GET /jobs/{id} |
 | 8 | Hypernetwork | ✅ Implemented | training-svc, adapter corpus | DocToLoraHypernetwork + D2L training pipeline |
@@ -19,7 +19,7 @@ This appendix details the recommended component build order derived from archite
 ```mermaid
 flowchart TD
     adapter_registry["adapter-registry ✅"] --> inference_providers["inference providers ✅"]
-    adapter_registry --> api_service["api-service ✅"]
+    adapter_registry --> api_service["api-service ⚠️"]
     inference_providers --> model_training["model-training ✅"]
     inference_providers --> rune_agent["rune-agent ✅"]
     api_service --> rune_agent
