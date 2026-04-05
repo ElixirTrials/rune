@@ -34,3 +34,40 @@ fitness = evaluate_fitness(adapter_id="adapter-001", task_type="bug-fix")
 ood_result = run_ood_benchmark(adapter_path="/adapters/adapter-001")
 delta = compute_generalization_delta(in_dist_score=0.85, ood_score=0.72)
 ```
+
+## Coding Benchmark Framework
+
+Standardized coding benchmarks for evaluating base models and adapted models against established suites.
+
+### Benchmarks
+
+| Benchmark | Source | Tasks |
+|-----------|--------|-------|
+| HumanEval+ | EvalPlus | Function-level code generation |
+| MBPP+ | EvalPlus | Python programming problems |
+| BigCodeBench | BigCodeBench | Complex coding tasks |
+
+### Execution Tiers
+
+| Tier | Label | Approximate Time | Description |
+|------|-------|-------------------|-------------|
+| 1 | smoke | ~5 min | Small subset for quick validation |
+| 2 | mini | ~30 min | Medium subset for development |
+| 3 | full | ~2 hr | Full benchmark suites |
+
+### Entry Points
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/eval/run_benchmarks.py` | End-to-end benchmark runner |
+| `scripts/eval/generate_completions.py` | Generate model completions for evaluation |
+| `scripts/eval/config.py` | Benchmark configuration and tier definitions |
+| `scripts/eval/compare_results.py` | Compare results across runs |
+
+Supports Transformers and vLLM backends. Default dev model: `google/gemma-2-2b-it`.
+
+### Usage
+
+```bash
+uv run scripts/eval/run_benchmarks.py --tier 1
+```

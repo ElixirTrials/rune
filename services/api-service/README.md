@@ -3,6 +3,22 @@
 ## Purpose
 The API Service is the central orchestrator for the application. It provides HTTP endpoints for the frontend, manages database persistence, and triggers background agent tasks.
 
+## Endpoints
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| GET | `/sessions` | Stub (501) | List coding sessions |
+| GET | `/sessions/{session_id}` | Stub (501) | Get session details |
+| POST | `/sessions` | Stub (501) | Create a coding session |
+| GET | `/adapters` | Stub (501) | List adapters |
+| GET | `/adapters/{adapter_id}` | Stub (501) | Get adapter details |
+| POST | `/adapters` | Stub (501) | Register an adapter |
+| GET | `/health` | Implemented | Health check |
+| GET | `/ready` | Implemented | Readiness probe |
+| GET | `/` | Implemented | Welcome message |
+
+> **Note:** Database infrastructure (SQLModel, Alembic migrations) exists but domain business logic is not yet implemented. All session and adapter endpoints return 501.
+
 ## Wiring Up New Endpoints
 
 1.  **Create a Router**: Create a new module in `src/api_service/routers/` (e.g., `tasks.py`).

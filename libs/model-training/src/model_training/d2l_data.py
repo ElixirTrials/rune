@@ -428,8 +428,8 @@ def generate_needle_dataset(n: int = 20) -> list[dict[str, str]]:
     a code fact embedded in a function/class context with a query and answer.
 
     Args:
-        n: Number of records to generate. Cycles through templates if n exceeds
-           the number of available templates.
+        n: Number of records to generate. Cycles through templates if n
+            exceeds the number of available templates.
 
     Returns:
         List of n record dicts with activation_text, teacher_text, and task_id.

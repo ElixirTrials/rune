@@ -4,17 +4,30 @@
 
 Rune proposes to validate and implement a system that encodes coding trajectories into LoRA adapters using a Doc-to-LoRA hypernetwork, accumulating parametric memory that persists across sessions. This plan covers the full journey from hardware validation through hypernetwork training across five implementation phases (Phase 0 through Phase 4), structured so that the core hypothesis is validated before infrastructure is built.
 
-### Status Summary (as of 2026-03-17)
+### Status Summary (as of 2026-04-05)
 
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 0: Environment Validation | ✅ Complete | Software environment validated; GPU hardware pending |
 | Phase 1: Core Hypothesis Validation | ✅ Complete | Hypernetwork implemented (`hypernetwork.py`, `sakana_d2l.py`), e2e test exercises it |
 | Phase 2: Adapter Library & Serving | ✅ Complete | adapter-registry implemented; lora-server replaced by inference providers (TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider); training-svc has REST endpoints |
-| Phase 3: Recursive Agent Loop | ✅ Complete | Agent loop in `rune_runner.py` with 4-phase pipeline; sandbox in `shared/sandbox.py`; e2e test at `scripts/e2e_test.py` |
+| Phase 3: Recursive Agent Loop | ✅ Complete | Agent loop in `rune_runner.py` with 5-phase pipeline (decompose → plan → code → integrate → diagnose/repair); sandbox in `shared/sandbox.py`; e2e test at `scripts/e2e_test.py` |
 | Phase 4: Evolution & Hypernetwork | ✅ Complete | Evolution in `swarm_evolution.py`; TIES/DARE in `merging.py`; hypernetwork training pipeline in `d2l_train.py` et al. |
 
+**Important caveat:** All code exists and 433+ tests pass, but no real GPU end-to-end training has been validated yet. The "Complete" status reflects that the code is written and tests pass in CI (with mocked GPU dependencies), not that the system has been proven on real hardware.
+
 **Next milestone:** GPU end-to-end validation — running the full pipeline on real hardware to measure Pass@1 improvement.
+
+### Recent Additions (post-plan)
+
+Features built after the original implementation plan was written:
+
+| Feature | PR | Description |
+|---------|-----|-------------|
+| Coding benchmark evaluation framework | #22 | HumanEval+, MBPP+, BigCodeBench evaluation via `scripts/eval/` |
+| Model registry with DeltaCoder warm-start | #23 | Training strategy alignment, DeltaCoder warm-start support |
+| GitHub training data mining pipeline | #17, #19 | `scripts/mine_github.py` for mining training data from GitHub |
+| GPU devcontainer hardening | #7-#16, #25 | Torch pinning, flash-attn wheels, devpod setup improvements |
 
 The phase descriptions below are preserved as historical context documenting the original rationale and design decisions.
 

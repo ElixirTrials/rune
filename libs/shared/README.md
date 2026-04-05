@@ -36,6 +36,8 @@ result = await extractor(prompt_vars={"guest_name": "..."})
 | `template_loader.py` | `render_trajectory()` and `render_prompt()` for Jinja2 template rendering |
 | `rune_models.py` | Cross-service data contracts: `CodingSession`, `AdapterRef`, `EvolMetrics`, `SwarmConfig`, `SwarmCheckpoint`, `PipelinePhase`, `TaskStatus` |
 | `storage_utils.py` | SQLite WAL mode setup and shared database utilities |
+| `lazy_cache.py` | Lazy initialization cache utility |
+| `models.py` | Additional data models |
 
 ## Templates
 
@@ -43,10 +45,12 @@ Pipeline phase templates in `src/shared/templates/`:
 
 | Template | Phase | Purpose |
 |----------|-------|---------|
-| `decompose.j2` / `prompt_decompose.j2` | 1: Decompose | Break project into subtasks |
+| `decompose.j2` / `prompt_decompose.j2` / `prompt_decompose_concise.j2` | 1: Decompose | Break project into subtasks |
 | `plan.j2` / `prompt_plan.j2` | 2: Plan | Architecture plan per subtask |
-| `code.j2` / `code_retry.j2` / `prompt_code.j2` | 3: Code | Generate code with retry support |
-| `integrate.j2` / `prompt_integrate.j2` | 4: Integrate | Merge subtask outputs |
+| `code.j2` / `code_retry.j2` / `code_continue.j2` / `prompt_code.j2` / `prompt_code_retry.j2` / `prompt_code_continue.j2` | 3: Code | Code generation, retry, continuation |
+| `integrate.j2` / `prompt_integrate.j2` / `prompt_integrate_retry.j2` | 4: Integrate | Merge subtask outputs |
+| `diagnose.j2` / `prompt_diagnose.j2` | 5: Diagnose | Failure diagnosis |
+| `code_repair.j2` / `prompt_code_repair.j2` | 5: Repair | Targeted subtask repair |
 
 ## Rules
 1.  **No Business Logic**: Do not put complex agent logic or API handlers here.

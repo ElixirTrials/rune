@@ -292,8 +292,8 @@ class AdapterRegistry:
             Unknown IDs encountered during traversal are recorded with an
             empty parent list (no exception raised).
 
-        Raises:
-            None. Missing adapter IDs are silently treated as leaf nodes.
+        Note:
+            Missing adapter IDs are silently treated as leaf nodes.
         """
         from collections import deque
 

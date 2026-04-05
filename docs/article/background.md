@@ -204,6 +204,29 @@ coding tasks specifically.
 
 ---
 
+### The Prompt-Adapter Tension in Error Recovery
+
+When a code generation attempt fails, the retry mechanism must convey two distinct types
+of information to the model: (1) error context — the specific failure, stack trace, and
+diagnostic details — and (2) domain context — the project-specific patterns, architectural
+conventions, and procedural knowledge that the adapter encodes. In a single-step retry,
+both signals compete for the same limited bandwidth. The prompt must carry error details
+while the adapter carries domain knowledge, but model attention is finite — stuffing
+error context into the prompt can dilute the adapter's domain signal, and vice versa.
+
+This tension motivates a two-step approach to error recovery. In the first step
+(diagnose), the error context is placed in the prompt and the original code is carried
+in the adapter trajectory, allowing the model to focus on producing a concise fix
+instruction without the distraction of domain-level context. In the second step
+(repair), the model's own diagnosis becomes the fix guidance in the prompt while
+domain knowledge remains in the adapter — each step carries one type of information
+in each channel rather than forcing both through the same bottleneck. This separation
+of concerns is the rationale for Rune's fifth pipeline phase (diagnose/repair),
+extending the original four-phase pipeline (decompose, plan, code, integrate) to a
+five-phase design.
+
+---
+
 ### Concurrent Hypernetwork Work and the Trajectory Modality Argument
 
 Multiple hypernetwork systems now exist for generating LoRA adapters from different
