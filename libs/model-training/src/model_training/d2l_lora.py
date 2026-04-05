@@ -184,9 +184,11 @@ def apply_functional_lora(
 
     Args:
         model: Base transformer model (nn.Module).
-        lora_dict: Dict from HyperLoRA.generate_weights(). Structure:
-            lora_dict[proj_name]["A"] shape: (batch=1, n_layers, r, d_in)
-            lora_dict[proj_name]["B"] shape: (batch=1, n_layers, r, d_out)
+        lora_dict: Dict from HyperLoRA.generate_weights(). Structure::
+
+                lora_dict[proj_name]["A"] shape: (batch=1, n_layers, r, d_in)
+                lora_dict[proj_name]["B"] shape: (batch=1, n_layers, r, d_out)
+
             Keys match hc.lora_config.target_modules.
             Batch dimension is always 1 (squeezed at index 0).
         hc: HypernetConfig with attributes:

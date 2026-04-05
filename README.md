@@ -52,6 +52,28 @@ Rune's core mechanism is a Doc-to-LoRA hypernetwork [1] adapted for coding traje
 
 The weight update for a single LoRA adapter follows `ΔW = BA`, where `B` and `A` are low-rank matrices (rank `r << d`). This structure makes adapters parameter-efficient: at rank 64 on a 7B model, a full set of adapter weights is approximately 50-200 MB depending on which weight matrices are targeted. This is small enough to store, version, and load hundreds of adapters without approaching filesystem limits.
 
+### Adapter Scaling: The Critical Parameter
+
+A key finding from Bayesian optimization (200 trials across 5 diverse coding tasks) is that **adapter influence scaling is the single most important parameter** for making hypernetwork-generated adapters useful. Sakana's original Doc-to-LoRA applies the full scaling factor (`lora_alpha`, approximately 45.25x for their checkpoint), which works for factual recall but causes degenerate repetition on coding trajectories. Optimization found that attenuating the adapter to ~0.075x of its raw influence produces the best results — strong enough to inject domain context, weak enough not to override the base model's code generation capabilities.
+
+This insight shapes the entire system design: the adapter is not a replacement for the model's knowledge but a contextual nudge. Three bugs were found and fixed in the Sakana D2L → PEFT conversion path (`combine_lora` bias handling, alpha scaling formula, module path prefixes) that were masked at full scaling but became visible at the correct attenuated scale.
+
+Additional optimization findings:
+- **Per-task calibration** improves results: a 5-trial scaling sweep (0.5x–1.5x around the base scaling) before each task adapts the influence strength to task complexity
+- **Temperature 0.3** with mild repetition penalty (1.1) balances consistency with diversity
+- Code-first prompt styles (skeleton, must-include) outperform open-ended prompts
+- Full-context trajectories (including error traces and corrections) produce better adapters than minimal summaries
+
+### Two-Stage Training Pipeline
+
+The adapter pipeline has two complementary training paths:
+
+1. **QLoRA bootstrapping** (Stage 1): Gradient descent fine-tuning on NF4-quantized base model using coding trajectories formatted as SFT chat messages. Slow (minutes per adapter) but high quality. Uses DeltaCoder warm-start (`danielcherubini/Qwen3.5-DeltaCoder-9B`) for convergence acceleration and inherited GDN-aware target module coverage. Produces the training corpus for Stage 2.
+
+2. **Hypernetwork generation** (Stage 2): Single forward pass through `DocToLoraHypernetwork` generates rank-8 LoRA weights in milliseconds. This is the production path — used within the pipeline retry loop to inject per-subtask context without prompt stuffing. The hypernetwork is trained to approximate Stage 1's output.
+
+Once the hypernetwork is trained, QLoRA's ongoing role shrinks to producing occasional high-value adapters for tasks where the hypernetwork's approximation is insufficient, which feed back into periodic retraining.
+
 ---
 
 ## Architecture Overview

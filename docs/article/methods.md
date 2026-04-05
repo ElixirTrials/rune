@@ -120,6 +120,41 @@ The Phase 3 distillation path (`direct_lora_finetune`) is **specified** — it u
 
 ---
 
+### Adapter Scaling and Parameter Optimization
+
+Applying a hypernetwork-generated adapter to a base model requires controlling the adapter's *influence strength* — the magnitude of the weight delta relative to the base model's existing parameters. This is governed by the LoRA scaling factor: PEFT computes `scaling = lora_alpha / r` and applies `ΔW = scaling * BA` to each targeted weight matrix. Sakana's original Doc-to-LoRA uses a large `lora_alpha` value that produces an effective scaling of approximately 45.25x, which achieves near-perfect factual recall on document QA tasks by strongly overriding the base model's behavior with document-specific knowledge.
+
+For coding trajectories, this full scaling is destructive. A 200-trial Bayesian optimization search (Optuna TPE sampler across 5 diverse coding tasks) found that **adapter influence must be attenuated to approximately 0.075x of the raw hypernetwork output** — roughly 600x weaker than Sakana's default. At full scaling, the adapter overwhelms the base model's code generation capabilities, producing degenerate repetition and syntactically invalid output. At the optimal attenuation, the adapter provides a contextual nudge — injecting domain knowledge (project conventions, subtask dependencies, prior execution traces) without displacing the base model's learned coding competence.
+
+This finding has a theoretical interpretation: the adapter's role in coding is qualitatively different from its role in document QA. In factual recall, the adapter must override the base model's default response with document-specific facts — strong influence is necessary. In code generation, the base model already knows how to write code; the adapter's job is to steer that existing competence toward the specific patterns relevant to the current task. The adapter is a contextual signal, not a replacement for the model's knowledge. The optimal scaling reflects this asymmetry.
+
+Three bugs were discovered and fixed in the Sakana D2L → PEFT conversion path that were masked at full scaling but became visible at the correct attenuated scale: (1) `combine_lora` bias concatenation assumed single-chunk mode, (2) the alpha-to-PEFT scaling formula omitted rank compensation, and (3) module path prefixes were hardcoded without validation against the base model's architecture. These bugs are documented because they illustrate a general risk: high adapter scaling can mask conversion errors by dominating the output regardless of whether the adapter weights are correctly structured.
+
+Additional optimization findings from the Bayesian search:
+
+- **Per-task calibration** improves results. A 5-trial scaling sweep (0.5x–1.5x around the base scaling) before each task adapts the influence strength to task complexity. The pipeline implements this as a `CalibrationConfig` with configurable trial count and scaling range.
+- **Generation temperature 0.3** with repetition penalty 1.1 balances consistency with diversity. Lower temperatures produce more deterministic but less creative output; the mild repetition penalty prevents the degenerate loops that appear at higher adapter influence.
+- **Code-first prompt styles** (skeleton, must-include) outperform open-ended prompts. The model performs better when given structural constraints rather than free-form instructions.
+- **Full-context trajectories** (including error traces and corrections) produce better adapters than minimal summaries, supporting the recursive refinement hypothesis that correction steps are signal, not noise.
+
+**Claim tiers:** The adapter scaling finding (attenuation to ~0.075x) is **empirical** — observed across 200 optimization trials on 5 tasks using Gemma 2 2B with the Sakana gemma_demo checkpoint. Per-task calibration is **specified** and tested. Whether the optimal scaling transfers to other base models (e.g., Qwen 2.5 Coder 7B) is **TBD** — it will be validated during production-scale evaluation.
+
+---
+
+### Two-Stage Training Pipeline
+
+The adapter pipeline has two complementary training paths that serve different roles in the system lifecycle:
+
+**Stage 1: QLoRA Bootstrapping.** Standard PEFT fine-tuning on NF4-quantized base model using coding trajectories formatted as SFT chat messages. This path is slow (minutes per adapter) but produces high-quality, gradient-optimized adapters. Stage 1 uses a DeltaCoder warm-start (`danielcherubini/Qwen3.5-DeltaCoder-9B`) which provides three advantages: inherited GDN-aware target module coverage across all 12 module types, convergence acceleration from pre-trained weights (DeltaCoder was trained on 50K CoderForge tool-call examples), and preserved DPO alignment on self-correction pairs that maps directly to the Phase 5 diagnose/repair loop. Stage 1 produces the adapter corpus that trains Stage 2's hypernetwork.
+
+**Stage 2: Hypernetwork Production.** Single forward pass through `DocToLoraHypernetwork` generates rank-8 LoRA weights in milliseconds. This is the production path — used within the pipeline retry loop to inject per-subtask context without prompt stuffing. Once trained, the hypernetwork amortizes the cost of adapter generation, replacing minutes of gradient descent with a sub-second forward pass.
+
+Once the hypernetwork is trained, QLoRA's ongoing role shrinks to producing occasional high-value adapters for tasks where the hypernetwork's approximation is insufficient. Those adapters feed back into periodic hypernetwork retraining, creating a self-improving feedback loop.
+
+**Claim tiers:** The two-stage pipeline architecture is **specified** — both paths are implemented and tested. DeltaCoder warm-start is **specified** via the model registry. The feedback loop between stages is **proposed** — it requires a trained hypernetwork to validate.
+
+---
+
 ### Evolution Operator
 
 The Background section established that LoRA Soups' CAT method can outperform data mixing for binary skill composition tasks,[^prabhakar2024lorasoups] but also that orthogonality between merged LoRA modules does not guarantee semantic disentanglement[^zhang2025orthogonality] and that adapter merging can reactivate latent reasoning traces.[^zou2026merging] The Evolution Operator is Rune's approach to fitness-driven adapter lifecycle management — testing adapter quality empirically before promotion rather than assuming composition is safe by default.
