@@ -884,3 +884,7 @@ The document is saved at `/Users/noahdolevelixir/.claude/plans/dreamy-scribbling
 ---
 
 Create a branch, push and make a pr
+
+---
+
+Note also the underlying updates to theory behind the optimization efforts - e.g., that weighting is important for getting the idea to work correctly. Also, fix all the errors, warnings and issues with docstrings. Let's make a clean PR.
