@@ -32,6 +32,11 @@ from shared.template_loader import render_prompt, render_trajectory
 # it pulls sqlalchemy/sqlmodel which are heavy DB deps not needed by lightweight
 # consumers like the benchmark runner or inference provider.  Import on demand.
 
+# math_retriever is also NOT imported at module level (INFRA-05 pattern):
+# it depends on sentence-transformers, datasets, and numpy which are not
+# present in all environments.  Import directly:
+#   from shared.math_retriever import DatasetConfig, MathContextRetriever, MathRetrievalConfig
+
 __all__ = [
     "AdapterRef",
     "CodingSession",

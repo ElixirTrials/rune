@@ -1,0 +1,191 @@
+# Math datasets — training + evaluation reference
+#
+# Covers all downloaded math datasets:
+#   numina_tir     AI-MO/NuminaMath-TIR          (train, 72 K — TIR: solutions contain Python)
+#   numina_cot     AI-MO/NuminaMath-CoT           (train, 859 K — CoT solutions)
+#   deepmath       trl-lib/DeepMath-103K           (train, 97 K — short final answers)
+#   competition_math  EleutherAI/hendrycks_math    (train+test, 12.5 K — 7 subjects)
+#   olym_math      RUC-AIBOX/OlymMATH             (test, 200 — en-easy + en-hard)
+#
+# NOTE — column shapes differ per dataset:
+#   numina_tir / numina_cot : problem (str) / solution (full CoT or TIR w/ \boxed{})
+#   deepmath                : prompt (list[{role,content}]) / solution (short final answer)
+#   competition_math        : problem (str) / solution (full proof w/ \boxed{})
+#   olym_math               : problem (str) / answer (integer or expression)
+#
+# NOTE — competition_math is split into 7 Arrow directories, one per subject.
+# The benchmark runner requires individual data_path entries (one per subject).
+# The analyze_math_datasets.py script concatenates them automatically.
+#
+# This file is used by scripts/analyze_math_datasets.py.
+# To run a real benchmark evaluation, copy the relevant dataset entries into a
+# full config that also contains a [model] section (see multi_dataset_sweep.yaml).
+
+# ── Training sets ─────────────────────────────────────────────────────────────
+
+datasets:
+
+  - name: numina_tir
+    split: train
+    prompt_key: problem
+    answer_key: solution     # full TIR solution, ends with \boxed{}, contains ```python blocks
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/numina_tir/train
+
+  - name: numina_cot
+    split: train
+    prompt_key: problem
+    answer_key: solution     # full CoT solution, ends with \boxed{}
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/numina_cot/train
+
+  - name: deepmath
+    split: train
+    prompt_key: prompt       # list[{role, content}] — extract [0]["content"] for plain text
+    answer_key: solution     # short final answer (integer, "Yes"/"No", expression)
+    scorer: exact_match
+    n_samples: null
+    data_path: data/deepmath/train
+
+  # competition_math — 7 subjects, each stored as a separate Arrow dataset.
+  # Train split (7 500 problems total across all subjects).
+
+  - name: competition_math_algebra_train
+    split: train
+    prompt_key: problem
+    answer_key: solution     # full proof, ends with \boxed{}
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/algebra/train
+
+  - name: competition_math_counting_train
+    split: train
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/counting_and_probability/train
+
+  - name: competition_math_geometry_train
+    split: train
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/geometry/train
+
+  - name: competition_math_intalgebra_train
+    split: train
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/intermediate_algebra/train
+
+  - name: competition_math_numtheory_train
+    split: train
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/number_theory/train
+
+  - name: competition_math_prealgebra_train
+    split: train
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/prealgebra/train
+
+  - name: competition_math_precalculus_train
+    split: train
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/precalculus/train
+
+  # ── Evaluation sets ──────────────────────────────────────────────────────────
+
+  # competition_math — test split (5 000 problems total).
+
+  - name: competition_math_algebra_test
+    split: test
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/algebra/test
+
+  - name: competition_math_counting_test
+    split: test
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/counting_and_probability/test
+
+  - name: competition_math_geometry_test
+    split: test
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/geometry/test
+
+  - name: competition_math_intalgebra_test
+    split: test
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/intermediate_algebra/test
+
+  - name: competition_math_numtheory_test
+    split: test
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/number_theory/test
+
+  - name: competition_math_prealgebra_test
+    split: test
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/prealgebra/test
+
+  - name: competition_math_precalculus_test
+    split: test
+    prompt_key: problem
+    answer_key: solution
+    scorer: boxed_extract
+    n_samples: null
+    data_path: data/competition_math/precalculus/test
+
+  - name: olym_math_easy
+    split: test
+    prompt_key: problem
+    answer_key: answer       # plain integer (0–99999)
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: null
+    data_path: data/olym_math/en-easy/test
+
+  - name: olym_math_hard
+    split: test
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: null
+    data_path: data/olym_math/en-hard/test

@@ -19,7 +19,7 @@ Coding:
 
 Math — tiered difficulty:
   gsm8k                 openai/gsm8k                        (train + test)
-  competition_math      hendrycks/competition_math           (train + test, Level 1–5)
+  competition_math      EleutherAI/hendrycks_math            (train + test, Level 1–5, 7 subjects)
   omni_math             KbsdJames/Omni-MATH                 (test, 10+ difficulty levels)
   harp                  HARP-benchmark/HARP                 (test, 6 difficulty levels)
   olym_math             RUC-AIBOX/OlymMATH                  (test, en-easy + en-hard)
@@ -93,11 +93,19 @@ DATASET_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "GSM8K grade-school math (8.5K problems)",
     },
     "competition_math": {
-        "hf_id": "hendrycks/competition_math",
+        "hf_id": "EleutherAI/hendrycks_math",
         "splits": ["train", "test"],
-        "config": None,
+        "configs": [
+            "algebra",
+            "counting_and_probability",
+            "geometry",
+            "intermediate_algebra",
+            "number_theory",
+            "prealgebra",
+            "precalculus",
+        ],
         "streaming": False,
-        "description": "MATH (12,500 problems: 7,500 train / 5,000 test, Level 1–5, 7 subjects)",
+        "description": "MATH (12,500 problems: 7,500 train / 5,000 test, Level 1–5, 7 subjects) — EleutherAI mirror",
     },
     "omni_math": {
         "hf_id": "KbsdJames/Omni-MATH",

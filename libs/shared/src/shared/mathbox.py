@@ -74,6 +74,8 @@ import sympy
 import itertools
 import collections
 import mpmath
+import scipy
+import networkx
 mpmath.mp.dps = {dps}
 """
 
@@ -301,11 +303,31 @@ MATH_TOOLS: list[dict] = [
     }
 ]
 
-# XML tool-call format emitted by Qwen-style models.
+# ── Tool-call wire formats ────────────────────────────────────────────────────
+# Two formats appear depending on how the model is served:
+#
+#   XML  (in-process vLLM / older Qwen chat templates):
+#       <tool_call><function=execute_python>
+#         <parameter=code>print(1+1)</parameter>
+#       </function></tool_call>
+#
+#   Hermes JSON  (vLLM server / Qwen3 chat template via OpenAI endpoint):
+#       <tool_call>
+#       {"name": "execute_python", "arguments": {"code": "print(1+1)"}}
+#       </tool_call>
+#
+# parse_tool_calls() tries XML first; falls back to Hermes JSON so both
+# serving modes work without any change to the calling code.
+
+# XML format
 _TOOL_RE = re.compile(
     r"<tool_call>\s*<function=(\w+)>(.*?)</function>\s*</tool_call>", re.DOTALL
 )
 _PARAM_RE = re.compile(r"<parameter=(\w+)>(.*?)</parameter>", re.DOTALL)
+
+# Hermes JSON format — capture the JSON object inside the tags
+_HERMES_TC_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
+
 _FLOAT_RE = re.compile(r"[-+]?\d+\.\d{4,}")
 
 # Guard: refuse code blocks longer than this before submitting to the sandbox.
@@ -318,13 +340,24 @@ _NEAR_INT_TOL = 1e-4
 def parse_tool_calls(text: str) -> list[dict]:
     """Parse ``<tool_call>…</tool_call>`` blocks from a model response.
 
+    Handles two wire formats automatically:
+
+    * **XML** — ``<tool_call><function=name><parameter=arg>val</parameter>…``
+      emitted by in-process vLLM with the Qwen chat template.
+    * **Hermes JSON** — ``<tool_call>{"name": …, "arguments": {…}}</tool_call>``
+      emitted by the vLLM OpenAI server (Qwen3 chat template).
+
     Args:
         text: Raw model output that may contain one or more tool-call blocks.
 
     Returns:
         List of ``{"name": str, "arguments": dict}`` dicts, one per call.
+        Returns an empty list when no recognised tool-call block is found.
     """
-    return [
+    import json as _json
+
+    # ── XML format ────────────────────────────────────────────────────────────
+    xml_calls = [
         {
             "name": m.group(1),
             "arguments": {
@@ -334,6 +367,21 @@ def parse_tool_calls(text: str) -> list[dict]:
         }
         for m in _TOOL_RE.finditer(text)
     ]
+    if xml_calls:
+        return xml_calls
+
+    # ── Hermes JSON format ────────────────────────────────────────────────────
+    json_calls: list[dict] = []
+    for m in _HERMES_TC_RE.finditer(text):
+        try:
+            payload = _json.loads(m.group(1))
+        except _json.JSONDecodeError:
+            continue
+        name = payload.get("name") or payload.get("function", "")
+        args = payload.get("arguments") or payload.get("parameters") or {}
+        if name:
+            json_calls.append({"name": name, "arguments": args})
+    return json_calls
 
 
 def near_int_hint(result: str) -> str:

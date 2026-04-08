@@ -173,6 +173,18 @@ uv pip install \
     requests
 ok "runtime deps installed"
 
+# ── 6b. math sandbox extras ───────────────────────────────────────────────────
+# scipy and networkx are pre-imported in MathSandbox._PRELUDE so competition
+# code can use scipy.optimize and networkx graph algorithms without explicit
+# imports.  Install after vllm so its dependency pins don't get clobbered.
+info "Installing math sandbox extras (scipy, networkx)…"
+uv pip install \
+    --python "$VENV_DIR/bin/python" \
+    scipy \
+    networkx
+ok "scipy    $("$VENV_DIR/bin/python" -c 'import scipy; print(scipy.__version__)')"
+ok "networkx $("$VENV_DIR/bin/python" -c 'import networkx; print(networkx.__version__)')"
+
 # ── 7. model download with stall-detection + auto-retry ───────────────────────
 SNAPSHOT_PATH=""
 

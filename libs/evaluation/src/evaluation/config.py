@@ -37,12 +37,32 @@ _TEMPLATES_DIR = (
 # Maps dataset alias → path relative to _DATA_ROOT.
 # Extend as datasets are downloaded via evaluation.download_data.
 DATASET_REGISTRY: dict[str, str] = {
+    # ── Evaluation sets ───────────────────────────────────────────────────────
     "daft_math": "daft_math/train",
     "olym_math_easy": "olym_math/en-easy/test",
     "olym_math_hard": "olym_math/en-hard/test",
     "gsm8k_test": "gsm8k/main/test",
-    "competition_math_test": "competition_math/test",
     "aime_2025": "aime_2025/test",
+    # ── Training sets ─────────────────────────────────────────────────────────
+    "numina_tir": "numina_tir/train",
+    "numina_cot": "numina_cot/train",
+    "deepmath": "deepmath/train",
+    # competition_math — 7 subjects × 2 splits; each subject is its own Arrow dir.
+    # Use the per-subject keys below, or load via data_path in your config yaml.
+    "competition_math_algebra_train": "competition_math/algebra/train",
+    "competition_math_algebra_test": "competition_math/algebra/test",
+    "competition_math_counting_train": "competition_math/counting_and_probability/train",
+    "competition_math_counting_test": "competition_math/counting_and_probability/test",
+    "competition_math_geometry_train": "competition_math/geometry/train",
+    "competition_math_geometry_test": "competition_math/geometry/test",
+    "competition_math_intalgebra_train": "competition_math/intermediate_algebra/train",
+    "competition_math_intalgebra_test": "competition_math/intermediate_algebra/test",
+    "competition_math_numtheory_train": "competition_math/number_theory/train",
+    "competition_math_numtheory_test": "competition_math/number_theory/test",
+    "competition_math_prealgebra_train": "competition_math/prealgebra/train",
+    "competition_math_prealgebra_test": "competition_math/prealgebra/test",
+    "competition_math_precalculus_train": "competition_math/precalculus/train",
+    "competition_math_precalculus_test": "competition_math/precalculus/test",
 }
 
 # ── Config dataclasses ─────────────────────────────────────────────────────────
@@ -84,6 +104,12 @@ class ModelConfig:
             ``MathSandbox``.  Disable for simple single-pass inference.
         max_iterations: Maximum agentic-loop steps per problem.
         sandbox_timeout: Code-execution subprocess wall-clock timeout (seconds).
+        repetition_penalty: Token-level repetition penalty forwarded to vLLM's
+            ``SamplingParams``.  Values > 1.0 discourage the model from
+            repeating the same token sequences.  A value of 1.05–1.1 is
+            effective at preventing the degenerate ``\\boxed{N}`` repetition
+            loop without noticeably affecting answer quality.  Default 1.0
+            (no penalty, preserving the original distribution).
     """
 
     model_id: str
@@ -102,6 +128,7 @@ class ModelConfig:
     use_tools: bool = True
     max_iterations: int = 15
     sandbox_timeout: float = 60.0
+    repetition_penalty: float = 1.0
 
 
 @dataclass
@@ -158,6 +185,58 @@ class DatasetConfig:
 
 
 @dataclass
+class RetrieverConfig:
+    """Configuration for the ``MathContextRetriever`` used in few-shot prompting.
+
+    When ``use_retriever=True``, the runner embeds every query problem and
+    fetches the most similar training examples from the index.  Those examples
+    are formatted and injected as the ``retrieved_examples`` variable in the
+    Jinja2 system-prompt template (``math_prompt.j2``).
+
+    Attributes:
+        use_retriever: Master on/off switch.  Set ``false`` to disable retrieval
+            without removing the section from the YAML.
+        embedding_model: Sentence-transformers model ID used to encode problems.
+            Defaults to ``"BAAI/bge-base-en-v1.5"`` (110 M params, 768-dim).
+        top_k: Total retrieved examples injected per problem.
+        tir_top_k: Guaranteed reserved slots from ``numina_tir`` (the only
+            tool-integrated-reasoning dataset).  Remaining ``top_k - tir_top_k``
+            slots come from all other indexed sources by similarity.
+        max_solution_chars: Soft truncation limit for solution text in the
+            formatted few-shot block.
+        similarity_threshold: Minimum cosine similarity to include a result
+            (``0.0`` disables the threshold).
+        datasets: Per-dataset sampling configuration.  Each key is one of
+            ``"numina_tir"``, ``"numina_cot"``, ``"competition_math"``,
+            ``"deepmath"``.  Each value is a dict accepted by
+            ``shared.math_retriever.DatasetConfig`` (keys: ``n``, ``sources``,
+            ``levels``, ``subjects``, ``split``).
+        dedup_test_path: Path to the HuggingFace Arrow test dataset whose
+            ``"problem"`` column is checked for train/test overlap.  Problems
+            found in the test set are excluded from the index.  ``null`` →
+            auto-detected from the benchmark dataset names.
+        index_dir: Root directory for persisted index files.  ``null`` →
+            ``~/.rune/math_index``.
+    """
+
+    use_retriever: bool = True
+    embedding_model: str = "BAAI/bge-base-en-v1.5"
+    top_k: int = 5
+    tir_top_k: int = 2
+    max_solution_chars: int = 800
+    similarity_threshold: float = 0.0
+    datasets: dict[str, Any] = field(
+        default_factory=lambda: {
+            "numina_tir": {"n": 10000},
+            "numina_cot": {"n": 8000, "sources": ["olympiads", "amc_aime"]},
+            "competition_math": {"n": 4000, "levels": ["Level 4", "Level 5"]},
+        }
+    )
+    dedup_test_path: str | None = None
+    index_dir: str | None = None
+
+
+@dataclass
 class BenchmarkRunConfig:
     """Top-level configuration for a complete benchmark run.
 
@@ -176,6 +255,10 @@ class BenchmarkRunConfig:
             Defaults to ``libs/shared/src/shared/templates/``.
         max_retries: Times to retry a failed batch before recording errors and
             moving to the next batch.
+        retriever: Optional few-shot context retrieval configuration.  When set
+            and ``use_retriever=True``, a ``MathContextRetriever`` index is
+            built at run start and each problem's system prompt is augmented
+            with the *k* most similar training examples.
     """
 
     model: ModelConfig
@@ -193,6 +276,7 @@ class BenchmarkRunConfig:
     template_vars: dict[str, Any] = field(default_factory=dict)
     templates_dir: str | None = None
     max_retries: int = 2
+    retriever: RetrieverConfig | None = None
 
 
 # ── YAML config loader ─────────────────────────────────────────────────────────
@@ -244,6 +328,15 @@ def load_config(path: Path | str) -> BenchmarkRunConfig:
             ds_data["integer_range"] = tuple(ds_data["integer_range"])
         datasets.append(DatasetConfig(**ds_data))
 
+    # ── retriever (optional) ──
+    retriever_cfg: RetrieverConfig | None = None
+    retriever_raw = data.get("retriever")
+    if retriever_raw and isinstance(retriever_raw, dict):
+        _known_ret = {f.name for f in RetrieverConfig.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+        retriever_cfg = RetrieverConfig(
+            **{k: v for k, v in retriever_raw.items() if k in _known_ret}
+        )
+
     # ── top-level ──
     return BenchmarkRunConfig(
         model=model_cfg,
@@ -258,4 +351,5 @@ def load_config(path: Path | str) -> BenchmarkRunConfig:
         template_vars=dict(data.get("template_vars") or {}),
         templates_dir=data.get("templates_dir"),
         max_retries=int(data.get("max_retries", 2)),
+        retriever=retriever_cfg,
     )

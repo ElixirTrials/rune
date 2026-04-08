@@ -1,0 +1,84 @@
+# Benchmark: gpt-oss-120b × OlymMATH hard split
+# Provider: HuggingFace Inference Router (fireworks-ai)
+#
+# Requirements:
+#   export HF_TOKEN=hf_...
+#
+# Run with:
+#   cd /workspace/rune
+#   uv run python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/gpt_oss_olym_hard.yaml
+#
+# Smoke-test (5 problems):
+#   uv run python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/gpt_oss_olym_hard.yaml \
+#       --n-problems 5
+#
+# Swap provider suffix by editing model_id:
+#   openai/gpt-oss-120b:fireworks-ai   — best balance of speed + availability
+#   openai/gpt-oss-120b:cerebras       — fastest cold start
+#   openai/gpt-oss-120b:together-ai    — solid fallback
+#   openai/gpt-oss-120b:novita         — alternative
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output_dir: benchmark_results
+
+# ── System prompt ─────────────────────────────────────────────────────────────
+system_prompt_template: math_prompt.j2
+template_vars:
+  answer_range: "0 to 99999"
+
+# ── Model / provider ──────────────────────────────────────────────────────────
+model:
+  model_id: openai/gpt-oss-120b:fireworks-ai
+  provider: hf_router   # HFRouterBackend — OpenAI client → HF Inference Router
+
+  # Reasoning effort is hardcoded to "high" inside HFRouterBackend.
+  # Temperature is passed through but reasoning models are primarily
+  # steered by effort level rather than sampling temperature.
+  temperature: 1.0
+  max_new_tokens: 8192
+
+  enable_thinking: false  # not applicable for gpt-oss
+
+  # Agentic tool-calling loop (generate → execute_python → repeat)
+  use_tools: true
+  max_iterations: 20
+  sandbox_timeout: 120.0  # gpt-oss tends to write longer code
+
+  # Throughput — each batch is a chunk of problems solved together through
+  # the agentic loop; all active trajectories are issued concurrently to
+  # the HF Router via a thread-pool, so larger batches are fine.
+  batch_size: 5
+  n_samples: 5
+
+# ── Context Retriever ─────────────────────────────────────────────────────────
+retriever:
+  use_retriever: false
+  embedding_model: BAAI/bge-base-en-v1.5
+  top_k: 4
+  tir_top_k: 3
+  max_solution_chars: 8192
+  similarity_threshold: 0.0
+  datasets:
+    numina_tir:
+      n: null
+    numina_cot:
+      n: 100
+      sources: [amc_aime]
+    competition_math:
+      n: 100
+      levels: ["Level 4", "Level 5"]
+  dedup_test_path: null
+  index_dir: null
+
+# ── Datasets ──────────────────────────────────────────────────────────────────
+datasets:
+  - name: olym_math_hard
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: null

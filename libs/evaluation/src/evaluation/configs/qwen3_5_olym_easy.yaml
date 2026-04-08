@@ -19,7 +19,7 @@ output_dir: benchmark_results
 
 # ── System prompt  ────────────────────────────────────────────────────────────
 # Rendered from libs/shared/src/shared/templates/math_prompt_v2.j2
-system_prompt_template: math_prompt_v2.j2
+system_prompt_template: math_prompt.j2
 template_vars:
   answer_range: "0 to 99999"
 
@@ -31,46 +31,73 @@ model:
   base_url: null          # set to http://host:port/v1 to use a running server
 
   # Hardware
-  tensor_parallel_size: 2 # use both GPUs
-  max_model_len: 32768
+  tensor_parallel_size: 1 # use both GPUs
+  max_model_len: 65536
   dtype: float16
   enable_prefix_caching: true
   language_model_only: true  # skip VL vision encoder init
 
   # Generation
-  temperature: 0.6
-  max_new_tokens: 32768
+  temperature: 0.3
+  max_new_tokens: 65536
   enable_thinking: false
+  repetition_penalty: 1.05   # mild penalty to prevent \\boxed{N} repetition loops
 
   # Agentic tool-calling loop (generate → execute_python → repeat)
   use_tools: true          # set false for simple single-pass inference
-  max_iterations: 15       # max agentic loop steps per problem
+  max_iterations: 20       # max agentic loop steps per problem
   sandbox_timeout: 60.0    # code execution wall-clock timeout (seconds)
 
   # Throughput / sampling (only used when use_tools=false)
-  batch_size: 5 # 1=1133.8s  3~=800s   5 ~=651 , all with n_samples = 1          # problems packed into one llm.generate() call
-  n_samples: 2             # majority vote samples (use_tools=true forces 1)
+  batch_size: 3 # 1=1133.8s  3~=800s   5 ~=651 , all with n_samples = 1          # problems packed into one llm.generate() call
+  n_samples: 3             # majority vote samples (use_tools=true forces 1)
 
 
 #  olym_math_easy                     8/9     acc=88.9%  errors=0  avg_tok/s=120  wall=510.1s
 #  olym_math_hard                     4/9     acc=44.4%  errors=0  avg_tok/s=91  wall=1673.0s
 
+# ── Context Retriever ──────────────────────────────────────────────────────────
+# Retrieves the k most similar training examples per problem and injects them
+# into the system prompt as a "Reference Examples" few-shot block.
+# The index is built once and cached at index_dir; subsequent runs load instantly.
+retriever:
+  use_retriever: true
+
+  # Sentence-transformers model used to embed problems.
+  embedding_model: BAAI/bge-base-en-v1.5
+
+  # Total retrieved examples injected per problem.
+  top_k: 4
+
+  # Guaranteed reserved slots for numina_tir (tool-integrated reasoning).
+  # Remaining top_k - tir_top_k slots come from other sources by similarity.
+  tir_top_k: 3
+
+  # Solution text truncation in the formatted few-shot block (chars).
+  max_solution_chars: 8192
+
+  # Minimum cosine similarity to include a result (0.0 = no threshold).
+  similarity_threshold: 0.0
+
+  # Training datasets to index — adjust n to trade build time vs. coverage.
+  datasets:
+    numina_tir:
+      n: null
+    numina_cot:
+      n: 100
+      sources: [amc_aime]
+    competition_math:
+      n: 100
+      levels: ["Level 4", "Level 5"]
+
+  # null → auto-detected from the benchmark dataset (olym_math_hard → its test path)
+  dedup_test_path: null
+
+  # null → default ~/.rune/math_index
+  index_dir: null
+
 # ── Datasets ──────────────────────────────────────────────────────────────────
 datasets:
-  - name: olym_math_easy
-    prompt_key: problem
-    answer_key: answer
-    id_key: unique_id           # stable ID column in the Arrow dataset
-    scorer: boxed_extract       # extract \boxed{} then match numerically
-
-    # Integer-answer filter — skip rows whose answer is LaTeX / non-integer
-    filter_integer_answers: true
-    integer_range: [0, 99999]
-
-    # Problem limit — 9 for quick dev/smoke runs; set null for a full eval
-    n_samples: 2
-    # data_path: /workspace/rune/libs/evaluation/src/evaluation/data/olym_math/en-easy/test
-
   - name: olym_math_hard
     prompt_key: problem
     answer_key: answer
@@ -78,4 +105,4 @@ datasets:
     scorer: boxed_extract
     filter_integer_answers: true
     integer_range: [0, 99999]
-    n_samples: 2
+    n_samples: null

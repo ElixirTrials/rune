@@ -1,0 +1,80 @@
+# Benchmark: Qwen3.5-9B × OlymMATH hard split — vLLM server mode
+#
+# Prerequisite: start the vLLM server first:
+#   bash scripts/start_vllm_server.sh
+#
+# Run with the qwenv interpreter (no uv needed):
+#   .qwenv/bin/python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/qwen3_5_vllm_server.yaml
+#
+# Smoke-test (5 problems):
+#   .qwenv/bin/python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/qwen3_5_vllm_server.yaml \
+#       --n-problems 5
+#
+# model_id: auto → the backend queries GET /v1/models and uses the first
+# registered model (= the snapshot path passed to vllm serve).  Set it
+# explicitly to the full snapshot path if you run multiple models.
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output_dir: benchmark_results
+
+# ── System prompt ─────────────────────────────────────────────────────────────
+system_prompt_template: math_prompt.j2
+template_vars:
+  answer_range: "0 to 99999"
+
+# ── Model / provider ──────────────────────────────────────────────────────────
+model:
+  model_id: auto          # discovered from the vLLM server at startup
+  provider: vllm_server   # VLLMServerBackend — OpenAI client → local vLLM
+  base_url: null          # null → http://localhost:8000/v1 (or VLLM_BASE_URL)
+
+  # Generation — same settings as the in-process config
+  temperature: 0.3
+  max_new_tokens: 32768   # must leave room for input; server max-model-len=65536
+  enable_thinking: false
+  repetition_penalty: 1.05  # forwarded via extra_body if needed (vLLM ≥0.4)
+
+  # Agentic tool-calling loop
+  use_tools: true
+  max_iterations: 20
+  sandbox_timeout: 60.0
+
+  # Throughput — vLLM server handles batching internally; the batch_size
+  # here controls how many problems share each agentic-loop iteration.
+  # With a server you can push this higher than in-process since HTTP
+  # requests are just async fan-out.
+  batch_size: 8
+  n_samples: 1
+
+# ── Context Retriever ─────────────────────────────────────────────────────────
+retriever:
+  use_retriever: true
+  embedding_model: BAAI/bge-base-en-v1.5
+  top_k: 4
+  tir_top_k: 3
+  max_solution_chars: 8192
+  similarity_threshold: 0.0
+  datasets:
+    numina_tir:
+      n: null
+    numina_cot:
+      n: 100
+      sources: [amc_aime]
+    competition_math:
+      n: 100
+      levels: ["Level 4", "Level 5"]
+  dedup_test_path: null
+  index_dir: null
+
+# ── Datasets ──────────────────────────────────────────────────────────────────
+datasets:
+  - name: olym_math_hard
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: null
