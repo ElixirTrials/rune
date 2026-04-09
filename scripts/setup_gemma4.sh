@@ -5,16 +5,21 @@
 # rune .venv so the transformers 5.5.0 pin doesn't conflict with the core
 # project's pin).  All vLLM serving and Gemma 4 inference runs from this venv.
 #
+# CUDA auto-detection: reads the max supported CUDA version from nvidia-smi
+# and picks the matching nightly wheel index automatically.  Override with
+# CUDA_VERSION=cu129 if auto-detection is wrong.
+#
 # Usage:
-#   bash scripts/setup_gemma4.sh              # install everything (CUDA 12.9)
+#   bash scripts/setup_gemma4.sh              # auto-detect CUDA version
+#   CUDA_VERSION=cu129 bash scripts/setup_gemma4.sh   # force cu129
 #   CUDA_VERSION=cu130 bash scripts/setup_gemma4.sh   # Blackwell / CUDA 13.0
-#   SKIP_VLLM=1 bash scripts/setup_gemma4.sh  # only base deps, no vLLM wheels
+#   SKIP_VLLM=1 bash scripts/setup_gemma4.sh          # only base deps, no vLLM
 #
 # After setup:
 #   bash scripts/start_gemma4_server.sh             # serve E4B (default)
-#   bash scripts/start_gemma4_server.sh google/gemma-4-27B-it --tp 2
+#   bash scripts/start_gemma4_server.sh google/gemma-4-26B-A4B-it
 #
-# Download a model first (requires HF token + accepted Google terms):
+# Model download (requires HF token + accepted Google licence terms):
 #   huggingface-cli login
 #   huggingface-cli download google/gemma-4-E4B-it --local-dir ~/models/gemma-4-E4B-it
 
@@ -24,12 +29,59 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 VENV_DIR="$ROOT/.gemma4env"
-CUDA_VERSION="${CUDA_VERSION:-cu129}"
+
+# ── auto-detect CUDA version from driver ──────────────────────────────────────
+# Map the driver's max supported CUDA to the closest available wheel index.
+# nvidia-smi reports e.g. "CUDA Version: 12.6" — we pick:
+#   >= 12.9  →  cu129
+#   >= 12.8  →  cu128  (fallback to cu124 if no cu128 wheel exists)
+#   >= 12.0  →  cu124  (safe for 12.4 – 12.8 drivers)
+#   >= 13.0  →  cu130  (Blackwell)
+_detect_cuda_version() {
+    local ver
+    ver=$(nvidia-smi 2>/dev/null | grep -oP "CUDA Version: \K[0-9]+\.[0-9]+" | head -1)
+    [[ -z "$ver" ]] && { echo "cu124"; return; }   # no GPU visible, default safe
+    local major minor
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    local combined=$(( major * 10 + minor ))   # e.g. 12.6 → 126
+    if   (( combined >= 130 )); then echo "cu130"
+    elif (( combined >= 129 )); then echo "cu129"
+    else                              echo "cu124"   # safe for 12.0 – 12.8
+    fi
+}
+
+if [[ -z "${CUDA_VERSION:-}" ]]; then
+    CUDA_VERSION=$(_detect_cuda_version)
+fi
 
 info()  { echo -e "\033[36m[setup]\033[0m $*"; }
 ok()    { echo -e "\033[32m[  ok ]\033[0m $*"; }
 warn()  { echo -e "\033[33m[ warn]\033[0m $*"; }
 die()   { echo -e "\033[31m[error]\033[0m $*" >&2; exit 1; }
+
+# ── CUDA driver preflight ─────────────────────────────────────────────────────
+# vLLM 0.19+ (the first nightly with Gemma 4 support) uses cuMemcpyBatchAsync
+# which is a CUDA 12.9 driver API call.  The cu124 nightly wheel no longer
+# exists — all current nightly builds require CUDA 12.9 driver.
+# Required: NVIDIA driver >= 565.57.01 (reports "CUDA Version: 12.9" in nvidia-smi).
+_driver_cuda_minor() {
+    nvidia-smi 2>/dev/null \
+        | grep -oP "CUDA Version: \K[0-9]+\.[0-9]+" \
+        | awk -F. '{print $1 * 10 + $2}'
+}
+if [[ "${SKIP_VLLM:-0}" != "1" ]]; then
+    DRIVER_COMBINED=$(_driver_cuda_minor)
+    if [[ -n "$DRIVER_COMBINED" ]] && (( DRIVER_COMBINED < 129 )); then
+        DRIVER_VER=$(nvidia-smi 2>/dev/null | grep -oP "CUDA Version: \K[0-9]+\.[0-9]+" | head -1)
+        die "CUDA driver too old (${DRIVER_VER}).  vLLM 0.19+ requires CUDA 12.9 driver.
+       Upgrade the host NVIDIA driver to >= 565.57.01, or switch to a
+       cloud instance with a CUDA 12.9 image (RunPod PyTorch 2.6+, etc.)
+       Use SKIP_VLLM=1 to install only base deps without this check."
+    fi
+fi
+
+info "CUDA wheel: ${CUDA_VERSION}  (override with CUDA_VERSION=cu129 if wrong)"
 
 # ── gcc check (Triton JIT needs a C compiler) ──────────────────────────────────
 if ! command -v gcc &>/dev/null; then
@@ -65,20 +117,24 @@ uv pip install --quiet \
 
 # ── vLLM + CUDA stack ─────────────────────────────────────────────────────────
 if [[ "${SKIP_VLLM:-0}" == "1" ]]; then
-  warn "SKIP_VLLM=1 — skipping vLLM install.  Server will not be runnable."
+    warn "SKIP_VLLM=1 — skipping vLLM install.  Server will not be runnable."
 else
-  info "Installing vLLM nightly + PyTorch ($CUDA_VERSION) — large download …"
-  uv pip install -U \
-    "torch>=2.6.0" \
-    vllm --pre \
-    --extra-index-url "https://wheels.vllm.ai/nightly/${CUDA_VERSION}" \
-    --extra-index-url "https://download.pytorch.org/whl/${CUDA_VERSION}" \
-    --index-strategy unsafe-best-match
+    info "Installing vLLM nightly ($CUDA_VERSION) + PyTorch — large download …"
+    info "CUDA wheel index: https://wheels.vllm.ai/nightly/${CUDA_VERSION}"
+    # Always pull from the vLLM nightly index — the stable PyPI vLLM has
+    # drifted to requiring cu129+ and lacks older CUDA-compatible builds.
+    # The nightly consistently publishes cu124, cu129, and cu130 wheels with
+    # Gemma 4 tool/reasoning parser support.
+    uv pip install -U \
+        vllm --pre \
+        --extra-index-url "https://wheels.vllm.ai/nightly/${CUDA_VERSION}" \
+        --extra-index-url "https://download.pytorch.org/whl/${CUDA_VERSION}" \
+        --index-strategy unsafe-best-match
 
-  # vLLM may downgrade transformers; re-assert Gemma 4's minimum.
-  # transformers 5.5.0 is required for Gemma 4 AutoProcessor support.
-  info "Re-pinning transformers to 5.5.0 (Gemma 4 requirement) …"
-  uv pip install --reinstall "transformers==5.5.0"
+    # vLLM tends to downgrade transformers; re-assert Gemma 4's minimum.
+    # transformers 5.5.0 is required for Gemma 4 AutoProcessor support.
+    info "Re-pinning transformers to 5.5.0 (Gemma 4 requirement) …"
+    uv pip install --reinstall "transformers==5.5.0"
 fi
 
 # ── smoke test ────────────────────────────────────────────────────────────────

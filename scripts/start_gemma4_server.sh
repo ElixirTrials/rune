@@ -36,6 +36,23 @@ ok()    { echo -e "\033[32m[  ok ]\033[0m $*"; }
 warn()  { echo -e "\033[33m[ warn]\033[0m $*"; }
 die()   { echo -e "\033[31m[error]\033[0m $*" >&2; exit 1; }
 
+# ── CUDA driver preflight ─────────────────────────────────────────────────────
+# vLLM 0.19+ uses cuMemcpyBatchAsync which requires CUDA driver >= 12.9
+# (NVIDIA driver >= 565.57.01).  Check upfront so the error is actionable.
+_driver_cuda_minor() {
+    nvidia-smi 2>/dev/null \
+        | grep -oP "CUDA Version: \K[0-9]+\.[0-9]+" \
+        | awk -F. '{print $1 * 10 + $2}'
+}
+DRIVER_COMBINED=$(_driver_cuda_minor)
+MIN_COMBINED=129  # 12.9
+if [[ -n "$DRIVER_COMBINED" ]] && (( DRIVER_COMBINED < MIN_COMBINED )); then
+    DRIVER_VER=$(nvidia-smi 2>/dev/null | grep -oP "CUDA Version: \K[0-9]+\.[0-9]+" | head -1)
+    die "CUDA driver too old: your driver supports CUDA ${DRIVER_VER}, but vLLM 0.19+ requires CUDA 12.9+.
+       Upgrade the host NVIDIA driver to >= 565.57.01 (CUDA 12.9 support) and retry.
+       On RunPod/Lambda/vast.ai: select a PyTorch 2.6+ / CUDA 12.9 template."
+fi
+
 # ── check venv ────────────────────────────────────────────────────────────────
 [[ -d "$VENV_DIR" ]] || die ".gemma4env not found at $VENV_DIR — run scripts/setup_gemma4.sh first"
 [[ -f "$VENV_DIR/bin/vllm" ]] || die "vllm binary not found in $VENV_DIR/bin — re-run setup_gemma4.sh"
@@ -43,7 +60,7 @@ die()   { echo -e "\033[31m[error]\033[0m $*" >&2; exit 1; }
 # ── defaults ──────────────────────────────────────────────────────────────────
 # Default model: E4B — smallest Gemma 4, fits a 16–24 GB GPU.
 # Override with first positional arg or GEMMA4_MODEL env var.
-MODEL="${GEMMA4_MODEL:-google/gemma-4-E4B-it}"
+MODEL="${GEMMA4_MODEL:-google/gemma-4-26B-A4B-it}"
 PORT=8000
 EAGER=0
 TP=1
