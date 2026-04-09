@@ -1,0 +1,86 @@
+# Benchmark: Gemma 4 × OlymMATH hard split — vLLM server mode
+#
+# Prerequisite: start the Gemma 4 vLLM server first:
+#   bash scripts/start_gemma4_server.sh                        # E4B default (16–24 GB)
+#   bash scripts/start_gemma4_server.sh google/gemma-4-31B-it --tp 2   # 31B on 2× 80 GB
+#
+# Run with:
+#   uv run python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/gemma4_olym_hard.yaml
+#
+# Smoke-test (5 problems):
+#   uv run python scripts/run_benchmark.py \
+#       --config libs/evaluation/src/evaluation/configs/gemma4_olym_hard.yaml \
+#       --n-problems 5
+#
+# model_id: auto → the backend queries GET /v1/models and uses the first
+# registered model (= the path/id passed to vllm serve).  Set explicitly
+# to the full HF model ID or snapshot path if you run multiple servers.
+#
+# Thinking mode note:
+#   enable_thinking is false here because the Gemma 4 vLLM server is started
+#   without --reasoning-parser gemma4 (to avoid the known tool-call-parser
+#   conflict in vLLM ≤0.19).  The server default is also enable_thinking=false.
+#   If you want thinking, start the server without --tool-call-parser and use
+#   a separate non-tool config.  See gemma4_vllm_math_benchmark.md §11.
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output_dir: benchmark_results
+
+# ── System prompt ─────────────────────────────────────────────────────────────
+system_prompt_template: math_prompt.j2
+template_vars:
+  answer_range: "0 to 99999"
+
+# ── Model / provider ──────────────────────────────────────────────────────────
+model:
+  model_id: auto          # auto-discovered from the running vLLM server
+  provider: vllm_server   # VLLMServerBackend — OpenAI client → local vLLM
+  base_url: null          # null → http://localhost:8000/v1 (or VLLM_BASE_URL)
+
+  # Gemma 4 temperature recommendation: 0.0 for greedy math inference.
+  # Maximises reproducibility and eliminates sampling variance.
+  temperature: 0.0
+  max_new_tokens: 16384   # generous budget for multi-step reasoning chains
+  enable_thinking: false  # see note above — omit reasoning parser for tools
+
+  # Agentic tool-calling loop (generate → execute_python → repeat)
+  use_tools: true
+  max_iterations: 20
+  sandbox_timeout: 60.0
+
+  # Throughput — vLLM server handles batching internally; batch_size here
+  # controls how many problems share each agentic-loop iteration.
+  batch_size: 4
+  n_samples: 1
+
+# ── Context Retriever ─────────────────────────────────────────────────────────
+retriever:
+  use_retriever: false
+  embedding_model: BAAI/bge-base-en-v1.5
+  top_k: 4
+  tir_top_k: 3
+  max_solution_chars: 8192
+  similarity_threshold: 0.0
+  datasets:
+    numina_tir:
+      n: null
+    numina_cot:
+      n: 100
+      sources: [amc_aime]
+    competition_math:
+      n: 100
+      levels: ["Level 4", "Level 5"]
+  dedup_test_path: null
+  index_dir: null
+
+# ── Datasets ──────────────────────────────────────────────────────────────────
+datasets:
+  - name: olym_math_hard
+    prompt_key: problem
+    answer_key: answer
+    id_key: unique_id
+    scorer: boxed_extract
+    filter_integer_answers: true
+    integer_range: [0, 99999]
+    n_samples: null

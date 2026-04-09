@@ -463,8 +463,23 @@ class _OpenAIClientBackend(Backend):
         max_new_tokens: int,
         temperature: float,
         tools: list[dict[str, Any]] | None = None,
+        enable_thinking: bool = False,
     ) -> GenerationOutput:
-        """Issue one chat-completion and return a ``GenerationOutput``."""
+        """Issue one chat-completion and return a ``GenerationOutput``.
+
+        Args:
+            messages: OpenAI-style chat messages.
+            max_new_tokens: Maximum output tokens.
+            temperature: Sampling temperature.
+            tools: Optional tool schema list.
+            enable_thinking: When ``True``, forwards
+                ``extra_body={"chat_template_kwargs": {"enable_thinking": True}}``
+                so vLLM activates the model's reasoning channel (Gemma 4,
+                Qwen3, etc.).  Note: for Gemma 4 with ``--tool-call-parser gemma4``
+                the server must be started **without** ``--reasoning-parser gemma4``
+                to avoid the known parser conflict; thinking tokens will still
+                appear in ``message.content`` and can be stripped by the caller.
+        """
         import json as _json
 
         t0 = time.perf_counter()
@@ -479,6 +494,8 @@ class _OpenAIClientBackend(Backend):
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+        if enable_thinking:
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}}
 
         resp = self._client.chat.completions.create(**kwargs)
         elapsed = time.perf_counter() - t0
@@ -544,7 +561,10 @@ class _OpenAIClientBackend(Backend):
                 max_workers=len(messages_list) * n_samples
             ) as pool:
                 futures_flat = [
-                    pool.submit(self._call_one, msgs, max_new_tokens, temperature, tools)
+                    pool.submit(
+                        self._call_one, msgs, max_new_tokens, temperature,
+                        tools, enable_thinking,
+                    )
                     for msgs in messages_list
                     for _ in range(n_samples)
                 ]
@@ -570,7 +590,10 @@ class _OpenAIClientBackend(Backend):
             max_workers=max(1, len(messages_list))
         ) as pool:
             futures = [
-                pool.submit(self._call_one, msgs, max_new_tokens, temperature, tools)
+                pool.submit(
+                    self._call_one, msgs, max_new_tokens, temperature,
+                    tools, enable_thinking,
+                )
                 for msgs in messages_list
             ]
             return [f.result() for f in futures]
