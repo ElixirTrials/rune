@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# qwenv_setup.sh — Qwen3.5-9B + vllm environment setup
+# setup_qwen35.sh — Qwen3.5-35B-A3B-FP8 + vllm environment setup
 #
 # Creates / updates .qwenv with everything needed to run the benchmark suite
-# (evaluation / inference / shared libs) and serve Qwen/Qwen3.5-9B via vllm.
+# (evaluation / inference / shared libs) and serve Qwen/Qwen3.5-35B-A3B-FP8 via vllm.
 #
 # INSTALL ORDER (matters — vllm ships its own pinned transformers):
 #   1. gcc / build-essential  (triton needs it)
@@ -34,7 +34,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$REPO_ROOT/.qwenv"
 PYTHON_VERSION="3.12"
-MODEL_ID="Qwen/Qwen3.5-9B"
+MODEL_ID="Qwen/Qwen3.5-35B-A3B-FP8"
 
 VLLM_PORT=8000
 VLLM_STARTUP_TIMEOUT=600   # seconds to wait for /health — cold start includes torch.compile + CUDA graph capture (~3-4 min)
@@ -192,11 +192,11 @@ if [[ "$SKIP_DOWNLOAD" -eq 0 ]]; then
     info "Checking local HuggingFace cache for $MODEL_ID…"
 
     # Try local_files_only first — no network if already present.
-    CACHE_CHECK=$("$VENV_DIR/bin/python" <<'PYEOF'
+    CACHE_CHECK=$("$VENV_DIR/bin/python" <<PYEOF
 import sys
 try:
     from huggingface_hub import snapshot_download
-    p = snapshot_download("Qwen/Qwen3.5-9B",
+    p = snapshot_download("$MODEL_ID",
                           local_files_only=True,
                           ignore_patterns=["*.gguf"])
     print(f"hit:{p}")
@@ -210,7 +210,7 @@ PYEOF
         SNAPSHOT_PATH="${SNAPSHOT_PATH%%$'\n'*}"   # first line only
         ok "Model already in cache: $SNAPSHOT_PATH"
     else
-        info "Model not cached — downloading $MODEL_ID (~19 GB)…"
+        info "Model not cached — downloading $MODEL_ID (~11 GB, FP8 quantized)…"
         info "Stall watchdog active: restarts if no new bytes for ${STALL_TIMEOUT}s"
 
         DOWNLOAD_SUCCESS=0
@@ -225,11 +225,11 @@ PYEOF
 import sys, os, time, threading, signal
 from pathlib import Path
 
-MODEL_ID   = "Qwen/Qwen3.5-9B"
+MODEL_ID   = "$MODEL_ID"
 STALL_SECS = $STALL_TIMEOUT
 HF_CACHE   = Path(os.environ.get("HF_HOME",
                os.path.expanduser("~/.cache/huggingface"))) / "hub"
-MODEL_DIR  = HF_CACHE / "models--Qwen--Qwen3.5-9B"
+MODEL_DIR  = HF_CACHE / "models--Qwen--Qwen3.5-35B-A3B-FP8"
 
 def _du():
     total = 0
@@ -300,9 +300,9 @@ PYEOF
 
 else
     info "Skipping download (--skip-download)"
-    SNAPSHOT_PATH=$("$VENV_DIR/bin/python" <<'PYEOF' 2>/dev/null || true
+    SNAPSHOT_PATH=$("$VENV_DIR/bin/python" <<PYEOF 2>/dev/null || true
 from huggingface_hub import snapshot_download
-print(snapshot_download("Qwen/Qwen3.5-9B",
+print(snapshot_download("$MODEL_ID",
                         local_files_only=True,
                         ignore_patterns=["*.gguf"]))
 PYEOF
@@ -426,6 +426,18 @@ if [[ "$SKIP_SMOKE_TEST" -eq 0 ]]; then
     info "Starting vllm smoke test on port $VLLM_PORT…"
     info "  model: $SNAPSHOT_PATH"
 
+    # Ensure CUDA_HOME is set — flashinfer JIT-compiles GDN kernels on first request
+    if [[ -z "${CUDA_HOME:-}" ]]; then
+        if [[ -x "/usr/local/cuda/bin/nvcc" ]]; then
+            export CUDA_HOME="/usr/local/cuda"
+        elif [[ -x "/usr/local/cuda-12.8/bin/nvcc" ]]; then
+            export CUDA_HOME="/usr/local/cuda-12.8"
+        else
+            warn "CUDA_HOME not set — flashinfer JIT will fail; run: apt-get install cuda-nvcc-12-8 cuda-cudart-dev-12-8"
+        fi
+    fi
+    [[ -n "${CUDA_HOME:-}" ]] && { export PATH="${CUDA_HOME}/bin:${PATH}"; ok "CUDA_HOME: $CUDA_HOME"; }
+
     # Free the port if something is already bound to it
     { fuser -k "${VLLM_PORT}/tcp" 2>/dev/null; } \
         || { lsof -ti:"$VLLM_PORT" 2>/dev/null | xargs -r kill -9; } \
@@ -435,10 +447,13 @@ if [[ "$SKIP_SMOKE_TEST" -eq 0 ]]; then
     # --enforce-eager skips torch.compile + CUDA graph capture for the smoke
     # test, cutting cold-start from ~3-4 min down to ~40 s.  Remove it if you
     # want to verify the full compiled path.
-    info "Command: vllm serve $SNAPSHOT_PATH --port $VLLM_PORT --reasoning-parser qwen3 --language-model-only --enforce-eager"
+    info "Command: vllm serve $SNAPSHOT_PATH --port $VLLM_PORT --reasoning-parser qwen3 --default-chat-template-kwargs '{\"enable_thinking\": false}' --enable-auto-tool-choice --tool-call-parser qwen3_coder --language-model-only --enforce-eager"
     "$VENV_DIR/bin/vllm" serve "$SNAPSHOT_PATH" \
         --port "$VLLM_PORT" \
         --reasoning-parser qwen3 \
+        --default-chat-template-kwargs '{"enable_thinking": false}' \
+        --enable-auto-tool-choice \
+        --tool-call-parser qwen3_coder \
         --language-model-only \
         --enforce-eager \
         >"$VLLM_LOG" 2>&1 &
@@ -483,7 +498,7 @@ with urllib.request.urlopen(f"{base}/v1/models", timeout=15) as r:
 model_name = models["data"][0]["id"]
 print(f"  model id in vllm: {model_name}")
 
-# Fire a minimal completion
+# 1. Basic completion sanity check
 payload = json.dumps({
     "model": model_name,
     "prompt": "The capital of France is",
@@ -498,10 +513,52 @@ req = urllib.request.Request(
 )
 with urllib.request.urlopen(req, timeout=300) as r:
     resp = json.loads(r.read())
-
 text = resp["choices"][0]["text"].strip()
-print(f"  prompt:   'The capital of France is'")
-print(f"  response: '{text}'")
+print(f"  [completion] 'The capital of France is' → '{text}'")
+
+# 2. Tool-calling smoke test — verifies qwen3_coder parser is wired up correctly
+python_tool = {
+    "type": "function",
+    "function": {
+        "name": "execute_python",
+        "description": "Execute Python code. Returns stdout and errors.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python code to run."}
+            },
+            "required": ["code"],
+        },
+    },
+}
+chat_payload = json.dumps({
+    "model": model_name,
+    "messages": [{"role": "user", "content": "Use execute_python to compute 7 * 6."}],
+    "tools": [python_tool],
+    "tool_choice": "required",
+    "max_tokens": 256,
+    "temperature": 0.0,
+    "chat_template_kwargs": {"enable_thinking": False},
+}).encode()
+req2 = urllib.request.Request(
+    f"{base}/v1/chat/completions",
+    data=chat_payload,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(req2, timeout=300) as r:
+    chat_resp = json.loads(r.read())
+msg = chat_resp["choices"][0]["message"]
+if msg.get("tool_calls"):
+    tc = msg["tool_calls"][0]
+    args = json.loads(tc["function"]["arguments"])
+    print(f"  [tool-call ] name={tc['function']['name']}  code={args.get('code', '').strip()!r}")
+    print("  tool-calling smoke test PASSED ✓")
+else:
+    # Parser mismatch: call landed in content instead of tool_calls
+    print(f"  [tool-call ] WARNING: tool_calls is empty — content={msg.get('content','')!r}")
+    print("  tool-calling smoke test FAILED — check --tool-call-parser flag")
+    sys.exit(1)
 PYEOF
 
     cleanup_vllm
@@ -559,11 +616,20 @@ echo -e "\033[36m  ── Serve the model ────────────�
 MODEL_SERVE="${MODEL_ARG:-<snapshot-path>}"
 echo "  Eager (fast startup, ~40 s):"
 echo "    $VENV_DIR/bin/vllm serve $MODEL_SERVE \\"
-echo "      --port $VLLM_PORT --reasoning-parser qwen3 --language-model-only --enforce-eager"
+echo "      --port $VLLM_PORT --reasoning-parser qwen3 \\"
+echo "      --default-chat-template-kwargs '{\"enable_thinking\": false}' \\"
+echo "      --enable-auto-tool-choice --tool-call-parser qwen3_coder \\"
+echo "      --language-model-only --enforce-eager"
 echo ""
 echo "  Compiled (full perf, ~3-4 min cold start):"
 echo "    $VENV_DIR/bin/vllm serve $MODEL_SERVE \\"
-echo "      --port $VLLM_PORT --reasoning-parser qwen3 --language-model-only"
+echo "      --port $VLLM_PORT --reasoning-parser qwen3 \\"
+echo "      --default-chat-template-kwargs '{\"enable_thinking\": false}' \\"
+echo "      --enable-auto-tool-choice --tool-call-parser qwen3_coder \\"
+echo "      --language-model-only"
+echo ""
+echo "  Note: switch --tool-call-parser to qwen3_xml if you hit infinite '!!!' tokens"
+echo "        or empty tool_calls in responses."
 echo ""
 echo -e "\033[36m  ── Run benchmarks ────────────────────────────────────────────\033[0m"
 echo "  Update the config file first with downloaded snapshot path! "

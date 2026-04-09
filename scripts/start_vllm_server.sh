@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # start_vllm_server.sh — Serve a local model via vLLM with tool calling enabled.
 #
-# Uses the .qwenv environment created by scripts/qwenv_setup.sh.
-# Tool calling is enabled via --enable-auto-tool-choice --tool-call-parser hermes.
+# Uses the .qwenv environment created by scripts/setup_qwen35.sh.
+# Tool calling is enabled via --enable-auto-tool-choice --tool-call-parser qwen3_coder.
+# Thinking is disabled globally so the model emits tool calls instead of planning
+# in <think> blocks without executing them (the most common failure mode).
 #
 # Usage:
 #   bash scripts/start_vllm_server.sh                        # auto-detect model from .qwenv.env
@@ -42,8 +44,8 @@ MODEL_PATH=""
 PORT=8000
 EAGER=0
 TP=1
-MAX_LEN=65536
-DTYPE=float16
+MAX_LEN=64000
+DTYPE=bfloat16
 
 # ── parse args ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -83,7 +85,7 @@ if [[ -z "$MODEL_PATH" ]]; then
             "$VENV_DIR/bin/python" - <<'PYEOF' 2>/dev/null || true
 from huggingface_hub import snapshot_download
 try:
-    print(snapshot_download("Qwen/Qwen3.5-9B", local_files_only=True,
+    print(snapshot_download("Qwen/Qwen3.5-35B-A3B-FP8", local_files_only=True,
                             ignore_patterns=["*.gguf"]))
 except Exception:
     pass
@@ -96,6 +98,23 @@ fi
 [[ -n "$MODEL_PATH" ]] || die \
     "Could not find model path.  Pass it as an argument or run qwenv_setup.sh first."
 [[ -d "$MODEL_PATH" ]] || die "Model path does not exist: $MODEL_PATH"
+
+# ── CUDA_HOME — required by flashinfer JIT (GDN linear-attn kernels) ─────────
+# flashinfer builds CUDA kernels on first request for architectures like
+# Qwen3.5-35B-A3B that use GDN/linear-attn layers.  It looks for nvcc at
+# $CUDA_HOME/bin/nvcc.  Install: apt-get install cuda-nvcc-12-8 cuda-cudart-dev-12-8
+if [[ -z "${CUDA_HOME:-}" ]]; then
+    if [[ -x "/usr/local/cuda/bin/nvcc" ]]; then
+        export CUDA_HOME="/usr/local/cuda"
+    elif [[ -x "/usr/local/cuda-12.8/bin/nvcc" ]]; then
+        export CUDA_HOME="/usr/local/cuda-12.8"
+    else
+        warn "CUDA_HOME not set and nvcc not found at /usr/local/cuda — flashinfer JIT may fail"
+        warn "Fix: apt-get install cuda-nvcc-12-8 cuda-cudart-dev-12-8"
+    fi
+fi
+[[ -n "${CUDA_HOME:-}" ]] && ok "CUDA_HOME: $CUDA_HOME (nvcc: $(${CUDA_HOME}/bin/nvcc --version 2>/dev/null | grep release | sed 's/.*release //' | cut -d, -f1))"
+export PATH="${CUDA_HOME}/bin:${PATH:-}"
 
 # ── free port if occupied ─────────────────────────────────────────────────────
 if lsof -ti:"$PORT" >/dev/null 2>&1; then
@@ -110,14 +129,17 @@ SERVE_CMD=(
     --port              "$PORT"
     --tensor-parallel-size "$TP"
     --max-model-len     "$MAX_LEN"
-    --dtype             "$DTYPE"
-    --language-model-only                 # skip vision encoder for Qwen3.5
-    --enable-auto-tool-choice             # accept tools param, format schema into prompt
-    --tool-call-parser  hermes            # required by vLLM when auto-tool-choice is on
-    # Note: hermes parser logs JSONDecodeError on malformed/empty <tool_call> blocks
-    # but those errors are non-fatal (server still returns 200 OK with raw text).
-    # parse_tool_calls() in mathbox.py extracts calls from the raw text as fallback.
-    --reasoning-parser  qwen3             # extract <think>…</think> when present
+    --dtype             bfloat16          # was float16
+    --language-model-only
+    --reasoning-parser  qwen3
+    --default-chat-template-kwargs '{"enable_thinking": false}'
+    --enable-auto-tool-choice
+    --tool-call-parser  qwen3_coder
+    --enable-chunked-prefill              # ADD
+    --max-num-batched-tokens 8192         # ADD
+    --max-num-seqs 256                    # ADD
+    --gpu-memory-utilization 0.92         # ADD (default 0.9, squeeze more KV cache)
+    --kv-cache-dtype fp8                  # ADD — H100 supports FP8 KV cache natively
 )
 
 [[ $EAGER -eq 1 ]] && SERVE_CMD+=(--enforce-eager)

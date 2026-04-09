@@ -106,14 +106,34 @@ fi
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
 
-# ── base deps (always installed) ──────────────────────────────────────────────
+# ── base deps (always installed, before vLLM so the solver sees them) ─────────
 info "Installing base dependencies …"
 uv pip install --quiet \
   "openai>=1.0.0" \
   "huggingface_hub>=0.24.0" \
   "sympy>=1.12" \
   "numpy>=1.26" \
-  "tqdm"
+  "tqdm" \
+  "mpmath>=1.3"
+
+# ── MathSandbox deps (before vLLM — scipy needs a wheel, not a source build) ──
+# scipy and networkx are imported by the MathSandbox kernel prelude.
+# --only-binary :all: prevents pip from trying to compile scipy from source
+# (which requires gfortran/g95 and will fail on most cloud instances).
+# jupyter_client + ipykernel give us the long-lived IPython kernel that
+# MathSandbox wraps.
+info "Installing MathSandbox kernel dependencies (scipy wheel, jupyter, networkx) …"
+uv pip install --quiet \
+  --only-binary scipy \
+  "scipy>=1.13" \
+  "networkx>=3.3" \
+  "jupyter_client>=8.6" \
+  "ipykernel>=6.29"
+
+# ── rune shared library (mathbox, etc.) ───────────────────────────────────────
+# Editable install so the sandbox can import shared.mathbox, shared.math_retriever, etc.
+info "Installing rune shared library (editable) …"
+uv pip install --quiet -e "$ROOT/libs/shared"
 
 # ── vLLM + CUDA stack ─────────────────────────────────────────────────────────
 if [[ "${SKIP_VLLM:-0}" == "1" ]]; then
@@ -155,6 +175,12 @@ checks = {
     "transformers":     "transformers",
     "sympy":            "sympy",
     "numpy":            "numpy",
+    "scipy":            "scipy",
+    "networkx":         "networkx",
+    "mpmath":           "mpmath",
+    "jupyter_client":   "jupyter_client",
+    "ipykernel":        "ipykernel",
+    "shared":           "shared",
 }
 
 for name, mod in checks.items():

@@ -53,7 +53,11 @@ class MathConfig:
 
 class _PortAllocator:
     _lock = threading.Lock()
-    _next = 50000
+    # Start well below the Linux default ephemeral range (32768–60999) so
+    # kernel ports never collide with OS-assigned client-side TCP ports (e.g.
+    # the outgoing connections to a vLLM server).  10100–32767 gives space for
+    # (32767 - 10100) / 5 ≈ 4500 concurrent sandboxes before wrapping.
+    _next = 10100
 
     @classmethod
     def claim(cls, count: int = 5) -> list[int]:
@@ -61,6 +65,13 @@ class _PortAllocator:
             ports = list(range(cls._next, cls._next + count))
             cls._next += count
             return ports
+
+
+# Semaphore that limits how many IPython kernels may go through their
+# startup sequence (start_kernel → wait_for_ready) concurrently.
+# Even with unique ports the kernel subprocess races to *bind* before
+# start_kernel() returns; serialising to ≤8 at a time eliminates the window.
+_KERNEL_STARTUP_SEM = threading.Semaphore(8)
 
 
 # ---------------------------------------------------------------------------
@@ -111,38 +122,57 @@ class MathSandbox:
         self._km = None
         self._client = None
 
-        ports = (
-            list(range(self._cfg.port_start, self._cfg.port_start + 5))
-            if self._cfg.port_start is not None
-            else _PortAllocator.claim(5)
-        )
-
         env = os.environ.copy()
         env["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
         env["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "0"
         env["JUPYTER_PLATFORM_DIRS"] = "1"
         env["PYTHONWARNINGS"] = "ignore"
         env["MPLBACKEND"] = "Agg"
+        # Each sandbox kernel runs one problem at a time; multi-threaded BLAS /
+        # OpenMP gives no benefit and balloons thread count when many kernels
+        # run concurrently (default 64 OpenBLAS threads × N kernels exhausts
+        # the OS thread limit with even modest concurrency).
+        env.setdefault("OPENBLAS_NUM_THREADS", "1")
+        env.setdefault("OMP_NUM_THREADS", "1")
+        env.setdefault("MKL_NUM_THREADS", "1")
+        env.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+        env.setdefault("NUMEXPR_NUM_THREADS", "1")
 
         # Deferred import so the module stays importable without jupyter_client
         # installed (INFRA-05 pattern).
         from jupyter_client import KernelManager  # noqa: PLC0415
 
         self._km = KernelManager()
-        self._km.shell_port = ports[0]
-        self._km.iopub_port = ports[1]
-        self._km.stdin_port = ports[2]
-        self._km.hb_port = ports[3]
-        self._km.control_port = ports[4]
 
-        self._km.start_kernel(
-            env=env,
-            extra_arguments=["--Application.log_level=CRITICAL"],
-        )
+        if self._cfg.port_start is not None:
+            # Explicit fixed port block requested — assign directly.
+            ports = list(range(self._cfg.port_start, self._cfg.port_start + 5))
+            self._km.shell_port = ports[0]
+            self._km.iopub_port = ports[1]
+            self._km.stdin_port = ports[2]
+            self._km.hb_port = ports[3]
+            self._km.control_port = ports[4]
+        else:
+            # Let KernelManager pick its own open ports via select_random_ports().
+            # Pre-assigning from _PortAllocator risks colliding with OS-assigned
+            # ephemeral ports (Linux default range 32768–60999), especially when
+            # many concurrent HTTP connections are open (e.g. to a vLLM server).
+            # The _KERNEL_STARTUP_SEM above serialises startup so KernelManager's
+            # own port-selection does not race against sibling kernels.
+            pass
 
-        self._client = self._km.blocking_client()
-        self._client.start_channels()
-        self._client.wait_for_ready(timeout=self._cfg.default_timeout)
+        # Serialise kernel startup to avoid ZMQ port-binding races when many
+        # sandboxes are created concurrently.  The semaphore is released once
+        # wait_for_ready() confirms the kernel has bound its sockets, so
+        # running kernels never hold it.
+        with _KERNEL_STARTUP_SEM:
+            self._km.start_kernel(
+                env=env,
+                extra_arguments=["--Application.log_level=CRITICAL"],
+            )
+            self._client = self._km.blocking_client()
+            self._client.start_channels()
+            self._client.wait_for_ready(timeout=self._cfg.default_timeout)
         self._owns_kernel = True
 
         self.execute(_PRELUDE.format(dps=self._cfg.mpmath_dps))

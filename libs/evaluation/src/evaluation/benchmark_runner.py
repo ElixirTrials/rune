@@ -359,6 +359,7 @@ def _solve_batch_agentic(
     sandbox_cfg = MathConfig(default_timeout=model_cfg.sandbox_timeout)
     n_probs = len(problems)
     total_trajectories = n_probs * n_samples
+    _MAX_STUCK_NUDGES = 2  # nudge this many times before hard-bailing on stuck
 
     # Flat list of N*M states — one per (problem, sample) pair.
     # flat_idx = prob_idx * n_samples + sample_idx maps into the sandboxes list.
@@ -387,6 +388,7 @@ def _solve_batch_agentic(
             "total_gen_time_s": 0.0,
             "n_iterations": 0,
             "last_results": [],
+            "stuck_nudges": 0,  # number of times the stuck-nudge was sent
         }
         for i in range(n_probs)
         for j in range(n_samples)
@@ -424,6 +426,12 @@ def _solve_batch_agentic(
                 tools=MATH_TOOLS,   # comes from independent trajectory histories
             )
 
+            # ── Phase 1: process generation outputs, queue tool-call work ─────
+            # States with a final answer (no tool calls) are resolved inline.
+            # States that need sandbox execution are collected in _tc_work so
+            # all kernels can be dispatched concurrently in Phase 2.
+            _tc_work: list[tuple[dict[str, Any], list[dict[str, Any]], Any]] = []
+
             for state, out in zip(active, outputs):
                 state["total_gen_time_s"] += out.elapsed_s
                 state["total_output_tokens"] += out.n_tokens
@@ -447,14 +455,34 @@ def _solve_batch_agentic(
 
                 if not norm_tcs:
                     resp = _clean_response(body)
-                    state["messages"].append({"role": "assistant", "content": resp})
-                    state["model_answer"] = (
-                        _extract_answer(resp)
-                        or _extract_answer(thinking)
-                        or _extract_answer(raw)
-                    )
-                    state["final_response"] = resp
-                    state["done"] = True
+
+                    # Detect Gemma 4 raw tool-call tokens that the vLLM
+                    # server's --tool-call-parser failed to decode.  These
+                    # look like "<|tool_call>call:execute_python{…}" in the
+                    # content field instead of in message.tool_calls.  Treat
+                    # them as a parse failure and nudge the model rather than
+                    # accepting an empty answer.
+                    _raw_tc_marker = "<|tool_call>"
+                    if _raw_tc_marker in raw and _extract_answer(resp) is None:
+                        tc_fail_msg = (
+                            "[SYSTEM] Your tool call could not be parsed. "
+                            "Please restate it as a clean Python code block wrapped in "
+                            "<tool_call>{\"name\": \"execute_python\", "
+                            "\"arguments\": {\"code\": \"...\"}}</tool_call>, "
+                            "or state your final answer with \\boxed{your_answer}."
+                        )
+                        state["messages"].append({"role": "assistant", "content": resp})
+                        state["messages"].append({"role": "user", "content": tc_fail_msg})
+                        # Don't mark done — give the model another turn.
+                    else:
+                        state["messages"].append({"role": "assistant", "content": resp})
+                        state["model_answer"] = (
+                            _extract_answer(resp)
+                            or _extract_answer(thinking)
+                            or _extract_answer(raw)
+                        )
+                        state["final_response"] = resp
+                        state["done"] = True
                 else:
                     # Build the assistant message.  OpenAI-compatible APIs
                     # require the tool_calls list in the message so subsequent
@@ -491,44 +519,88 @@ def _solve_batch_agentic(
                     if _interim is not None:
                         state["candidate_answer"] = _interim
 
-                    sandbox = sandboxes[state["flat_idx"]]
-                    for tc in norm_tcs:
-                        code = tc["arguments"].get("code", "")
-                        lines = code.splitlines()
-                        if len(lines) > MAX_CODE_LINES:
-                            result = (
-                                f"[CODE TOO LONG — {len(lines)} lines, max {MAX_CODE_LINES}] "
+                    # Defer sandbox execution to the parallel phase below.
+                    _tc_work.append(
+                        (state, norm_tcs, sandboxes[state["flat_idx"]])
+                    )
+
+            # ── Phase 2: parallel sandbox execution across states ──────────────
+            # Each state owns an independent MathSandbox kernel so there is no
+            # shared mutable state between threads.  Tool calls within one state
+            # still run sequentially (preserving kernel state and stuck-detection
+            # order); only *different* states execute their kernels concurrently.
+            if _tc_work:
+                import concurrent.futures as _cf
+
+                def _exec_state_tools(
+                    _work: tuple[dict[str, Any], list[dict[str, Any]], Any],
+                ) -> None:
+                    _state, _tcs, _sandbox = _work
+                    for _tc in _tcs:
+                        _code = _tc["arguments"].get("code", "")
+                        _lines = _code.splitlines()
+                        if len(_lines) > MAX_CODE_LINES:
+                            _result = (
+                                f"[CODE TOO LONG — {len(_lines)} lines,"
+                                f" max {MAX_CODE_LINES}] "
                                 "State your answer with \\boxed{}."
                             )
-                        elif tc["name"] == "execute_python":
-                            result = sandbox.execute(code)
+                        elif _tc["name"] == "execute_python":
+                            _result = _sandbox.execute(_code)
                         else:
-                            result = f"[ERROR] Unknown tool '{tc['name']}'."
+                            _result = f"[ERROR] Unknown tool '{_tc['name']}'."
 
-                        hint = near_int_hint(result)
-                        if hint:
-                            result += hint
+                        _hint = near_int_hint(_result)
+                        if _hint:
+                            _result += _hint
 
                         # OpenAI protocol: tool result messages must carry the
                         # matching tool_call_id so the API can pair them up.
-                        tool_msg: dict[str, Any] = {"role": "tool", "content": result}
-                        if tc.get("id"):
-                            tool_msg["tool_call_id"] = tc["id"]
-                        state["messages"].append(tool_msg)
-                        state["last_results"].append(result)
+                        _tool_msg: dict[str, Any] = {
+                            "role": "tool",
+                            "content": _result,
+                        }
+                        if _tc.get("id"):
+                            _tool_msg["tool_call_id"] = _tc["id"]
+                        _state["messages"].append(_tool_msg)
+                        _state["last_results"].append(_result)
 
-                        # Stuck detection: same output 3× in a row → bail
+                        # Stuck detection: same tool output 3x in a row.
+                        # Nudge the model; bail after _MAX_STUCK_NUDGES nudges.
                         if (
-                            len(state["last_results"]) >= 3
-                            and len(set(state["last_results"][-3:])) == 1
+                            len(_state["last_results"]) >= 3
+                            and len(set(_state["last_results"][-3:])) == 1
                         ):
-                            bail = "[stuck] Same result 3× in a row."
-                            state["messages"].append(
-                                {"role": "assistant", "content": bail}
+                            _state["stuck_nudges"] += 1
+                            if _state["stuck_nudges"] > _MAX_STUCK_NUDGES:
+                                _bail = (
+                                    "[stuck] Same result persists after"
+                                    " nudges — giving up."
+                                )
+                                _state["messages"].append(
+                                    {"role": "assistant", "content": _bail}
+                                )
+                                _state["done"] = True
+                                _state["final_response"] = _bail
+                                break
+                            _nudge = (
+                                "[SYSTEM] You are getting the same result"
+                                " repeatedly. Your current approach is not"
+                                " making progress. Try a completely different"
+                                " method, algorithm, or mathematical insight."
+                                " If you have enough information to state an"
+                                " answer, do so now with \\boxed{your_answer}."
                             )
-                            state["done"] = True
-                            state["final_response"] = bail
-                            break
+                            _state["messages"].append(
+                                {"role": "user", "content": _nudge}
+                            )
+                            # Reset window so nudge gets a fresh 3-call check.
+                            _state["last_results"] = []
+
+                with _cf.ThreadPoolExecutor(max_workers=len(_tc_work)) as _pool:
+                    # list() forces eager evaluation — all sandboxes must
+                    # finish before the next generate_batch call is issued.
+                    list(_pool.map(_exec_state_tools, _tc_work))
 
     wall_time = _time.perf_counter() - t_wall
 
@@ -596,6 +668,273 @@ def _solve_batch_agentic(
         results.append(result)
 
     return results, wall_time
+
+
+# ── Per-problem agentic solver ────────────────────────────────────────────────
+
+
+def _solve_one_agentic(
+    problem: dict[str, Any],
+    system_prompt: str,
+    backend: Backend,
+    model_cfg: ModelConfig,
+    n_samples: int = 1,
+) -> dict[str, Any]:
+    """Run the full agentic tool-calling loop for a single problem.
+
+    Each of the *n_samples* independent trajectories gets its own
+    ``MathSandbox`` kernel and runs to completion (or ``max_iterations``).
+    When ``n_samples > 1`` the trajectories execute concurrently and their
+    answers are aggregated via majority vote.
+
+    This is the primary execution path used by ``run_dataset_benchmark`` via a
+    ``ThreadPoolExecutor`` sliding-window pool — each problem runs in its own
+    thread, keeping the vLLM server saturated without artificial chunk-boundary
+    synchronisation points.
+
+    Args:
+        problem: Normalised problem dict with ``"id"`` and ``"prompt"``.
+        system_prompt: Rendered system prompt (already has per-problem
+            retrieval context injected when the retriever is active).
+        backend: Generation backend.
+        model_cfg: Model hyper-parameters and loop settings.
+        n_samples: Independent trajectories per problem; majority vote applied
+            when ``> 1``.
+
+    Returns:
+        Result dict with ``model_answer``, ``final_response``,
+        ``n_iterations``, ``n_gen_calls``, ``total_output_tokens``,
+        ``total_gen_time_s``, and (when ``n_samples > 1``) ``all_answers``,
+        ``vote_counts``, ``all_trajectories``.
+    """
+    import concurrent.futures as _cf
+
+    from shared.mathbox import MathConfig, MathSandbox
+
+    sandbox_cfg = MathConfig(default_timeout=model_cfg.sandbox_timeout)
+    _MAX_STUCK_NUDGES = 2
+
+    def _run_sample(sample_idx: int) -> dict[str, Any]:
+        state: dict[str, Any] = {
+            "sample_idx": sample_idx,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": problem["prompt"]},
+            ],
+            "done": False,
+            "model_answer": None,
+            "candidate_answer": None,
+            "final_response": "",
+            "n_gen_calls": 0,
+            "total_output_tokens": 0,
+            "total_gen_time_s": 0.0,
+            "n_iterations": 0,
+            "last_results": [],
+            "stuck_nudges": 0,
+        }
+
+        with MathSandbox(sandbox_cfg) as sandbox:
+            for iteration in range(model_cfg.max_iterations):
+                if state["done"]:
+                    break
+
+                out = backend.generate(
+                    state["messages"],
+                    max_new_tokens=model_cfg.max_new_tokens,
+                    temperature=model_cfg.temperature,
+                    enable_thinking=model_cfg.enable_thinking,
+                    n_samples=1,
+                    tools=MATH_TOOLS,
+                )
+
+                state["total_gen_time_s"] += out.elapsed_s
+                state["total_output_tokens"] += out.n_tokens
+                state["n_gen_calls"] += 1
+                state["n_iterations"] = iteration + 1
+
+                raw = out.text
+                thinking, body = _split_thinking(raw)
+
+                # Normalise tool calls: prefer structured data from
+                # OpenAI-compatible backends; fall back to Qwen XML parsing.
+                if out.tool_calls is not None:
+                    norm_tcs: list[dict[str, Any]] = out.tool_calls
+                else:
+                    norm_tcs = [
+                        {"id": None, "name": tc["name"], "arguments": tc["arguments"]}
+                        for tc in parse_tool_calls(body)
+                    ]
+
+                if not norm_tcs:
+                    resp = _clean_response(body)
+
+                    # Detect Gemma 4 raw tool-call tokens the vLLM server
+                    # parser failed to decode ("<|tool_call>..." in content).
+                    _raw_tc_marker = "<|tool_call>"
+                    if _raw_tc_marker in raw and _extract_answer(resp) is None:
+                        tc_fail_msg = (
+                            "[SYSTEM] Your tool call could not be parsed. "
+                            "Please restate it as a clean Python code block wrapped in "
+                            "<tool_call>{\"name\": \"execute_python\", "
+                            "\"arguments\": {\"code\": \"...\"}}</tool_call>, "
+                            "or state your final answer with \\boxed{your_answer}."
+                        )
+                        state["messages"].append({"role": "assistant", "content": resp})
+                        state["messages"].append({"role": "user", "content": tc_fail_msg})
+                    else:
+                        state["messages"].append({"role": "assistant", "content": resp})
+                        state["model_answer"] = (
+                            _extract_answer(resp)
+                            or _extract_answer(thinking)
+                            or _extract_answer(raw)
+                        )
+                        state["final_response"] = resp
+                        state["done"] = True
+                else:
+                    # Build the assistant message.  OpenAI-compatible APIs
+                    # require tool_calls in the message so subsequent turns
+                    # can reference call IDs.
+                    if out.tool_calls is not None:
+                        state["messages"].append({
+                            "role": "assistant",
+                            "content": raw or None,
+                            "tool_calls": [
+                                {
+                                    "id": tc["id"],
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc["name"],
+                                        "arguments": json.dumps(tc["arguments"]),
+                                    },
+                                }
+                                for tc in norm_tcs
+                            ],
+                        })
+                    else:
+                        state["messages"].append({"role": "assistant", "content": raw})
+
+                    # Capture any boxed answer present as a candidate fallback.
+                    _interim_body = _clean_response(body)
+                    _interim = (
+                        _extract_boxed(_interim_body)
+                        or _extract_boxed(thinking)
+                        or _extract_boxed(raw)
+                    )
+                    if _interim is not None:
+                        state["candidate_answer"] = _interim
+
+                    # Execute tool calls sequentially in this sample's kernel.
+                    for tc in norm_tcs:
+                        code = tc["arguments"].get("code", "")
+                        lines = code.splitlines()
+                        if len(lines) > MAX_CODE_LINES:
+                            result = (
+                                f"[CODE TOO LONG \u2014 {len(lines)} lines,"
+                                f" max {MAX_CODE_LINES}] "
+                                "State your answer with \\boxed{}."
+                            )
+                        elif tc["name"] == "execute_python":
+                            result = sandbox.execute(code)
+                        else:
+                            result = f"[ERROR] Unknown tool '{tc['name']}'."
+
+                        hint = near_int_hint(result)
+                        if hint:
+                            result += hint
+
+                        # OpenAI protocol: carry tool_call_id so the API can
+                        # pair tool results with their originating call.
+                        tool_msg: dict[str, Any] = {"role": "tool", "content": result}
+                        if tc.get("id"):
+                            tool_msg["tool_call_id"] = tc["id"]
+                        state["messages"].append(tool_msg)
+                        state["last_results"].append(result)
+
+                        # Stuck detection: same output 3x in a row.
+                        if (
+                            len(state["last_results"]) >= 3
+                            and len(set(state["last_results"][-3:])) == 1
+                        ):
+                            state["stuck_nudges"] += 1
+                            if state["stuck_nudges"] > _MAX_STUCK_NUDGES:
+                                bail = (
+                                    "[stuck] Same result persists after"
+                                    " nudges \u2014 giving up."
+                                )
+                                state["messages"].append(
+                                    {"role": "assistant", "content": bail}
+                                )
+                                state["done"] = True
+                                state["final_response"] = bail
+                                break
+                            nudge = (
+                                "[SYSTEM] You are getting the same result"
+                                " repeatedly. Your current approach is not"
+                                " making progress. Try a completely different"
+                                " method, algorithm, or mathematical insight."
+                                " If you have enough information to state an"
+                                " answer, do so now with \\boxed{your_answer}."
+                            )
+                            state["messages"].append({"role": "user", "content": nudge})
+                            state["last_results"] = []
+
+        if not state["done"]:
+            state["final_response"] = "[max iterations reached]"
+        if state["model_answer"] is None and state["candidate_answer"] is not None:
+            state["model_answer"] = state["candidate_answer"]
+        return state
+
+    # Run n_samples trajectories; concurrent when n_samples > 1 since each
+    # trajectory has its own sandbox and generate() calls are thread-safe.
+    if n_samples == 1:
+        prob_states = [_run_sample(0)]
+    else:
+        with _cf.ThreadPoolExecutor(max_workers=n_samples) as pool:
+            prob_states = list(pool.map(_run_sample, range(n_samples)))
+
+    all_answers = [s["model_answer"] for s in prob_states]
+    total_tokens = sum(s["total_output_tokens"] for s in prob_states)
+    elapsed = max(s["total_gen_time_s"] for s in prob_states)
+
+    if n_samples > 1:
+        majority = _majority_vote(all_answers)
+        vote_counts_agg: dict[str, int] | None = _tally_votes(all_answers)
+        rep = prob_states[0]
+        if majority is not None:
+            for s in prob_states:
+                if s["model_answer"] == majority:
+                    rep = s
+                    break
+    else:
+        majority = all_answers[0]
+        vote_counts_agg = None
+        rep = prob_states[0]
+
+    agg: dict[str, Any] = {
+        "model_answer": majority,
+        "final_response": rep["final_response"],
+        "messages": rep["messages"],
+        "n_iterations": rep["n_iterations"],
+        "n_gen_calls": rep["n_gen_calls"],
+        "total_output_tokens": total_tokens,
+        "total_gen_time_s": elapsed,
+    }
+    if n_samples > 1:
+        agg["all_answers"] = all_answers
+        agg["vote_counts"] = vote_counts_agg
+        agg["all_trajectories"] = [
+            {
+                "sample_idx": s["sample_idx"],
+                "model_answer": s["model_answer"],
+                "final_response": s["final_response"],
+                "messages": s["messages"],
+                "n_iterations": s["n_iterations"],
+                "n_gen_calls": s["n_gen_calls"],
+                "total_output_tokens": s["total_output_tokens"],
+            }
+            for s in prob_states
+        ]
+    return agg
 
 
 # ── Inference loop ────────────────────────────────────────────────────────────
@@ -759,60 +1098,84 @@ def run_dataset_benchmark(
             f"  {extra}" if extra else "",
         )
 
-    for chunk_idx, chunk_start in enumerate(range(0, n_total, batch_size)):
-        chunk = problems[chunk_start : chunk_start + batch_size]
+    if model_cfg.use_tools:
+        # ── Agentic sliding-window pool ────────────────────────────────────
+        # All problems are submitted up-front.  The ThreadPoolExecutor keeps
+        # exactly `batch_size` problems in-flight concurrently; as each one
+        # finishes its full multi-iteration trajectory, the next problem
+        # starts immediately.  This keeps the vLLM server saturated without
+        # the lockstep wait of a fixed chunk design.
+        import concurrent.futures as _cf
 
-        if model_cfg.use_tools:
-            # ── Agentic tool-calling loop ──────────────────────────────────
-            logger.info(
-                "Batch %d/%d  (rows %d–%d)  dataset='%s'",
-                chunk_idx + 1,
-                n_batches,
-                chunk_start + 1,
-                chunk_start + len(chunk),
-                ds_cfg.name,
-            )
+        # Effective outer-pool concurrency: batch_size is the target number of
+        # *simultaneous vLLM requests*.  With n_samples > 1 each outer problem
+        # spawns n_samples inner generate() calls concurrently, so divide to
+        # keep total server load ≈ batch_size (and total live sandboxes
+        # ≈ batch_size regardless of n_samples).
+        n_samples_cfg = model_cfg.n_samples
+        effective_concurrency = max(1, batch_size // max(1, n_samples_cfg))
 
-            chunk_prompts = (
-                per_problem_prompts[chunk_start : chunk_start + len(chunk)]
+        logger.info(
+            "Agentic pool: %d problems  concurrency=%d  n_samples=%d  "
+            "(effective outer workers=%d)  dataset='%s'",
+            n_total,
+            batch_size,
+            n_samples_cfg,
+            effective_concurrency,
+            ds_cfg.name,
+        )
+
+        def _agentic_worker(prob_idx: int) -> tuple[int, dict[str, Any]]:
+            prob = problems[prob_idx]
+            eff_prompt = (
+                per_problem_prompts[prob_idx]
                 if per_problem_prompts is not None
-                else None
+                else system_prompt
             )
-
-            agentic_outputs: list[dict[str, Any]] | None = None
-            last_error = ""
+            last_exc: Exception | None = None
             for attempt in range(1, max_retries + 2):
                 try:
-                    agentic_outputs, _wall = _solve_batch_agentic(
-                        chunk, system_prompt, backend, model_cfg,
+                    ag = _solve_one_agentic(
+                        prob, eff_prompt, backend, model_cfg,
                         n_samples=model_cfg.n_samples,
-                        system_prompts=chunk_prompts,
                     )
-                    break
+                    return prob_idx, ag
                 except Exception as exc:
-                    last_error = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+                    last_exc = exc
                     if attempt <= max_retries:
                         logger.warning(
-                            "Agentic batch %d/%d attempt %d/%d failed (%s), retrying",
-                            chunk_idx + 1, n_batches, attempt, max_retries + 1,
+                            "Problem %s attempt %d/%d failed (%s), retrying",
+                            prob["id"], attempt, max_retries + 1,
                             type(exc).__name__, exc_info=False,
                         )
                     else:
                         logger.error(
-                            "Agentic batch %d/%d exhausted %d retries (%s) — recording errors",
-                            chunk_idx + 1, n_batches, max_retries,
+                            "Problem %s exhausted %d retries (%s)",
+                            prob["id"], max_retries,
                             type(exc).__name__, exc_info=True,
                         )
+            raise last_exc  # type: ignore[misc]
 
-            if agentic_outputs is None:
-                for p in chunk:
-                    err_row = _error_result(p, error_reason=last_error)
+        with _cf.ThreadPoolExecutor(max_workers=effective_concurrency) as pool:
+            future_to_idx: dict[_cf.Future[tuple[int, dict[str, Any]]], int] = {
+                pool.submit(_agentic_worker, i): i for i in range(n_total)
+            }
+            for future in _cf.as_completed(future_to_idx):
+                orig_idx = future_to_idx[future]
+                prob = problems[orig_idx]
+
+                try:
+                    _, ag = future.result()
+                except Exception as exc:
+                    err_row = _error_result(
+                        prob,
+                        error_reason=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+                    )
                     results.append(err_row)
-                    _log_progress(p["id"], correct=False, elapsed_s=0.0, extra="ERROR")
+                    _log_progress(prob["id"], correct=False, elapsed_s=0.0, extra="ERROR")
                     _append_result(err_row)
-                continue
+                    continue
 
-            for prob, ag in zip(chunk, agentic_outputs):
                 model_answer = ag["model_answer"]
                 correct = scorer(model_answer, prob["ground_truth"])
                 tok_per_sec = (
@@ -853,8 +1216,10 @@ def run_dataset_benchmark(
                 results.append(row)
                 _append_result(row)
 
-        else:
-            # ── Simple single-pass batch inference ─────────────────────────
+    else:
+        # ── Simple single-pass batch inference (chunk loop) ────────────────
+        for chunk_idx, chunk_start in enumerate(range(0, n_total, batch_size)):
+            chunk = problems[chunk_start : chunk_start + batch_size]
             n_samples = model_cfg.n_samples
             logger.info(
                 "Batch %d/%d  (rows %d–%d)  dataset='%s'  n_samples=%d",

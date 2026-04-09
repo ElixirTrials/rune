@@ -32,7 +32,7 @@ model:
 
   # Generation — same settings as the in-process config
   temperature: 0.3
-  max_new_tokens: 32768   # must leave room for input; server max-model-len=65536
+  max_new_tokens: 26768
   enable_thinking: false
   repetition_penalty: 1.05  # forwarded via extra_body if needed (vLLM ≥0.4)
 
@@ -45,12 +45,12 @@ model:
   # here controls how many problems share each agentic-loop iteration.
   # With a server you can push this higher than in-process since HTTP
   # requests are just async fan-out.
-  batch_size: 8
-  n_samples: 1
+  batch_size: 50
+  n_samples: 3
 
 # ── Context Retriever ─────────────────────────────────────────────────────────
 retriever:
-  use_retriever: true
+  use_retriever: false
   embedding_model: BAAI/bge-base-en-v1.5
   top_k: 4
   tir_top_k: 3

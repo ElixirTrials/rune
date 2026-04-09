@@ -39,6 +39,8 @@ dependencies = [
     "jaxtyping>=0.3.9",
     "datasets>=4.6.1",
     "torch>=2.10.0",
+    "jupyter-client>=8.8.0",
+    "ipykernel>=6.29",
 ]
 
 [project.optional-dependencies]

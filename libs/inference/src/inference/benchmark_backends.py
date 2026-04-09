@@ -432,10 +432,19 @@ class _OpenAIClientBackend(Backend):
         api_key: str,
         model_id: str,
         system_prefix: str = "",
+        request_timeout: float | None = 600.0,
     ) -> None:
+        import httpx
         from openai import OpenAI  # deferred — optional dep
 
-        self._client = OpenAI(base_url=base_url, api_key=api_key)
+        # Default openai timeout is 600s (10 min) — enough for long tool-calling
+        # loops on hard math problems while still preventing indefinite hangs.
+        # Pass request_timeout=None to disable entirely for a local server.
+        self._client = OpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=httpx.Timeout(request_timeout),
+        )
         self._model = model_id
         self._system_prefix = system_prefix
 

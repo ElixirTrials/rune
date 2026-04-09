@@ -64,7 +64,7 @@ MODEL="${GEMMA4_MODEL:-google/gemma-4-26B-A4B-it}"
 PORT=8000
 EAGER=0
 TP=1
-MAX_LEN=16384
+MAX_LEN=110000
 DTYPE=bfloat16       # Gemma 4 is BF16-native
 GPU_MEM=0.92
 FP8_KV=0             # --fp8-kv flag halves KV cache memory
@@ -111,7 +111,8 @@ SERVE_CMD=(
 
     # Gemma 4 is multimodal but we only need text for math benchmarks.
     # Skipping multimodal profiling frees significant KV cache memory.
-    --limit-mm-per-prompt     "image=0,audio=0"
+    # Newer vLLM expects a JSON object here, not the old key=value,key=value form.
+    --limit-mm-per-prompt     '{"image": 0, "audio": 0}'
 
     # Tool calling — must use the gemma4 parser (NOT hermes).
     --enable-auto-tool-choice
@@ -128,6 +129,12 @@ SERVE_CMD=(
     --default-chat-template-kwargs '{"enable_thinking": false}'
 
     --host 0.0.0.0
+
+    --enable-chunked-prefill              # ADD
+    --max-num-batched-tokens 8192         # ADD
+    --max-num-seqs 256                    # ADD
+    --gpu-memory-utilization 0.92         # ADD (default 0.9, squeeze more KV cache)
+    --kv-cache-dtype fp8                  # ADD — H100 supports FP8 KV cache natively
 )
 
 [[ $EAGER -eq 1 ]] && SERVE_CMD+=(--enforce-eager)
@@ -163,4 +170,12 @@ echo -e "\033[36m━━━━━━━━━━━━━━━━━━━━━
 echo ""
 
 # ── launch ────────────────────────────────────────────────────────────────────
+# vLLM 0.19 nightly unconditionally runs a deep_gemm_warmup pass even for
+# BF16 models.  If deep_gemm was not compiled into the wheel (which it isn't
+# in most nightly builds) the warmup crashes with:
+#   RuntimeError: DeepGEMM backend is not available or outdated.
+# Setting VLLM_USE_DEEP_GEMM=0 skips the entire warmup path without any
+# impact on BF16 inference quality.
+export VLLM_USE_DEEP_GEMM=0
+
 exec "${SERVE_CMD[@]}"

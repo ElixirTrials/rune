@@ -41,7 +41,7 @@ model:
   # Gemma 4 temperature recommendation: 0.0 for greedy math inference.
   # Maximises reproducibility and eliminates sampling variance.
   temperature: 0.0
-  max_new_tokens: 16384   # generous budget for multi-step reasoning chains
+  max_new_tokens: 32768   # generous budget for multi-step reasoning chains
   enable_thinking: false  # see note above — omit reasoning parser for tools
 
   # Agentic tool-calling loop (generate → execute_python → repeat)
@@ -51,8 +51,8 @@ model:
 
   # Throughput — vLLM server handles batching internally; batch_size here
   # controls how many problems share each agentic-loop iteration.
-  batch_size: 4
-  n_samples: 1
+  batch_size: 50
+  n_samples: 3
 
 # ── Context Retriever ─────────────────────────────────────────────────────────
 retriever:
