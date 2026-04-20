@@ -5,8 +5,8 @@
 <h1 align="center">Rune</h1>
 
 <p align="center">
-  SoTA-level coding performance from a local SLM,<br/>
-  achieved by encoding experience into weight-space memory.
+  LLM-level coding performance from a local SLM,<br/>
+  achieved through unbounded reasoning via parametric episodic memory.
 </p>
 
 <p align="center">
@@ -32,11 +32,13 @@ Rune encodes coding trajectories into LoRA adapters so that a local Small Langua
 
 Every coding agent that operates through in-context prompting faces the same ceiling: the context window. Inject enough code, tests, error messages, and documentation to be genuinely useful, and you exhaust the window. The only alternatives are truncation (losing history) or expensive retrieval (finding relevant text, not learned procedures). Neither addresses the underlying issue. Truncation discards context that was hard to produce. Retrieval adds latency and retrieves documents, not competence.
 
-Retrieval-augmented generation partially mitigates the problem by locating relevant documents at query time. But retrieval finds text that describes how something works — it does not encode the procedural knowledge of having done it. A senior developer does not need to retrieve documentation each time they fix a null pointer exception in a pattern they have resolved a hundred times before. That knowledge lives in their mental model, not in a document index. The difference is between declarative memory (knowing that something is true) and procedural memory (knowing how to do something). Current retrieval systems optimize for the former.
+This ceiling is especially acute for Small Language Models. A 1.5B–7B parameter model is not lacking in raw coding capability — but its context window is tiny. Every token spent on retry history, error traces, and prior attempts is a token unavailable for new reasoning. Standard retry loops hit a hard wall: either you truncate history (losing information) or you fill the context (losing capacity). Large Language Models mitigate this with 100K+ token windows, but at the cost of cloud dependency, data exposure, and orders-of-magnitude higher inference costs.
 
-Rune proposes a different substrate for memory: model weights. A LoRA adapter is a pair of low-rank matrices that additively shift the behavior of a frozen base model without modifying it. If a coding trajectory — the sequence of code attempts, execution results, errors, and corrections that led to a working solution — can be compressed into a LoRA adapter, then that experience becomes reusable across sessions, composable with other experiences, and independent of context window size. The parametric memory hypothesis is that this compression is possible and that the resulting adapters transfer meaningfully to similar future tasks.
+Rune proposes a different approach: move the agent's history into weight space. A LoRA adapter is a pair of low-rank matrices that additively shift the behavior of a frozen base model without modifying it. If the agent's trajectory — the sequence of code attempts, execution results, errors, corrections, and diagnostic reasoning accumulated across iterations — can be compressed into a LoRA adapter via a hypernetwork's single forward pass, then the agent gains a form of parametric episodic memory: it "remembers" where it has been and what it tried, without consuming context tokens.
 
-The practical consequence, if the hypothesis holds, is that a Small Language Model running locally on consumer hardware could accumulate coding competence over time rather than forgetting it between sessions. Each task solved makes the system marginally better at the next similar task. The adapter library grows. The quality of code generated for familiar patterns improves. This is qualitatively different from scaling context — it is the model updating its behavior in a targeted, reversible, composable way.
+The practical consequence is unbounded reasoning — what we call "infinite thinking." Each iteration, the hypernetwork distills the current trajectory into a fresh adapter. Recent attempts are encoded in detail; older ones degrade gracefully into a compressed signal. The context window stays constant. The model can keep iterating on a problem indefinitely, with each attempt informed by the full history of prior work, encoded as a contextual nudge in weight space rather than a growing pile of tokens.
+
+This is qualitatively different from scaling context. The adapter acts as working memory — a moving-window episodic record of the agent's journey — while the context window acts as attention span, reserved for active reasoning. A Small Language Model with this mechanism can match the effective reasoning depth of a much larger model operating within a fixed context window. The value propositions are: local-first AI for data-sensitive environments (no data leaves the machine), massive cost reduction versus cloud LLM APIs, and a future direction for enhancing cloud LLM performance as well.
 
 ---
 
@@ -44,11 +46,11 @@ The practical consequence, if the hypothesis holds, is that a Small Language Mod
 
 Rune's core mechanism is a Doc-to-LoRA hypernetwork [1] adapted for coding trajectories. The original Doc-to-LoRA work from Sakana AI demonstrates that a Perceiver-style encoder can map an input document directly to LoRA weight matrices via a single forward pass — approximately distilling the document into the adapter without gradient descent at inference time. Rune extends this in three directions:
 
-**1. Procedural knowledge encoding.** Doc-to-LoRA was validated on factual recall and needle-in-a-haystack tasks. Coding trajectories have a different structure: they are sequences of attempts, failures, error messages, and corrections. Rune proposes to train the hypernetwork on this trajectory format, encoding not just what to do but the corrective reasoning that led there. This is a qualitatively different input modality — whether the same Perceiver-style architecture handles it without modification is the first open question.
+**1. Procedural knowledge encoding.** Doc-to-LoRA was validated on factual recall and needle-in-a-haystack tasks. Coding trajectories have a different structure: they are temporal sequences of attempts, failures, error messages, and corrections — an episodic record of the agent's problem-solving journey. Rune proposes to train the hypernetwork on this trajectory format, encoding the agent's evolving understanding of the task as it iterates. This is a qualitatively different input modality — whether the same Perceiver-style architecture handles it without modification is the first open question.
 
 **2. Recursive refinement.** The original Doc-to-LoRA is one-shot — a single forward pass over a document produces the adapter. Rune's agent generates code, executes it in a sandbox, observes the result, and iterates. The trajectory grows richer with each attempt before distillation. The hypothesis is that richer trajectories produce higher-quality adapters that generalize better — that the correction steps are signal, not noise.
 
-**3. Compositional memory through the Evolution Operator.** Doc-to-LoRA produces a single adapter intended to replace context for a given document. Rune builds a library: each solved task produces an adapter, and a hierarchical composition mechanism (the Evolution Operator) allows adapters to be merged, pruned, and promoted based on empirical fitness scores. Memory accumulates and compounds rather than being replaced.
+**3. Evolutionary adapter lifecycle.** Within the retry loop, each iteration produces a new adapter from the updated trajectory. The Evolution Operator manages these adapters via fitness-driven selection: top-performing adapters are retained, low-fitness adapters are archived, and TIES/DARE merging combines the best adapters per task type. This creates evolutionary pressure toward higher-quality episodic encodings. Cross-task transfer via adapter composition is a future research direction (see Open Questions), not the current mechanism.
 
 The weight update for a single LoRA adapter follows `ΔW = BA`, where `B` and `A` are low-rank matrices (rank `r << d`). This structure makes adapters parameter-efficient: at rank 64 on a 7B model, a full set of adapter weights is approximately 50-200 MB depending on which weight matrices are targeted. This is small enough to store, version, and load hundreds of adapters without approaching filesystem limits.
 
@@ -144,7 +146,7 @@ Rune's architecture is a synthesis of three published approaches, extended for t
 
 - **Local-first.** Rune runs entirely on local hardware. No cloud API dependencies for inference, training, or adapter storage. Your data does not leave your machine.
 - **Empirically grounded.** Every architectural choice traces to a published result. When the hypothesis fails, the failure is informative — it narrows the design space for the field.
-- **Compositional memory.** Adapters accumulate and compose hierarchically rather than replacing each other. Experience compounds.
+- **Parametric episodic memory.** The agent's trajectory is encoded into adapter weights, giving it unbounded reasoning depth without consuming context tokens. The adapter is working memory; the context window is attention span.
 - **Security-aware.** Agent-generated code executes in sandboxed containers with no network access and strict resource limits. The agent operates outside the sandbox.
 - **Transparent.** All adapter metadata is queryable: what tasks produced it, what fitness score it holds, what base model it targets. No black-box memory.
 - **Sovereign AI.** Your models, your weights, your hardware. The adapter library is yours and stored locally.

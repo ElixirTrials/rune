@@ -2,11 +2,18 @@
 
 ### Memory Approaches for Language Model Agents
 
-Local coding agents — Aider, Cursor, Claude Code — operate within fixed context windows.
-As projects grow, agents lose access to earlier interactions: patterns discovered, bugs
-solved, architectural decisions made. Each new session begins without knowledge of prior
-sessions. The agent re-encounters the same failure modes, re-derives the same solutions,
-and cannot accumulate project-specific expertise over time.
+Small Language Models (1.5B–7B parameters) can generate correct code, plan subtask
+decompositions, and diagnose errors — but their context windows are a fraction of
+what larger models offer. Every retry attempt, error trace, and diagnostic step
+consumes tokens from the same finite budget the model needs for active reasoning.
+Standard retry loops hit a hard ceiling: either history is truncated (losing
+information that was expensive to produce) or the context fills (leaving no room
+for new reasoning). The agent forgets what it tried three iterations ago — not
+because it lacks the capability to use that information, but because it lacks
+the capacity to hold it.
+
+This is a memory problem, not a capability problem. The question is where to
+store the agent's growing episodic record without consuming context tokens.
 
 Memory approaches for LLM agents fall into three broad categories that differ in where
 and how knowledge is stored:
@@ -27,19 +34,24 @@ same weights that encode one concept participate in encoding others.
 **Composable weight-space memory** (LoRA adapters, adapter libraries) stores knowledge
 as discrete, composable parameter deltas that augment the base model without modifying
 it. Each adapter can be loaded, removed, or replaced independently. The base model
-remains a stable reference point. Multiple adapters can coexist in a library, each
-encoding knowledge from a distinct session or task.
+remains a stable reference point.
 
-Rune occupies the composable weight-space category. Each coding trajectory is distilled
-into a LoRA adapter that encodes the procedural knowledge from that session — patterns,
-fixes, architectural decisions — as parameter deltas. Adapters are write-once, immutable,
-and independently retrievable by task similarity.
+Rune occupies the composable weight-space category. The agent's coding trajectory —
+its sequence of attempts, execution results, errors, and corrections as it iterates
+on a task — is distilled into a LoRA adapter that encodes an episodic record of
+the problem-solving journey as parameter deltas. The adapter acts as working memory:
+the model "remembers" where it has been and what it tried without those details
+consuming context tokens.
 
 Pink et al. argue that episodic memory — single-shot learning of instance-specific
 contexts, retrievable and composable — is the missing capability for long-term LLM
-agents.[^pink2025episodic] Rune's adapter-per-session design maps directly onto this
-framework: each adapter is an episode, stored independently, and retrieved when a
-subsequent task resembles the original.
+agents.[^pink2025episodic] Rune implements a specific form of this: each adapter
+encodes a single problem-solving episode — the agent's trajectory through a task —
+as a parametric record in weight space. The primary value is within-task: the
+adapter gives the agent a persistent, growing memory of its own reasoning history
+as it iterates, without consuming context tokens. The adapter registry also enables
+future cross-task retrieval (selecting a relevant prior episode for a new task),
+but this is a secondary research direction.
 
 ---
 
@@ -92,9 +104,10 @@ would suffice. QLoRA is the practical default given current consumer hardware co
 
 ### Multi-Adapter Serving: S-LoRA
 
-If each coding session produces an adapter, an agent accumulating hundreds of sessions
-needs a mechanism to serve the appropriate adapter at inference time without maintaining
-separate model copies for each one.
+Each pipeline run may produce multiple adapters (one per phase, per subtask, per retry
+iteration), and the adapter registry grows over time. Serving the appropriate adapter
+at inference time without maintaining separate model copies requires efficient
+multi-adapter serving infrastructure.
 
 S-LoRA introduces Unified Paging — a unified memory pool that manages adapter weights
 and KV cache tensors together in a shared memory space, enabling thousands of concurrent
