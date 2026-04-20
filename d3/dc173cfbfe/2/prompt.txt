@@ -1,0 +1,53 @@
+Here's a tight prompt — paste it as-is into Claude Code from inside `~/rune`:
+
+````
+You are auditing this project for me. Do NOT modify any files. Produce a concise status report.
+
+## Investigate
+
+1. **Project shape**: read README*, CLAUDE.md, AGENTS.md, pyproject.toml / requirements*, Makefile, any `scripts/` or `configs/` dirs. One-paragraph summary of what this project is.
+
+2. **Mining pipeline**: find `d2l_mining.py` (and related modules). Report:
+   - Entry point + CLI flags
+   - Input source (corpus file paths, GitHub API auth)
+   - **Output destination(s)** — grep for `s3://`, `boto3`, `S3_BUCKET`, `bucket`, `upload_file`, `put_object`, `huggingface_hub`, `hf_hub`, `snapshot_download`, `OUTPUT`, `out_dir`, `save_to`, `.jsonl`, `.parquet`, `.arrow`. Give me exact file:line references.
+   - Any `.env`, `.env.example`, `config.{yaml,toml,json}`, or secrets file indicating cloud credentials (show keys/vars, NEVER values)
+
+3. **Execution evidence**: has mining actually been run?
+   - Check for output dirs: `data/`, `output/`, `out/`, `artifacts/`, `dist/`, `cache/`, `runs/`
+   - `find . -maxdepth 4 -type f \( -name "*.jsonl" -o -name "*.parquet" -o -name "*.arrow" -o -name "*.log" \) -mtime -90 2>/dev/null | head -30`
+   - If a manifest/state file exists (e.g. `state.json`, `progress.json`, `mined_repos.txt`, SQLite db), summarize what's been processed vs pending
+   - Check git log for commits mentioning "mine", "run", "dataset", "trajectory"
+
+4. **S3 specifically**: if any S3 reference is found, report the exact bucket name(s) and prefix(es). Then run `aws s3 ls s3://<bucket>/<prefix> --recursive --human-readable --summarize 2>&1 | tail -20` for each to show what's actually there. If `aws` isn't configured, say so — don't guess.
+
+5. **Corpus status**: find the MIT corpus markdown (likely `mit_repo_corpus_list.md` or similar) and cross-reference against any mining state to tell me which repos are done, in progress, or untouched.
+
+6. **Loose ends**: list any TODO/FIXME/XXX in the pipeline code, uncommitted changes (`git status`), and the last 5 commits (`git log --oneline -5`).
+
+## Output format
+
+```
+# rune status report
+
+## What this project is
+<1 paragraph>
+
+## Mining output destination
+<exact paths, buckets, file:line citations>
+
+## Has it been run?
+<yes/no/partial + evidence>
+
+## What's on disk / S3 right now
+<file listing summary with sizes and dates>
+
+## Corpus progress
+<done / in-progress / pending counts and examples>
+
+## Open loops
+<TODOs, uncommitted changes, last commits>
+```
+
+Be terse. No code blocks longer than 10 lines unless essential. No "let me know if you need…" sign-offs.
+````
