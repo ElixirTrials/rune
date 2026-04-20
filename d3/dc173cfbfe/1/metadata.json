@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "d3dc173cfbfe",
+  "session_id": "bb6705da-310a-4b19-be68-c7fa82b7a5d1",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-20T09:24:15.918813Z",
+  "branch": "docs/comprehensive-documentation-overhaul",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".devcontainer/post-create.sh",
+    "README.md",
+    "docs/article/abstract.md",
+    "docs/article/background.md",
+    "docs/article/discussion.md",
+    "docs/implementation-plan.md",
+    "docs/index.md",
+    "docs/superpowers/specs/2026-04-02-coding-benchmark-evaluation-design.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "759818ccce0b",
+  "token_usage": {
+    "input_tokens": 29,
+    "cache_creation_tokens": 375149,
+    "cache_read_tokens": 1970356,
+    "output_tokens": 18771,
+    "api_call_count": 15
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-20T09:24:15.741312Z",
+    "agent_lines": 62,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 62,
+    "agent_percentage": 100
+  }
+}

@@ -1,0 +1,5 @@
+@/Users/noahdolevelixir/Downloads/Sinai_Application_Security_Form_ASQ_v1.0_FILLED3.pdf @/Users/noahdolevelixir/Downloads/REDACTED.pdf I want you to compare the filled3 document to the old document I filled out the differences is that the filled3 is a new template that I'm supposed to match.  I want to make sure that there are no material differences between the two or answers that I've left out or material that I've left behind I want to make sure that I faithfully represented everything from my old version into the new form. Be diligent and comprehensive.
+
+---
+
+/superpowers:write-plan Your plan should address every singly deviation taking the original PDF as a source of truth. It's okay if things are reorganized but not if there are any material differences or omissions.
