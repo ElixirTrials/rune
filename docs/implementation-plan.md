@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Rune proposes to validate and implement a system that encodes coding trajectories into LoRA adapters using a Doc-to-LoRA hypernetwork, accumulating parametric memory that persists across sessions. This plan covers the full journey from hardware validation through hypernetwork training across five implementation phases (Phase 0 through Phase 4), structured so that the core hypothesis is validated before infrastructure is built.
+Rune proposes to validate and implement a system that encodes coding trajectories into LoRA adapters using a Doc-to-LoRA hypernetwork, giving Small Language Models an unbounded reasoning horizon via parametric episodic memory. This plan covers the full journey from hardware validation through hypernetwork training across five implementation phases (Phase 0 through Phase 4), structured so that the core hypothesis is validated before infrastructure is built.
 
 ### Status Summary (as of 2026-04-05)
 

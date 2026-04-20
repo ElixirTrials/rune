@@ -29,7 +29,7 @@ if ! command -v claude &>/dev/null; then
 fi
 
 # Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
-# Pull HuggingFace token from AWS Secrets Manager
+# Pull secrets and configure AWS environment
 if command -v aws &>/dev/null; then
   HF_TOKEN="$(aws secretsmanager get-secret-value \
     --secret-id "elixirtrials/dev/huggingface-token" \
@@ -39,6 +39,16 @@ if command -v aws &>/dev/null; then
     echo "export HF_TOKEN=\"$HF_TOKEN\"" >> ~/.bashrc
     export HF_TOKEN
     echo "HuggingFace token loaded from Secrets Manager."
+  fi
+
+  # Discover artifact bucket and export training data path
+  ARTIFACT_BUCKET="$(aws s3 ls 2>/dev/null \
+    | awk '{print $3}' | grep -- '-artifacts$' | head -1 || true)"
+  if [ -n "$ARTIFACT_BUCKET" ]; then
+    RUNE_TRAINING_DATA="s3://$ARTIFACT_BUCKET/training-data/github-pairs"
+    echo "export RUNE_TRAINING_DATA=\"$RUNE_TRAINING_DATA\"" >> ~/.bashrc
+    export RUNE_TRAINING_DATA
+    echo "Training data path: $RUNE_TRAINING_DATA"
   fi
 fi
 

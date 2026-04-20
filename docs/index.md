@@ -1,6 +1,6 @@
 # Rune Documentation
 
-Rune is a local-first coding agent that uses LoRA weight space as episodic memory. It implements a 5-phase template-driven pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, a Doc-to-LoRA hypernetwork, TIES/DARE adapter merging, and a flat adapter registry with lineage tracking.
+Rune is a local-first coding agent that gives Small Language Models an unbounded reasoning horizon by encoding the agent's problem-solving trajectory into LoRA adapter weights via a Doc-to-LoRA hypernetwork — parametric episodic memory that acts as working memory without consuming context tokens. It implements a 5-phase template-driven pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, a Doc-to-LoRA hypernetwork, TIES/DARE adapter merging, and a flat adapter registry with lineage tracking.
 
 ## Core Subsystems
 
