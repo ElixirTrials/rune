@@ -1,0 +1,109 @@
+@/Users/noahdolevelixir/Downloads/REDACTED.pdf @/Users/noahdolevelixir/Downloads/Sinai_Application_Security_Form_ASQ_v1.0.pdf There is a new form template and we need to transfer our answers to the new pdf. Toward that end, use pypdf to fill in the new form using the material from the filled in old form.
+
+---
+
+Let me see the filled out pdf?
+
+---
+
+Some questions and ticks have not been filled out. The comments are all blank.
+
+---
+
+Page 6 has no comments and some "Yes No N/A" checkboxes have not been checked (completely empty rows).
+
+---
+
+It's page 13 in pure count that seems to be missing comments.
+
+---
+
+Questions 2.14 onward are not checked off.
+
+---
+
+Proceed
+
+---
+
+proceed
+
+---
+
+You've filled in the new form incorrectly. The column is comment # and should refer to the comment box on page 5 where there is more room.
+
+---
+
+Check all these points to make sure our new pdf is completely filled out correctly and we haven't missed anything:
+Here is a comprehensive, actionable checklist you can use to ensure your new document perfectly matches the intent and details of your original one. 
+
+### 1. Fix Checkbox Errors
+- [ ] [cite_start]**Uncheck 3.1a (Dial-up):** Accidentally marked "Yes" in the new form [cite: 146, 147][cite_start]; it should be blank as in the original[cite: 16, 17].
+- [ ] [cite_start]**Uncheck 3.1b (Secure web tunneling):** Accidentally marked "Yes" in the new form [cite: 147][cite_start]; it should be blank as in the original[cite: 17].
+- [ ] [cite_start]**Check AI 1.12 (Data subject requests):** This is currently blank in the new form [cite: 286][cite_start]; it should have a checkmark under "Yes"[cite: 45].
+
+### 2. Correct Comment Number Cross-References
+*(Your comment numbers got a bit jumbled, meaning the text in your final table doesn't match the questions they belong to.)*
+- [ ] [cite_start]**Fix Comment #3:** Remove the "3" from 3.1e[cite: 147]. [cite_start]Place the "3" next to **6.3** (which discusses EMR integration)[cite: 23, 152].
+- [ ] [cite_start]**Fix Comment #4:** Remove the "4" from 7.4[cite: 152]. [cite_start]Place the "4" next to **3.1e** (which discusses restricting remote access locations)[cite: 17, 31, 147].
+- [ ] [cite_start]**Add Comment #5:** Place a "5" next to **7.4** (which asks about third-party testing, matching your comment about Q3 2026 penetration testing)[cite: 23, 31, 152].
+
+### 3. Restore Missing & Misplaced Text (Main Form)
+- [ ] [cite_start]**Complete the Contact Info Block:** Fill in the newly added "Vendor Representative Contact Information" block on Page 1 (Name, Title, Department, Phone, Email) which is currently blank [cite: 92-101].
+- [ ] [cite_start]**Move text in 4.1:** You pasted your containerization text into the *"If no, indicate what additional security controls..."* box[cite: 147]. [cite_start]Since you checked "Yes" [cite: 147][cite_start], you should move this text to a general comment or attach it as supplemental info, as the new form doesn't provide a general text box for a "Yes" answer here[cite: 17, 147].
+- [ ] [cite_start]**Restore text for 4.2:** Paste the missing text: *"Accessed via standard web browser - no client installation required. Edge node containers run with non-root privileges."*[cite: 17, 147].
+- [ ] [cite_start]**Restore the Architectural Note:** Add the "ARCHITECTURAL NOTE" explaining your hybrid edge/cloud architecture and NLP de-identification back into the main Comments Section at the end of the first questionnaire[cite: 31, 162].
+
+### 4. Rescue Dropped AI Explanations
+[cite_start]*(Because the new AI form removed many text fields in favor of simple checkboxes [cite: 245, 247, 266, 268, 271, 273, 279, 289, 292, 305, 338, 345, 348, 358, 360, 362, 373, 376, 381, 386, 391, 417, 419, 433, 434][cite_start], you will need to paste your lost explanations into the final "AI Application Security Questionnaire Comments Section"[cite: 442, 447].)*
+- [ ] **Compile and paste the lost text for the following AI questions:**
+  * [cite_start]AI 1.3 (ePHI handled on edge) [cite: 42, 245]
+  * [cite_start]AI 1.4 (Encryption/RBAC) [cite: 42, 247]
+  * [cite_start]AI 1.6 & 1.7 (BAAs and Network segmentation) [cite: 42, 45, 266, 268]
+  * [cite_start]AI 1.8, 1.9 & 1.10 (User data collection, privacy notices, and consent) [cite: 45, 271, 273, 279]
+  * [cite_start]AI 1.13, 1.14 & 1.16 (Privacy by design, minimum necessary, DPIAs) [cite: 45, 289, 292, 305]
+  * [cite_start]AI 2.1, 2.4, 2.5 (Compliance reqs, ethics review, bias prevention) [cite: 50, 338, 345, 348]
+  * [cite_start]AI 2.7, 2.8, 2.9 (Human oversight, accountability, complaint handling) [cite: 50, 358, 360, 362]
+  * [cite_start]AI 2.10, 2.11, 2.12, 2.14 (HIPAA regs, risk analysis, security measures, BAAs) [cite: 50, 54, 373, 376, 381, 386]
+  * [cite_start]AI 3.2, 3.4, 3.6, 3.8 (Audit controls, unauthorized access prevention, continuous monitoring, algorithm updates) [cite: 57, 391]
+  * [cite_start]AI 4.1, 4.2, 4.4, 4.5 (Encryption, data integrity, HIPAA training, awareness) [cite: 63, 417, 419, 433, 434]
+
+---
+
+I still see things like where text should be comment #'s and the details filled out in the comment section. it's critical that there are no discrepancies between my original version and this one. And that we are not missing anything .
+
+---
+
+@/Users/noahdolevelixir/Downloads/REDACTED.pdf Go over your final document, make sure that the comment # column is filled with numbers only referring to the comment fields. Check that there are no discrepancies nor missing information from our original (attached).
+
+---
+
+Proceed according to this plan to make sure all fields are correct: /Users/noahdolevelixir/Code/rune/docs/superpowers/plans/2026-04-16-sinai-asq-faithful-transcription.md
+
+---
+
+How confident are you that the two documents now fully match without any material omissions or differences?
+
+---
+
+Let's do a thorough audit to make sure everything is faithfully represented in the new version. Report back.
+
+---
+
+can you save the final version for me to review?
+
+---
+
+/superpowers:write-plan Now can you take everything we've written on this questionnaire, write a Notion summary and create Linear tasks. Make sure everything is linked up and well documented. What needs to get done. If some steps depend on preceding steps being done, make sure this is properly indicated in both Notion and Linear.
+
+---
+
+/superpowers:write-plan Now can you take everything we've written on this questionnaire, write a Notion summary and create Linear tasks. Make sure everything is linked up and well documented. What needs to get done. If some steps depend on preceding steps being done, make sure this is properly indicated in both Notion and Linear.
+
+---
+
+There are some misunderstanding about what should be in the Notion summary and what kind of tasks should be created in Linear.  The goal is to create a summary of what needs to be done to actually do what we filled in the form. The Notion should talk about everything we need to build and why and the linear tasks should organize these into granular to-do's with their dependencies - organized either with a label or within a project.  We filled out the form but we actually don't have anything yet. So let's organize what to build to match the form.
+
+---
+
+Can you also add to both Notion and Linear a task for creating the PHI boundary and assign it to me.
