@@ -1,0 +1,9 @@
+Can you do a diff between this branch and main? I specifically want a PR description that includes specifics about what was modified. I also want to understand how the training code relates to the d2l_train code we already had.
+
+---
+
+Should this replace all the d2l_train? Also, do you think the method for dealing with uninformative tokens (like line breaks and white spaces) is the best option? Research SoTA techniques - like stripping these or other options of weighting them down. In general review the strategy adopted and maek some recommendations.
+
+---
+
+/plan Let's proceed on this branch to fix the remaining issues you uncovered.
