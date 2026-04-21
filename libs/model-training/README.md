@@ -44,6 +44,39 @@ Both accept lists of adapter state dicts and return a single merged state dict.
 
 QLoRA fine-tuning utilities:
 - `train_and_register()` — Fine-tune a LoRA adapter and register it in the adapter registry
+- `train_qlora()` — Lower-level SFT pipeline; accepts a mined-pair JSONL via
+  `dataset_path=` or a recorded trajectory via `session_id=` (mutually exclusive).
+  Optional `override_lora_alpha` / `override_lora_dropout` retune a warm-started
+  adapter without discarding the saved safetensor shapes.
+- `diff_aware_loss=True` wraps the SFT collator with `DiffWeightedDataCollator`
+  and swaps in `DiffAwareSFTTrainer` (see `diff_loss.py`) so per-token loss is
+  biased toward the revision delta vs. carried-over context.
+
+MLflow tracking is enabled by default (`report_to="mlflow"`,
+experiment `rune-qlora`). Tracking URI falls back to `./mlruns`; override
+via `MLFLOW_TRACKING_URI` or the `mlflow_tracking_uri` kwarg. Set
+`RUNE_DISABLE_MLFLOW=1` to skip MLflow for CPU CI.
+
+### CLI wrapper
+
+One-command fine-tuning via `scripts/train.sh`:
+
+```bash
+bash scripts/train.sh --dataset data/pairs/repo.jsonl --adapter-id my-adapter
+bash scripts/train.sh --session-id sess-001 --adapter-id from-trajectory
+bash scripts/train.sh --dataset data/pairs/repo.jsonl --adapter-id smoke --dry-run
+```
+
+The shell wrapper forwards to `model_training.trainer_cli.main`; all flags
+map 1:1 to `train_and_register` kwargs. `--dry-run` resolves args to JSON
+without importing torch — useful for CI validation.
+
+### Training-hyperparameter HPO
+
+`scripts/optimization/run_training_hpo.py` tunes the DeltaCoder warm-start
+fine-tune's training hyperparameters (LR, alpha, dropout, warmup, grad-accum,
+scheduler, diff-aware-loss flag). Uses Optuna with Hyperband pruning. See
+`docs/plans/training_upgrade.md` for search-space rationale and L4 budget.
 
 ### Training Data Mining
 
