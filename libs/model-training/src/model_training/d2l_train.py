@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["train_d2l_qwen3", "D2LTrainConfig"]
+__all__ = ["train_d2l_qwen3", "D2LTrainConfig", "compute_kl_ce_loss"]
 
 
 def _require_probe_cache(model_name: str) -> None:
@@ -354,21 +354,20 @@ def _save_checkpoint(
 def _setup_mlflow(config: D2LTrainConfig) -> None:
     """Configure MLflow tracking URI and experiment name.
 
-    Uses MLFLOW_TRACKING_URI environment variable if set, otherwise defaults
-    to local './mlruns' directory.
+    Delegates to training_common.setup_mlflow. The d2l training loop always
+    calls mlflow.start_run() directly after this, so we do not gate on
+    RUNE_DISABLE_MLFLOW here — that gate lives in setup_mlflow itself but the
+    existing callers in train_d2l_qwen3 call mlflow directly after this
+    function returns, so we preserve the unconditional call behaviour.
 
     Args:
         config: Training configuration supplying experiment_name.
     """
-    import mlflow  # noqa: PLC0415
+    from model_training.training_common import setup_mlflow  # noqa: PLC0415
 
-    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "./mlruns")
-    mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment(config.experiment_name)
-    logger.info(
-        "MLflow tracking URI: %s, experiment: %s",
-        tracking_uri,
+    setup_mlflow(
         config.experiment_name,
+        os.environ.get("MLFLOW_TRACKING_URI"),
     )
 
 
@@ -701,6 +700,10 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
         "num_steps_completed": num_steps,
         "checkpoint_dir": config.checkpoint_dir,
     }
+
+
+# Public alias so callers don't need to reference the private name.
+compute_kl_ce_loss = _compute_kl_ce_loss
 
 
 if __name__ == "__main__":
