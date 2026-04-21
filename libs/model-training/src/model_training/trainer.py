@@ -228,7 +228,7 @@ def _build_training_dataset(
     if dataset_path is not None:
         pairs = load_jsonl(dataset_path)
         mode = cast(Literal["multi_turn", "single_turn"], encoding_mode)
-        conversations = pairs_to_chat_messages(pairs, mode=mode)
+        conversations, _pre_post = pairs_to_chat_messages(pairs, mode=mode)
         if not conversations:
             raise ValueError(
                 f"dataset_path {dataset_path} produced no SFT conversations"
