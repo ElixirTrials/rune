@@ -176,8 +176,75 @@ def _resolve_training_params(
     return resolved
 
 
+def _validate_data_source(
+    session_id: str | None, dataset_path: str | None, encoding_mode: str
+) -> None:
+    """Enforce mutual exclusivity and encoding_mode whitelist up front.
+
+    Raised early (before any GPU imports) so callers get a fast, cheap
+    signal on misconfiguration.
+    """
+    if dataset_path is not None and session_id is not None:
+        raise ValueError(
+            "train_qlora: pass dataset_path XOR session_id, not both"
+        )
+    if dataset_path is None and session_id is None:
+        raise ValueError(
+            "train_qlora: either dataset_path or session_id must be provided"
+        )
+    if encoding_mode not in ("multi_turn", "single_turn"):
+        raise ValueError(
+            "encoding_mode must be 'multi_turn' or 'single_turn', got "
+            f"{encoding_mode!r}"
+        )
+
+
+def _build_training_dataset(
+    *,
+    dataset_cls: Any,
+    session_id: str | None,
+    dataset_path: str | None,
+    encoding_mode: str,
+) -> Any:
+    """Build an SFT ``Dataset`` from either a mined-pairs JSONL or a trajectory.
+
+    ``dataset_cls`` is the ``datasets.Dataset`` class injected by the caller
+    so this helper stays GPU-import-free at module level while still producing
+    a real ``datasets.Dataset`` at call time.
+    """
+    from typing import Literal, cast  # noqa: PLC0415
+
+    from model_training.d2l_data import (  # noqa: PLC0415
+        load_jsonl,
+        pairs_to_chat_messages,
+    )
+    from model_training.trajectory import (  # noqa: PLC0415
+        format_for_sft,
+        load_trajectory,
+    )
+
+    if dataset_path is not None:
+        pairs = load_jsonl(dataset_path)
+        mode = cast(Literal["multi_turn", "single_turn"], encoding_mode)
+        conversations = pairs_to_chat_messages(pairs, mode=mode)
+        if not conversations:
+            raise ValueError(
+                f"dataset_path {dataset_path} produced no SFT conversations"
+            )
+        return dataset_cls.from_list([{"messages": c} for c in conversations])
+
+    # session_id is not None at this point (validated above).
+    trajectory = load_trajectory(str(session_id))
+    messages = format_for_sft(trajectory)
+    if not messages:
+        raise ValueError(
+            f"Trajectory {session_id} is not successful or has no SFT messages"
+        )
+    return dataset_cls.from_list([{"messages": messages}])
+
+
 def train_qlora(
-    session_id: str,
+    session_id: str | None,
     adapter_id: str,
     output_dir: str,
     *,
@@ -193,6 +260,8 @@ def train_qlora(
     lr_scheduler_type: str | None = None,
     mlflow_experiment: str = "rune-qlora",
     mlflow_tracking_uri: str | None = None,
+    dataset_path: str | None = None,
+    encoding_mode: str = "multi_turn",
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -210,7 +279,8 @@ def train_qlora(
     import in CPU-only environments.
 
     Args:
-        session_id: Trajectory session ID to train from.
+        session_id: Trajectory session ID to train from. Mutually exclusive
+            with dataset_path.
         adapter_id: Unique identifier for the resulting adapter.
         output_dir: Directory to save the trained adapter weights.
         base_model_id: HuggingFace model ID. Overrides registry default.
@@ -231,6 +301,13 @@ def train_qlora(
             in the env to disable MLflow tracking entirely.
         mlflow_tracking_uri: Optional MLflow tracking URI override. Falls back
             to the MLFLOW_TRACKING_URI env var, then to "./mlruns".
+        dataset_path: Path to a JSONL file of mined pair records (as produced
+            by ``scripts/mine_github.py --batch``). Mutually exclusive with
+            session_id; when set, the training dataset is built by
+            ``pairs_to_chat_messages`` instead of ``format_for_sft``.
+        encoding_mode: ``"multi_turn"`` clusters pairs by source task and
+            emits one conversation per task; ``"single_turn"`` emits one
+            conversation per pair. Only used when ``dataset_path`` is set.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -239,6 +316,9 @@ def train_qlora(
         FileNotFoundError: If the trajectory file does not exist.
         ValueError: If the trajectory is not successful or has no SFT messages.
     """
+    # Validate mutually-exclusive data sources up front (no GPU imports yet).
+    _validate_data_source(session_id, dataset_path, encoding_mode)
+
     # Deferred GPU imports — all in function body for CPU-only importability
     import torch
     from datasets import Dataset
@@ -246,7 +326,6 @@ def train_qlora(
     from trl import SFTConfig, SFTTrainer
 
     from model_training.peft_utils import build_qlora_config
-    from model_training.trajectory import format_for_sft, load_trajectory
 
     # Resolve defaults from model registry and explicit overrides
     params = _resolve_training_params(
@@ -273,16 +352,13 @@ def train_qlora(
         "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
     )  # type: ignore[assignment]
 
-    # Load and format trajectory
-    trajectory = load_trajectory(session_id)  # raises FileNotFoundError if missing
-    messages = format_for_sft(trajectory)
-    if not messages:
-        raise ValueError(
-            f"Trajectory {session_id} is not successful or has no SFT messages"
-        )
-
-    # Build dataset
-    dataset = Dataset.from_list([{"messages": messages}])
+    # Build dataset from either a mined-pairs JSONL or a recorded trajectory.
+    dataset = _build_training_dataset(
+        dataset_cls=Dataset,
+        session_id=session_id,
+        dataset_path=dataset_path,
+        encoding_mode=encoding_mode,
+    )
 
     # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss)
     bnb_config = BitsAndBytesConfig(
@@ -379,7 +455,9 @@ def train_qlora(
         "assistant_only_loss": True,
         "task_type": task_type,
         "adapter_id": adapter_id,
-        "session_id": session_id,
+        "session_id": session_id or "",
+        "dataset_path": dataset_path or "",
+        "encoding_mode": encoding_mode,
     }
     with _mlflow_run(
         enabled=mlflow_enabled,
@@ -398,7 +476,7 @@ def train_qlora(
 
 
 def train_and_register(
-    session_id: str,
+    session_id: str | None,
     adapter_id: str,
     *,
     base_model_id: str | None = None,
@@ -414,6 +492,8 @@ def train_and_register(
     database_url: str | None = None,
     mlflow_experiment: str = "rune-qlora",
     mlflow_tracking_uri: str | None = None,
+    dataset_path: str | None = None,
+    encoding_mode: str = "multi_turn",
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -438,6 +518,10 @@ def train_and_register(
         mlflow_experiment: MLflow experiment name. Set RUNE_DISABLE_MLFLOW=1 to
             skip MLflow tracking.
         mlflow_tracking_uri: Optional MLflow tracking URI override.
+        dataset_path: JSONL of mined pair records; mutually exclusive with
+            session_id.
+        encoding_mode: ``"multi_turn"`` or ``"single_turn"`` for pair→chat
+            conversion.
 
     Returns:
         adapter_id of the registered adapter.
@@ -496,6 +580,8 @@ def train_and_register(
         lr_scheduler_type=lr_scheduler_type,
         mlflow_experiment=mlflow_experiment,
         mlflow_tracking_uri=mlflow_tracking_uri,
+        dataset_path=dataset_path,
+        encoding_mode=encoding_mode,
     )
 
     # Compute file hash and size from the saved safetensors file
