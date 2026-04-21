@@ -116,6 +116,24 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["multi_turn", "single_turn"],
         default="multi_turn",
     )
+    parser.add_argument(
+        "--diff-aware-loss",
+        dest="diff_aware_loss",
+        action="store_true",
+        help="Scale per-token loss by diff-vs-context weighting.",
+    )
+    parser.add_argument(
+        "--diff-changed-weight",
+        dest="diff_changed_weight",
+        type=float,
+        default=1.0,
+    )
+    parser.add_argument(
+        "--diff-unchanged-weight",
+        dest="diff_unchanged_weight",
+        type=float,
+        default=0.3,
+    )
 
     # --- MLflow ---
     parser.add_argument(
@@ -182,6 +200,9 @@ def _resolve_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "mlflow_experiment": args.mlflow_experiment,
         "mlflow_tracking_uri": args.mlflow_tracking_uri,
         "database_url": args.database_url,
+        "diff_aware_loss": args.diff_aware_loss,
+        "diff_changed_weight": args.diff_changed_weight,
+        "diff_unchanged_weight": args.diff_unchanged_weight,
     }
 
 

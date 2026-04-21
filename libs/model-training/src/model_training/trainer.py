@@ -262,6 +262,9 @@ def train_qlora(
     mlflow_tracking_uri: str | None = None,
     dataset_path: str | None = None,
     encoding_mode: str = "multi_turn",
+    diff_aware_loss: bool = False,
+    diff_changed_weight: float = 1.0,
+    diff_unchanged_weight: float = 0.3,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -308,6 +311,18 @@ def train_qlora(
         encoding_mode: ``"multi_turn"`` clusters pairs by source task and
             emits one conversation per task; ``"single_turn"`` emits one
             conversation per pair. Only used when ``dataset_path`` is set.
+        diff_aware_loss: When True, wrap the SFT collator with
+            ``DiffWeightedDataCollator`` and swap in ``DiffAwareSFTTrainer``
+            so per-token loss is scaled by the diff between assistant
+            output and the masked user/context span. Disables
+            ``assistant_only_loss`` on SFTConfig since the custom collator
+            provides equivalent (stricter) masking.
+        diff_changed_weight: Per-token weight applied to assistant tokens
+            absent from the masked context span. Only used when
+            ``diff_aware_loss=True``. Defaults to ``1.0``.
+        diff_unchanged_weight: Per-token weight applied to assistant
+            tokens also present in the masked context span. Only used
+            when ``diff_aware_loss=True``. Defaults to ``0.3``.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -412,7 +427,9 @@ def train_qlora(
     )
     report_to = "mlflow" if mlflow_enabled else "none"
 
-    # Training arguments
+    # Training arguments. When diff_aware_loss is on, our custom collator
+    # subsumes the assistant-only masking, so we disable SFTConfig's
+    # own flag to avoid double-masking.
     training_args = SFTConfig(
         output_dir=output_dir,
         num_train_epochs=resolved_epochs,
@@ -426,17 +443,40 @@ def train_qlora(
         logging_steps=1,
         report_to=report_to,
         eval_strategy="no",
-        assistant_only_loss=True,
+        assistant_only_loss=not diff_aware_loss,
     )
 
-    # Create and run trainer
-    trainer = SFTTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=dataset,
-        peft_config=lora_config,
-        processing_class=tokenizer,
-    )
+    # Create the trainer. Vanilla path stays intact for default runs;
+    # diff-aware path builds the subclassed trainer and wraps its
+    # auto-built collator so loss_weights are produced per batch.
+    if diff_aware_loss:
+        from model_training.diff_loss import (  # noqa: PLC0415
+            DiffWeightedDataCollator,
+            build_diff_aware_sft_trainer,
+        )
+
+        trainer = build_diff_aware_sft_trainer(
+            model=model,
+            args=training_args,
+            train_dataset=dataset,
+            processing_class=tokenizer,
+            peft_config=lora_config,
+            changed_weight=diff_changed_weight,
+            unchanged_weight=diff_unchanged_weight,
+        )
+        trainer.data_collator = DiffWeightedDataCollator(
+            trainer.data_collator,
+            changed_weight=diff_changed_weight,
+            unchanged_weight=diff_unchanged_weight,
+        )
+    else:
+        trainer = SFTTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=dataset,
+            peft_config=lora_config,
+            processing_class=tokenizer,
+        )
 
     # Log training-run metadata (params streamed as per-step metrics by TRL's
     # MLflow reporter via training_args.report_to="mlflow"). When disabled,
@@ -458,6 +498,9 @@ def train_qlora(
         "session_id": session_id or "",
         "dataset_path": dataset_path or "",
         "encoding_mode": encoding_mode,
+        "diff_aware_loss": diff_aware_loss,
+        "diff_changed_weight": diff_changed_weight if diff_aware_loss else "",
+        "diff_unchanged_weight": diff_unchanged_weight if diff_aware_loss else "",
     }
     with _mlflow_run(
         enabled=mlflow_enabled,
@@ -494,6 +537,9 @@ def train_and_register(
     mlflow_tracking_uri: str | None = None,
     dataset_path: str | None = None,
     encoding_mode: str = "multi_turn",
+    diff_aware_loss: bool = False,
+    diff_changed_weight: float = 1.0,
+    diff_unchanged_weight: float = 0.3,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -522,6 +568,11 @@ def train_and_register(
             session_id.
         encoding_mode: ``"multi_turn"`` or ``"single_turn"`` for pair→chat
             conversion.
+        diff_aware_loss: Enable diff-aware per-token loss weighting.
+        diff_changed_weight: Weight for assistant tokens not in the masked
+            context span when ``diff_aware_loss=True``.
+        diff_unchanged_weight: Weight for assistant tokens present in the
+            masked context span when ``diff_aware_loss=True``.
 
     Returns:
         adapter_id of the registered adapter.
@@ -582,6 +633,9 @@ def train_and_register(
         mlflow_tracking_uri=mlflow_tracking_uri,
         dataset_path=dataset_path,
         encoding_mode=encoding_mode,
+        diff_aware_loss=diff_aware_loss,
+        diff_changed_weight=diff_changed_weight,
+        diff_unchanged_weight=diff_unchanged_weight,
     )
 
     # Compute file hash and size from the saved safetensors file
