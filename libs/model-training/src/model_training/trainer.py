@@ -176,6 +176,84 @@ def _resolve_training_params(
     return resolved
 
 
+def _override_lora_alpha(
+    model: Any, adapter_name: str, new_alpha: int
+) -> None:
+    """Re-scale a loaded LoRA adapter's effective alpha in place.
+
+    PEFT's ``LoraLayer`` caches ``scaling[adapter_name] = alpha / r`` at
+    layer-construction time — mutating ``model.peft_config[adapter].lora_alpha``
+    after ``PeftModel.from_pretrained`` does NOT propagate, so we walk
+    the module tree and update each layer's cached scaling directly.
+
+    Also mirrors the change into ``peft_config`` so downstream code that
+    inspects the config (e.g. saving the adapter) sees the new alpha.
+    """
+    if hasattr(model, "peft_config") and adapter_name in model.peft_config:
+        # Keep config consistent with the module state for any downstream
+        # serialization / inspection.
+        model.peft_config[adapter_name].lora_alpha = new_alpha
+
+    updated = 0
+    for module in model.modules():
+        if not hasattr(module, "scaling") or not hasattr(module, "r"):
+            continue
+        scaling = getattr(module, "scaling", None)
+        r_map = getattr(module, "r", None)
+        if not isinstance(scaling, dict) or not isinstance(r_map, dict):
+            continue
+        if adapter_name not in scaling or adapter_name not in r_map:
+            continue
+        rank = r_map[adapter_name]
+        if rank <= 0:
+            continue
+        scaling[adapter_name] = new_alpha / rank
+        updated += 1
+    logger.info(
+        "LoRA alpha override: adapter=%s new_alpha=%d updated_layers=%d",
+        adapter_name,
+        new_alpha,
+        updated,
+    )
+
+
+def _override_lora_dropout(
+    model: Any, adapter_name: str, new_p: float
+) -> None:
+    """Override the dropout probability of a loaded LoRA adapter in place.
+
+    ``layer.lora_dropout`` is an ``nn.ModuleDict`` keyed by adapter name
+    whose values are ``nn.Dropout`` modules. We update the ``.p``
+    attribute on each such module so new mini-batches see the new rate.
+
+    Passing ``new_p == 0.0`` effectively disables LoRA dropout for the
+    adapter without rewiring the module graph.
+    """
+    if not 0.0 <= new_p <= 1.0:
+        raise ValueError(f"dropout probability must be in [0, 1], got {new_p}")
+
+    if hasattr(model, "peft_config") and adapter_name in model.peft_config:
+        model.peft_config[adapter_name].lora_dropout = new_p
+
+    updated = 0
+    for module in model.modules():
+        drop_map = getattr(module, "lora_dropout", None)
+        if drop_map is None:
+            continue
+        # lora_dropout is an nn.ModuleDict; tolerate plain dict too.
+        if hasattr(drop_map, "__contains__") and adapter_name in drop_map:
+            target = drop_map[adapter_name]
+            if hasattr(target, "p"):
+                target.p = float(new_p)
+                updated += 1
+    logger.info(
+        "LoRA dropout override: adapter=%s new_p=%.3f updated_layers=%d",
+        adapter_name,
+        new_p,
+        updated,
+    )
+
+
 def _validate_data_source(
     session_id: str | None, dataset_path: str | None, encoding_mode: str
 ) -> None:
@@ -243,6 +321,57 @@ def _build_training_dataset(
     return dataset_cls.from_list([{"messages": messages}])
 
 
+def _construct_sft_trainer(
+    *,
+    sft_trainer_cls: Any,
+    model: Any,
+    args: Any,
+    dataset: Any,
+    tokenizer: Any,
+    lora_config: Any,
+    diff_aware_loss: bool,
+    diff_changed_weight: float,
+    diff_unchanged_weight: float,
+) -> Any:
+    """Pick between vanilla SFTTrainer and the diff-aware subclass.
+
+    Isolated so ``train_qlora`` stays under the ``C901`` complexity
+    threshold. When ``diff_aware_loss=True``, builds a
+    ``DiffAwareSFTTrainer`` and wraps its auto-built collator with
+    :class:`~model_training.diff_loss.DiffWeightedDataCollator` so each
+    batch carries a ``loss_weights`` tensor.
+    """
+    if not diff_aware_loss:
+        return sft_trainer_cls(
+            model=model,
+            args=args,
+            train_dataset=dataset,
+            peft_config=lora_config,
+            processing_class=tokenizer,
+        )
+
+    from model_training.diff_loss import (  # noqa: PLC0415
+        DiffWeightedDataCollator,
+        build_diff_aware_sft_trainer,
+    )
+
+    trainer = build_diff_aware_sft_trainer(
+        model=model,
+        args=args,
+        train_dataset=dataset,
+        processing_class=tokenizer,
+        peft_config=lora_config,
+        changed_weight=diff_changed_weight,
+        unchanged_weight=diff_unchanged_weight,
+    )
+    trainer.data_collator = DiffWeightedDataCollator(
+        trainer.data_collator,
+        changed_weight=diff_changed_weight,
+        unchanged_weight=diff_unchanged_weight,
+    )
+    return trainer
+
+
 def train_qlora(
     session_id: str | None,
     adapter_id: str,
@@ -265,6 +394,8 @@ def train_qlora(
     diff_aware_loss: bool = False,
     diff_changed_weight: float = 1.0,
     diff_unchanged_weight: float = 0.3,
+    override_lora_alpha: int | None = None,
+    override_lora_dropout: float | None = None,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -323,6 +454,15 @@ def train_qlora(
         diff_unchanged_weight: Per-token weight applied to assistant
             tokens also present in the masked context span. Only used
             when ``diff_aware_loss=True``. Defaults to ``0.3``.
+        override_lora_alpha: Post-load override for the warm-start
+            adapter's effective alpha. Applied via a module-tree walk
+            after ``PeftModel.from_pretrained`` since PEFT caches
+            ``scaling = alpha / r`` per layer. Has no effect when no
+            warm-start is in use.
+        override_lora_dropout: Post-load override for the warm-start
+            adapter's LoRA dropout probability. Applied the same way as
+            ``override_lora_alpha`` — by walking the module tree and
+            mutating each layer's ``lora_dropout[adapter_name].p``.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -404,6 +544,16 @@ def train_qlora(
         for name, param in model.named_parameters():
             if "lora_" in name:
                 param.requires_grad_(True)
+
+        # Post-load overrides. The saved adapter's rank and target_modules
+        # are locked by the safetensor shapes, but alpha and dropout are
+        # runtime quantities and can be retuned by HPO without discarding
+        # the warm-start.
+        adapter_name = getattr(model, "active_adapter", None) or "default"
+        if override_lora_alpha is not None:
+            _override_lora_alpha(model, adapter_name, override_lora_alpha)
+        if override_lora_dropout is not None:
+            _override_lora_dropout(model, adapter_name, override_lora_dropout)
     else:
         # Fresh LoRA initialization — try probe cache for target modules
         target_modules = ["q_proj", "v_proj"]
@@ -446,37 +596,17 @@ def train_qlora(
         assistant_only_loss=not diff_aware_loss,
     )
 
-    # Create the trainer. Vanilla path stays intact for default runs;
-    # diff-aware path builds the subclassed trainer and wraps its
-    # auto-built collator so loss_weights are produced per batch.
-    if diff_aware_loss:
-        from model_training.diff_loss import (  # noqa: PLC0415
-            DiffWeightedDataCollator,
-            build_diff_aware_sft_trainer,
-        )
-
-        trainer = build_diff_aware_sft_trainer(
-            model=model,
-            args=training_args,
-            train_dataset=dataset,
-            processing_class=tokenizer,
-            peft_config=lora_config,
-            changed_weight=diff_changed_weight,
-            unchanged_weight=diff_unchanged_weight,
-        )
-        trainer.data_collator = DiffWeightedDataCollator(
-            trainer.data_collator,
-            changed_weight=diff_changed_weight,
-            unchanged_weight=diff_unchanged_weight,
-        )
-    else:
-        trainer = SFTTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=dataset,
-            peft_config=lora_config,
-            processing_class=tokenizer,
-        )
+    trainer = _construct_sft_trainer(
+        sft_trainer_cls=SFTTrainer,
+        model=model,
+        args=training_args,
+        dataset=dataset,
+        tokenizer=tokenizer,
+        lora_config=lora_config,
+        diff_aware_loss=diff_aware_loss,
+        diff_changed_weight=diff_changed_weight,
+        diff_unchanged_weight=diff_unchanged_weight,
+    )
 
     # Log training-run metadata (params streamed as per-step metrics by TRL's
     # MLflow reporter via training_args.report_to="mlflow"). When disabled,
@@ -501,6 +631,12 @@ def train_qlora(
         "diff_aware_loss": diff_aware_loss,
         "diff_changed_weight": diff_changed_weight if diff_aware_loss else "",
         "diff_unchanged_weight": diff_unchanged_weight if diff_aware_loss else "",
+        "override_lora_alpha": (
+            override_lora_alpha if override_lora_alpha is not None else ""
+        ),
+        "override_lora_dropout": (
+            override_lora_dropout if override_lora_dropout is not None else ""
+        ),
     }
     with _mlflow_run(
         enabled=mlflow_enabled,
@@ -540,6 +676,8 @@ def train_and_register(
     diff_aware_loss: bool = False,
     diff_changed_weight: float = 1.0,
     diff_unchanged_weight: float = 0.3,
+    override_lora_alpha: int | None = None,
+    override_lora_dropout: float | None = None,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -573,6 +711,10 @@ def train_and_register(
             context span when ``diff_aware_loss=True``.
         diff_unchanged_weight: Weight for assistant tokens present in the
             masked context span when ``diff_aware_loss=True``.
+        override_lora_alpha: Post-load override for the warm-start
+            adapter's effective alpha (module-tree walk).
+        override_lora_dropout: Post-load override for the warm-start
+            adapter's LoRA dropout probability.
 
     Returns:
         adapter_id of the registered adapter.
@@ -636,6 +778,8 @@ def train_and_register(
         diff_aware_loss=diff_aware_loss,
         diff_changed_weight=diff_changed_weight,
         diff_unchanged_weight=diff_unchanged_weight,
+        override_lora_alpha=override_lora_alpha,
+        override_lora_dropout=override_lora_dropout,
     )
 
     # Compute file hash and size from the saved safetensors file
