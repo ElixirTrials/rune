@@ -1,0 +1,1 @@
+Use this to continue our work: /Users/noahdolevelixir/Code/rune/docs/plans/training_upgrade_continuation.md . But launch subagents to do as much of the implementation in parallel as possible.
