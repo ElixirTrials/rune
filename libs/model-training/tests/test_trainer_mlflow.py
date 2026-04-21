@@ -1,10 +1,10 @@
-"""CPU tests for MLflow integration in trainer.py.
+"""CPU tests for MLflow integration in training_common + trainer kwargs.
 
 Verifies the gating helpers work without a GPU and without actually writing
 to an MLflow backend:
 - RUNE_DISABLE_MLFLOW=1 short-circuits setup.
 - Missing ``mlflow`` package short-circuits setup.
-- ``_mlflow_log_params`` / ``_mlflow_log_artifact`` silently no-op when
+- ``mlflow_log_params`` / ``mlflow_log_artifact`` silently no-op when
   tracking is disabled so training never breaks.
 - ``train_qlora`` accepts ``mlflow_experiment`` and ``mlflow_tracking_uri``
   kwargs without touching the GPU.
@@ -23,9 +23,9 @@ def test_setup_returns_false_when_disabled(
     """RUNE_DISABLE_MLFLOW=1 suppresses MLflow regardless of install state."""
     monkeypatch.setenv("RUNE_DISABLE_MLFLOW", "1")
 
-    from model_training.trainer import _setup_mlflow_trainer
+    from model_training.training_common import setup_mlflow
 
-    assert _setup_mlflow_trainer("any-experiment", tracking_uri=None) is False
+    assert setup_mlflow("any-experiment", tracking_uri=None) is False
 
 
 def test_setup_returns_false_when_mlflow_missing(
@@ -34,7 +34,6 @@ def test_setup_returns_false_when_mlflow_missing(
     """Absent mlflow module returns False without raising."""
     monkeypatch.delenv("RUNE_DISABLE_MLFLOW", raising=False)
 
-    # Force ImportError on `import mlflow` inside the helper.
     real_import = (
         __builtins__["__import__"]  # type: ignore[index]
         if isinstance(__builtins__, dict)
@@ -47,13 +46,11 @@ def test_setup_returns_false_when_mlflow_missing(
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr("builtins.__import__", fake_import)
-
-    # Drop any cached mlflow module so our fake_import takes effect.
     monkeypatch.delitem(sys.modules, "mlflow", raising=False)
 
-    from model_training.trainer import _setup_mlflow_trainer
+    from model_training.training_common import setup_mlflow
 
-    assert _setup_mlflow_trainer("any-experiment", tracking_uri=None) is False
+    assert setup_mlflow("any-experiment", tracking_uri=None) is False
 
 
 def test_log_helpers_silent_noop_when_mlflow_missing(
@@ -74,11 +71,10 @@ def test_log_helpers_silent_noop_when_mlflow_missing(
     monkeypatch.setattr("builtins.__import__", fake_import)
     monkeypatch.delitem(sys.modules, "mlflow", raising=False)
 
-    from model_training.trainer import _mlflow_log_artifact, _mlflow_log_params
+    from model_training.training_common import mlflow_log_artifact, mlflow_log_params
 
-    # Must not raise.
-    _mlflow_log_params({"k": 1})
-    _mlflow_log_artifact("/nonexistent/path")
+    mlflow_log_params({"k": 1})
+    mlflow_log_artifact("/nonexistent/path")
 
 
 def test_train_qlora_accepts_mlflow_kwargs() -> None:

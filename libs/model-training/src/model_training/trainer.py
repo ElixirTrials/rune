@@ -16,21 +16,12 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from model_training.training_common import (
-    mlflow_log_artifact,
     mlflow_log_output_artifacts,
-    mlflow_log_params,
     mlflow_run,
     setup_mlflow,
 )
 
 logger = logging.getLogger(__name__)
-
-# Back-compat shims: trainer.py callers previously used private names.
-_setup_mlflow_trainer = setup_mlflow
-_mlflow_log_params = mlflow_log_params
-_mlflow_log_artifact = mlflow_log_artifact
-_mlflow_log_output_artifacts = mlflow_log_output_artifacts
-_mlflow_run = mlflow_run
 
 
 class _ResolvedParams(TypedDict):
