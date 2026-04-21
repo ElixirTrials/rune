@@ -9,10 +9,95 @@ Module-level imports: stdlib only.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
+
+logger = logging.getLogger(__name__)
+
+
+def _setup_mlflow_trainer(
+    experiment_name: str, tracking_uri: str | None
+) -> bool:
+    """Configure MLflow for QLoRA training runs.
+
+    Returns True when MLflow is usable and configured; False when tracking
+    should be skipped. Skipping happens when RUNE_DISABLE_MLFLOW=1 is set
+    in the environment, or when mlflow itself is not importable.
+
+    Tracking URI precedence: explicit ``tracking_uri`` arg, then the
+    ``MLFLOW_TRACKING_URI`` env var, then ``./mlruns`` as a local-dev fallback.
+    Mirrors the pattern in ``d2l_train._setup_mlflow``.
+    """
+    if os.environ.get("RUNE_DISABLE_MLFLOW") == "1":
+        return False
+    try:
+        import mlflow  # noqa: PLC0415
+    except ImportError:
+        return False
+    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "./mlruns")
+    mlflow.set_tracking_uri(uri)
+    mlflow.set_experiment(experiment_name)
+    logger.info(
+        "MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name
+    )
+    return True
+
+
+def _mlflow_log_params(params: dict[str, Any]) -> None:
+    """Log a dict of params to the active MLflow run. Silent no-op on failure."""
+    try:
+        import mlflow  # noqa: PLC0415
+
+        mlflow.log_params(params)
+    except Exception:  # noqa: BLE001 — logging must never break training
+        logger.debug("mlflow.log_params skipped", exc_info=True)
+
+
+def _mlflow_log_artifact(path: str) -> None:
+    """Log a file artifact to the active MLflow run. Silent no-op on failure."""
+    try:
+        import mlflow  # noqa: PLC0415
+
+        mlflow.log_artifact(path)
+    except Exception:  # noqa: BLE001
+        logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
+
+
+def _mlflow_log_output_artifacts(output_dir: str) -> None:
+    """Log the saved adapter's safetensors + config.json to MLflow, if present."""
+    adapter_safetensors = Path(output_dir) / "adapter_model.safetensors"
+    adapter_config = Path(output_dir) / "adapter_config.json"
+    if adapter_safetensors.exists():
+        _mlflow_log_artifact(str(adapter_safetensors))
+    if adapter_config.exists():
+        _mlflow_log_artifact(str(adapter_config))
+
+
+@contextmanager
+def _mlflow_run(
+    *, enabled: bool, run_name: str, params: dict[str, Any]
+) -> Iterator[None]:
+    """Context manager that starts an MLflow run when enabled, else no-ops.
+
+    When enabled, logs ``params`` at entry and ensures ``mlflow.end_run()`` on
+    exit even if training raises. When disabled, the body runs unchanged.
+    """
+    if not enabled:
+        yield
+        return
+    import mlflow  # noqa: PLC0415
+
+    mlflow.start_run(run_name=run_name)
+    try:
+        _mlflow_log_params(params)
+        yield
+    finally:
+        mlflow.end_run()
 
 
 class _ResolvedParams(TypedDict):
@@ -106,6 +191,8 @@ def train_qlora(
     warm_start_adapter_id: str | None = None,
     gradient_accumulation_steps: int | None = None,
     lr_scheduler_type: str | None = None,
+    mlflow_experiment: str = "rune-qlora",
+    mlflow_tracking_uri: str | None = None,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -140,6 +227,10 @@ def train_qlora(
             registry value or 16.
         lr_scheduler_type: LR scheduler type. Defaults to registry value or
             "constant".
+        mlflow_experiment: MLflow experiment name. Set RUNE_DISABLE_MLFLOW=1
+            in the env to disable MLflow tracking entirely.
+        mlflow_tracking_uri: Optional MLflow tracking URI override. Falls back
+            to the MLFLOW_TRACKING_URI env var, then to "./mlruns".
 
     Returns:
         output_dir path where the adapter was saved.
@@ -239,6 +330,12 @@ def train_qlora(
             dropout=0.1,
         )
 
+    # Configure MLflow (silent no-op when disabled via env or mlflow missing)
+    mlflow_enabled = _setup_mlflow_trainer(
+        experiment_name=mlflow_experiment, tracking_uri=mlflow_tracking_uri
+    )
+    report_to = "mlflow" if mlflow_enabled else "none"
+
     # Training arguments
     training_args = SFTConfig(
         output_dir=output_dir,
@@ -251,7 +348,7 @@ def train_qlora(
         gradient_accumulation_steps=resolved_grad_accum,
         save_strategy="no",
         logging_steps=1,
-        report_to="none",
+        report_to=report_to,
         eval_strategy="no",
         assistant_only_loss=True,
     )
@@ -264,10 +361,38 @@ def train_qlora(
         peft_config=lora_config,
         processing_class=tokenizer,
     )
-    trainer.train()
 
-    # Save adapter weights only (PEFT-aware: safetensors + adapter_config.json)
-    trainer.save_model(output_dir)
+    # Log training-run metadata (params streamed as per-step metrics by TRL's
+    # MLflow reporter via training_args.report_to="mlflow"). When disabled,
+    # contextlib.nullcontext is a zero-cost placeholder.
+    run_params = {
+        "model_id": model_id,
+        "warm_start": warm_start or "",
+        "rank": resolved_rank,
+        "alpha": resolved_alpha,
+        "epochs": resolved_epochs,
+        "learning_rate": learning_rate,
+        "grad_accum": resolved_grad_accum,
+        "lr_scheduler_type": resolved_lr_sched,
+        "attn_implementation": attn_impl or "",
+        "dataset_size": len(dataset),
+        "assistant_only_loss": True,
+        "task_type": task_type,
+        "adapter_id": adapter_id,
+        "session_id": session_id,
+    }
+    with _mlflow_run(
+        enabled=mlflow_enabled,
+        run_name=f"{adapter_id}-r{resolved_rank}-lr{learning_rate:.1e}",
+        params=run_params,
+    ):
+        trainer.train()
+
+        # Save adapter weights only (PEFT-aware: safetensors + adapter_config.json)
+        trainer.save_model(output_dir)
+
+        if mlflow_enabled:
+            _mlflow_log_output_artifacts(output_dir)
 
     return output_dir
 
@@ -287,6 +412,8 @@ def train_and_register(
     gradient_accumulation_steps: int | None = None,
     lr_scheduler_type: str | None = None,
     database_url: str | None = None,
+    mlflow_experiment: str = "rune-qlora",
+    mlflow_tracking_uri: str | None = None,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -308,6 +435,9 @@ def train_and_register(
         lr_scheduler_type: LR scheduler type.
         database_url: SQLAlchemy database URL. Defaults to RUNE_DATABASE_URL env var
             or "sqlite:///{home}/.rune/rune.db".
+        mlflow_experiment: MLflow experiment name. Set RUNE_DISABLE_MLFLOW=1 to
+            skip MLflow tracking.
+        mlflow_tracking_uri: Optional MLflow tracking URI override.
 
     Returns:
         adapter_id of the registered adapter.
@@ -364,6 +494,8 @@ def train_and_register(
         warm_start_adapter_id=warm_start_adapter_id,
         gradient_accumulation_steps=gradient_accumulation_steps,
         lr_scheduler_type=lr_scheduler_type,
+        mlflow_experiment=mlflow_experiment,
+        mlflow_tracking_uri=mlflow_tracking_uri,
     )
 
     # Compute file hash and size from the saved safetensors file
