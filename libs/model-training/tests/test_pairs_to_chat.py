@@ -10,6 +10,10 @@ Covers:
 - Missing metadata.source_task_id falls back to task_id.
 - Corrupt record where teacher_text does not start with activation_text
   returns the full teacher_text.
+- pre_post_records aligned 1:1 with conversations.
+- Multi-turn pre/post concatenation.
+- Skipped pairs do not appear in pre_post_records.
+- Initial commit pairs have empty pre_code.
 """
 
 from __future__ import annotations
@@ -39,13 +43,16 @@ def _pair(
 
 
 def test_empty_input_returns_empty() -> None:
-    assert pairs_to_chat_messages([]) == []
-    assert pairs_to_chat_messages([], mode="single_turn") == []
+    convs, pre_post = pairs_to_chat_messages([])
+    assert (convs, pre_post) == ([], [])
+    convs2, pre_post2 = pairs_to_chat_messages([], mode="single_turn")
+    assert (convs2, pre_post2) == ([], [])
 
 
 def test_single_turn_one_pair() -> None:
-    convs = pairs_to_chat_messages([_pair()], mode="single_turn")
+    convs, pre_post = pairs_to_chat_messages([_pair()], mode="single_turn")
     assert len(convs) == 1
+    assert len(pre_post) == len(convs)
     msgs = convs[0]
     assert [m["role"] for m in msgs] == ["system", "user", "assistant"]
     assert msgs[1]["content"].startswith("## Task")
@@ -66,8 +73,9 @@ def test_multi_turn_clusters_by_source_task_id() -> None:
             ),
         ),
     ]
-    convs = pairs_to_chat_messages(pairs, mode="multi_turn")
+    convs, pre_post = pairs_to_chat_messages(pairs, mode="multi_turn")
     assert len(convs) == 1
+    assert len(pre_post) == len(convs)
     msgs = convs[0]
     # system, u1, a1, u2, a2
     assert [m["role"] for m in msgs] == [
@@ -96,8 +104,9 @@ def test_multi_turn_orders_by_step_index_regardless_of_input_order() -> None:
             teacher="## Task\nX\n\n## Review Feedback\nfeedback1\n\n## Revision\nmid",
         ),
     ]
-    convs = pairs_to_chat_messages(reversed_pairs, mode="multi_turn")
+    convs, pre_post = pairs_to_chat_messages(reversed_pairs, mode="multi_turn")
     assert len(convs) == 1
+    assert len(pre_post) == len(convs)
     assistants = [m["content"] for m in convs[0] if m["role"] == "assistant"]
     assert len(assistants) == 3
     assert "## Implementation" in assistants[0]  # step 0
@@ -110,8 +119,9 @@ def test_multi_turn_distinct_task_ids_produce_separate_conversations() -> None:
         _pair(task_id="pr_repo_1", source_task_id="pr_repo_1"),
         _pair(task_id="pr_repo_2", source_task_id="pr_repo_2"),
     ]
-    convs = pairs_to_chat_messages(pairs, mode="multi_turn")
+    convs, pre_post = pairs_to_chat_messages(pairs, mode="multi_turn")
     assert len(convs) == 2
+    assert len(pre_post) == len(convs)
 
 
 def test_multi_turn_falls_back_to_task_id_when_metadata_missing() -> None:
@@ -125,8 +135,9 @@ def test_multi_turn_falls_back_to_task_id_when_metadata_missing() -> None:
         activation="## Task\nx\n\n## Review Feedback\nf",
         teacher="## Task\nx\n\n## Review Feedback\nf\n\n## Revision\ny",
     )
-    convs = pairs_to_chat_messages([p1, p2], mode="multi_turn")
+    convs, pre_post = pairs_to_chat_messages([p1, p2], mode="multi_turn")
     assert len(convs) == 1
+    assert len(pre_post) == len(convs)
     assert len(convs[0]) == 5  # system + 2×(user,assistant)
 
 
@@ -139,8 +150,9 @@ def test_corrupt_teacher_text_still_emits_assistant_message() -> None:
         "teacher_text": "WORLD",
         "metadata": {"source_task_id": "x", "step_index": 0},
     }
-    convs = pairs_to_chat_messages([pair], mode="single_turn")
+    convs, pre_post = pairs_to_chat_messages([pair], mode="single_turn")
     assert len(convs) == 1
+    assert len(pre_post) == len(convs)
     assert convs[0][2]["content"] == "WORLD"
 
 
@@ -154,5 +166,92 @@ def test_multi_turn_skips_pair_with_empty_assistant() -> None:
         "teacher_text": "same",
         "metadata": {"source_task_id": "x", "step_index": 0},
     }
-    convs = pairs_to_chat_messages([pair], mode="multi_turn")
+    convs, pre_post = pairs_to_chat_messages([pair], mode="multi_turn")
     assert convs == []
+    assert pre_post == []
+
+
+# ---------------------------------------------------------------------------
+# New tests for pre_post_records
+# ---------------------------------------------------------------------------
+
+
+def test_pre_post_aligned_with_conversations() -> None:
+    """Two distinct task_ids → two conversations, two pre_post records."""
+    pairs = [
+        _pair(task_id="pr_repo_1", source_task_id="pr_repo_1"),
+        _pair(task_id="pr_repo_2", source_task_id="pr_repo_2"),
+    ]
+    convs, pre_post = pairs_to_chat_messages(pairs, mode="multi_turn")
+    assert len(pre_post) == len(convs) == 2
+    for record in pre_post:
+        assert "pre_code" in record
+        assert "post_code" in record
+        assert isinstance(record["pre_code"], str)
+        assert isinstance(record["post_code"], str)
+
+
+def test_pre_post_multi_turn_concatenation() -> None:
+    """Multi-turn: pre/post codes are joined by '\\n\\n' across turns."""
+    activation_0 = "## Task\nWrite add()"
+    teacher_0 = f"{activation_0}\n\n## Implementation\ndef add(a,b): return a+b"
+
+    activation_1 = (
+        "## Task\nWrite add()\n\n"
+        "## Current Code\ndef add(a,b): return a+b\n\n"
+        "## Review Feedback\nHandle floats"
+    )
+    teacher_1 = (
+        f"{activation_1}\n\n## Revision\ndef add(a,b): return float(a)+float(b)"
+    )
+
+    pairs = [
+        _pair(step_index=0, activation=activation_0, teacher=teacher_0),
+        _pair(step_index=1, activation=activation_1, teacher=teacher_1),
+    ]
+    convs, pre_post = pairs_to_chat_messages(pairs, mode="multi_turn")
+    assert len(convs) == 1
+    assert len(pre_post) == 1
+
+    record = pre_post[0]
+    # Turn 0: no ## Current Code → pre_code is ""
+    # Turn 1: ## Current Code present → pre_code is "def add(a,b): return a+b"
+    expected_pre = "\n\n".join(["", "def add(a,b): return a+b"])
+    assert record["pre_code"] == expected_pre
+
+    # post_code: body of ## Implementation + body of ## Revision joined by \n\n
+    expected_post = "\n\n".join(
+        ["def add(a,b): return a+b", "def add(a,b): return float(a)+float(b)"]
+    )
+    assert record["post_code"] == expected_post
+
+
+def test_pre_post_skips_match_conversation_skips() -> None:
+    """Skipped pair (empty assistant) must not appear in pre_post_records."""
+    good_pair = _pair(task_id="pr_a", source_task_id="pr_a", step_index=0)
+    skip_pair = {
+        "task_id": "pr_b",
+        "activation_text": "same",
+        "teacher_text": "same",
+        "metadata": {"source_task_id": "pr_b", "step_index": 0},
+    }
+    convs, pre_post = pairs_to_chat_messages(
+        [good_pair, skip_pair], mode="multi_turn"
+    )
+    assert len(convs) == 1
+    assert len(pre_post) == 1
+    assert "pre_code" in pre_post[0]
+    assert "post_code" in pre_post[0]
+
+
+def test_pre_post_initial_commit_has_empty_pre_code() -> None:
+    """Initial commit pair (no ## Current Code section) → pre_code == ''."""
+    activation = "## Task\nImplement fizzbuzz"
+    teacher = f"{activation}\n\n## Implementation\ndef fizzbuzz(n): pass"
+    pair = _pair(activation=activation, teacher=teacher)
+
+    convs, pre_post = pairs_to_chat_messages([pair], mode="single_turn")
+    assert len(convs) == 1
+    assert len(pre_post) == 1
+    assert pre_post[0]["pre_code"] == ""
+    assert "fizzbuzz" in pre_post[0]["post_code"]
