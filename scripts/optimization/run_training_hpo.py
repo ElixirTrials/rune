@@ -189,6 +189,9 @@ def _suggest_trial_params(trial: Any) -> dict[str, Any]:
         "lr_scheduler", ["constant", "cosine"]
     )
     diff_aware = trial.suggest_categorical("diff_aware_loss", [False, True])
+    neftune = trial.suggest_categorical(
+        "neftune_noise_alpha", [None, 5.0, 10.0]
+    )
     return {
         "lr": lr,
         "alpha_override": alpha,
@@ -197,6 +200,7 @@ def _suggest_trial_params(trial: Any) -> dict[str, Any]:
         "grad_accum": grad_accum,
         "lr_scheduler": scheduler,
         "diff_aware_loss": diff_aware,
+        "neftune_noise_alpha": neftune,
     }
 
 
@@ -249,13 +253,10 @@ def _build_trial_kwargs(
         "override_lora_alpha": sampled["alpha_override"],
         "override_lora_dropout": sampled["lora_dropout"],
         "diff_aware_loss": sampled["diff_aware_loss"],
+        "warmup_ratio": sampled["warmup_ratio"],
+        "neftune_noise_alpha": sampled["neftune_noise_alpha"],
         "mlflow_experiment": run_args.experiment_name,
     }
-    # Warmup ratio is baked into SFTConfig(warmup_ratio=...) inside
-    # train_qlora — it's a fixed 0.03 today. Logging through MLFlow params
-    # captures what the trial actually sampled even though the current
-    # trainer doesn't consume it. Future PR can thread it.
-    kwargs["extra_hpo_params"] = {"warmup_ratio": sampled["warmup_ratio"]}
     kwargs.update(run_args.extra_train_kwargs)
     return kwargs
 
@@ -355,13 +356,11 @@ def _run_single_trial(
         adapter_id=adapter_id,
         trial_dataset_path=str(trial_dataset),
     )
-    # Strip the extra_hpo_params marker; it's informational for logging.
-    extra_hpo_params = kwargs.pop("extra_hpo_params", {})
     logger.info(
         "Trial %d adapter_id=%s warmup_ratio=%.3f",
         trial.number,
         adapter_id,
-        extra_hpo_params.get("warmup_ratio", 0.0),
+        sampled["warmup_ratio"],
     )
 
     # Point the trainer at a per-trial adapter output dir so HPO artifacts

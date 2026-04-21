@@ -171,6 +171,7 @@ def test_build_trial_kwargs_maps_sampled_params() -> None:
         "grad_accum": 16,
         "lr_scheduler": "cosine",
         "diff_aware_loss": True,
+        "neftune_noise_alpha": 5.0,
     }
     kwargs = _build_trial_kwargs(
         run_args=run_args,
@@ -191,3 +192,32 @@ def test_build_trial_kwargs_maps_sampled_params() -> None:
     assert kwargs["warm_start_adapter_id"] == (
         "danielcherubini/Qwen3.5-DeltaCoder-9B"
     )
+    # warmup_ratio now forwarded directly — NOT under extra_hpo_params.
+    assert kwargs["warmup_ratio"] == pytest.approx(0.05)
+    assert "extra_hpo_params" not in kwargs
+    # neftune_noise_alpha forwarded directly.
+    assert kwargs["neftune_noise_alpha"] == pytest.approx(5.0)
+
+
+def test_neftune_search_dim_includes_none() -> None:
+    """_suggest_trial_params samples neftune_noise_alpha from {None, 5.0, 10.0}."""
+    from run_training_hpo import _suggest_trial_params  # noqa: PLC0415
+
+    recorded: dict[str, list] = {}
+
+    class _FakeTrial:
+        number = 0
+
+        def suggest_float(self, name: str, *args: object, **kwargs: object) -> float:
+            return 0.0
+
+        def suggest_categorical(self, name: str, choices: list) -> object:
+            recorded[name] = list(choices)
+            return choices[0]
+
+    _suggest_trial_params(_FakeTrial())
+    assert "neftune_noise_alpha" in recorded
+    choices = recorded["neftune_noise_alpha"]
+    assert None in choices
+    assert 5.0 in choices
+    assert 10.0 in choices

@@ -216,8 +216,8 @@ def _build_training_dataset(
     """
     from typing import Literal, cast  # noqa: PLC0415
 
-    from model_training.d2l_data import (  # noqa: PLC0415
-        load_jsonl,
+    from model_training.d2l_data import load_jsonl  # noqa: PLC0415
+    from model_training.d2l_data import (  # type: ignore[attr-defined]  # noqa: PLC0415
         pairs_to_chat_messages,
     )
     from model_training.trajectory import (  # noqa: PLC0415
@@ -296,6 +296,45 @@ def _construct_sft_trainer(
     return trainer
 
 
+def _build_sft_config(
+    *,
+    sft_config_cls: Any,
+    output_dir: str,
+    resolved_epochs: int,
+    learning_rate: float,
+    warmup_ratio: float | None,
+    resolved_lr_sched: str,
+    resolved_grad_accum: int,
+    report_to: str,
+    diff_aware_loss: bool,
+    neftune_noise_alpha: float | None,
+) -> Any:
+    """Construct an SFTConfig with optional NEFTune support.
+
+    Extracted to keep ``train_qlora`` under the C901 complexity limit.
+    ``neftune_noise_alpha`` is only passed when not None so SFTConfig's own
+    default (feature disabled) applies when the caller omits it.
+    """
+    kwargs: dict[str, Any] = {
+        "output_dir": output_dir,
+        "num_train_epochs": resolved_epochs,
+        "learning_rate": learning_rate,
+        "warmup_ratio": warmup_ratio if warmup_ratio is not None else 0.03,
+        "lr_scheduler_type": resolved_lr_sched,
+        "bf16": True,
+        "per_device_train_batch_size": 1,
+        "gradient_accumulation_steps": resolved_grad_accum,
+        "save_strategy": "no",
+        "logging_steps": 1,
+        "report_to": report_to,
+        "eval_strategy": "no",
+        "assistant_only_loss": not diff_aware_loss,
+    }
+    if neftune_noise_alpha is not None:
+        kwargs["neftune_noise_alpha"] = neftune_noise_alpha
+    return sft_config_cls(**kwargs)
+
+
 def train_qlora(
     session_id: str | None,
     adapter_id: str,
@@ -320,6 +359,8 @@ def train_qlora(
     diff_unchanged_weight: float = 0.3,
     override_lora_alpha: int | None = None,
     override_lora_dropout: float | None = None,
+    warmup_ratio: float | None = None,
+    neftune_noise_alpha: float | None = None,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -387,6 +428,12 @@ def train_qlora(
             adapter's LoRA dropout probability. Applied the same way as
             ``override_lora_alpha`` — by walking the module tree and
             mutating each layer's ``lora_dropout[adapter_name].p``.
+        warmup_ratio: Linear warmup fraction of total training steps passed
+            to ``SFTConfig``. Defaults to ``0.03`` when ``None``.
+        neftune_noise_alpha: NEFTune noise alpha for embedding perturbation.
+            When set, passed to ``SFTConfig(neftune_noise_alpha=...)``.
+            When ``None`` (default), the kwarg is omitted so SFTConfig's
+            own default (feature disabled) applies.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -504,20 +551,17 @@ def train_qlora(
     # Training arguments. When diff_aware_loss is on, our custom collator
     # subsumes the assistant-only masking, so we disable SFTConfig's
     # own flag to avoid double-masking.
-    training_args = SFTConfig(
+    training_args = _build_sft_config(
+        sft_config_cls=SFTConfig,
         output_dir=output_dir,
-        num_train_epochs=resolved_epochs,
+        resolved_epochs=resolved_epochs,
         learning_rate=learning_rate,
-        warmup_ratio=0.03,
-        lr_scheduler_type=resolved_lr_sched,
-        bf16=True,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=resolved_grad_accum,
-        save_strategy="no",
-        logging_steps=1,
+        warmup_ratio=warmup_ratio,
+        resolved_lr_sched=resolved_lr_sched,
+        resolved_grad_accum=resolved_grad_accum,
         report_to=report_to,
-        eval_strategy="no",
-        assistant_only_loss=not diff_aware_loss,
+        diff_aware_loss=diff_aware_loss,
+        neftune_noise_alpha=neftune_noise_alpha,
     )
 
     trainer = _construct_sft_trainer(
@@ -561,6 +605,10 @@ def train_qlora(
         "override_lora_dropout": (
             override_lora_dropout if override_lora_dropout is not None else ""
         ),
+        "warmup_ratio": warmup_ratio if warmup_ratio is not None else 0.03,
+        "neftune_noise_alpha": (
+            neftune_noise_alpha if neftune_noise_alpha is not None else ""
+        ),
     }
     with mlflow_run(
         enabled=mlflow_enabled,
@@ -602,6 +650,8 @@ def train_and_register(
     diff_unchanged_weight: float = 0.3,
     override_lora_alpha: int | None = None,
     override_lora_dropout: float | None = None,
+    warmup_ratio: float | None = None,
+    neftune_noise_alpha: float | None = None,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -639,6 +689,10 @@ def train_and_register(
             adapter's effective alpha (module-tree walk).
         override_lora_dropout: Post-load override for the warm-start
             adapter's LoRA dropout probability.
+        warmup_ratio: Linear warmup fraction forwarded to ``train_qlora``.
+            Defaults to ``0.03`` when ``None``.
+        neftune_noise_alpha: NEFTune noise alpha forwarded to ``train_qlora``.
+            When ``None`` (default), NEFTune is disabled.
 
     Returns:
         adapter_id of the registered adapter.
@@ -704,6 +758,8 @@ def train_and_register(
         diff_unchanged_weight=diff_unchanged_weight,
         override_lora_alpha=override_lora_alpha,
         override_lora_dropout=override_lora_dropout,
+        warmup_ratio=warmup_ratio,
+        neftune_noise_alpha=neftune_noise_alpha,
     )
 
     # Compute file hash and size from the saved safetensors file

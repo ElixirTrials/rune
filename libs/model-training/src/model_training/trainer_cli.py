@@ -108,6 +108,34 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["constant", "cosine", "linear"],
         default=None,
     )
+    parser.add_argument(
+        "--warmup-ratio",
+        dest="warmup_ratio",
+        type=float,
+        default=None,
+        help="Linear warmup fraction of total steps (default: 0.03 in trainer).",
+    )
+    parser.add_argument(
+        "--override-lora-alpha",
+        dest="override_lora_alpha",
+        type=int,
+        default=None,
+        help="Post-load override for warm-start adapter's effective alpha.",
+    )
+    parser.add_argument(
+        "--override-lora-dropout",
+        dest="override_lora_dropout",
+        type=float,
+        default=None,
+        help="Post-load override for warm-start adapter's LoRA dropout probability.",
+    )
+    parser.add_argument(
+        "--neftune-noise-alpha",
+        dest="neftune_noise_alpha",
+        type=float,
+        default=None,
+        help="NEFTune noise alpha for embedding perturbation (disabled when unset).",
+    )
 
     # --- Trajectory encoding ---
     parser.add_argument(
@@ -203,6 +231,10 @@ def _resolve_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "diff_aware_loss": args.diff_aware_loss,
         "diff_changed_weight": args.diff_changed_weight,
         "diff_unchanged_weight": args.diff_unchanged_weight,
+        "warmup_ratio": args.warmup_ratio,
+        "override_lora_alpha": args.override_lora_alpha,
+        "override_lora_dropout": args.override_lora_dropout,
+        "neftune_noise_alpha": args.neftune_noise_alpha,
     }
 
 

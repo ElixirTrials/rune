@@ -219,6 +219,7 @@ module = [
     "template_library",
     "evalplus",
     "evalplus.*",
+    "run_training_hpo",
 ]
 ignore_missing_imports = true
 
