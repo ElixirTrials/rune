@@ -64,18 +64,48 @@ class FitnessConfig:
 
     The blend is::
 
-        fitness = loss_weight * (1 - normalize(eval_loss))
-                + pass_at_1_weight * pass_at_1_humaneval_smoke
+        fitness = hunk_loss_weight          * (1 - normalize(hunk_loss))
+                + hunk_accuracy_weight      * hunk_accuracy
+                + adapter_improvement_weight * max(0, adapter_improvement)
 
-    Defense: pure loss overrates trials that overfit a small subsample;
-    pure pass@1 on a 20-task smoke tier has too much variance to rank
-    trials reliably. The blend stabilizes ranking while still rewarding
-    real generation quality. Weights are exposed so operators can sweep
-    them later without code changes.
+    ``hunk_loss`` and ``hunk_accuracy`` are diff-restricted metrics: NLL and
+    top-1 accuracy computed only on assistant tokens that fall inside a
+    ``+`` / replace hunk (per :func:`model_training.diff_loss._compute_hunk_ranges`).
+    This directly rewards trials whose adapters encode the revision delta —
+    aligned with the episodic-memory thesis — instead of overrating trials
+    that minimize total loss but do not internalize the edit.
+
+    ``adapter_improvement`` is the relative reduction in hunk loss from the
+    adapter relative to the frozen base model.  When the CLI flag
+    ``--no-adapter-improvement-eval`` disables that second forward pass, the
+    weight collapses to ``0.0`` and the remaining two weights rebalance to
+    ``(0.6, 0.4)``.
     """
 
-    loss_weight: float = 0.6
-    pass_at_1_weight: float = 0.4
+    hunk_loss_weight: float = 0.5
+    hunk_accuracy_weight: float = 0.3
+    adapter_improvement_weight: float = 0.2
+
+
+def _rebalanced_fitness_config(cfg: FitnessConfig) -> FitnessConfig:
+    """Rebalance the weights when the adapter-improvement eval is disabled.
+
+    The hunk_loss and hunk_accuracy weights are renormalized so they sum to
+    ``1.0`` (defaulting to ``(0.6, 0.4)`` when the input still uses the
+    class defaults), and ``adapter_improvement_weight`` is forced to ``0.0``.
+    """
+    total = cfg.hunk_loss_weight + cfg.hunk_accuracy_weight
+    if total <= 0.0:
+        return FitnessConfig(
+            hunk_loss_weight=0.6,
+            hunk_accuracy_weight=0.4,
+            adapter_improvement_weight=0.0,
+        )
+    return FitnessConfig(
+        hunk_loss_weight=cfg.hunk_loss_weight / total,
+        hunk_accuracy_weight=cfg.hunk_accuracy_weight / total,
+        adapter_improvement_weight=0.0,
+    )
 
 
 @dataclass
@@ -87,10 +117,13 @@ class HPORunArgs:
     model_config_name: str
     warm_start: str | None
     subsample: int
-    eval_tier: str
     output_root: Path
     experiment_name: str
     keep_top_k: int
+    heldout_fraction: float = 0.1
+    heldout_strategy: str = "step_index"
+    compute_adapter_delta: bool = True
+    seed: int = 42
     extra_train_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
@@ -124,12 +157,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Records-per-trial subsample (proxy mode for L4 throughput).",
     )
     parser.add_argument(
-        "--eval-tier",
-        choices=["smoke", "mini", "none"],
-        default="smoke",
-        help="HumanEval tier for pass@1 fitness signal.",
-    )
-    parser.add_argument(
         "--output-root",
         dest="output_root",
         default="./hpo_artifacts",
@@ -153,13 +180,53 @@ def _build_parser() -> argparse.ArgumentParser:
         help="2-trial × 1-step smoke test for CI; ignores --n-trials.",
     )
     parser.add_argument(
-        "--loss-weight", dest="loss_weight", type=float, default=0.6
+        "--hunk-loss-weight",
+        dest="hunk_loss_weight",
+        type=float,
+        default=0.5,
+        help="Fitness weight for (1 - normalized hunk_loss).",
     )
     parser.add_argument(
-        "--pass-at-1-weight",
-        dest="pass_at_1_weight",
+        "--hunk-accuracy-weight",
+        dest="hunk_accuracy_weight",
         type=float,
-        default=0.4,
+        default=0.3,
+        help="Fitness weight for hunk-restricted top-1 accuracy.",
+    )
+    parser.add_argument(
+        "--adapter-improvement-weight",
+        dest="adapter_improvement_weight",
+        type=float,
+        default=0.2,
+        help="Fitness weight for adapter-vs-base hunk-loss delta.",
+    )
+    parser.add_argument(
+        "--adapter-improvement-eval",
+        dest="adapter_improvement_eval",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Enable the second forward pass with the adapter disabled to "
+            "compute the adapter-vs-base hunk-loss delta. When off, weights "
+            "rebalance to (0.6, 0.4, 0.0)."
+        ),
+    )
+    parser.add_argument(
+        "--heldout-fraction",
+        dest="heldout_fraction",
+        type=float,
+        default=0.1,
+        help="Fraction of the trial subsample reserved for held-out eval.",
+    )
+    parser.add_argument(
+        "--heldout-strategy",
+        dest="heldout_strategy",
+        choices=["step_index", "random"],
+        default="step_index",
+        help=(
+            "step_index: hold out the largest-step_index pair per sampled task. "
+            "random: hold out all pairs from a random sample of tasks."
+        ),
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="TPE sampler seed."
@@ -281,43 +348,224 @@ def _eval_loss_from_trainer_state(output_dir: str) -> float:
     return losses[-1] if losses else float("inf")
 
 
-def _pass_at_1_humaneval(adapter_dir: str, tier: str) -> float:
-    """Run HumanEval at the requested tier against ``adapter_dir``.
+def _load_pairs_jsonl(path: str) -> list[dict[str, Any]]:
+    """Read a pairs JSONL into a list of dicts (stdlib only, CPU-safe)."""
+    out: list[dict[str, Any]] = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            out.append(json.loads(line))
+    return out
 
-    Returns ``0.0`` when the eval infrastructure is unavailable or the
-    tier is ``none``. Kept deliberately minimal — the production path
-    can plug in ``evaluation.metrics.run_humaneval_subset`` once the
-    loader accepts an adapter directory directly.
+
+def _stratify_heldout_split(
+    pairs: list[dict[str, Any]],
+    *,
+    fraction: float,
+    strategy: str,
+    seed: int = 42,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split pairs into (train, heldout) with no task_id leakage.
+
+    ``step_index``: pick ``max(1, ⌈fraction * N_tasks⌉)`` tasks; for each,
+    move the pair with the largest ``metadata.step_index`` into heldout and
+    leave the earlier steps in train.  Training never sees a held-out task's
+    terminal revision, so there is no pair-level leakage.
+
+    ``random``: pick ``max(1, ⌈fraction * N_tasks⌉)`` tasks and move *all*
+    of their pairs into heldout.  Task-level partitioning; the train and
+    eval splits have disjoint ``source_task_id`` sets.
     """
-    if tier == "none":
-        return 0.0
-    try:
-        pass
-    except ImportError:
-        return 0.0
-    # Placeholder until an adapter-aware HumanEval path exists in the
-    # evaluation package. Returning 0.0 makes the fitness fall back
-    # entirely on loss-weight, which is still meaningful for ranking.
-    logger.warning(
-        "pass@1 eval not yet wired through evaluation.metrics — falling back to 0.0"
+    import math  # noqa: PLC0415
+    import random as _rand  # noqa: PLC0415
+    from collections import defaultdict  # noqa: PLC0415
+
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for p in pairs:
+        meta = p.get("metadata") or {}
+        tid = meta.get("source_task_id") or p.get("task_id", "")
+        groups[str(tid)].append(p)
+
+    task_ids = sorted(groups.keys())
+    rng = _rand.Random(seed)
+    rng.shuffle(task_ids)
+    n_heldout = max(1, math.ceil(len(task_ids) * fraction)) if task_ids else 0
+    heldout_task_ids = set(task_ids[:n_heldout])
+
+    train: list[dict[str, Any]] = []
+    heldout: list[dict[str, Any]] = []
+
+    for tid, group in groups.items():
+        if tid not in heldout_task_ids:
+            train.extend(group)
+            continue
+        if strategy == "step_index":
+            ordered = sorted(
+                group,
+                key=lambda p: (p.get("metadata") or {}).get("step_index", 0),
+            )
+            # Terminal revision → heldout; earlier steps stay in train.
+            heldout.append(ordered[-1])
+            train.extend(ordered[:-1])
+        else:  # random
+            heldout.extend(group)
+    return train, heldout
+
+
+def _evaluate_adapter_on_heldout(
+    adapter_path: str,
+    pairs: list[dict[str, Any]],
+    *,
+    base_model_id: str,
+    compute_adapter_delta: bool = True,
+) -> dict[str, float]:
+    """Teacher-forced hunk-restricted LM eval on a heldout pair split.
+
+    For each pair, we compute + / replace hunk character ranges via
+    :func:`model_training.diff_loss._compute_hunk_ranges`, tokenize the
+    full ``teacher_text`` with ``return_offsets_mapping=True``, and shift
+    the hunk ranges into the teacher-text coordinate system so the
+    character→token mapping stays correct.  Metrics aggregate only over
+    assistant tokens whose offset intersects a hunk range:
+
+    - ``hunk_loss``: mean NLL over hunk tokens (lower is better).
+    - ``hunk_accuracy``: mean top-1 accuracy over hunk tokens.
+    - ``hunk_entropy``: mean predictive entropy over hunk tokens
+      (diagnostic; not in the fitness blend).
+    - ``adapter_improvement``: ``1 - (adapter_hunk_loss / base_hunk_loss)``
+      when ``compute_adapter_delta=True``, else ``0.0``.  Positive means
+      the adapter reduces hunk loss relative to the frozen base model.
+
+    Returns all zeros when ``pairs`` is empty — lets upstream code call us
+    blindly without guarding.
+    """
+    if not pairs:
+        return {
+            "hunk_loss": 0.0,
+            "hunk_accuracy": 0.0,
+            "adapter_improvement": 0.0,
+            "hunk_entropy": 0.0,
+        }
+
+    # Deferred GPU imports keep the module CPU-importable (INFRA-05).
+    import math  # noqa: PLC0415
+
+    import torch  # noqa: PLC0415
+    from model_training.d2l_data import (  # noqa: PLC0415
+        _extract_post_revision,
+        _extract_pre_revision,
     )
-    return 0.0
+    from model_training.diff_loss import _compute_hunk_ranges  # noqa: PLC0415
+    from peft import PeftModel  # noqa: PLC0415
+    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+    tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+    base_model = AutoModelForCausalLM.from_pretrained(base_model_id)
+    adapter_model = PeftModel.from_pretrained(base_model, adapter_path)
+    adapter_model.eval()
+
+    def _forward_hunk_metrics(model: Any, disable: bool) -> tuple[float, float, float, int]:
+        total_loss = 0.0
+        total_acc = 0.0
+        total_ent = 0.0
+        total_tok = 0
+
+        cm = model.disable_adapter() if disable else _NullContext()
+        with cm, torch.no_grad():
+            for pair in pairs:
+                act = pair.get("activation_text", "")
+                teach = pair.get("teacher_text", "")
+                pre = _extract_pre_revision(act)
+                post = _extract_post_revision(act, teach)
+                if not post:
+                    continue
+                hunks = _compute_hunk_ranges(pre, post)
+                if not hunks:
+                    continue
+                post_start = teach.rfind(post)
+                if post_start == -1:
+                    continue
+                shifted = [(s + post_start, e + post_start) for s, e in hunks]
+
+                enc = tokenizer(teach, return_offsets_mapping=True, return_tensors="pt")
+                input_ids = enc["input_ids"].to(model.device)
+                offsets = enc["offset_mapping"][0].tolist()
+
+                logits = model(input_ids=input_ids).logits[0]
+                shift_logits = logits[:-1]
+                shift_ids = input_ids[0][1:]
+                log_probs = torch.log_softmax(shift_logits, dim=-1)
+                probs = log_probs.exp()
+
+                for i in range(shift_logits.size(0)):
+                    tok_offset = offsets[i + 1]
+                    ts, te = tok_offset
+                    if ts == 0 and te == 0:
+                        continue
+                    in_hunk = any(ts < he and te > hs for hs, he in shifted)
+                    if not in_hunk:
+                        continue
+                    tgt = int(shift_ids[i].item())
+                    nll = -float(log_probs[i, tgt].item())
+                    pred = int(shift_logits[i].argmax().item())
+                    ent = float(-(probs[i] * log_probs[i]).sum().item())
+                    total_loss += nll
+                    total_acc += 1.0 if pred == tgt else 0.0
+                    total_ent += ent
+                    total_tok += 1
+        if total_tok == 0:
+            return 0.0, 0.0, 0.0, 0
+        return total_loss / total_tok, total_acc / total_tok, total_ent / total_tok, total_tok
+
+    # Adapter-active pass.
+    hunk_loss, hunk_acc, hunk_ent, n_tok = _forward_hunk_metrics(
+        adapter_model, disable=False
+    )
+
+    adapter_improvement = 0.0
+    if compute_adapter_delta and n_tok > 0:
+        base_loss, _, _, _ = _forward_hunk_metrics(adapter_model, disable=True)
+        if base_loss > 0.0 and math.isfinite(base_loss):
+            adapter_improvement = 1.0 - (hunk_loss / base_loss)
+
+    return {
+        "hunk_loss": float(hunk_loss),
+        "hunk_accuracy": float(hunk_acc),
+        "adapter_improvement": float(adapter_improvement),
+        "hunk_entropy": float(hunk_ent),
+    }
+
+
+class _NullContext:  # pragma: no cover - trivial
+    """Minimal stdlib-free ``contextlib.nullcontext`` clone for the forward pass."""
+
+    def __enter__(self) -> _NullContext:
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        return None
 
 
 def _compute_fitness(
-    eval_loss: float,
-    pass_at_1: float,
+    hunk_loss: float,
+    hunk_accuracy: float,
+    adapter_improvement: float,
     *,
     prior_losses: list[float],
     cfg: FitnessConfig,
 ) -> float:
-    """Blend normalized eval loss with pass@1 into a single scalar.
+    """Blend hunk_loss / hunk_accuracy / adapter_improvement into one scalar.
 
-    Normalization is min-max across the study's completed trials; with
-    fewer than 3 priors we fall back to ``0.5`` so the loss term
-    contributes a stable baseline instead of dominating early trials.
+    Normalization is min-max across the study's completed trials' hunk
+    losses; with fewer than 3 priors we fall back to ``0.5`` so the loss
+    term contributes a stable baseline instead of dominating early trials.
+    ``adapter_improvement`` is floored at ``0.0`` — a regressing adapter
+    earns zero credit, not a negative penalty, so retained-top-K ranking
+    stays sane when the base model happens to win on a single pair.
     """
-    if len(prior_losses) < 3 or eval_loss == float("inf"):
+    if len(prior_losses) < 3 or hunk_loss == float("inf"):
         loss_norm = 0.5
     else:
         lo = min(prior_losses)
@@ -325,9 +573,14 @@ def _compute_fitness(
         if hi == lo:
             loss_norm = 0.5
         else:
-            loss_norm = (eval_loss - lo) / (hi - lo)
+            loss_norm = (hunk_loss - lo) / (hi - lo)
             loss_norm = max(0.0, min(1.0, loss_norm))
-    return cfg.loss_weight * (1.0 - loss_norm) + cfg.pass_at_1_weight * pass_at_1
+    delta = max(0.0, adapter_improvement)
+    return (
+        cfg.hunk_loss_weight * (1.0 - loss_norm)
+        + cfg.hunk_accuracy_weight * hunk_accuracy
+        + cfg.adapter_improvement_weight * delta
+    )
 
 
 def _run_single_trial(
@@ -348,6 +601,27 @@ def _run_single_trial(
         Path(run_args.dataset), run_args.subsample, trial_dataset
     )
     logger.info("Trial %d subsample size: %d records", trial.number, n)
+
+    # Split the trial subsample into train / heldout with no task leakage.
+    full_pairs = _load_pairs_jsonl(str(trial_dataset))
+    train_pairs, heldout_pairs = _stratify_heldout_split(
+        full_pairs,
+        fraction=run_args.heldout_fraction,
+        strategy=run_args.heldout_strategy,
+        seed=run_args.seed + trial.number,
+    )
+    # Overwrite the trial dataset with the train split so the trainer
+    # never sees the heldout pairs.
+    with trial_dataset.open("w", encoding="utf-8") as fh:
+        for rec in train_pairs:
+            fh.write(json.dumps(rec) + "\n")
+    logger.info(
+        "Trial %d heldout split: train=%d heldout=%d strategy=%s",
+        trial.number,
+        len(train_pairs),
+        len(heldout_pairs),
+        run_args.heldout_strategy,
+    )
 
     adapter_id = f"{run_args.adapter_id_prefix}-t{trial.number:03d}"
     kwargs = _build_trial_kwargs(
@@ -378,19 +652,56 @@ def _run_single_trial(
     adapter_output_dir = str(
         Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id
     )
-    eval_loss = _eval_loss_from_trainer_state(adapter_output_dir)
-    pass_at_1 = _pass_at_1_humaneval(adapter_output_dir, run_args.eval_tier)
+
+    # Resolve base model ID the same way train_and_register does.
+    base_model_id = kwargs.get("base_model_id") or os.environ.get(
+        "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
+    )
+    try:
+        eval_metrics = _evaluate_adapter_on_heldout(
+            adapter_output_dir,
+            heldout_pairs,
+            base_model_id=base_model_id,
+            compute_adapter_delta=run_args.compute_adapter_delta,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Trial %d heldout eval crashed: %s", trial.number, exc)
+        eval_metrics = {
+            "hunk_loss": float("inf"),
+            "hunk_accuracy": 0.0,
+            "adapter_improvement": 0.0,
+            "hunk_entropy": 0.0,
+        }
+
+    # Log diagnostic metrics to MLflow when available (silent no-op otherwise).
+    try:
+        import mlflow  # noqa: PLC0415
+
+        if mlflow.active_run() is not None:
+            mlflow.log_metrics(
+                {f"eval/{k}": v for k, v in eval_metrics.items()},
+                step=trial.number,
+            )
+    except ImportError:
+        pass
+
     fitness = _compute_fitness(
-        eval_loss, pass_at_1, prior_losses=prior_losses, cfg=fitness_cfg
+        eval_metrics["hunk_loss"],
+        eval_metrics["hunk_accuracy"],
+        eval_metrics["adapter_improvement"],
+        prior_losses=prior_losses,
+        cfg=fitness_cfg,
     )
     logger.info(
-        "Trial %d eval_loss=%.4f pass@1=%.3f fitness=%.4f",
+        "Trial %d hunk_loss=%.4f hunk_acc=%.3f adapter_imp=%.3f entropy=%.3f fitness=%.4f",
         trial.number,
-        eval_loss,
-        pass_at_1,
+        eval_metrics["hunk_loss"],
+        eval_metrics["hunk_accuracy"],
+        eval_metrics["adapter_improvement"],
+        eval_metrics["hunk_entropy"],
         fitness,
     )
-    prior_losses.append(eval_loss)
+    prior_losses.append(eval_metrics["hunk_loss"])
     return fitness
 
 
@@ -436,14 +747,21 @@ def main(argv: list[str] | None = None) -> int:
         model_config_name=args.model_config_name,
         warm_start=args.warm_start,
         subsample=args.subsample if not args.smoke else 4,
-        eval_tier=args.eval_tier,
         output_root=output_root,
         experiment_name=args.experiment_name,
         keep_top_k=args.keep_top_k,
+        heldout_fraction=args.heldout_fraction,
+        heldout_strategy=args.heldout_strategy,
+        compute_adapter_delta=args.adapter_improvement_eval,
+        seed=args.seed,
     )
     fitness_cfg = FitnessConfig(
-        loss_weight=args.loss_weight, pass_at_1_weight=args.pass_at_1_weight
+        hunk_loss_weight=args.hunk_loss_weight,
+        hunk_accuracy_weight=args.hunk_accuracy_weight,
+        adapter_improvement_weight=args.adapter_improvement_weight,
     )
+    if not args.adapter_improvement_eval:
+        fitness_cfg = _rebalanced_fitness_config(fitness_cfg)
     n_trials = 2 if args.smoke else args.n_trials
 
     plan = {
@@ -455,11 +773,20 @@ def main(argv: list[str] | None = None) -> int:
         "model_config_name": run_args.model_config_name,
         "warm_start": run_args.warm_start,
         "output_root": str(run_args.output_root),
+        "fitness_formula": (
+            "w_L * (1 - norm(hunk_loss)) + w_A * hunk_accuracy "
+            "+ w_D * max(0, adapter_improvement)"
+        ),
         "fitness": {
-            "loss_weight": fitness_cfg.loss_weight,
-            "pass_at_1_weight": fitness_cfg.pass_at_1_weight,
+            "hunk_loss_weight": fitness_cfg.hunk_loss_weight,
+            "hunk_accuracy_weight": fitness_cfg.hunk_accuracy_weight,
+            "adapter_improvement_weight": fitness_cfg.adapter_improvement_weight,
         },
-        "eval_tier": run_args.eval_tier,
+        "heldout": {
+            "fraction": run_args.heldout_fraction,
+            "strategy": run_args.heldout_strategy,
+            "adapter_improvement_eval": run_args.compute_adapter_delta,
+        },
         "keep_top_k": run_args.keep_top_k,
     }
     print(json.dumps(plan, indent=2, sort_keys=True))
