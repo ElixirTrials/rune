@@ -207,17 +207,25 @@ def _build_training_dataset(
     session_id: str | None,
     dataset_path: str | None,
     encoding_mode: str,
+    diff_aware_loss: bool = False,
 ) -> Any:
     """Build an SFT ``Dataset`` from either a mined-pairs JSONL or a trajectory.
 
     ``dataset_cls`` is the ``datasets.Dataset`` class injected by the caller
     so this helper stays GPU-import-free at module level while still producing
     a real ``datasets.Dataset`` at call time.
+
+    When ``diff_aware_loss=True`` and ``dataset_path`` is set, ``pre_code`` and
+    ``post_code`` columns are attached alongside ``messages`` so the
+    :class:`~model_training.diff_loss.DiffWeightedDataCollator` hunk path can
+    compute line-level diff weights.  Trajectory-sourced datasets do not carry
+    pre/post context, so the collator will log-warn-once and fall back to the
+    legacy set-based path.
     """
     from typing import Literal, cast  # noqa: PLC0415
 
-    from model_training.d2l_data import load_jsonl  # noqa: PLC0415
     from model_training.d2l_data import (  # type: ignore[attr-defined]  # noqa: PLC0415
+        load_jsonl,  # noqa: PLC0415
         pairs_to_chat_messages,
     )
     from model_training.trajectory import (  # noqa: PLC0415
@@ -228,10 +236,21 @@ def _build_training_dataset(
     if dataset_path is not None:
         pairs = load_jsonl(dataset_path)
         mode = cast(Literal["multi_turn", "single_turn"], encoding_mode)
-        conversations, _pre_post = pairs_to_chat_messages(pairs, mode=mode)
+        conversations, pre_post = pairs_to_chat_messages(pairs, mode=mode)
         if not conversations:
             raise ValueError(
                 f"dataset_path {dataset_path} produced no SFT conversations"
+            )
+        if diff_aware_loss:
+            return dataset_cls.from_list(
+                [
+                    {
+                        "messages": c,
+                        "pre_code": pp["pre_code"],
+                        "post_code": pp["post_code"],
+                    }
+                    for c, pp in zip(conversations, pre_post)
+                ]
             )
         return dataset_cls.from_list([{"messages": c} for c in conversations])
 
@@ -275,11 +294,10 @@ def _construct_sft_trainer(
         )
 
     from model_training.diff_loss import (  # noqa: PLC0415
-        DiffWeightedDataCollator,
         build_diff_aware_sft_trainer,
     )
 
-    trainer = build_diff_aware_sft_trainer(
+    return build_diff_aware_sft_trainer(
         model=model,
         args=args,
         train_dataset=dataset,
@@ -287,13 +305,8 @@ def _construct_sft_trainer(
         peft_config=lora_config,
         changed_weight=diff_changed_weight,
         unchanged_weight=diff_unchanged_weight,
+        tokenizer=tokenizer,
     )
-    trainer.data_collator = DiffWeightedDataCollator(
-        trainer.data_collator,
-        changed_weight=diff_changed_weight,
-        unchanged_weight=diff_unchanged_weight,
-    )
-    return trainer
 
 
 def _build_sft_config(
@@ -332,6 +345,10 @@ def _build_sft_config(
     }
     if neftune_noise_alpha is not None:
         kwargs["neftune_noise_alpha"] = neftune_noise_alpha
+    if diff_aware_loss:
+        # TRL strips unknown columns by default; keep pre_code / post_code
+        # so the hunk-path collator can see them.
+        kwargs["remove_unused_columns"] = False
     return sft_config_cls(**kwargs)
 
 
@@ -484,6 +501,7 @@ def train_qlora(
         session_id=session_id,
         dataset_path=dataset_path,
         encoding_mode=encoding_mode,
+        diff_aware_loss=diff_aware_loss,
     )
 
     # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss)
