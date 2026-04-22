@@ -1,0 +1,25 @@
+/superpowers:brainstorming Consider this branch and it's associated PR. Go over the docs. And go over the specific parts of the code that were materially changed. Then interview about our goals and objectives. Finally, write a report on how close this PR is optimally positioned to achieve those objectives. Iterate on the interview until you are >95% certain to understand our objectives.
+
+---
+
+E. I want to build hypernetwork adapters that are pre-trained such that they optimally capture "where we are, what we tried and where we are headed" for any project. The idea is to ultamitely have hypernetworks that I can use to encode procedural memory in each step of an iterative long running coding project. We want these adapters so we can provide all the information to an SLM necessary for each step and achieve LLM performance even with a small context window.
+
+---
+
+D. Look at the Sakana Doc-to-LoRA strategy - specifically how they get their hypernetworks. We want to adapt their idea to use hypernetworks for procedural episodic memory (embedding task trajectory). This PR sets up the training we need to do to get there.
+
+---
+
+E. Certainly the HPO getting the training optimal is part of the goal. But our real goal is to adopt the best strategy so we have the best working hypernetworks for our overall goals. Let's take a lesson from Sakana (research his paper on Doc-to lora using a subagent) and then give me a recommended answer to your own question.
+
+---
+
+D. We know Doc-to-Lora works for passing information about documents to an SLM without using context. Here we want to guide code generation by providing context through the same hypernetworks. Therefore, it seems reasonable, that our scale weights will be much smaller, but our overall training strategy should be consistent. Or at the minimum have a strong justification for deviating from what we know works. Consider, research and suggest.
+
+---
+
+A but do the sanity checks you recommend.
+
+---
+
+Write a machine readable report, like a jsonl or yaml, keep it concise, with no extra verbiage. Enough that we can use it in a clean session to improve our PR.
