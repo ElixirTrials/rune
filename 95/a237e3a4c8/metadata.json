@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "95a237e3a4c8",
+  "strategy": "manual-commit",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "libs/corpus-producer/src/corpus_producer/success_filter.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/95/a237e3a4c8/0/metadata.json",
+      "transcript": "/95/a237e3a4c8/0/full.jsonl",
+      "content_hash": "/95/a237e3a4c8/0/content_hash.txt",
+      "prompt": "/95/a237e3a4c8/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 104,
+    "cache_creation_tokens": 153254,
+    "cache_read_tokens": 5656947,
+    "output_tokens": 42763,
+    "api_call_count": 56
+  }
+}
