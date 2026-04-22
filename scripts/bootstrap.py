@@ -25,6 +25,7 @@ _WORKSPACE_SRC_DIRS = [
     "libs/shared/src",
     "libs/model-training/src",
     "libs/adapter-registry/src",
+    "libs/corpus-producer/src",
     "libs/evaluation/src",
 ]
 

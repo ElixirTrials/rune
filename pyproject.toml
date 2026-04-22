@@ -153,6 +153,8 @@ ignore_missing_imports = true
 module = [
     "adapter_registry",
     "adapter_registry.*",
+    "corpus_producer",
+    "corpus_producer.*",
     "evolution_svc",
     "evolution_svc.*",
     "model_training",
