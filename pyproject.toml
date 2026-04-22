@@ -87,6 +87,7 @@ members = [
     "libs/model-training",
     "libs/shared",
     "libs/adapter-registry",
+    "libs/corpus-producer",
 ]
 
 [tool.uv]
@@ -247,6 +248,7 @@ pythonpath = [
     "services/rune-agent/src",
     "services/training-svc/src",
     "libs/adapter-registry/src",
+    "libs/corpus-producer/src",
     "libs/evaluation/src",
     "libs/events-py/src",
     "libs/inference/src",
