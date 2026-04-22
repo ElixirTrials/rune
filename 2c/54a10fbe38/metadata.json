@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "2c54a10fbe38",
+  "strategy": "manual-commit",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "scripts/optimization/run_training_hpo.py",
+    "scripts/optimization/tests/test_training_hpo.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2c/54a10fbe38/0/metadata.json",
+      "transcript": "/2c/54a10fbe38/0/full.jsonl",
+      "content_hash": "/2c/54a10fbe38/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 75,
+    "cache_creation_tokens": 47060,
+    "cache_read_tokens": 2791987,
+    "output_tokens": 25877,
+    "api_call_count": 20
+  }
+}
