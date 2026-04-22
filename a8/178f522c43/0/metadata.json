@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "a8178f522c43",
+  "session_id": "ae9e33d2-bead-4b95-a408-f0635bc64994",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-22T10:58:23.357709Z",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "libs/model-training/src/model_training/reconstruction/task_embeddings.py",
+    "libs/model-training/tests/test_reconstruction_task_embeddings.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7",
+  "turn_id": "1c6e37b3bdb8",
+  "token_usage": {
+    "input_tokens": 190,
+    "cache_creation_tokens": 382410,
+    "cache_read_tokens": 6614415,
+    "output_tokens": 103413,
+    "api_call_count": 75
+  },
+  "session_metrics": {
+    "turn_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-22T10:58:22.920892Z",
+    "agent_lines": 196,
+    "human_added": 0,
+    "human_modified": 1,
+    "human_removed": 2,
+    "total_committed": 197,
+    "agent_percentage": 99.49238578680203
+  }
+}
