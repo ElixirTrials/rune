@@ -64,12 +64,11 @@ def test_dataset_skips_rows_missing_post_code(tmp_path: Path) -> None:
 
 def test_collator_returns_tokenized_batch(tmp_path: Path) -> None:
     """ContrastiveCollator tokenizes anchors and positives into input_ids."""
-    from transformers import AutoTokenizer
-
     from model_training.encoder_pretrain.dataset import (
         ContrastiveCollator,
         ContrastivePairDataset,
     )
+    from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(
         "sentence-transformers/all-mpnet-base-v2"

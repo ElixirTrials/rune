@@ -7,8 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 
 def test_dry_run_prints_json_without_torch(tmp_path: Path) -> None:
     """--dry-run must print valid JSON config without importing torch."""

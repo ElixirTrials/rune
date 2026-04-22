@@ -6,7 +6,6 @@ All tests use mocked/synthetic encoders — no GPU or network required.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -30,7 +29,7 @@ def _make_identity_model(dim: int = 16) -> Any:
         def __call__(
             self, input_ids: torch.Tensor, attention_mask: torch.Tensor
         ) -> _Output:
-            B, S = input_ids.shape
+            B, S = input_ids.shape  # noqa: N806 - ML shape convention
             # Each row i gets embedding e_i (unit vector in dim i % dim direction)
             # by broadcasting a (B, dim) tensor across the sequence length
             base = torch.zeros(B, dim)
@@ -62,7 +61,7 @@ def _make_fake_tokenizer(max_length: int = 32) -> Any:
             max_length: int = max_length,
             return_tensors: str = "pt",
         ) -> dict[str, torch.Tensor]:
-            B = len(texts)
+            B = len(texts)  # noqa: N806 - ML shape convention
             return {
                 "input_ids": torch.zeros(B, max_length, dtype=torch.long),
                 "attention_mask": torch.ones(B, max_length, dtype=torch.long),
@@ -130,7 +129,6 @@ def test_run_retrieval_eval_returns_zero_for_empty() -> None:
 
 def test_run_retrieval_eval_perfect_recall_for_identical_pairs() -> None:
     """When anchor and positive are identical texts, recall@1 should be 1.0."""
-    import torch
     from model_training.encoder_pretrain.eval_encoder import run_retrieval_eval
 
     # Use a model that returns the same embedding for any input (degenerate, but

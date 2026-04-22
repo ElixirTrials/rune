@@ -275,7 +275,9 @@ def test_e2e_manifest_points_at_adapters_that_extract_to_t2l_shape(
     # Re-extract one oracle and confirm the T2L shape contract holds.
     first_adapter = Path(manifest.records[0].adapter_path)
     sd = load_adapter_state_dict(first_adapter)
-    per_mod = extract_lora_ab_from_state_dict(sd, target_modules=manifest.target_modules)
+    per_mod = extract_lora_ab_from_state_dict(
+        sd, target_modules=manifest.target_modules
+    )
     for module in manifest.target_modules:
         assert per_mod[module]["A"].shape == (len(layer_indices), rank, in_features)
         assert per_mod[module]["B"].shape == (len(layer_indices), out_features, rank)

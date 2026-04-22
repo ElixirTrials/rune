@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from model_training.encoder_pretrain.augment import (
     _select_task_desc,
     augment_pairs_with_task_desc,
@@ -25,7 +24,8 @@ def _pair(**overrides: Any) -> dict[str, Any]:
         "task_id": "pr_001",
         "activation_text": "## Task\n\n## Current Code\ndef foo(): pass",
         "teacher_text": (
-            "## Task\n\n## Current Code\ndef foo(): pass\n\n## Revision\ndef foo(): return 1"
+            "## Task\n\n## Current Code\ndef foo(): pass\n\n"
+            "## Revision\ndef foo(): return 1"
         ),
         "metadata": {
             "source_task_id": "pr_001",

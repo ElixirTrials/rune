@@ -37,7 +37,6 @@ FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
 os.environ["HF_DATASETS_OFFLINE"] = "0"
 
 import datasets  # noqa: E402
-import pandas as pd  # noqa: E402
 
 
 def save_mini(
