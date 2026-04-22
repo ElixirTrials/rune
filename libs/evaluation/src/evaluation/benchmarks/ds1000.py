@@ -111,7 +111,7 @@ class DS1000Adapter:
         """Load from local parquet fixture."""
         import pandas as pd
 
-        records: list[dict[str, Any]] = pd.read_parquet(self._fixture_path).to_dict(
+        records: list[dict[Any, Any]] = pd.read_parquet(self._fixture_path).to_dict(
             orient="records"
         )
         return records

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from evaluation.benchmarks.aggregator import pass_at_1_from_verdicts
 from evaluation.benchmarks.protocol import PassVerdict
 
@@ -60,7 +59,11 @@ def test_golden_4_of_5() -> None:
 def test_timed_out_counts_as_fail() -> None:
     """Timed-out verdicts count as failures in the aggregation."""
     verdicts = [
-        PassVerdict(problem_id="a", passed=False, generation="", error="timeout", timed_out=True),
-        PassVerdict(problem_id="b", passed=True, generation="ok", error=None, timed_out=False),
+        PassVerdict(
+            problem_id="a", passed=False, generation="", error="timeout", timed_out=True
+        ),
+        PassVerdict(
+            problem_id="b", passed=True, generation="ok", error=None, timed_out=False
+        ),
     ]
     assert pass_at_1_from_verdicts(verdicts) == 0.5

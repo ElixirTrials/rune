@@ -137,7 +137,7 @@ class HumanEvalAdapter:
         import pandas as pd  # noqa: PLC0415
 
         df = pd.read_parquet(self._fixture_path)
-        records: list[dict[str, Any]] = df.to_dict(orient="records")
+        records: list[dict[Any, Any]] = df.to_dict(orient="records")
         return records
 
     def _row_to_problem(self, row: dict[str, Any]) -> Problem:

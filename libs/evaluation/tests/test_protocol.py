@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from evaluation.benchmarks.protocol import (
     BenchmarkConfig,
     BenchmarkResult,
@@ -97,10 +96,18 @@ def test_benchmark_config_custom() -> None:
 def test_benchmark_result_pass_at_1() -> None:
     """BenchmarkResult.pass_at_1 returns correct fraction."""
     verdicts = [
-        PassVerdict(problem_id="a", passed=True, generation="", error=None, timed_out=False),
-        PassVerdict(problem_id="b", passed=True, generation="", error=None, timed_out=False),
-        PassVerdict(problem_id="c", passed=False, generation="", error="err", timed_out=False),
-        PassVerdict(problem_id="d", passed=False, generation="", error="err", timed_out=False),
+        PassVerdict(
+            problem_id="a", passed=True, generation="", error=None, timed_out=False
+        ),
+        PassVerdict(
+            problem_id="b", passed=True, generation="", error=None, timed_out=False
+        ),
+        PassVerdict(
+            problem_id="c", passed=False, generation="", error="err", timed_out=False
+        ),
+        PassVerdict(
+            problem_id="d", passed=False, generation="", error="err", timed_out=False
+        ),
     ]
     result = BenchmarkResult(benchmark_id="humaneval", verdicts=verdicts)
     assert result.pass_at_1 == 0.5

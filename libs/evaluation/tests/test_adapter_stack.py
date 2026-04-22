@@ -18,7 +18,7 @@ def _make_mock_registry(records: list[MagicMock]) -> MagicMock:
 
 
 def test_load_adapter_stack_empty_adapter_ids() -> None:
-    """load_adapter_stack with no adapter_ids returns an AdapterStack with empty list."""
+    """load_adapter_stack with no adapter_ids returns AdapterStack with empty list."""
     provider = MagicMock()
     stack = load_adapter_stack(
         base_model="Qwen/Qwen3.5-9B",

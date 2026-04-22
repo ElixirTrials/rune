@@ -48,5 +48,7 @@ def test_score_raises_not_implemented() -> None:
     adapter = SWEBenchLiteAdapter()
     problems = adapter.load_problems()
     assert len(problems) > 0
-    with pytest.raises(NotImplementedError, match="preflight clone/apply not yet implemented"):
+    with pytest.raises(
+        NotImplementedError, match="preflight clone/apply not yet implemented"
+    ):
         adapter.score(problems[0], "some patch", timeout_s=30)
