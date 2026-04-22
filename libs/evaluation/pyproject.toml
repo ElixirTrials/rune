@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "shared",
+    "inference",
+    "adapter-registry",
     "pandas>=2.0.0",
+    "datasets>=2.19.0",
 ]
 
 [build-system]
@@ -26,16 +29,18 @@ packages = ["src/evaluation"]
 strict = true
 exclude = ["venv", ".venv", "docs"]
 plugins = []
-mypy_path = ["../shared/src"]
+mypy_path = ["../shared/src", "../inference/src", "../adapter-registry/src"]
 
 [[tool.mypy.overrides]]
 module = ["datasets", "datasets.*", "pandas", "pandas.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "../shared/src"]
+pythonpath = ["src", "../shared/src", "../inference/src", "../adapter-registry/src"]
 testpaths = ["tests"]
 addopts = "--cov=evaluation --cov-branch --cov-report=term-missing"
 
 [tool.uv.sources]
 shared = { workspace = true }
+inference = { workspace = true }
+adapter-registry = { workspace = true }
