@@ -117,12 +117,37 @@ corpus_bootstrap:
 
 hypernetwork_conditioning:
   input_composition:
-    - {name: phase_embedding, source: "learned 5-way nn.Embedding", dim: 64}
-    - {name: task_embedding,  source: "sentence-transformers/all-mpnet-base-v2 on benchmark+problem text", dim: 768}
-    - {name: trajectory_embedding, source: "sentence-transformers on concatenated prior-phase outputs; zero-vector if phase==DECOMPOSE", dim: 768}
-  total_condition_dim: 1600
+    - {name: phase_embedding,   source: "learned 5-way nn.Embedding",                                                      dim: 64}
+    - {name: context_embedding, source: "SHARED trajectory encoder on concat(task_description, prior_phase_outputs); zero-trajectory slot if phase==DECOMPOSE", dim: 768}
+  total_condition_dim: 832
   architecture: "T2L per-module MLP heads (matches Sakana hyper_llm_modulator.py)"
   forward_pass_semantics: "ONE forward pass per phase transition during inference; output is the adapter for the upcoming phase"
+  shared_encoder_rationale: >
+    Decision (2026-04-22 follow-up): single shared encoder produces both task and trajectory
+    signal; we concatenate task_description + trajectory text at encoder INPUT rather than
+    maintaining two 768-dim streams. Preserves the mining investment (see
+    trajectory_encoder_pretraining) by giving the encoder coding-aware priors. Reduces
+    hypernetwork input dim from 1600 -> 832.
+
+trajectory_encoder_pretraining:
+  purpose: "Pretrain a coding-aware text encoder that produces context_embedding for the hypernetwork, using the existing mined coding-pair corpus"
+  architecture: "Single shared encoder; same weights serve both task-description and trajectory-state embedding needs via input concatenation"
+  training_data:
+    source: "existing d2l_mining / d2l_data outputs (mined pre/post coding pairs)"
+    augmentation:
+      rule: "each mined pair is augmented with task-description prepended; encoder training input becomes (task_desc || pre_code), target becomes post_code"
+      task_desc_sources: ["repo README snippet", "commit message", "nearest docstring/TODO", "pipeline-inferred phase role label"]
+      fallback: "if no task-description can be associated, use phase-role text (decompose|plan|code|integrate|diagnose)"
+  objective: "contrastive / next-state prediction on (task_desc + pre_code, post_code) pairs"
+  reuses:
+    - libs/model-training/src/model_training/d2l_mining.py
+    - libs/model-training/src/model_training/d2l_data.py
+    - libs/model-training/src/model_training/diff_loss.py
+  output_contract:
+    artifact: "encoder checkpoint (HF-loadable repo id OR local path)"
+    consumed_by: "libs/model-training/src/model_training/reconstruction/task_embeddings.py::build_encoder via emb_model_name parameter (already pluggable; no refactor)"
+    dim: 768   # must match reconstruction builder's declared embedding dim
+  parallelism_note: "no dependency on benchmark_harness_library or phase_corpus_self_distillation_harness; can be planned and executed in parallel with them"
 
 eval_harness:
   per_oracle_validation:
@@ -160,6 +185,10 @@ gaps_blocking_terminal_goal:
   - id: benchmark_harness_library
     severity: high
     description: "Unified harness for running HumanEval/MBPP/APPS/BigCodeBench/DS-1000/LiveCodeBench Pass@1 on a (base_model, adapter_stack) pair; used both in oracle validation and hypernetwork eval"
+  - id: trajectory_encoder_pretraining
+    severity: high
+    description: "Pretrain a shared coding-aware text encoder on augmented mined pairs (task_desc + pre_code -> post_code). Encoder produces both task and trajectory context for the hypernetwork via the shared-encoder architecture; replaces the off-the-shelf sentence-transformers/all-mpnet-base-v2 baseline in reconstruction builder's emb_model_name slot"
+    replaces_baseline: "sentence-transformers/all-mpnet-base-v2 (used only as fallback)"
 
 deviations_from_t2l:
   keep:
@@ -190,6 +219,15 @@ recommended_followups:
     - action: "Build benchmark harness library (libs/evaluation/benchmarks/) supporting HumanEval/MBPP/APPS/BigCodeBench/DS-1000/LiveCodeBench Pass@1 on (model, adapter_stack) pairs"
       estimated_effort: 1-2_weeks
       blocks: [benchmark_harness_library, pass_at_1_kill_switch]
+      parallelizable_with: trajectory_encoder_pretraining
+    - action: "Pretrain shared coding-aware trajectory encoder on augmented mined pairs (task_desc + pre_code -> post_code); output is HF-loadable encoder consumed by reconstruction builder's emb_model_name slot"
+      estimated_effort: 1-2_weeks
+      blocks: [trajectory_encoder_pretraining]
+      reuses:
+        - libs/model-training/src/model_training/d2l_mining.py
+        - libs/model-training/src/model_training/d2l_data.py
+        - libs/model-training/src/model_training/diff_loss.py
+      parallelizable_with: benchmark_harness_library
     - action: "Build self-distillation phase corpus harness (scripts/phase_corpus_producer.py) + phase-aware training orchestrator"
       estimated_effort: 2-3_weeks (including GPU time for all pipeline runs)
       blocks: [phase_corpus_self_distillation_harness]
