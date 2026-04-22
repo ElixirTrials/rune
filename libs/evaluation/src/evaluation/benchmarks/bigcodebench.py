@@ -1,7 +1,11 @@
-"""MBPP benchmark adapter.
+"""BigCodeBench benchmark adapter.
 
-Loads from google-research-datasets/mbpp (full config, train split).
-MBPP test_list field contains assert statements; we join and execute them.
+Loads from bigcode/bigcodebench (v0.1.2 split, default config).
+Each problem has a complete_prompt and a test field with unittest assertions.
+
+HF dataset: bigcode/bigcodebench
+Split: v0.1.2 (verified: splits are v0.1.0_hf, v0.1.1, v0.1.2, v0.1.3, v0.1.4)
+Config: default (no config argument needed)
 """
 
 from __future__ import annotations
@@ -17,18 +21,18 @@ _DEFAULT_FIXTURE = (
     Path(__file__).parent.parent.parent.parent.parent.parent
     / "tests"
     / "fixtures"
-    / "mbpp_mini.parquet"
+    / "bigcodebench_mini.parquet"
 )
 
 
-class MBPPAdapter:
-    """Benchmark adapter for the MBPP dataset.
+class BigCodeBenchAdapter:
+    """Benchmark adapter for BigCodeBench.
 
     Attributes:
-        benchmark_id: "mbpp".
+        benchmark_id: "bigcodebench".
     """
 
-    benchmark_id: str = "mbpp"
+    benchmark_id: str = "bigcodebench"
     _fixture_path: Path = _DEFAULT_FIXTURE
 
     def load_problems(
@@ -36,7 +40,7 @@ class MBPPAdapter:
         max_samples: int | None = None,
         seed: int = 42,
     ) -> list[Problem]:
-        """Load MBPP problems.
+        """Load BigCodeBench problems.
 
         Args:
             max_samples: Cap on returned problems.
@@ -57,21 +61,19 @@ class MBPPAdapter:
         generation: str,
         timeout_s: int = 30,
     ) -> PassVerdict:
-        """Score a generation against MBPP test assertions.
+        """Score a generation against BigCodeBench test assertions.
 
         Args:
-            problem: Problem instance from load_problems().
-            generation: Model completion (function body or full function).
-            timeout_s: Sandbox timeout in seconds.
+            problem: Problem instance.
+            generation: Model's completion of the prompt.
+            timeout_s: Sandbox timeout.
 
         Returns:
             PassVerdict.
         """
         from shared.sandbox import SubprocessBackend  # deferred: INFRA-05
 
-        # MBPP prompt is a natural-language description, not Python —
-        # only generation + assertions are executed.
-        code = f"{generation}\n\n{problem.test_code}\n"
+        code = f"{problem.prompt}\n{generation}\n\n{problem.test_code}\n"
         backend = SubprocessBackend()
         result = backend.run(code, timeout=timeout_s)
         passed = result.exit_code == 0 and not result.is_timed_out
@@ -84,7 +86,7 @@ class MBPPAdapter:
         )
 
     def _load_rows(self) -> list[dict[str, Any]]:
-        """Load rows from HF or fixture."""
+        """Load rows from HF or local fixture."""
         offline = os.environ.get("HF_DATASETS_OFFLINE", "0") == "1"
         if offline:
             return self._load_from_fixture()
@@ -94,12 +96,10 @@ class MBPPAdapter:
             return self._load_from_fixture()
 
     def _load_from_hf(self) -> list[dict[str, Any]]:
-        """Load from HuggingFace datasets."""
+        """Load from HuggingFace datasets (v0.1.2 split, default config)."""
         import datasets as hf_datasets  # deferred
 
-        ds = hf_datasets.load_dataset(
-            "google-research-datasets/mbpp", "full", split="train"
-        )
+        ds = hf_datasets.load_dataset("bigcode/bigcodebench", split="v0.1.2")
         return list(ds)
 
     def _load_from_fixture(self) -> list[dict[str, Any]]:
@@ -112,15 +112,10 @@ class MBPPAdapter:
         return records
 
     def _row_to_problem(self, row: dict[str, Any]) -> Problem:
-        """Convert a raw MBPP row to a Problem instance."""
-        test_list = row.get("test_list", [])
-        if isinstance(test_list, list):
-            test_code = "\n".join(str(t) for t in test_list)
-        else:
-            test_code = str(test_list)
+        """Convert a raw BigCodeBench row to a Problem instance."""
         return Problem(
-            problem_id=f"mbpp/{row.get('task_id', '')}",
-            prompt=str(row.get("text", "")),
-            test_code=test_code,
-            metadata={"source_file": row.get("source_file", "")},
+            problem_id=f"bigcodebench/{row.get('task_id', '')}",
+            prompt=str(row.get("complete_prompt", row.get("instruct_prompt", ""))),
+            test_code=str(row.get("test", "")),
+            metadata={"libs": row.get("libs", [])},
         )
