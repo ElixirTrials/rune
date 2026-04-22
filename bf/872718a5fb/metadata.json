@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "bf872718a5fb",
+  "strategy": "manual-commit",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/model-training/src/model_training/trainer.py",
+    "libs/model-training/tests/test_build_training_dataset.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bf/872718a5fb/0/metadata.json",
+      "transcript": "/bf/872718a5fb/0/full.jsonl",
+      "content_hash": "/bf/872718a5fb/0/content_hash.txt",
+      "prompt": "/bf/872718a5fb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 78,
+    "cache_creation_tokens": 122953,
+    "cache_read_tokens": 2649220,
+    "output_tokens": 18405,
+    "api_call_count": 34
+  }
+}
