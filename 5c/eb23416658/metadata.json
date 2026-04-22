@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "5ceb23416658",
+  "strategy": "manual-commit",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/5c/eb23416658/0/metadata.json",
+      "transcript": "/5c/eb23416658/0/full.jsonl",
+      "content_hash": "/5c/eb23416658/0/content_hash.txt",
+      "prompt": "/5c/eb23416658/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 289,
+    "cache_creation_tokens": 598614,
+    "cache_read_tokens": 11421244,
+    "output_tokens": 158548,
+    "api_call_count": 115
+  }
+}
