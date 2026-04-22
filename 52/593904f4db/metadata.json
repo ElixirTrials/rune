@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "52593904f4db",
+  "strategy": "manual-commit",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "docs/superpowers/specs/2026-04-22-pr-28-training-upgrade-fit-assessment.yaml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/52/593904f4db/0/metadata.json",
+      "transcript": "/52/593904f4db/0/full.jsonl",
+      "content_hash": "/52/593904f4db/0/content_hash.txt",
+      "prompt": "/52/593904f4db/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 280,
+    "cache_creation_tokens": 559567,
+    "cache_read_tokens": 11019426,
+    "output_tokens": 151145,
+    "api_call_count": 111
+  }
+}
