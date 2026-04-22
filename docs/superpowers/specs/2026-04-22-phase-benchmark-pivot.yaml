@@ -1,0 +1,251 @@
+meta:
+  date: 2026-04-22
+  title: "Phase-benchmark oracle pivot: replace per-(task,step) corpus with (5 phases x ~6 benchmarks) + self-distillation bootstrap"
+  supersedes_sections_of:
+    file: docs/superpowers/specs/2026-04-22-pr-28-training-upgrade-fit-assessment.yaml
+    sections:
+      - objective.terminal_goal      # refines episodic-memory claim to phase granularity
+      - objective.training_mode_chosen
+      - objective.rationale
+      - deviations_from_t2l.keep.multi_step_trajectory_conditioning   # removed
+      - gaps_blocking_terminal_goal.oracle_corpus_breadth             # rescoped
+      - recommended_followups.priority_p0                             # reshuffled
+  status: active_spec
+  authored_by: noah+claude brainstorming session continuation
+  adjacent_completed_work:
+    - {ref: docs/superpowers/plans/2026-04-22-reconstruction-dataset-builder.md, status: landed}
+    - {commit_range: "9f3ceec..8f64491", summary: "T2L reconstruction dataset builder subpackage; 42 tests; oracle-source-agnostic"}
+
+objective:
+  terminal_goal: >
+    Sakana-style Doc-to-LoRA hypernetwork that emits PHASE-SPECIALIZED LoRA adapters
+    conditioned on (phase_id, task_description, trajectory_state_so_far), where phase
+    is one of Rune's 5 pipeline roles (decompose, plan, code, integrate, diagnose).
+    Each forward pass through the hypernetwork produces the adapter for the CURRENT
+    phase given the TRAJECTORY ACCUMULATED SO FAR. This is "episodic memory in weight
+    space" discretized at phase granularity rather than at arbitrary trajectory
+    timestamps.
+  training_mode_chosen: phase_benchmark_reconstruction_with_self_distillation
+  rationale: >
+    Reconstruction (L1 on oracle A/B matrices) is Sakana's validated path; we keep
+    it. We replace "N tasks x K trajectory ticks" (unbounded corpus, fuzzy step
+    semantics, no natively labeled training data) with "5 phases x ~6 coding
+    benchmarks" (bounded 30-oracle corpus, crisp phase semantics, self-distillation
+    data bootstrap via Pass@1 filtering). The phase axis preserves episodic memory
+    as weight-space specialization per pipeline role; the benchmark axis gives
+    native evaluability and direct Report_2 kill-switch wiring.
+  non_goals:
+    - tick_grained_trajectory_oracles    # dropped; phase-grained is sufficient
+    - pure_sft_from_scratch              # reconstruction first per Sakana precedent
+    - manual_phase_output_labeling       # self-distillation eliminates this
+
+phase_taxonomy:
+  source_of_truth: libs/shared/src/shared/rune_models.py::PipelinePhase
+  existing_values: [DECOMPOSE, PLAN, CODE, INTEGRATE]
+  to_add: [DIAGNOSE]                      # currently implemented via templates + scripts but not enumerated
+  per_phase_templates:
+    decompose: libs/shared/src/shared/templates/decompose.j2
+    plan:      libs/shared/src/shared/templates/plan.j2
+    code:      libs/shared/src/shared/templates/code.j2
+    integrate: libs/shared/src/shared/templates/integrate.j2
+    diagnose:  libs/shared/src/shared/templates/diagnose.j2
+  role_descriptions:
+    decompose: "Break task into subtasks with [depends: N] declarations"
+    plan:      "Per subtask, specify interfaces and approach"
+    code:      "Implement subtask given predecessor interfaces (DAG-ordered)"
+    integrate: "Combine subtask outputs into cohesive deliverable"
+    diagnose:  "On failure, produce concise fix instruction for downstream repair"
+
+benchmark_selection:
+  training_oracles:
+    - {id: humaneval,      split: test,     n_problems: 164,  level: elementary}
+    - {id: mbpp,           split: train,    n_problems: 374,  level: basic}
+    - {id: apps,           split: train,    n_problems: 5000, level: intermediate}   # subsample for compute
+    - {id: bigcodebench,   split: "v0.1.2", n_problems: 1140, level: applied}
+    - {id: ds_1000,        split: all,      n_problems: 1000, level: data_science}
+    - {id: livecodebench,  split: release_v4, n_problems: 500, level: competitive}
+  heldout_for_generalization:
+    - {id: swe_bench_lite,   n_problems: 300, rationale: "real-world multi-file"}
+    - {id: codecontests,     n_problems: 200, rationale: "competitive, held out to test generalization from APPS/LCB"}
+  exclusion_policy:
+    - "No benchmark problems from held-out set may appear in oracle training data"
+    - "APPS/LCB are training-time signals; codecontests evaluates generalization across competitive-style"
+  total_oracles_target: 30     # 5 phases x 6 training benchmarks
+
+corpus_bootstrap:
+  method: self_distillation_filtered_by_pass_at_1
+  inspiration: "STaR (Zelikman et al. 2022) - bootstrap reasoning traces via correctness filtering"
+  procedure:
+    - step: 1
+      name: pipeline_run
+      detail: >
+        For each (benchmark, problem), run the base Qwen 3.5 9B + DeltaCoder warm-start
+        through the full 5-phase Rune pipeline. Capture phase-boundary outputs:
+        (problem, decompose_out, plan_out, code_out, integrate_out, diagnose_out_if_fired).
+      produces: raw_pipeline_traces.jsonl
+    - step: 2
+      name: success_filter
+      detail: "Keep only runs where final code passes the benchmark's test suite (Pass@1 = 1.0)."
+      expected_retention: "30-50% on easy benchmarks (HumanEval/MBPP), 5-15% on hard (APPS/LiveCodeBench)"
+    - step: 3
+      name: phase_bin
+      detail: "Bin successful traces by (phase, benchmark). One bin = one oracle's training set."
+      expected_bin_sizes: "~50-700 examples per (phase, benchmark) bin"
+    - step: 4
+      name: diagnose_augmentation
+      detail: >
+        Diagnose phase only fires on initial code failure. Augment its training data
+        with runs where code initially failed but diagnose->repair recovered it to
+        Pass@1 = 1.0. These are the diagnosis chains worth reinforcing.
+    - step: 5
+      name: qlora_per_bin
+      detail: >
+        Train one QLoRA adapter per bin using the existing trainer (train_and_register)
+        with DeltaCoder warm-start. Store in AdapterRegistry with task_type =
+        "<phase>_<benchmark>" (e.g. "decompose_humaneval").
+      reuses: [libs/model-training/src/model_training/trainer.py, scripts/train.sh]
+  distribution_shift_mitigation:
+    problem: >
+      Oracles are trained on traces where all phases were produced by BASE model.
+      At inference, phase N will follow HYPERNETWORK-GENERATED phase 1..N-1 outputs.
+    remedy:
+      round_1: train oracles on base-model self-distillation (as above)
+      round_2: after hypernetwork v1 trained, rerun pipeline with hypernetwork-in-the-loop,
+               collect new successful traces, retrain oracles on mixture (50/50 base/hypernet),
+               retrain hypernetwork
+      convergence_check: "hypernetwork Pass@1 stops improving between rounds"
+
+hypernetwork_conditioning:
+  input_composition:
+    - {name: phase_embedding, source: "learned 5-way nn.Embedding", dim: 64}
+    - {name: task_embedding,  source: "sentence-transformers/all-mpnet-base-v2 on benchmark+problem text", dim: 768}
+    - {name: trajectory_embedding, source: "sentence-transformers on concatenated prior-phase outputs; zero-vector if phase==DECOMPOSE", dim: 768}
+  total_condition_dim: 1600
+  architecture: "T2L per-module MLP heads (matches Sakana hyper_llm_modulator.py)"
+  forward_pass_semantics: "ONE forward pass per phase transition during inference; output is the adapter for the upcoming phase"
+
+eval_harness:
+  per_oracle_validation:
+    - metric: oracle_pass_at_1
+      detail: "Each oracle's Pass@1 on its benchmark's eval split, adapter loaded for ITS phase only, other phases on base"
+      gate: "oracle must beat base-model Pass@1 at that phase by >=3% absolute"
+  hypernetwork_validation:
+    - metric: held_in_pass_at_1
+      detail: "Hypernetwork-generated adapters used for ALL 5 phases on training benchmarks' eval split"
+      target: ">=80% of corresponding oracle Pass@1"
+    - metric: held_out_pass_at_1
+      detail: "Same, on heldout_for_generalization set (swe_bench_lite, codecontests)"
+      target: ">=5% absolute over base model (Report_2 kill-switch)"
+  ablation:
+    - name: single_phase_substitution
+      detail: "Load hypernetwork adapter for phase N, base for all others. Isolates per-phase contribution."
+      frequency: "at each hypernetwork training milestone"
+
+gaps_blocking_terminal_goal:
+  - id: phase_corpus_self_distillation_harness
+    severity: critical
+    description: "Need scripts/phase_corpus_producer.py: iterate benchmarks x problems, run full Rune pipeline with base model, filter by Pass@1, extract phase-boundary artifacts, train one QLoRA per (phase,benchmark) bin, register"
+    supersedes: gaps_blocking_terminal_goal.oracle_corpus_breadth (from superseded assessment)
+  - id: pipeline_phase_enum_extension
+    severity: low
+    description: "Add DIAGNOSE = 'diagnose' to libs/shared/src/shared/rune_models.py::PipelinePhase; audit callsites that pattern-match on the enum"
+  - id: hypernetwork_architecture_with_phase_conditioning
+    severity: critical
+    description: "Swap Rune Perceiver + 30B-param monolithic head for T2L per-module MLP heads taking concat(phase_emb, task_emb, traj_emb) as input"
+    supersedes: gaps_blocking_terminal_goal.hypernetwork_architecture_swap (from superseded assessment)
+  - id: pass_at_1_kill_switch
+    severity: high
+    description: "Wire benchmark-native Pass@1 eval into the hypernetwork training loop; trip if held-out Pass@1 lift < 5% absolute"
+    supersedes: gaps_blocking_terminal_goal.pass_at_1_gate (from superseded assessment)
+  - id: benchmark_harness_library
+    severity: high
+    description: "Unified harness for running HumanEval/MBPP/APPS/BigCodeBench/DS-1000/LiveCodeBench Pass@1 on a (base_model, adapter_stack) pair; used both in oracle validation and hypernetwork eval"
+
+deviations_from_t2l:
+  keep:
+    - deviation: phase_benchmark_conditioning
+      justification: "Core use-case is procedural trajectory; 5-phase x 6-benchmark grid is bounded (~30 oracles, same scale as Sakana's task corpus) and natively evaluable"
+    - deviation: self_distillation_corpus_bootstrap
+      justification: "No native labels for decompose/plan/integrate/diagnose outputs; STaR-style filtering by end-to-end correctness provides principled supervision"
+    - deviation: deltacoder_warm_start
+      justification: "Efficiency; ship-time dependency flagged and documented"
+  drop:
+    - deviation: tick_grained_multi_step_oracles
+      justification: "Replaced by phase-grained conditioning; avoids unbounded corpus and fuzzy step semantics"
+    - deviation: kl_with_context_teacher
+      justification: "Not in T2L; extra complexity without validated recipe"
+    - deviation: perceiver_hypernetwork
+      justification: "Not in T2L; 30B-param monolithic head untrainable at our budget; replace with T2L MLP + per-module heads"
+  defer:
+    - deviation: delta_w_scaling_audit
+      justification: "Verify Rune's 0.16 post-peft attenuator and T2L's 10000 pre-peft scale are operationally equivalent when training the phase-conditioned hypernetwork"
+    - deviation: round_2_hypernetwork_in_the_loop_self_distillation
+      justification: "Only relevant if round-1 distribution shift causes Pass@1 plateau below target"
+
+recommended_followups:
+  priority_p0:
+    - action: "Add DIAGNOSE to PipelinePhase enum and reconcile callsites"
+      estimated_effort: 1_hour
+      blocks: [pipeline_phase_enum_extension]
+    - action: "Build benchmark harness library (libs/evaluation/benchmarks/) supporting HumanEval/MBPP/APPS/BigCodeBench/DS-1000/LiveCodeBench Pass@1 on (model, adapter_stack) pairs"
+      estimated_effort: 1-2_weeks
+      blocks: [benchmark_harness_library, pass_at_1_kill_switch]
+    - action: "Build self-distillation phase corpus harness (scripts/phase_corpus_producer.py) + phase-aware training orchestrator"
+      estimated_effort: 2-3_weeks (including GPU time for all pipeline runs)
+      blocks: [phase_corpus_self_distillation_harness]
+      reuses:
+        - libs/model-training/src/model_training/reconstruction/* (JUST LANDED, 42 tests green)
+        - libs/model-training/src/model_training/trainer.py
+        - scripts/rune_runner.py
+    - action: "Swap hypernetwork architecture: Rune Perceiver + monolithic head -> T2L MLP + per-module heads with phase_embedding input"
+      estimated_effort: 2-3_weeks
+      blocks: [hypernetwork_architecture_with_phase_conditioning]
+      reference: "github.com/SakanaAI/text-to-lora src/hyper_llm_modulator/hyper_modulator.py"
+  priority_p1:
+    - action: "Round-2 self-distillation if round-1 Pass@1 plateaus below target"
+      blocks: []
+      trigger: "held-out Pass@1 lift < target after round-1 hypernetwork training"
+    - action: "Resolve DeltaCoder deployment dependency: produced adapters require base+DeltaCoder+delta at inference; document or add merge-and-save variant"
+      blocks: [deltacoder_stack_explicit]
+  priority_p2:
+    - action: "Audit delta_w_scaling (T2L 10000 pre-peft vs Rune 0.16 post-peft attenuator) when porting to hypernetwork training"
+    - action: "record_trajectory dead-code cleanup in rune_runner.py (QLoRA path from self-generated sessions unused)"
+    - action: "Corpus provenance: S3 upload path for data/pairs/, fix 17-orphan-repo tracking, mining progress file"
+
+clean_session_inputs:
+  must_read:
+    - docs/superpowers/specs/2026-04-22-pr-28-training-upgrade-fit-assessment.yaml
+    - docs/superpowers/specs/2026-04-22-phase-benchmark-pivot.yaml  # this file
+    - instructions/Report_2_LoRA_Fine_Tuning_Strategy.md
+    - instructions/Training_Review2.md
+  primary_code:
+    - libs/shared/src/shared/rune_models.py
+    - libs/shared/src/shared/templates/*.j2
+    - scripts/rune_runner.py
+    - libs/model-training/src/model_training/reconstruction/       # dataset builder, landed
+    - libs/model-training/src/model_training/trainer.py
+    - libs/model-training/src/model_training/hypernetwork.py       # target to replace
+    - libs/model-training/src/model_training/sakana_d2l.py         # inverse path; will stay for D2L->PEFT conversion
+  reference_external:
+    - arxiv:2506.06105                                              # Sakana T2L
+    - github.com/SakanaAI/text-to-lora/src/hyper_llm_modulator/
+    - arxiv:2203.14465                                              # STaR (self-distillation precedent)
+
+open_questions:
+  - id: q1_bootstrap_model_choice
+    question: "Base Qwen 3.5 9B + DeltaCoder may have low Pass@1 on LiveCodeBench/APPS. Should round-1 self-distillation use a stronger model (Claude/GPT-4) as the pipeline runner to get denser successful traces?"
+    decision_pending: true
+    tradeoff: "Stronger bootstrapper -> more data, but distills external model's style rather than learnable-by-9B style"
+    lean: "Start with Qwen; escalate to stronger model only for benchmarks where pass-rate < 10%"
+  - id: q2_trajectory_embedding_freshness
+    question: "Should trajectory_embedding recompute at each phase (online) or be precomputed once per trajectory (cached)?"
+    decision_pending: true
+    lean: "Online; phase N needs to condition on phase N-1 output which isn't known until runtime"
+  - id: q3_phase_embedding_learned_vs_fixed
+    question: "5-way phase embedding: learned nn.Embedding, or fixed one-hot, or learned-but-initialized-from-text-embedding of phase role description?"
+    decision_pending: true
+    lean: "Learned, initialized from text embedding of role description (best of both: priors + capacity to specialize)"
+  - id: q4_diagnose_data_scarcity
+    question: "Diagnose-phase training data may be <50 samples per benchmark. Drop diagnose oracle for thin benchmarks or augment aggressively?"
+    decision_pending: true
+    lean: "Drop for bins < 20 samples; use cross-benchmark pooling for diagnose oracle if needed"
