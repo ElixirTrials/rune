@@ -202,3 +202,81 @@ def test_builder_module_is_cpu_importable() -> None:
 
     mod = importlib.import_module("model_training.reconstruction.builder")
     assert hasattr(mod, "build_reconstruction_dataset")
+
+
+def test_e2e_manifest_points_at_adapters_that_extract_to_t2l_shape(
+    tmp_path: Path, make_adapter_record: Callable[..., AdapterRecord]
+) -> None:
+    from model_training.reconstruction.builder import build_reconstruction_dataset
+    from model_training.reconstruction.extract import (
+        extract_lora_ab_from_state_dict,
+        load_adapter_state_dict,
+    )
+    from model_training.reconstruction.manifest import ReconstructionManifest
+    from model_training.reconstruction.stats import load_zscore_stats
+    from model_training.reconstruction.task_embeddings import load_task_embeddings
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'reg.db'}")
+    registry = AdapterRegistry(engine=engine)
+
+    n_tasks = 3
+    rank, in_features, out_features = 4, 16, 32
+    layer_indices = [0, 1, 2]
+    for i in range(n_tasks):
+        adapter_dir = tmp_path / f"adapter-{i}"
+        _write_fake_adapter(
+            adapter_dir,
+            base_model_name_or_path="danielcherubini/Qwen3.5-DeltaCoder-9B",
+            rank=rank,
+            target_modules=["q_proj", "v_proj"],
+            layer_indices=layer_indices,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        registry.store(
+            make_adapter_record(
+                id=f"adapter-{i}",
+                rank=rank,
+                file_path=str(adapter_dir),
+                fitness_score=0.5 + 0.1 * i,
+            )
+        )
+
+    out_dir = tmp_path / "recon_e2e"
+    build_reconstruction_dataset(
+        registry=registry,
+        out_dir=out_dir,
+        task_description_fn=lambda rec: f"task-{rec.id}",
+        warm_start_adapter="danielcherubini/Qwen3.5-DeltaCoder-9B",
+        base_model_id_override="Qwen/Qwen3.5-9B",
+        emb_model=None,
+        compute_zscore=True,
+    )
+
+    manifest = ReconstructionManifest.load(out_dir / "manifest.json")
+    assert manifest.rank == rank
+    assert len(manifest.records) == n_tasks
+
+    embeddings = load_task_embeddings(out_dir / "task_embeddings.pt")
+    assert set(embeddings) == {f"adapter-{i}" for i in range(n_tasks)}
+    # One-hot over 3 tasks → 3x3 identity.
+    stacked = torch.cat(
+        [embeddings[f"adapter-{i}"] for i in range(n_tasks)], dim=0
+    )
+    assert torch.allclose(stacked @ stacked.T, torch.eye(n_tasks))
+
+    stats = load_zscore_stats(out_dir / "zscore_stats.pt")
+    assert set(stats) == {"q_proj", "v_proj"}
+    # Stats tensors inherit the per-record tensor shapes.
+    assert stats["q_proj"]["avg_A"].shape == (len(layer_indices), rank, in_features)
+    assert stats["q_proj"]["std_A"].shape == (len(layer_indices), rank, in_features)
+    assert stats["q_proj"]["avg_B"].shape == (len(layer_indices), out_features, rank)
+
+    # Re-extract one oracle and confirm the T2L shape contract holds.
+    first_adapter = Path(manifest.records[0].adapter_path)
+    sd = load_adapter_state_dict(first_adapter)
+    per_mod = extract_lora_ab_from_state_dict(sd, target_modules=manifest.target_modules)
+    for module in manifest.target_modules:
+        assert per_mod[module]["A"].shape == (len(layer_indices), rank, in_features)
+        assert per_mod[module]["B"].shape == (len(layer_indices), out_features, rank)
+        assert per_mod[module]["layer_indices"].tolist() == layer_indices
