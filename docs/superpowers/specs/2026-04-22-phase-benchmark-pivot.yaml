@@ -70,7 +70,7 @@ benchmark_selection:
   exclusion_policy:
     - "No benchmark problems from held-out set may appear in oracle training data"
     - "APPS/LCB are training-time signals; codecontests evaluates generalization across competitive-style"
-  total_oracles_target: 30     # 5 phases x 6 training benchmarks
+  total_oracles_target: 25     # 4 per-(phase,benchmark) phases x 6 benchmarks + 1 pooled diagnose (see q4 decision)
 
 corpus_bootstrap:
   method: self_distillation_filtered_by_pass_at_1
@@ -86,17 +86,31 @@ corpus_bootstrap:
     - step: 2
       name: success_filter
       detail: "Keep only runs where final code passes the benchmark's test suite (Pass@1 = 1.0)."
-      expected_retention: "30-50% on easy benchmarks (HumanEval/MBPP), 5-15% on hard (APPS/LiveCodeBench)"
+      expected_retention_lower_bound: >
+        Based on published Qwen2.5-Coder-7B-Instruct Pass@1: HumanEval 88%, MBPP 83%,
+        LiveCodeBench 38%, BigCodeBench-Full 41%, DS-1000/DSCodeBench ~12%, APPS not
+        separately reported but likely 15-20%. Qwen 3.5-9B + DeltaCoder (our actual
+        base stack) should equal or exceed these. All non-diagnose bins project to
+        >=120 successful traces per (phase, benchmark), sufficient for QLoRA.
     - step: 3
       name: phase_bin
-      detail: "Bin successful traces by (phase, benchmark). One bin = one oracle's training set."
-      expected_bin_sizes: "~50-700 examples per (phase, benchmark) bin"
+      detail: >
+        Bin successful traces by (phase, benchmark) for phases in
+        {decompose, plan, code, integrate} - one bin per pair = 24 bins.
+        For DIAGNOSE, pool across benchmarks (see q4 decision) - one global
+        bin. Total: 25 oracle bins.
+      expected_bin_sizes:
+        non_diagnose_per_benchmark: "~120-750 examples (bounded below by DS-1000 on thinnest phases)"
+        diagnose_pooled_across_benchmarks: "~700+ examples (sum of diagnose-repair-succeeded runs across all 6 benchmarks)"
     - step: 4
       name: diagnose_augmentation
       detail: >
         Diagnose phase only fires on initial code failure. Augment its training data
         with runs where code initially failed but diagnose->repair recovered it to
-        Pass@1 = 1.0. These are the diagnosis chains worth reinforcing.
+        Pass@1 = 1.0. Pooled across all 6 benchmarks per q4 decision - diagnose is
+        benchmark-agnostic (NameError, IndexError, AssertionError patterns transcend
+        problem domain). Phase_emb indexes DIAGNOSE; benchmark specificity at
+        inference flows via task_emb.
     - step: 5
       name: qlora_per_bin
       detail: >
@@ -269,21 +283,47 @@ clean_session_inputs:
     - github.com/SakanaAI/text-to-lora/src/hyper_llm_modulator/
     - arxiv:2203.14465                                              # STaR (self-distillation precedent)
 
-open_questions:
+resolved_decisions:
   - id: q1_bootstrap_model_choice
     question: "Base Qwen 3.5 9B + DeltaCoder may have low Pass@1 on LiveCodeBench/APPS. Should round-1 self-distillation use a stronger model (Claude/GPT-4) as the pipeline runner to get denser successful traces?"
-    decision_pending: true
-    tradeoff: "Stronger bootstrapper -> more data, but distills external model's style rather than learnable-by-9B style"
-    lean: "Start with Qwen; escalate to stronger model only for benchmarks where pass-rate < 10%"
+    decision: "Qwen-only (Qwen 3.5-9B + DeltaCoder) for round 1. Escalation to external teacher remains a round-2 contingency only if pass-rate plateaus."
+    rationale: >
+      STaR precedent (Zelikman et al. 2022 - arxiv:2203.14465): same model generates
+      AND trains on its own filtered outputs. Distilling external teacher style
+      produces trajectories the 7-9B base cannot execute downstream, breaking the
+      hypernetwork's adapter-emission semantics. Published Qwen2.5-Coder-7B-Instruct
+      Pass@1 (HumanEval 88%, MBPP 83%, LiveCodeBench 38%, BigCodeBench 41%,
+      DS-1000 ~12%, APPS ~15-20%) projects >=120 successful traces per
+      non-diagnose bin - sufficient for QLoRA. Qwen 3.5-9B + DeltaCoder should
+      equal or exceed these.
+    evidence: [arxiv:2409.12186, arxiv:2203.14465]
   - id: q2_trajectory_embedding_freshness
     question: "Should trajectory_embedding recompute at each phase (online) or be precomputed once per trajectory (cached)?"
-    decision_pending: true
-    lean: "Online; phase N needs to condition on phase N-1 output which isn't known until runtime"
-  - id: q3_phase_embedding_learned_vs_fixed
+    decision: "Online - recompute at every phase boundary."
+    rationale: >
+      Shared-encoder architecture + incrementally-growing trajectory means input
+      changes every phase; caching provides no speedup (would cache N-1 distinct
+      embeddings over N phases) and adds staleness risk. One encoder forward pass
+      (~50ms on-GPU) is trivial vs. the hypernetwork + LoRA-loaded generation that
+      follows.
+  - id: q3_phase_embedding_init
     question: "5-way phase embedding: learned nn.Embedding, or fixed one-hot, or learned-but-initialized-from-text-embedding of phase role description?"
-    decision_pending: true
-    lean: "Learned, initialized from text embedding of role description (best of both: priors + capacity to specialize)"
+    decision: "Random-learned nn.Embedding(num_embeddings=5, embedding_dim=64). PyTorch default init."
+    rationale: >
+      5 x 64 = 320 parameters. At this size, initialization priors are irrelevant -
+      gradient on 25+ oracles each providing thousands of per-module reconstruction
+      targets converges trivially. Text-init adds a 768->64 projection and a
+      text-embedding computation pass without measurable benefit. Occam's razor.
   - id: q4_diagnose_data_scarcity
     question: "Diagnose-phase training data may be <50 samples per benchmark. Drop diagnose oracle for thin benchmarks or augment aggressively?"
-    decision_pending: true
-    lean: "Drop for bins < 20 samples; use cross-benchmark pooling for diagnose oracle if needed"
+    decision: "Pool diagnose examples across all 6 benchmarks into one global diagnose oracle. Total oracle count: 30 -> 25."
+    rationale: >
+      Diagnose error patterns (NameError, IndexError, AssertionError, off-by-one,
+      wrong-signature) are benchmark-agnostic. HumanEval's diagnose bin alone
+      would yield ~10 samples (too thin); pooling across all 6 benchmarks yields
+      ~700+. Per-benchmark specificity at inference still flows via task_emb;
+      phase_emb indexes DIAGNOSE once. Cleaner than per-benchmark thin oracles
+      with high variance.
+    architectural_impact:
+      - "total_oracles_target: 30 -> 25 (4 per-phase x 6 benchmarks + 1 pooled diagnose)"
+      - "reconstruction builder's registry filter must accept task_type='diagnose' (no benchmark suffix) as a valid oracle"
