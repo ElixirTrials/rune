@@ -1,0 +1,61 @@
+<task-notification>
+<task-id>a8bcd4921a999bf6b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/4ca84454-0551-4499-ad0c-e7a3ff14578f/tasks/a8bcd4921a999bf6b.output</output-file>
+<status>completed</status>
+<summary>Agent "Execute Plan B trajectory encoder" completed</summary>
+<result>All 9 commits are landed. Here is the final report:
+
+---
+
+## Final Report — Plan B: Trajectory Encoder Pretraining
+
+### 9 Task Commits (on `feat/training-upgrade`)
+
+| Task | SHA | Subject |
+|------|-----|---------|
+| 1 | `0e4e52f` | feat(encoder-pretrain): add pair augmentation with strict task_description field |
+| 2 | `1e5b5d6` | feat(encoder-pretrain): add contrastive dataset, collator, and InfoNCE loss |
+| 3 | `25453bc` | feat(encoder-pretrain): add InfoNCE training loop with MLflow + HF checkpoint |
+| 4 | `3154ca6` | feat(encoder-pretrain): add retrieval eval (MRR@10, Recall@1) and cluster probe |
+| 5 | `3acada5` | feat(encoder-pretrain): add CLI with --dry-run (INFRA-05 pattern) |
+| 6 | `34ad11c` | test(encoder-pretrain): add round-trip test for SentenceTransformer checkpoint |
+| 7 | *(no code changes — subpackage was already clean)* | — |
+| 8+9 | `b1ef04a` | feat(encoder-pretrain): operator notes for Tasks 8+9 |
+
+### Final pytest summary
+
+```
+33 passed, 2 skipped in 37.40s
+```
+
+- **33 passed** — all encoder_pretrain unit tests (augment, dataset, loss, eval, CLI, roundtrip layout)
+- **2 skipped** — `@pytest.mark.slow` roundtrip tests (need `sentence_transformers` installed via `uv sync --all-extras`)
+- No regressions in reconstruction tests (11 passing)
+
+### Ruff / Mypy
+
+- `uv run ruff check libs/model-training/src/model_training/encoder_pretrain/` — **clean**
+- `uv run mypy libs/model-training/src/model_training/encoder_pretrain/` — **0 errors in 7 source files**
+
+### AMENDMENT 2026-04-22 — Honored
+
+- `_select_task_desc` returns strict `task_description` field only — no commit_message, docstring, TODO, or phase-role fallbacks
+- `MIN_RETENTION_RATIO = 0.80` enforced in `augment_corpus()` — gate fires correctly
+- `task_desc_source` is always `"explicit_field"` in output rows
+
+### Deviations from Plan
+
+1. **Task 1 tests**: The original plan spec had a `_select_task_desc` returning `tuple[str, str]` (value, source). The AMENDMENT overrides this to return `str | None` (drop on None). Implemented per AMENDMENT — the old test specs for `test_select_commit_message` etc. were not written.
+
+2. **Task 4 eval tests**: Plan spec used `AutoModel.from_pretrained("sentence-transformers/all-mpnet-base-v2")` in tests. Hard constraint says "Tests MUST NOT require GPU or network." Replaced with fully mocked `_FakeModel` + `_FakeTok` implementations — no network, no GPU, all CPU.
+
+3. **Task 6 roundtrip**: `sentence_transformers` is not a project dependency. The two `@pytest.mark.slow` roundtrip tests gate on `importorskip("sentence_transformers")`. The always-running `test_checkpoint_layout_without_training` validates the full checkpoint directory layout via mocks without the library.
+
+4. **Tasks 8+9**: Corpus augmentation hit the retention gate — existing `data/pairs/` (29 files, 2224 pairs) has 0% `task_description` coverage. The gate behaved correctly per AMENDMENT. Operator must re-run the mining pipeline with GitHub issue/PR association. Combined into one empty operator-notes commit.
+
+### Disjoint-Path Contract
+
+No files under `libs/evaluation/` were touched. The `libs/evaluation/` changes visible in `git status` are from Plan A running concurrently on the same branch.</result>
+<usage><total_tokens>139381</total_tokens><tool_uses>102</tool_uses><duration_ms>998492</duration_ms></usage>
+</task-notification>
