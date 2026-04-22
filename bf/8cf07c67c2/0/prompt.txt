@@ -1,0 +1,9 @@
+Write down where we left off so I can resume after clearing context.
+
+---
+
+I don't see why we should have 2 training upgrade branches. Do A diff and merge what we want to keep into both. Be cautious. We don't want to break anything we just want the best of both worlds. When we have one training upgrade branch, we can push it and submit a PR.
+
+---
+
+1. Clean our git by keeping the only training-upgrade branch that we need, don't commit the plans (I deleted them).
