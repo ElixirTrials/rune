@@ -118,3 +118,7 @@ proceed
 ---
 
 I agree but I still think we need to do the episodic memory trajectory encoding. We should have an oracle for each step: (1) decompose, (2) plan (3) code (4) integrate, (5) diagnose and for each of these we have several benchmark endpoints. Do some research and thinking how we could achieve this.
+
+---
+
+Prepare a hand off to a new session
