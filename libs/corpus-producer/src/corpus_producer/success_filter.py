@@ -15,7 +15,7 @@ produced correct outputs are used as training data.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable, Optional
 
 from corpus_producer.models import PhaseArtifact
 
@@ -24,10 +24,13 @@ logger = logging.getLogger(__name__)
 # Module-level sentinel so unittest.mock.patch can find the name.
 # Replaced at import time if evaluation.benchmarks is available (GPU env);
 # patched in tests via patch("corpus_producer.success_filter.run_benchmark").
+run_benchmark: Optional[Callable[..., Any]]
 try:
-    from evaluation.benchmarks import run_benchmark  # type: ignore[import]
+    from evaluation.benchmarks import (  # type: ignore[assignment,no-redef,import-not-found]
+        run_benchmark,
+    )
 except ImportError:  # CPU-only CI — will be patched in tests
-    run_benchmark: Any = None  # type: ignore[no-redef,assignment]
+    run_benchmark = None
 
 
 def filter_artifacts(
@@ -50,6 +53,11 @@ def filter_artifacts(
     Returns:
         Filtered list of PhaseArtifact with ``pass_at_1`` field set.
     """
+    if run_benchmark is None:
+        raise RuntimeError(
+            "evaluation.benchmarks.run_benchmark is unavailable; patch "
+            "corpus_producer.success_filter.run_benchmark in tests."
+        )
     result = run_benchmark(
         model_adapter_stack=("__direct_eval__", []),
         benchmark_id=benchmark,
