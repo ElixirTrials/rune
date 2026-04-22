@@ -88,7 +88,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>.
 
 These are locked by the spec and plan commits. Do NOT re-open in subagent runs:
 
-- **Base model:** `Qwen/Qwen2.5-Coder-7B-Instruct` (per `scripts/swarm.py:224`)
+- **Base model:** `Qwen/Qwen3.5-9B` (DeltaCoder warm-start ancestor; matches the landed reconstruction dataset builder and `libs/model-training/src/model_training/model_configs.py`. Note: `scripts/swarm.py:224` still defaults to `Qwen/Qwen2.5-Coder-7B` — that's the legacy swarm path and is not what this pivot targets.)
 - **Warm-start:** DeltaCoder (`danielcherubini/Qwen3.5-DeltaCoder-9B`)
 - **Oracle count:** 25 (24 per-(phase,benchmark) + 1 pooled diagnose)
 - **Encoder architecture:** shared single encoder, input concatenation, `sentence-transformers/all-mpnet-base-v2` fine-tuned with InfoNCE (option (a))

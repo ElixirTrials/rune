@@ -83,7 +83,7 @@ PIPELINE_TIMEOUT_SECS = 300
 BENCHMARKS = ["humaneval", "mbpp", "apps", "bigcodebench", "ds_1000", "livecodebench"]
 PHASES = ["decompose", "plan", "code", "integrate"]   # non-diagnose phases
 DIAGNOSE_BIN_KEY = "diagnose_pooled"
-BASE_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct"
+BASE_MODEL_ID = "Qwen/Qwen3.5-9B"
 WARM_START_ALIAS = "deltacoder"
 ```
 
@@ -401,7 +401,7 @@ class PipelineRunnerProtocol(Protocol):
         problem_prompt: str,
         *,
         timeout: int = 300,
-        base_model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+        base_model_id: str = "Qwen/Qwen3.5-9B",
     ) -> PipelineRunResult: ...
 
 
@@ -485,7 +485,7 @@ def run_pipeline_for_problem(
     problem_prompt: str,
     *,
     timeout: int = 300,
-    base_model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+    base_model_id: str = "Qwen/Qwen3.5-9B",
 ) -> PipelineRunResult:
     """Run the full 5-phase Rune pipeline for one problem via subprocess.
 
@@ -672,7 +672,7 @@ class FakeRunner:
         problem_prompt: str,
         *,
         timeout: int = 300,
-        base_model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+        base_model_id: str = "Qwen/Qwen3.5-9B",
     ) -> PipelineRunResult:
         return self._result
 
@@ -1620,7 +1620,7 @@ def star_rationalize(
     success_filter_fn: Callable[..., list[PhaseArtifact]],
     *,
     timeout: int = 300,
-    base_model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+    base_model_id: str = "Qwen/Qwen3.5-9B",
 ) -> list[PhaseArtifact]:
     """Attempt rationalization on failing problems to pad a thin bin.
 
@@ -2219,7 +2219,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--base-model",
-        default="Qwen/Qwen2.5-Coder-7B-Instruct",
+        default="Qwen/Qwen3.5-9B",
         dest="base_model",
         metavar="MODEL_ID",
         help="Base model HF repo id for pipeline runs.",
@@ -2277,7 +2277,7 @@ def produce_corpus(
     force: bool = False,
     skip_training: bool = False,
     dry_run: bool = False,
-    base_model: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+    base_model: str = "Qwen/Qwen3.5-9B",
     database_url: str | None = None,
     mlflow_experiment: str = "rune-qlora",
 ) -> dict[str, int]:
@@ -2479,13 +2479,13 @@ EOF
 #
 # Environment:
 #   OUT_DIR          Output directory (default: data/phase_corpus)
-#   BASE_MODEL       HF repo id (default: Qwen/Qwen2.5-Coder-7B-Instruct)
+#   BASE_MODEL       HF repo id (default: Qwen/Qwen3.5-9B)
 #   PIPELINE_TIMEOUT Per-problem timeout in seconds (default: 300)
 
 set -euo pipefail
 
 OUT_DIR="${OUT_DIR:-data/phase_corpus}"
-BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen3.5-9B}"
 PIPELINE_TIMEOUT="${PIPELINE_TIMEOUT:-300}"
 EXTRA_FLAGS="${@}"
 
@@ -2608,7 +2608,7 @@ def _fake_pipeline_runner(
     prompt: str,
     *,
     timeout: int = 300,
-    base_model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+    base_model_id: str = "Qwen/Qwen3.5-9B",
 ) -> PipelineRunResult:
     return PipelineRunResult(
         run_id="run-test",

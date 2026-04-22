@@ -2668,13 +2668,13 @@ def test_load_adapter_stack_empty_adapter_ids() -> None:
     """load_adapter_stack with no adapter_ids returns an AdapterStack with empty list."""
     provider = MagicMock()
     stack = load_adapter_stack(
-        base_model="Qwen/Qwen2.5-Coder-7B",
+        base_model="Qwen/Qwen3.5-9B",
         adapter_ids=[],
         provider=provider,
         registry=MagicMock(),
     )
     assert isinstance(stack, AdapterStack)
-    assert stack.base_model == "Qwen/Qwen2.5-Coder-7B"
+    assert stack.base_model == "Qwen/Qwen3.5-9B"
     assert stack.adapter_ids == []
 
 
@@ -2687,7 +2687,7 @@ def test_load_adapter_stack_with_adapters() -> None:
     provider = MagicMock()
 
     stack = load_adapter_stack(
-        base_model="Qwen/Qwen2.5-Coder-7B",
+        base_model="Qwen/Qwen3.5-9B",
         adapter_ids=["adapter-001"],
         provider=provider,
         registry=registry,
@@ -2704,7 +2704,7 @@ def test_load_adapter_stack_missing_adapter_raises() -> None:
     registry.retrieve_by_id.side_effect = AdapterNotFoundError("not found")
     with pytest.raises(ValueError, match="adapter-999"):
         load_adapter_stack(
-            base_model="Qwen/Qwen2.5-Coder-7B",
+            base_model="Qwen/Qwen3.5-9B",
             adapter_ids=["adapter-999"],
             provider=MagicMock(),
             registry=registry,
@@ -2714,7 +2714,7 @@ def test_load_adapter_stack_missing_adapter_raises() -> None:
 def test_adapter_stack_repr() -> None:
     """AdapterStack has a useful repr."""
     stack = AdapterStack(
-        base_model="Qwen/Qwen2.5-Coder-7B",
+        base_model="Qwen/Qwen3.5-9B",
         adapter_ids=["a1", "a2"],
         adapter_paths={"a1": "/p1", "a2": "/p2"},
         provider=MagicMock(),
@@ -2835,7 +2835,7 @@ def load_adapter_stack(
         >>> from adapter_registry.registry import AdapterRegistry
         >>> engine = create_engine("sqlite:///adapters.db")
         >>> reg = AdapterRegistry(engine=engine)
-        >>> stack = load_adapter_stack("Qwen/Qwen2.5-Coder-7B", ["a1"], provider, reg)
+        >>> stack = load_adapter_stack("Qwen/Qwen3.5-9B", ["a1"], provider, reg)
     """
     adapter_paths: dict[str, str] = {}
     for aid in adapter_ids:
@@ -3381,13 +3381,13 @@ are deferred inside run_benchmark(). This script is CPU-safe and supports
 Usage:
     uv run python scripts/run_benchmark.py \
         --benchmark humaneval \
-        --base-model Qwen/Qwen2.5-Coder-7B-Instruct \
+        --base-model Qwen/Qwen3.5-9B \
         --max-samples 50 \
         --dry-run
 
     uv run python scripts/run_benchmark.py \
         --benchmark humaneval \
-        --base-model Qwen/Qwen2.5-Coder-7B-Instruct \
+        --base-model Qwen/Qwen3.5-9B \
         --adapter-ids adapter-001 adapter-002 \
         --max-samples 50 \
         --timeout 30 \
@@ -3679,7 +3679,7 @@ if __name__ == "__main__":
 ```
 uv run python scripts/run_benchmark.py \
     --benchmark humaneval \
-    --base-model Qwen/Qwen2.5-Coder-7B-Instruct \
+    --base-model Qwen/Qwen3.5-9B \
     --max-samples 10 \
     --dry-run
 ```
@@ -3689,7 +3689,7 @@ Expected output (JSON, no torch/transformers imported):
 {
   "dry_run": true,
   "benchmark": "humaneval",
-  "base_model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+  "base_model": "Qwen/Qwen3.5-9B",
   "adapter_ids": [],
   "max_samples": 10,
   "timeout_s": 30,
