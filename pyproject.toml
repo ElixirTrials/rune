@@ -145,6 +145,15 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
+    "boto3",
+    "boto3.*",
+    "botocore",
+    "botocore.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
     "fitz",
     "fitz.*",
 ]

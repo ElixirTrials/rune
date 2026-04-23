@@ -33,6 +33,7 @@ from corpus_producer.models import PhaseArtifact
 from corpus_producer.pipeline_runner import run_pipeline_for_problem
 from corpus_producer.progress_db import ProgressDB
 from corpus_producer.rationalization import MIN_EXAMPLES_PER_BIN, star_rationalize
+from corpus_producer.s3_uploader import upload_manifest
 from corpus_producer.success_filter import filter_artifacts
 from corpus_producer.trainer_bridge import invoke_bin_training
 
@@ -130,6 +131,26 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="mlflow_experiment",
         metavar="NAME",
     )
+    parser.add_argument(
+        "--s3-bucket",
+        default=None,
+        dest="s3_bucket",
+        metavar="BUCKET",
+        help=(
+            "Optional S3 bucket to mirror bin manifests to. When unset, "
+            "manifests remain local-only."
+        ),
+    )
+    parser.add_argument(
+        "--s3-prefix",
+        default="",
+        dest="s3_prefix",
+        metavar="PREFIX",
+        help=(
+            "Key prefix within --s3-bucket (e.g. 'oracles/run-1'). "
+            "Ignored when --s3-bucket is unset."
+        ),
+    )
     return parser
 
 
@@ -183,6 +204,8 @@ def produce_corpus(
     base_model: str = "Qwen/Qwen3.5-9B",
     database_url: str | None = None,
     mlflow_experiment: str = "rune-qlora",
+    s3_bucket: str | None = None,
+    s3_prefix: str = "",
 ) -> dict[str, int]:
     """Main orchestration loop for phase corpus production.
 
@@ -300,6 +323,11 @@ def produce_corpus(
         manifest_path = emit_bin_manifest(bin_key, arts, manifests_dir)
         bin_record_counts[bin_key] = len(arts)
 
+        if s3_bucket:
+            upload_manifest(
+                manifest_path, bucket=s3_bucket, prefix=s3_prefix
+            )
+
         if skip_training:
             logger.info(
                 "--skip-training: manifest written, skipping training for %s.",
@@ -342,6 +370,8 @@ def main() -> None:
         base_model=args.base_model,
         database_url=args.database_url,
         mlflow_experiment=args.mlflow_experiment,
+        s3_bucket=args.s3_bucket,
+        s3_prefix=args.s3_prefix,
     )
 
     total = sum(counts.values())

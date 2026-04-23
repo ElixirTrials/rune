@@ -169,6 +169,55 @@ def test_produce_corpus_resume_skips_done_problems(mock_rb: MagicMock) -> None:
 
 
 @patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+def test_produce_corpus_uploads_manifests_to_s3_when_bucket_set(
+    mock_rb: MagicMock,
+) -> None:
+    """When s3_bucket is set, upload_manifest is called once per emitted manifest."""
+    import phase_corpus_producer as pcp  # noqa: PLC0415
+
+    with patch.object(pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner):
+        with patch.object(
+            pcp, "_load_problems", return_value=[(_PROBLEM_ID, "prompt")]
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with patch.object(
+                    pcp, "upload_manifest", return_value=True
+                ) as mock_upload:
+                    counts = pcp.produce_corpus(
+                        benchmarks=[_BENCHMARK],
+                        out_dir=Path(tmpdir),
+                        skip_training=True,
+                        s3_bucket="my-bucket",
+                        s3_prefix="oracles/run-1",
+                    )
+                    # One manifest per phase (decompose/plan/code/integrate)
+                    assert mock_upload.call_count == len(counts)
+                    # Each call got the bucket + prefix
+                    for call in mock_upload.call_args_list:
+                        assert call.kwargs["bucket"] == "my-bucket"
+                        assert call.kwargs["prefix"] == "oracles/run-1"
+
+
+@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+def test_produce_corpus_no_upload_when_bucket_unset(mock_rb: MagicMock) -> None:
+    """When s3_bucket is None, upload_manifest is NOT called."""
+    import phase_corpus_producer as pcp  # noqa: PLC0415
+
+    with patch.object(pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner):
+        with patch.object(
+            pcp, "_load_problems", return_value=[(_PROBLEM_ID, "prompt")]
+        ):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with patch.object(pcp, "upload_manifest") as mock_upload:
+                    pcp.produce_corpus(
+                        benchmarks=[_BENCHMARK],
+                        out_dir=Path(tmpdir),
+                        skip_training=True,
+                    )
+                    mock_upload.assert_not_called()
+
+
+@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
 def test_produce_corpus_force_reruns_done_problems(mock_rb: MagicMock) -> None:
     """--force re-runs even done problems."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
