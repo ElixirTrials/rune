@@ -3,7 +3,7 @@
   "checkpoint_id": "5c286a93a4da",
   "strategy": "manual-commit",
   "branch": "feat/training-upgrade",
-  "checkpoints_count": 2,
+  "checkpoints_count": 4,
   "files_touched": [
     "CLAUDE.md",
     "README.md",
@@ -37,13 +37,19 @@
       "transcript": "/5c/286a93a4da/0/full.jsonl",
       "content_hash": "/5c/286a93a4da/0/content_hash.txt",
       "prompt": "/5c/286a93a4da/0/prompt.txt"
+    },
+    {
+      "metadata": "/5c/286a93a4da/1/metadata.json",
+      "transcript": "/5c/286a93a4da/1/full.jsonl",
+      "content_hash": "/5c/286a93a4da/1/content_hash.txt",
+      "prompt": "/5c/286a93a4da/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 337,
-    "cache_creation_tokens": 283261,
-    "cache_read_tokens": 24265348,
-    "output_tokens": 61898,
-    "api_call_count": 177
+    "input_tokens": 877,
+    "cache_creation_tokens": 1411008,
+    "cache_read_tokens": 121977490,
+    "output_tokens": 378817,
+    "api_call_count": 462
   }
 }

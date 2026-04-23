@@ -1,0 +1,75 @@
+Write a new plan in instructions subfolder using superpowers writing plans skill
+
+---
+
+Execution option 1. BUT interview me first to make sure you are 95% confident in your plan and why we are doing this.
+
+---
+
+Questions 1-2, your defaults are correct. 3. I am not sure where this fallback would occur? In training? At inference? Explain. 4. Yes, we should see improvement in the benchmarks. This is success. 5. Explain better the issue here. Explain what is happening where and when and what the options are.
+
+---
+
+I accept your recommendations. Let's try strict.
+
+---
+
+2
+
+---
+
+Yes, check if there is anything outstanding.
+
+---
+
+We don't want the docs/superpowers. Close anything outstanding. Push and create a well described PR.
+
+---
+
+Go over the reviewer comments and the CI/CD failures
+
+---
+
+Approved. 4, keep the remove. Comment and mark resolved all the reviews after you fix (or reject as with case 4).
+
+---
+
+Try again
+
+---
+
+<task-notification>
+<task-id>bwhx2goie</task-id>
+<tool-use-id>toolu_014MEJkMWtvtdaVbAh4yLG2a</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/28a3f3fb-08f4-459d-8073-71eb96f6e763/tasks/bwhx2goie.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for CI + report final status" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bzftbnqh1</task-id>
+<tool-use-id>toolu_01DYyzt4hzCesKGgz7mi1pYJ</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/28a3f3fb-08f4-459d-8073-71eb96f6e763/tasks/bzftbnqh1.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for CI + report" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>br72wiz82</task-id>
+<tool-use-id>toolu_017cvFUkkYUujdmSx8GK3oNu</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/28a3f3fb-08f4-459d-8073-71eb96f6e763/tasks/br72wiz82.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for CI + report + assess" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Summarize everything we've done in this PR in such a way as to be able to revise the documents accordingly. Place the summary in a markdown in the instructions folder. Be thorough and launch subagents to review all parts of the documentation with instructions to detail if any places that need to be revised given the PR.
+
+---
+
+proceed

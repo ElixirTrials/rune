@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "5c286a93a4da",
+  "session_id": "75235fdc-862b-4c31-b3c3-125c150d57e3",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-23T19:07:50.291404Z",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "libs/model-training/src/model_training/d2l_data.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "0d71f6b76cb4",
+  "token_usage": {
+    "input_tokens": 540,
+    "cache_creation_tokens": 1127747,
+    "cache_read_tokens": 97712142,
+    "output_tokens": 316919,
+    "api_call_count": 285
+  },
+  "session_metrics": {
+    "turn_count": 15
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-23T19:07:49.114755Z",
+    "agent_lines": 10,
+    "human_added": 712,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 722,
+    "agent_percentage": 1.3850415512465373
+  }
+}
