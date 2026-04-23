@@ -50,6 +50,33 @@ def test_bin_key_metadata_overrides_task_id() -> None:
     assert _bin_key_for_record(record) == "integrate_mbpp"
 
 
+@pytest.mark.parametrize(
+    "record,expected",
+    [
+        # phase in metadata, benchmark from task_id
+        (
+            {"task_id": "humaneval/HE-1/code", "metadata": {"phase": "plan"}},
+            "plan_humaneval",
+        ),
+        # benchmark in metadata, phase from task_id
+        (
+            {"task_id": "mbpp/BCB-3/integrate", "metadata": {"benchmark": "mbpp"}},
+            "integrate_mbpp",
+        ),
+    ],
+)
+def test_bin_key_partial_metadata_fills_from_task_id(
+    record: dict[str, object], expected: str,
+) -> None:
+    """Partial metadata is supplemented by task_id parsing.
+
+    Exercises the branch where only one of ``metadata.phase`` /
+    ``metadata.benchmark`` is supplied; the missing field is filled from
+    ``task_id`` parts.
+    """
+    assert _bin_key_for_record(record) == expected
+
+
 def test_oracle_id_prefix_constant() -> None:
     """ORACLE_ID_PREFIX matches trainer_bridge.py's adapter_id scheme."""
     assert ORACLE_ID_PREFIX == "oracle_"
