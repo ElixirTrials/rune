@@ -33,7 +33,22 @@ logger = logging.getLogger(__name__)
 
 
 def _apply_functional_lora(base_model: Any, lora_dict: Any, hc: Any) -> Any:
-    """Thin wrapper so tests can monkeypatch functional LoRA injection."""
+    """Sole injection point for functional LoRA in the round-2 training path.
+
+    Tests monkeypatch this module-level name to verify routing without GPU
+    tensors (see :mod:`test_round2_train`). Do NOT inline the
+    ``apply_functional_lora`` import at call sites — that would silently
+    break testability by routing around the monkeypatch seam.
+
+    Args:
+        base_model: Base language model.
+        lora_dict: Functional-LoRA tensors (``{module: {A, B}}``).
+        hc: HypernetConfig passed through to ``apply_functional_lora``.
+
+    Returns:
+        Context manager from :func:`model_training.d2l_lora.apply_functional_lora`
+        that monkey-patches base_model weights on enter and restores on exit.
+    """
     from model_training.d2l_lora import apply_functional_lora  # noqa: PLC0415
 
     return apply_functional_lora(base_model, lora_dict, hc)
