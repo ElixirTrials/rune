@@ -91,7 +91,9 @@ def build_config(argv: Sequence[str]) -> Round2TrainConfig:
 
 def main(argv: Sequence[str]) -> int:
     """Run round-2 training from the command line."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     try:
         config = build_config(argv)
         report = train_d2l_qwen3_round2(config)

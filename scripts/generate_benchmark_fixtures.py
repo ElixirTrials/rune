@@ -30,7 +30,9 @@ from pathlib import Path
 # Allow running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent / "libs" / "evaluation" / "src"))
 
-FIXTURE_DIR = Path(__file__).parent.parent / "libs" / "evaluation" / "tests" / "fixtures"
+FIXTURE_DIR = (
+    Path(__file__).parent.parent / "libs" / "evaluation" / "tests" / "fixtures"
+)
 FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Allow HF downloads during fixture generation
@@ -80,10 +82,14 @@ def main() -> None:
     save_mini("codeparrot/apps", "all", "train", 5, "apps_mini.parquet")
 
     try:
-        save_mini("bigcode/bigcodebench", None, "v0.1.2", 5, "bigcodebench_mini.parquet")
+        save_mini(
+            "bigcode/bigcodebench", None, "v0.1.2", 5, "bigcodebench_mini.parquet"
+        )
     except Exception:
         try:
-            save_mini("bigcode/bigcodebench", None, "train", 5, "bigcodebench_mini.parquet")
+            save_mini(
+                "bigcode/bigcodebench", None, "train", 5, "bigcodebench_mini.parquet"
+            )
         except Exception as exc:
             print(f"  [warn] bigcodebench fixture failed: {exc}")
 
@@ -106,13 +112,19 @@ def main() -> None:
     # Held-out benchmarks
     try:
         save_mini(
-            "princeton-nlp/SWE-bench_Lite", None, "test", 5, "swe_bench_lite_mini.parquet"
+            "princeton-nlp/SWE-bench_Lite",
+            None,
+            "test",
+            5,
+            "swe_bench_lite_mini.parquet",
         )
     except Exception as exc:
         print(f"  [warn] swe_bench_lite fixture failed: {exc}")
 
     try:
-        save_mini("deepmind/code_contests", None, "test", 5, "codecontests_mini.parquet")
+        save_mini(
+            "deepmind/code_contests", None, "test", 5, "codecontests_mini.parquet"
+        )
     except Exception as exc:
         print(f"  [warn] codecontests fixture failed: {exc}")
 

@@ -48,9 +48,7 @@ def test_extract_shapes_and_layer_order() -> None:
         in_features=128,
         out_features=256,
     )
-    out = extract_lora_ab_from_state_dict(
-        sd, target_modules=("q_proj", "gate_proj")
-    )
+    out = extract_lora_ab_from_state_dict(sd, target_modules=("q_proj", "gate_proj"))
     assert set(out) == {"q_proj", "gate_proj"}
     for mod in ("q_proj", "gate_proj"):
         assert out[mod]["A"].shape == (3, 8, 128)

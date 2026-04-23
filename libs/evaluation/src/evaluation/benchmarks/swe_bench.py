@@ -183,8 +183,7 @@ class SWEBenchLiteAdapter:
                     problem_id=problem.problem_id,
                     passed=False,
                     generation=generation,
-                    error=f"generation did not apply: "
-                    f"{apply_gen.stderr.strip()[:400]}",
+                    error=f"generation did not apply: {apply_gen.stderr.strip()[:400]}",
                     timed_out=apply_gen.timed_out,
                 )
 

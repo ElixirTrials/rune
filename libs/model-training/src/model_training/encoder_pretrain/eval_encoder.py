@@ -181,12 +181,10 @@ def run_cluster_probe(
     mbpp_ds = load_dataset("mbpp", split="train", trust_remote_code=True)
 
     he_texts = [
-        str(ex["prompt"])
-        for ex in he_ds.select(range(min(n_humaneval, len(he_ds))))
+        str(ex["prompt"]) for ex in he_ds.select(range(min(n_humaneval, len(he_ds))))
     ]
     mbpp_texts = [
-        str(ex["text"])
-        for ex in mbpp_ds.select(range(min(n_mbpp, len(mbpp_ds))))
+        str(ex["text"]) for ex in mbpp_ds.select(range(min(n_mbpp, len(mbpp_ds))))
     ]
 
     model.eval()

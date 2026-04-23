@@ -62,13 +62,20 @@ def test_adapter_improvement_flag_off_rebalances_weights() -> None:
     assert rebalanced.hunk_loss_weight == pytest.approx(0.625)
     assert rebalanced.hunk_accuracy_weight == pytest.approx(0.375)
     # Summing the two remaining weights gives 1.0 exactly.
-    assert rebalanced.hunk_loss_weight + rebalanced.hunk_accuracy_weight == pytest.approx(1.0)
+    assert (
+        rebalanced.hunk_loss_weight + rebalanced.hunk_accuracy_weight
+        == pytest.approx(1.0)
+    )
 
 
 def test_rebalance_falls_back_when_weights_zero() -> None:
-    cfg = FitnessConfig(hunk_loss_weight=0.0, hunk_accuracy_weight=0.0, adapter_improvement_weight=1.0)
+    cfg = FitnessConfig(
+        hunk_loss_weight=0.0, hunk_accuracy_weight=0.0, adapter_improvement_weight=1.0
+    )
     out = _rebalanced_fitness_config(cfg)
-    assert out == FitnessConfig(hunk_loss_weight=0.6, hunk_accuracy_weight=0.4, adapter_improvement_weight=0.0)
+    assert out == FitnessConfig(
+        hunk_loss_weight=0.6, hunk_accuracy_weight=0.4, adapter_improvement_weight=0.0
+    )
 
 
 def test_print_only_mode_prints_plan_and_exits(

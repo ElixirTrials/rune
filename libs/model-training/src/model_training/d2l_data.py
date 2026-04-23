@@ -19,9 +19,7 @@ from model_training.d2l_diff import compress_diff
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = (
-    "You are a Python code generator. Output only code, no explanation."
-)
+SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanation."
 
 __all__ = [
     "format_for_distillation",
@@ -998,9 +996,7 @@ def pairs_to_chat_messages(
             groups[key],
             key=lambda p: (p.get("metadata") or {}).get("step_index", 0),
         )
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": system_prompt}
-        ]
+        messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         turn_pre_codes: list[str] = []
         turn_post_codes: list[str] = []
         for pair in group:

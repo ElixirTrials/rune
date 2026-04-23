@@ -111,9 +111,7 @@ def main(argv: Sequence[str]) -> int:
     report["round2_adapter_id"] = ns.round2_adapter_id
     report["scores"] = scores
 
-    Path(ns.output_report).write_text(
-        json.dumps(report, indent=2, sort_keys=True)
-    )
+    Path(ns.output_report).write_text(json.dumps(report, indent=2, sort_keys=True))
     logger.info(
         "Gate verdict: %s - report at %s",
         "PASS" if report["passed"] else "FAIL",

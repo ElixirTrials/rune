@@ -201,9 +201,7 @@ def test_pre_post_multi_turn_concatenation() -> None:
         "## Current Code\ndef add(a,b): return a+b\n\n"
         "## Review Feedback\nHandle floats"
     )
-    teacher_1 = (
-        f"{activation_1}\n\n## Revision\ndef add(a,b): return float(a)+float(b)"
-    )
+    teacher_1 = f"{activation_1}\n\n## Revision\ndef add(a,b): return float(a)+float(b)"
 
     pairs = [
         _pair(step_index=0, activation=activation_0, teacher=teacher_0),
@@ -235,9 +233,7 @@ def test_pre_post_skips_match_conversation_skips() -> None:
         "teacher_text": "same",
         "metadata": {"source_task_id": "pr_b", "step_index": 0},
     }
-    convs, pre_post = pairs_to_chat_messages(
-        [good_pair, skip_pair], mode="multi_turn"
-    )
+    convs, pre_post = pairs_to_chat_messages([good_pair, skip_pair], mode="multi_turn")
     assert len(convs) == 1
     assert len(pre_post) == 1
     assert "pre_code" in pre_post[0]

@@ -141,8 +141,11 @@ def test_training_step_round2_routes_to_oracle_cache(
     applied: list = []
 
     class _FakeCtxMgr2:
-        def __enter__(self) -> None: return None
-        def __exit__(self, *exc: object) -> None: return None
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *exc: object) -> None:
+            return None
 
     def _fake_apply(base: object, lora: object, hc: object) -> _FakeCtxMgr2:
         applied.append(lora)
@@ -159,6 +162,7 @@ def test_training_step_round2_routes_to_oracle_cache(
     )
 
     class _NoGrad(_FakeCtxMgr2): ...
+
     monkeypatch.setattr(round2_train, "_torch_no_grad", lambda: _NoGrad())
 
     hypernet = MagicMock()
@@ -197,7 +201,7 @@ def test_training_step_round2_skip_fallback_returns_sentinel(
 ) -> None:
     """oracle_fallback='skip' + missing oracle → returns (None, {}) so caller skips."""
     cache = MagicMock()
-    cache.get.return_value = None   # missing oracle
+    cache.get.return_value = None  # missing oracle
 
     config = MagicMock(oracle_fallback="skip", max_length=512)
 
@@ -224,7 +228,7 @@ def test_training_step_round2_base_model_fallback_uses_bare_teacher(
     from model_training import round2_train
 
     cache = MagicMock()
-    cache.get.return_value = None   # no oracle for this bin
+    cache.get.return_value = None  # no oracle for this bin
 
     fake_features = MagicMock(name="features")
     fake_mask = MagicMock(name="mask")
@@ -237,8 +241,11 @@ def test_training_step_round2_base_model_fallback_uses_bare_teacher(
     applied: list = []
 
     class _FakeCtxMgr3:
-        def __enter__(self) -> None: return None
-        def __exit__(self, *exc: object) -> None: return None
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *exc: object) -> None:
+            return None
 
     def _fake_apply(base: object, lora: object, hc: object) -> _FakeCtxMgr3:
         applied.append(lora)
@@ -252,6 +259,7 @@ def test_training_step_round2_base_model_fallback_uses_bare_teacher(
     )
 
     class _NoGrad(_FakeCtxMgr3): ...
+
     monkeypatch.setattr(round2_train, "_torch_no_grad", lambda: _NoGrad())
 
     hypernet = MagicMock()
@@ -284,7 +292,8 @@ def test_training_step_round2_base_model_fallback_uses_bare_teacher(
 
 
 def test_train_round2_aborts_when_coverage_below_threshold(
-    tmp_path: object, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """coverage < min_oracle_coverage → RuntimeError before any training."""
     from model_training import round2_train
@@ -292,8 +301,12 @@ def test_train_round2_aborts_when_coverage_below_threshold(
 
     # Stub dataset loader to return 4 records, none with a registered oracle.
     records = [
-        {"metadata": {"phase": "decompose", "benchmark": "humaneval"},
-         "activation_text": "a", "teacher_text": "at", "task_id": "x/0/decompose"},
+        {
+            "metadata": {"phase": "decompose", "benchmark": "humaneval"},
+            "activation_text": "a",
+            "teacher_text": "at",
+            "task_id": "x/0/decompose",
+        },
     ] * 4
     monkeypatch.setattr(round2_train, "_load_records", lambda path: records)
 
@@ -302,9 +315,7 @@ def test_train_round2_aborts_when_coverage_below_threshold(
 
     stub_registry = MagicMock()
     stub_registry.retrieve_by_id.side_effect = AdapterNotFoundError("missing")
-    monkeypatch.setattr(
-        round2_train, "_open_registry", lambda url: stub_registry
-    )
+    monkeypatch.setattr(round2_train, "_open_registry", lambda url: stub_registry)
 
     # Stub model+hypernet setup so the pre-audit path does not load models.
     monkeypatch.setattr(round2_train, "_setup_training", lambda cfg: MagicMock())
@@ -322,15 +333,20 @@ def test_train_round2_aborts_when_coverage_below_threshold(
 
 
 def test_train_round2_dry_run_reports_full_coverage(
-    tmp_path: object, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """dry_run=True + full coverage → returns a report dict without training."""
     from model_training import round2_train
     from model_training.round2_config import Round2TrainConfig
 
     records = [
-        {"metadata": {"phase": "plan", "benchmark": "humaneval"},
-         "activation_text": "a", "teacher_text": "at", "task_id": "humaneval/0/plan"},
+        {
+            "metadata": {"phase": "plan", "benchmark": "humaneval"},
+            "activation_text": "a",
+            "teacher_text": "at",
+            "task_id": "humaneval/0/plan",
+        },
     ]
     monkeypatch.setattr(round2_train, "_load_records", lambda path: records)
 
@@ -380,8 +396,11 @@ def test_training_step_round2_falls_back_to_cpu_when_no_params(
     )
 
     class _PassthroughCtxMgr:
-        def __enter__(self) -> None: return None
-        def __exit__(self, *exc: object) -> None: return None
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *exc: object) -> None:
+            return None
 
     monkeypatch.setattr(
         round2_train,
@@ -452,7 +471,8 @@ def test_training_step_round2_falls_back_to_cpu_when_no_params(
 
 
 def test_cli_build_config_parses_flags(
-    tmp_path: object, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """CLI argv → Round2TrainConfig via build_config()."""
     import importlib.util
@@ -468,10 +488,14 @@ def test_cli_build_config_parses_flags(
     spec.loader.exec_module(module)
 
     argv = [
-        "--sakana-checkpoint-path", "/tmp/fake.bin",
-        "--oracle-registry-url", "sqlite:///tmp.db",
-        "--dataset-path", "/tmp/x.jsonl",
-        "--num-steps", "5",
+        "--sakana-checkpoint-path",
+        "/tmp/fake.bin",
+        "--oracle-registry-url",
+        "sqlite:///tmp.db",
+        "--dataset-path",
+        "/tmp/x.jsonl",
+        "--num-steps",
+        "5",
         "--dry-run",
     ]
     cfg = module.build_config(argv)

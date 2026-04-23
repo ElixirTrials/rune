@@ -258,9 +258,7 @@ def run_training(config: EncoderTrainingConfig) -> Path:
     )
 
     # ---- MLflow setup ----
-    mlflow_enabled = setup_mlflow(
-        config.mlflow_experiment, config.mlflow_tracking_uri
-    )
+    mlflow_enabled = setup_mlflow(config.mlflow_experiment, config.mlflow_tracking_uri)
     mlflow_params = {
         "base_encoder": config.base_encoder,
         "temperature": config.temperature,

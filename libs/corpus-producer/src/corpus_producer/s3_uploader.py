@@ -56,15 +56,11 @@ def upload_manifest(manifest: Path, bucket: str, prefix: str) -> bool:
     try:
         import boto3  # noqa: PLC0415
     except ImportError:
-        logger.warning(
-            "boto3 not available; skipping S3 upload of %s", manifest
-        )
+        logger.warning("boto3 not available; skipping S3 upload of %s", manifest)
         return False
 
     if boto3 is None:
-        logger.warning(
-            "boto3 not available; skipping S3 upload of %s", manifest
-        )
+        logger.warning("boto3 not available; skipping S3 upload of %s", manifest)
         return False
 
     try:
@@ -74,9 +70,7 @@ def upload_manifest(manifest: Path, bucket: str, prefix: str) -> bool:
             NoCredentialsError,
         )
     except ImportError:
-        logger.warning(
-            "botocore not available; skipping S3 upload of %s", manifest
-        )
+        logger.warning("botocore not available; skipping S3 upload of %s", manifest)
         return False
 
     key = build_s3_key(prefix, manifest.name)
@@ -84,9 +78,7 @@ def upload_manifest(manifest: Path, bucket: str, prefix: str) -> bool:
         client = boto3.client("s3")
         client.upload_file(str(manifest), bucket, key)
     except NoCredentialsError:
-        logger.warning(
-            "AWS credentials not found; skipping S3 upload of %s", manifest
-        )
+        logger.warning("AWS credentials not found; skipping S3 upload of %s", manifest)
         return False
     except (ClientError, BotoCoreError) as exc:
         logger.warning(

@@ -1940,9 +1940,7 @@ def main() -> None:
     logger.info("Adapters registered: %d", len(result["adapters"]))
 
     if args.output_json:
-        Path(args.output_json).write_text(
-            json.dumps(result, default=str, indent=2)
-        )
+        Path(args.output_json).write_text(json.dumps(result, default=str, indent=2))
         logger.info("Pipeline output written to %s", args.output_json)
 
 

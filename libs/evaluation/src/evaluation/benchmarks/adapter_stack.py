@@ -89,9 +89,7 @@ def load_adapter_stack(
             record = registry.retrieve_by_id(aid)
             adapter_paths[aid] = str(record.file_path)
         except Exception as exc:
-            raise ValueError(
-                f"Adapter '{aid}' not found in registry: {exc}"
-            ) from exc
+            raise ValueError(f"Adapter '{aid}' not found in registry: {exc}") from exc
 
     return AdapterStack(
         base_model=base_model,

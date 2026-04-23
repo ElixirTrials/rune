@@ -79,9 +79,7 @@ def load_problems(
         )
 
     adapter = _import_adapter(_ADAPTER_REGISTRY[benchmark_id])
-    problems: list[Problem] = adapter.load_problems(
-        max_samples=max_samples, seed=seed
-    )
+    problems: list[Problem] = adapter.load_problems(max_samples=max_samples, seed=seed)
 
     if problem_ids is not None:
         id_set = set(problem_ids)

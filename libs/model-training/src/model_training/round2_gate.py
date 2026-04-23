@@ -19,9 +19,9 @@ REQUIRED_BENCHMARKS: tuple[str, ...] = (
     "ds_1000",
     "livecodebench",
 )
-STRICT_IMPROVEMENT_MIN: float = 0.02   # +2.0% absolute Pass@1
-STRICT_MAX_REGRESSION: float = 0.01    # -1.0% absolute Pass@1
-STRICT_MIN_IMPROVED: int = 4            # out of 6 benchmarks
+STRICT_IMPROVEMENT_MIN: float = 0.02  # +2.0% absolute Pass@1
+STRICT_MAX_REGRESSION: float = 0.01  # -1.0% absolute Pass@1
+STRICT_MIN_IMPROVED: int = 4  # out of 6 benchmarks
 
 
 def evaluate_round2_gate(

@@ -260,9 +260,7 @@ def test_e2e_manifest_points_at_adapters_that_extract_to_t2l_shape(
     embeddings = load_task_embeddings(out_dir / "task_embeddings.pt")
     assert set(embeddings) == {f"adapter-{i}" for i in range(n_tasks)}
     # One-hot over 3 tasks → 3x3 identity.
-    stacked = torch.cat(
-        [embeddings[f"adapter-{i}"] for i in range(n_tasks)], dim=0
-    )
+    stacked = torch.cat([embeddings[f"adapter-{i}"] for i in range(n_tasks)], dim=0)
     assert torch.allclose(stacked @ stacked.T, torch.eye(n_tasks))
 
     stats = load_zscore_stats(out_dir / "zscore_stats.pt")

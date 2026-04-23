@@ -270,7 +270,8 @@ class DiffWeightedDataCollator:
             add_special_tokens=False,
         )
         post_offset_mapping: list[tuple[int, int]] = [
-            tuple(o) for o in enc["offset_mapping"]  # type: ignore[misc]
+            tuple(o)
+            for o in enc["offset_mapping"]  # type: ignore[misc]
         ]
         post_input_ids: list[int] = enc["input_ids"]
 

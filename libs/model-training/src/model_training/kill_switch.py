@@ -111,9 +111,7 @@ def regression_detected(current: float, baseline: float, delta: float) -> bool:
     return current < baseline - delta
 
 
-def update_and_check(
-    state: KillSwitchState, current: float, delta: float
-) -> bool:
+def update_and_check(state: KillSwitchState, current: float, delta: float) -> bool:
     """Update ``state`` with a new Pass@1 reading; return True to halt.
 
     The first call captures ``current`` as the baseline and never halts.
@@ -131,9 +129,7 @@ def update_and_check(
     state.evaluations += 1
     if state.baseline is None:
         state.baseline = current
-        logger.info(
-            "Kill-switch baseline captured: pass_at_1=%.3f", current
-        )
+        logger.info("Kill-switch baseline captured: pass_at_1=%.3f", current)
         return False
     if regression_detected(current, state.baseline, delta):
         state.triggered = True

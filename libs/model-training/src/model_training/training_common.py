@@ -16,9 +16,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def setup_mlflow(
-    experiment_name: str, tracking_uri: str | None
-) -> bool:
+def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
     """Configure MLflow for training runs.
 
     Returns True when MLflow is usable and configured; False when tracking
@@ -44,9 +42,7 @@ def setup_mlflow(
     uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "./mlruns")
     mlflow.set_tracking_uri(uri)
     mlflow.set_experiment(experiment_name)
-    logger.info(
-        "MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name
-    )
+    logger.info("MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name)
     return True
 
 

@@ -90,9 +90,7 @@ def test_upload_manifest_happy_path_calls_boto3(
     from corpus_producer.s3_uploader import upload_manifest
 
     manifest = _make_manifest(tmp_path, "diagnose_pooled.jsonl")
-    ok = upload_manifest(
-        manifest, bucket="my-bucket", prefix="oracles/run-1"
-    )
+    ok = upload_manifest(manifest, bucket="my-bucket", prefix="oracles/run-1")
     assert ok is True
     fake_boto3.client.assert_called_once_with("s3")
     client.upload_file.assert_called_once_with(

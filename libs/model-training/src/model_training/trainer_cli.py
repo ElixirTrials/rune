@@ -91,9 +91,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- Training hyperparameters ---
     parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument(
-        "--lr", dest="learning_rate", type=float, default=2e-4
-    )
+    parser.add_argument("--lr", dest="learning_rate", type=float, default=2e-4)
     parser.add_argument("--rank", type=int, default=None)
     parser.add_argument("--alpha", type=int, default=None)
     parser.add_argument(

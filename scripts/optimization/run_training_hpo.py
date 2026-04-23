@@ -135,15 +135,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset", required=True, help="JSONL of mined pairs.")
     parser.add_argument("--n-trials", type=int, default=10)
-    parser.add_argument(
-        "--study-name", dest="study_name", default="rune-training-v1"
-    )
+    parser.add_argument("--study-name", dest="study_name", default="rune-training-v1")
     parser.add_argument(
         "--db", default="sqlite:///./optuna_training.db", help="Optuna storage URI"
     )
-    parser.add_argument(
-        "--model", dest="model_config_name", default="qwen3.5-9b"
-    )
+    parser.add_argument("--model", dest="model_config_name", default="qwen3.5-9b")
     parser.add_argument(
         "--warm-start",
         dest="warm_start",
@@ -228,9 +224,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "random: hold out all pairs from a random sample of tasks."
         ),
     )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="TPE sampler seed."
-    )
+    parser.add_argument("--seed", type=int, default=42, help="TPE sampler seed.")
     parser.add_argument(
         "--startup-trials",
         type=int,
@@ -252,13 +246,9 @@ def _suggest_trial_params(trial: Any) -> dict[str, Any]:
     dropout = trial.suggest_categorical("lora_dropout", [0.0, 0.05, 0.1])
     warmup = trial.suggest_float("warmup_ratio", 0.0, 0.1)
     grad_accum = trial.suggest_categorical("grad_accum", [8, 16, 32])
-    scheduler = trial.suggest_categorical(
-        "lr_scheduler", ["constant", "cosine"]
-    )
+    scheduler = trial.suggest_categorical("lr_scheduler", ["constant", "cosine"])
     diff_aware = trial.suggest_categorical("diff_aware_loss", [False, True])
-    neftune = trial.suggest_categorical(
-        "neftune_noise_alpha", [None, 5.0, 10.0]
-    )
+    neftune = trial.suggest_categorical("neftune_noise_alpha", [None, 5.0, 10.0])
     return {
         "lr": lr,
         "alpha_override": alpha,
@@ -280,9 +270,10 @@ def _subsample_dataset(src: Path, n: int, dest: Path) -> int:
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     written = 0
-    with src.open("r", encoding="utf-8") as fin, dest.open(
-        "w", encoding="utf-8"
-    ) as fout:
+    with (
+        src.open("r", encoding="utf-8") as fin,
+        dest.open("w", encoding="utf-8") as fout,
+    ):
         for line in fin:
             line = line.strip()
             if not line:
@@ -342,9 +333,7 @@ def _eval_loss_from_trainer_state(output_dir: str) -> float:
     except json.JSONDecodeError:
         return float("inf")
     history = state.get("log_history", [])
-    losses = [
-        float(entry["loss"]) for entry in history if "loss" in entry
-    ]
+    losses = [float(entry["loss"]) for entry in history if "loss" in entry]
     return losses[-1] if losses else float("inf")
 
 
@@ -481,7 +470,9 @@ def _evaluate_adapter_on_heldout(
     adapter_model = PeftModel.from_pretrained(base_model, adapter_path)
     adapter_model.eval()
 
-    def _forward_hunk_metrics(model: Any, disable: bool) -> tuple[float, float, float, int]:
+    def _forward_hunk_metrics(
+        model: Any, disable: bool
+    ) -> tuple[float, float, float, int]:
         total_loss = 0.0
         total_acc = 0.0
         total_ent = 0.0
@@ -509,7 +500,9 @@ def _evaluate_adapter_on_heldout(
                 attention_mask = enc["attention_mask"].to(model.device)
                 offsets = enc["offset_mapping"][0].tolist()
 
-                logits = model(input_ids=input_ids, attention_mask=attention_mask).logits[0]
+                logits = model(
+                    input_ids=input_ids, attention_mask=attention_mask
+                ).logits[0]
                 shift_logits = logits[:-1]
                 shift_ids = input_ids[0][1:]
                 log_probs = torch.log_softmax(shift_logits, dim=-1)
@@ -533,7 +526,12 @@ def _evaluate_adapter_on_heldout(
                     total_tok += 1
         if total_tok == 0:
             return 0.0, 0.0, 0.0, 0
-        return total_loss / total_tok, total_acc / total_tok, total_ent / total_tok, total_tok
+        return (
+            total_loss / total_tok,
+            total_acc / total_tok,
+            total_ent / total_tok,
+            total_tok,
+        )
 
     # Adapter-active pass.
     hunk_loss, hunk_acc, hunk_ent, n_tok = _forward_hunk_metrics(
@@ -613,9 +611,7 @@ def _run_single_trial(
     trial_dir = run_args.output_root / f"trial_{trial.number:03d}"
     trial_dir.mkdir(parents=True, exist_ok=True)
     trial_dataset = trial_dir / "dataset.jsonl"
-    n = _subsample_dataset(
-        Path(run_args.dataset), run_args.subsample, trial_dataset
-    )
+    n = _subsample_dataset(Path(run_args.dataset), run_args.subsample, trial_dataset)
     logger.info("Trial %d subsample size: %d records", trial.number, n)
 
     # Split the trial subsample into train / heldout with no task leakage.
@@ -665,9 +661,7 @@ def _run_single_trial(
         logger.exception("Trial %d crashed: %s", trial.number, exc)
         return 0.0
 
-    adapter_output_dir = str(
-        Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id
-    )
+    adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
 
     # Resolve base model ID the same way train_and_register does.
     base_model_id = kwargs.get("base_model_id") or os.environ.get(

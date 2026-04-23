@@ -734,9 +734,7 @@ def train_d2l_qwen3(  # noqa: C901
                     if ks_state.last_pass_at_1 is not None
                     else _nan
                 )
-                _base = (
-                    ks_state.baseline if ks_state.baseline is not None else _nan
-                )
+                _base = ks_state.baseline if ks_state.baseline is not None else _nan
                 logger.error(
                     "Kill-switch halted training at step %d: "
                     "pass_at_1=%.3f baseline=%.3f delta=%.3f",

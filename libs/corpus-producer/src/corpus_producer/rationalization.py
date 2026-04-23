@@ -103,9 +103,7 @@ def star_rationalize(
             continue
 
         hint_prompt = _build_hint_prompt(prompt, hints)
-        logger.info(
-            "Rationalizing %s/%s for bin %s", benchmark, problem_id, bin_key
-        )
+        logger.info("Rationalizing %s/%s for bin %s", benchmark, problem_id, bin_key)
 
         result: PipelineRunResult = pipeline_runner(  # type: ignore[assignment]
             benchmark,

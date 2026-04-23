@@ -263,7 +263,6 @@ def _setup_training(config: Any) -> dict[str, Any]:
         transfer_aggregator_weights,
     )
 
-
     if not config.smoke_test:
         _require_probe_cache(config.model_config_name)
 

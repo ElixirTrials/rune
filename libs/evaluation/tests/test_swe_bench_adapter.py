@@ -75,13 +75,9 @@ def test_score_returns_pass_when_pipeline_succeeds(
     """Mocked clone + apply + pytest all return 0 -> PASS verdict."""
     monkeypatch.setenv("RUNE_SWE_BENCH_SCORE", "1")
     ok = _CmdResult(returncode=0, stdout="", stderr="", timed_out=False)
-    monkeypatch.setattr(
-        swe_bench_mod, "_run_git_clone", lambda *a, **kw: ok
-    )
+    monkeypatch.setattr(swe_bench_mod, "_run_git_clone", lambda *a, **kw: ok)
     monkeypatch.setattr(swe_bench_mod, "_apply_patch", lambda *a, **kw: ok)
-    monkeypatch.setattr(
-        swe_bench_mod, "_run_pip_install_editable", lambda *a, **kw: ok
-    )
+    monkeypatch.setattr(swe_bench_mod, "_run_pip_install_editable", lambda *a, **kw: ok)
     monkeypatch.setattr(swe_bench_mod, "_run_pytest", lambda *a, **kw: ok)
 
     adapter = SWEBenchLiteAdapter()
@@ -123,14 +119,10 @@ def test_score_returns_timed_out_on_pytest_timeout(
     """pytest timeout surfaces as timed_out=True, passed=False."""
     monkeypatch.setenv("RUNE_SWE_BENCH_SCORE", "1")
     ok = _CmdResult(returncode=0, stdout="", stderr="", timed_out=False)
-    timeout = _CmdResult(
-        returncode=-1, stdout="", stderr="", timed_out=True
-    )
+    timeout = _CmdResult(returncode=-1, stdout="", stderr="", timed_out=True)
     monkeypatch.setattr(swe_bench_mod, "_run_git_clone", lambda *a, **kw: ok)
     monkeypatch.setattr(swe_bench_mod, "_apply_patch", lambda *a, **kw: ok)
-    monkeypatch.setattr(
-        swe_bench_mod, "_run_pip_install_editable", lambda *a, **kw: ok
-    )
+    monkeypatch.setattr(swe_bench_mod, "_run_pip_install_editable", lambda *a, **kw: ok)
     monkeypatch.setattr(swe_bench_mod, "_run_pytest", lambda *a, **kw: timeout)
 
     adapter = SWEBenchLiteAdapter()

@@ -195,9 +195,7 @@ def _load_oracle_as_lora_dict(path: str, hc: Any) -> LoraDict:
     target_layers: list[int] = sorted(int(i) for i in hc.layer_indices)
 
     if not target_layers:
-        raise ValueError(
-            f"hc.layer_indices is empty; cannot load oracle from {p}"
-        )
+        raise ValueError(f"hc.layer_indices is empty; cannot load oracle from {p}")
 
     result: LoraDict = {}
     for module, layers in by_module.items():

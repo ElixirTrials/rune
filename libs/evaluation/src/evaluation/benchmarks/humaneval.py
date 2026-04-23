@@ -84,10 +84,7 @@ class HumanEvalAdapter:
 
         entry = problem.entry_point or ""
         code = (
-            f"{problem.prompt}\n"
-            f"{generation}\n\n"
-            f"{problem.test_code}\n"
-            f"check({entry})\n"
+            f"{problem.prompt}\n{generation}\n\n{problem.test_code}\ncheck({entry})\n"
         )
         backend = SubprocessBackend()
         result = backend.run(code, timeout=timeout_s)

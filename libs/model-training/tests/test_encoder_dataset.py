@@ -12,9 +12,7 @@ torch = pytest.importorskip("torch")
 
 
 def _write_augmented_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.write_text(
-        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
-    )
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
 
 def _make_row(i: int) -> dict[str, Any]:
@@ -70,9 +68,7 @@ def test_collator_returns_tokenized_batch(tmp_path: Path) -> None:
     )
     from transformers import AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        "sentence-transformers/all-mpnet-base-v2"
-    )
+    tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-mpnet-base-v2")
     rows = [_make_row(i) for i in range(4)]
     _write_augmented_jsonl(tmp_path / "repo.jsonl", rows)
     ds = ContrastivePairDataset.from_dir(tmp_path)

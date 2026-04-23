@@ -100,9 +100,7 @@ def _resolve_training_params(
     return resolved
 
 
-def _override_lora_alpha(
-    model: Any, adapter_name: str, new_alpha: int
-) -> None:
+def _override_lora_alpha(model: Any, adapter_name: str, new_alpha: int) -> None:
     """Re-scale a loaded LoRA adapter's effective alpha in place.
 
     PEFT's ``LoraLayer`` caches ``scaling[adapter_name] = alpha / r`` at
@@ -141,9 +139,7 @@ def _override_lora_alpha(
     )
 
 
-def _override_lora_dropout(
-    model: Any, adapter_name: str, new_p: float
-) -> None:
+def _override_lora_dropout(model: Any, adapter_name: str, new_p: float) -> None:
     """Override the dropout probability of a loaded LoRA adapter in place.
 
     ``layer.lora_dropout`` is an ``nn.ModuleDict`` keyed by adapter name
@@ -187,9 +183,7 @@ def _validate_data_source(
     signal on misconfiguration.
     """
     if dataset_path is not None and session_id is not None:
-        raise ValueError(
-            "train_qlora: pass dataset_path XOR session_id, not both"
-        )
+        raise ValueError("train_qlora: pass dataset_path XOR session_id, not both")
     if dataset_path is None and session_id is None:
         raise ValueError(
             "train_qlora: either dataset_path or session_id must be provided"

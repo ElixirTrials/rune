@@ -27,9 +27,7 @@ def test_parse_oracle_spec_phase_benchmark() -> None:
 
 def test_parse_oracle_spec_diagnose_pooled() -> None:
     """diagnose_pooled uses the pooled default benchmark."""
-    bin_key, benchmark, adapter = _MOD._parse_oracle_spec(
-        "diagnose_pooled:adapter-99"
-    )
+    bin_key, benchmark, adapter = _MOD._parse_oracle_spec("diagnose_pooled:adapter-99")
     assert bin_key == "diagnose_pooled"
     assert benchmark == _MOD.DEFAULT_POOLED_BENCHMARK
     assert adapter == "adapter-99"

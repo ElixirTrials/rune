@@ -19,9 +19,7 @@ import pytest
 
 
 def _write_augmented_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.write_text(
-        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
-    )
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
 
 def _make_augmented_rows(n: int = 8) -> list[dict[str, Any]]:
@@ -184,6 +182,4 @@ def test_encoder_loadable_via_load_default_encoder(tmp_path: Path) -> None:
 
     assert set(embeddings) == {"task_a", "task_b"}
     for key, emb in embeddings.items():
-        assert emb.shape == (1, 768), (
-            f"{key}: expected shape (1, 768), got {emb.shape}"
-        )
+        assert emb.shape == (1, 768), f"{key}: expected shape (1, 768), got {emb.shape}"

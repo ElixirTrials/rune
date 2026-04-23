@@ -48,8 +48,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="run_benchmark",
         description=(
-            "Run a benchmark Pass@1 evaluation on a "
-            "(base_model, adapter_stack) pair."
+            "Run a benchmark Pass@1 evaluation on a (base_model, adapter_stack) pair."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -210,9 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         from evaluation.benchmarks.runner import run_benchmark  # deferred
         from sqlalchemy import create_engine  # deferred: heavy
     except ImportError as exc:
-        logger.error(
-            "Missing dependency: %s. Use --dry-run for CPU-only mode.", exc
-        )
+        logger.error("Missing dependency: %s. Use --dry-run for CPU-only mode.", exc)
         return 1
 
     # Build inference provider

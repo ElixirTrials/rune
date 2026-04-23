@@ -139,7 +139,7 @@ class TestEvaluateAndCheck:
         _, h3 = evaluate_and_check(fn, state, 0.10)
         assert h1 is False
         assert h2 is False  # 0.55 >= 0.50
-        assert h3 is True   # 0.40 < 0.50
+        assert h3 is True  # 0.40 < 0.50
 
 
 class TestMaybeRunKillSwitch:
@@ -171,9 +171,7 @@ class TestMaybeRunKillSwitch:
         fn = MagicMock(return_value=0.5)
         config = KillSwitchConfig(enabled=True, step_cadence=100)
         state = KillSwitchState()
-        halt = maybe_run_kill_switch(
-            step=5, config=config, state=state, evaluate_fn=fn
-        )
+        halt = maybe_run_kill_switch(step=5, config=config, state=state, evaluate_fn=fn)
         assert halt is False
         assert fn.call_count == 0
 
@@ -187,12 +185,8 @@ class TestMaybeRunKillSwitch:
         fn = MagicMock(side_effect=[0.6, 0.40])
         config = KillSwitchConfig(enabled=True, step_cadence=10, delta=0.05)
         state = KillSwitchState()
-        h1 = maybe_run_kill_switch(
-            step=10, config=config, state=state, evaluate_fn=fn
-        )
-        h2 = maybe_run_kill_switch(
-            step=20, config=config, state=state, evaluate_fn=fn
-        )
+        h1 = maybe_run_kill_switch(step=10, config=config, state=state, evaluate_fn=fn)
+        h2 = maybe_run_kill_switch(step=20, config=config, state=state, evaluate_fn=fn)
         assert h1 is False
         assert h2 is True
         assert state.triggered is True

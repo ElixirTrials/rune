@@ -71,7 +71,8 @@ def test_bin_key_metadata_overrides_task_id() -> None:
     ],
 )
 def test_bin_key_partial_metadata_fills_from_task_id(
-    record: dict[str, object], expected: str,
+    record: dict[str, object],
+    expected: str,
 ) -> None:
     """Partial metadata is supplemented by task_id parsing.
 
@@ -173,8 +174,8 @@ def test_audit_oracle_coverage_partial() -> None:
 
     records = [
         {"metadata": {"phase": "decompose", "benchmark": "humaneval"}},
-        {"metadata": {"phase": "plan", "benchmark": "mbpp"}},      # missing
-        {"metadata": {"phase": "plan", "benchmark": "mbpp"}},      # missing (dup bin)
+        {"metadata": {"phase": "plan", "benchmark": "mbpp"}},  # missing
+        {"metadata": {"phase": "plan", "benchmark": "mbpp"}},  # missing (dup bin)
         {"metadata": {"phase": "code", "benchmark": "apps"}},
     ]
     ratio, counts = audit_oracle_coverage(records, registry)
@@ -207,7 +208,7 @@ def test_audit_oracle_coverage_skips_unroutable_records() -> None:
     )
     records = [
         {"metadata": {"phase": "decompose", "benchmark": "humaneval"}},  # covered
-        {"task_id": "not-parseable"},                                     # unroutable
+        {"task_id": "not-parseable"},  # unroutable
     ]
     ratio, counts = audit_oracle_coverage(records, registry)
     # 1 covered out of 2 total (unroutable counts against denominator)
@@ -219,8 +220,12 @@ def test_audit_oracle_coverage_skips_unroutable_records() -> None:
 
 def _fake_lora_dict(marker: str) -> dict[str, dict[str, object]]:
     """Return a sentinel-shaped LoRA dict distinguishable by marker."""
-    return {"q_proj": {"A": MagicMock(name=f"A:{marker}"),
-                       "B": MagicMock(name=f"B:{marker}")}}
+    return {
+        "q_proj": {
+            "A": MagicMock(name=f"A:{marker}"),
+            "B": MagicMock(name=f"B:{marker}"),
+        }
+    }
 
 
 def test_oracle_cache_loads_once_per_bin(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -294,13 +299,13 @@ def test_oracle_cache_evicts_lru_when_full(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
     cache = OracleAdapterCache(registry=registry, hc=MagicMock(), max_loaded=2)
-    cache.get("plan_mbpp")                  # LRU = [plan_mbpp]
-    cache.get("code_humaneval")             # LRU = [plan_mbpp, code_humaneval]
-    cache.get("plan_mbpp")                  # LRU = [code_humaneval, plan_mbpp]
-    cache.get("integrate_apps")             # evicts code_humaneval
+    cache.get("plan_mbpp")  # LRU = [plan_mbpp]
+    cache.get("code_humaneval")  # LRU = [plan_mbpp, code_humaneval]
+    cache.get("plan_mbpp")  # LRU = [code_humaneval, plan_mbpp]
+    cache.get("integrate_apps")  # evicts code_humaneval
 
     before = len(load_calls)
-    cache.get("code_humaneval")              # re-load after eviction
+    cache.get("code_humaneval")  # re-load after eviction
     after = len(load_calls)
     assert after == before + 1
 

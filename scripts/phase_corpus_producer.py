@@ -194,15 +194,11 @@ def _parse_shard(s: str) -> tuple[int, int]:
         idx = int(idx_s)
         total = int(total_s)
     except ValueError as exc:
-        raise ValueError(
-            f"--shard components must be integers, got {s!r}"
-        ) from exc
+        raise ValueError(f"--shard components must be integers, got {s!r}") from exc
     if total <= 0:
         raise ValueError(f"--shard total must be > 0, got {total}")
     if idx < 0 or idx >= total:
-        raise ValueError(
-            f"--shard idx must be in [0, {total - 1}], got {idx}"
-        )
+        raise ValueError(f"--shard idx must be in [0, {total - 1}], got {idx}")
     return idx, total
 
 
@@ -340,9 +336,7 @@ def produce_corpus(
         for problem_id, prompt in problems:
             # Resume: skip if all phases are already done
             if not force and db.is_done(benchmark, problem_id, "integrate"):
-                logger.debug(
-                    "Skipping done problem %s/%s", benchmark, problem_id
-                )
+                logger.debug("Skipping done problem %s/%s", benchmark, problem_id)
                 continue
 
             db.mark_running(benchmark, problem_id, "pipeline")
@@ -412,9 +406,7 @@ def produce_corpus(
         bin_record_counts[bin_key] = len(arts)
 
         if s3_bucket:
-            upload_manifest(
-                manifest_path, bucket=s3_bucket, prefix=s3_prefix
-            )
+            upload_manifest(manifest_path, bucket=s3_bucket, prefix=s3_prefix)
 
         if skip_training:
             logger.info(

@@ -280,17 +280,20 @@ class TestDiffWeightedDataCollator:
         collator = DiffWeightedDataCollator(inner, tokenizer=tok)
         features = self._make_features(n=1, pre_code="x = 1\n", post_code=post_code)
 
-        with patch(
-            "model_training.diff_loss.compute_hunk_loss_weights",
-            wraps=__import__(
-                "model_training.diff_loss", fromlist=["compute_hunk_loss_weights"]
-            ).compute_hunk_loss_weights,
-        ) as mock_hunk, patch(
-            "model_training.diff_loss.compute_diff_loss_weights",
-            wraps=__import__(
-                "model_training.diff_loss", fromlist=["compute_diff_loss_weights"]
-            ).compute_diff_loss_weights,
-        ) as mock_legacy:
+        with (
+            patch(
+                "model_training.diff_loss.compute_hunk_loss_weights",
+                wraps=__import__(
+                    "model_training.diff_loss", fromlist=["compute_hunk_loss_weights"]
+                ).compute_hunk_loss_weights,
+            ) as mock_hunk,
+            patch(
+                "model_training.diff_loss.compute_diff_loss_weights",
+                wraps=__import__(
+                    "model_training.diff_loss", fromlist=["compute_diff_loss_weights"]
+                ).compute_diff_loss_weights,
+            ) as mock_legacy,
+        ):
             batch = collator(features)
 
         assert mock_hunk.called, "hunk path should have been used"

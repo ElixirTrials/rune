@@ -56,6 +56,4 @@ def test_run_pipeline_does_not_override_env_when_cuda_none() -> None:
     # Either env kwarg is absent, or — if forwarded — it doesn't set CUDA
     env = mock_run.call_args.kwargs.get("env")
     if env is not None:
-        assert "CUDA_VISIBLE_DEVICES" not in env or env[
-            "CUDA_VISIBLE_DEVICES"
-        ] != "2"
+        assert "CUDA_VISIBLE_DEVICES" not in env or env["CUDA_VISIBLE_DEVICES"] != "2"
