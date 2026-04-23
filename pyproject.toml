@@ -244,6 +244,7 @@ markers = [
     "e2e: end-to-end API workflow tests",
     "integration: marks tests as integration tests",
     "requires_gpu: test requires GPU libraries (torch, peft, trl)",
+    "slow: test is slow; opt-in via -m slow (e.g. encoder round-trip GPU tests)",
 ]
 filterwarnings = [
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",

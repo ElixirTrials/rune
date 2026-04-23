@@ -45,6 +45,10 @@ mypy_path = ["../shared/src"]
 pythonpath = ["src", "../shared/src"]
 testpaths = ["tests"]
 addopts = "--cov=model_training --cov-branch --cov-report=term-missing"
+markers = [
+    "slow: test is slow; opt-in via -m slow (e.g. encoder round-trip GPU tests)",
+    "requires_gpu: test requires GPU libraries (torch, peft, trl)",
+]
 
 [tool.uv.sources]
 shared = { workspace = true }
