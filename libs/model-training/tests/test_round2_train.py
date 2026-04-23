@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from model_training.round2_train import (
     _teacher_forward_with_oracle,
+    _training_step_round2,
 )
 
 
@@ -100,3 +101,181 @@ def test_teacher_forward_bypasses_functional_lora_when_oracle_is_none(
 
     assert logits.marker == "from_bare_base"
     base.assert_called_once_with(**inputs, output_hidden_states=False)
+
+
+def _make_record() -> dict[str, object]:
+    return {
+        "task_id": "humaneval/HE-0/decompose",
+        "activation_text": "## Task\nwrite X",
+        "teacher_text": "## Task\nwrite X\n\n## Implementation\nreturn 0",
+        "metadata": {
+            "phase": "decompose",
+            "benchmark": "humaneval",
+            "problem_id": "HE-0",
+        },
+    }
+
+
+def test_training_step_round2_routes_to_oracle_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_training_step_round2 asks cache.get(bin_key) and plumbs lora_dict through."""
+    from model_training import round2_train
+
+    cache = MagicMock()
+    oracle_lora_dict = {"q_proj": {"A": MagicMock(), "B": MagicMock()}}
+    cache.get.return_value = oracle_lora_dict
+
+    fake_features = MagicMock(name="features")
+    fake_mask = MagicMock(name="mask")
+    monkeypatch.setattr(
+        round2_train,
+        "_extract_activations_with_model",
+        lambda **_kw: (fake_features, fake_mask),
+    )
+
+    # apply_functional_lora is invoked TWICE per step: once for the teacher
+    # pass (oracle lora_dict) and once for the student pass (hypernet lora_dict).
+    applied: list = []
+
+    class _FakeCtxMgr2:
+        def __enter__(self) -> None: return None
+        def __exit__(self, *exc: object) -> None: return None
+
+    def _fake_apply(base: object, lora: object, hc: object) -> _FakeCtxMgr2:
+        applied.append(lora)
+        return _FakeCtxMgr2()
+
+    monkeypatch.setattr(round2_train, "_apply_functional_lora", _fake_apply)
+
+    fake_loss = MagicMock(name="loss_tensor")
+    fake_metrics = {"total_loss": 0.42, "kl_loss": 0.2, "ce_loss": 0.22}
+    monkeypatch.setattr(
+        round2_train,
+        "_compute_kl_ce_loss",
+        lambda s, t, start, cfg: (fake_loss, fake_metrics),
+    )
+
+    class _NoGrad(_FakeCtxMgr2): ...
+    monkeypatch.setattr(round2_train, "_torch_no_grad", lambda: _NoGrad())
+
+    hypernet = MagicMock()
+    hypernet_lora_dict = MagicMock(name="hypernet_lora_dict")
+    hypernet.generate_weights.return_value = (hypernet_lora_dict, None)
+
+    tokenizer = MagicMock()
+    tokenizer.return_value = {"input_ids": MagicMock(), "attention_mask": MagicMock()}
+
+    base = MagicMock(name="base")
+    base.return_value.logits = MagicMock(name="student_logits")
+    base.parameters.return_value = iter([MagicMock(device="cpu")])
+
+    config = MagicMock(max_length=512, oracle_fallback="skip")
+    hc = MagicMock(layer_indices=[0, 1])
+
+    loss, metrics = _training_step_round2(
+        record=_make_record(),
+        base_model=base,
+        tokenizer=tokenizer,
+        hypernet=hypernet,
+        hc=hc,
+        config=config,
+        oracle_cache=cache,
+    )
+
+    cache.get.assert_called_once_with("decompose_humaneval")
+    # Teacher pass applied the oracle; student pass applied the hypernet output.
+    assert applied == [oracle_lora_dict, hypernet_lora_dict]
+    assert loss is fake_loss
+    assert metrics["total_loss"] == pytest.approx(0.42)
+
+
+def test_training_step_round2_skip_fallback_returns_sentinel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """oracle_fallback='skip' + missing oracle → returns (None, {}) so caller skips."""
+    cache = MagicMock()
+    cache.get.return_value = None   # missing oracle
+
+    config = MagicMock(oracle_fallback="skip", max_length=512)
+
+    result = _training_step_round2(
+        record=_make_record(),
+        base_model=MagicMock(),
+        tokenizer=MagicMock(),
+        hypernet=MagicMock(),
+        hc=MagicMock(),
+        config=config,
+        oracle_cache=cache,
+    )
+    assert result == (None, {})
+
+
+def test_training_step_round2_base_model_fallback_uses_bare_teacher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """oracle_fallback='base_model' + missing oracle → teacher runs bare base model.
+
+    apply_functional_lora is invoked ONCE (student pass only); the teacher
+    pass bypasses it because oracle_lora_dict is None.
+    """
+    from model_training import round2_train
+
+    cache = MagicMock()
+    cache.get.return_value = None   # no oracle for this bin
+
+    fake_features = MagicMock(name="features")
+    fake_mask = MagicMock(name="mask")
+    monkeypatch.setattr(
+        round2_train,
+        "_extract_activations_with_model",
+        lambda **_kw: (fake_features, fake_mask),
+    )
+
+    applied: list = []
+
+    class _FakeCtxMgr3:
+        def __enter__(self) -> None: return None
+        def __exit__(self, *exc: object) -> None: return None
+
+    def _fake_apply(base: object, lora: object, hc: object) -> _FakeCtxMgr3:
+        applied.append(lora)
+        return _FakeCtxMgr3()
+
+    monkeypatch.setattr(round2_train, "_apply_functional_lora", _fake_apply)
+    monkeypatch.setattr(
+        round2_train,
+        "_compute_kl_ce_loss",
+        lambda s, t, start, cfg: (MagicMock(), {"total_loss": 0.1}),
+    )
+
+    class _NoGrad(_FakeCtxMgr3): ...
+    monkeypatch.setattr(round2_train, "_torch_no_grad", lambda: _NoGrad())
+
+    hypernet = MagicMock()
+    hypernet_lora_dict = MagicMock(name="hypernet_lora_dict")
+    hypernet.generate_weights.return_value = (hypernet_lora_dict, None)
+
+    tokenizer = MagicMock()
+    tokenizer.return_value = {"input_ids": MagicMock(), "attention_mask": MagicMock()}
+
+    base = MagicMock(name="base")
+    base.return_value.logits = MagicMock(name="logits")
+    base.parameters.return_value = iter([MagicMock(device="cpu")])
+
+    config = MagicMock(max_length=512, oracle_fallback="base_model")
+    hc = MagicMock(layer_indices=[0, 1])
+
+    loss, metrics = _training_step_round2(
+        record=_make_record(),
+        base_model=base,
+        tokenizer=tokenizer,
+        hypernet=hypernet,
+        hc=hc,
+        config=config,
+        oracle_cache=cache,
+    )
+
+    # Only the student-pass LoRA was applied; teacher ran bare base model.
+    assert applied == [hypernet_lora_dict]
+    assert loss is not None
