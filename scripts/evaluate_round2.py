@@ -73,7 +73,7 @@ def _run_benchmarks_for_adapter(
     result: dict[str, float] = {}
     for bench in REQUIRED_BENCHMARKS:
         logger.info("Evaluating %s on %s", adapter_id, bench)
-        out = run_benchmark(adapter_stack=stack, benchmark_id=bench)
+        out = run_benchmark(adapter_stack=stack, benchmark_id=bench)  # type: ignore[operator]
         result[bench] = float(out.pass_at_1)
     return result
 
