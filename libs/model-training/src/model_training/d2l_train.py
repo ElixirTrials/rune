@@ -106,6 +106,13 @@ class D2LTrainConfig(BaseModel):
     warmup_steps: int = Field(default=10)
     lora_r: int = Field(default=8)
     max_length: int = Field(default=512)
+    # Kill-switch: halt training when Pass@1 regresses vs baseline (Plan A follow-up).
+    # Disabled by default so existing callers/tests are unaffected.
+    kill_switch_enabled: bool = Field(default=False)
+    kill_switch_step_cadence: int = Field(default=100)
+    kill_switch_benchmark_id: str = Field(default="humaneval")
+    kill_switch_max_samples: int = Field(default=10)
+    kill_switch_delta: float = Field(default=0.05)
 
     def model_post_init(self, __context: Any) -> None:
         """Resolve base_model_name from registry when not explicitly set."""
@@ -482,7 +489,11 @@ def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
     return shape_summary
 
 
-def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
+def train_d2l_qwen3(  # noqa: C901
+    config: D2LTrainConfig,
+    *,
+    kill_switch_evaluate_fn: Any = None,
+) -> dict[str, Any]:
     """Run KL-divergence context distillation training.
 
     Three execution modes controlled by config flags:
@@ -492,6 +503,11 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
 
     Args:
         config: Training configuration.
+        kill_switch_evaluate_fn: Zero-arg callable returning the current Pass@1
+            as a float. Required when ``config.kill_switch_enabled`` is True;
+            ignored otherwise. Inject a closure built via
+            :func:`model_training.kill_switch.build_benchmark_evaluate_fn` for
+            production runs, or a mock for tests.
 
     Returns:
         Dictionary with training results:
@@ -500,6 +516,8 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
             - num_steps_completed: Number of training steps completed.
             - checkpoint_dir: Path to checkpoint directory.
             - shape_summary (dry_run only): Tensor shape validation results.
+            - kill_switch_triggered: True when training halted early due to
+              Pass@1 regression (only present when the kill-switch is enabled).
     """
     import mlflow  # noqa: PLC0415
     import torch  # noqa: PLC0415
@@ -617,6 +635,28 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
     final_loss = float("inf")
     step_losses: list[float] = []
 
+    # Kill-switch setup (Plan A follow-up). Disabled by default.
+    from model_training.kill_switch import (  # noqa: PLC0415
+        KillSwitchConfig,
+        KillSwitchState,
+        maybe_run_kill_switch,
+    )
+
+    ks_config = KillSwitchConfig(
+        enabled=config.kill_switch_enabled,
+        step_cadence=config.kill_switch_step_cadence,
+        benchmark_id=config.kill_switch_benchmark_id,
+        max_samples=config.kill_switch_max_samples,
+        delta=config.kill_switch_delta,
+    )
+    ks_state = KillSwitchState()
+    if ks_config.enabled and kill_switch_evaluate_fn is None:
+        raise ValueError(
+            "kill_switch_enabled=True requires kill_switch_evaluate_fn; "
+            "build one via model_training.kill_switch.build_benchmark_evaluate_fn."
+        )
+    kill_switch_halted = False
+
     with mlflow.start_run(run_name=f"{config.experiment_name}-step{num_steps}"):
         mlflow.log_params(config.model_dump())
 
@@ -680,6 +720,33 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
                 )
                 mlflow.log_artifact(str(ckpt_path))
 
+            # Kill-switch: evaluate Pass@1 at cadence and halt on regression.
+            if maybe_run_kill_switch(
+                step=step,
+                config=ks_config,
+                state=ks_state,
+                evaluate_fn=kill_switch_evaluate_fn,
+            ):
+                kill_switch_halted = True
+                _nan = float("nan")
+                _last = (
+                    ks_state.last_pass_at_1
+                    if ks_state.last_pass_at_1 is not None
+                    else _nan
+                )
+                _base = (
+                    ks_state.baseline if ks_state.baseline is not None else _nan
+                )
+                logger.error(
+                    "Kill-switch halted training at step %d: "
+                    "pass_at_1=%.3f baseline=%.3f delta=%.3f",
+                    step,
+                    _last,
+                    _base,
+                    ks_config.delta,
+                )
+                break
+
     # Smoke test assertions
     if config.smoke_test:
         for i, sl in enumerate(step_losses):
@@ -694,12 +761,17 @@ def train_d2l_qwen3(config: D2LTrainConfig) -> dict[str, Any]:  # noqa: C901
             "Smoke test: no trainable param has non-None gradient after training"
         )
 
-    return {
+    result: dict[str, Any] = {
         "final_loss": final_loss,
         "best_loss": best_loss,
         "num_steps_completed": num_steps,
         "checkpoint_dir": config.checkpoint_dir,
     }
+    if ks_config.enabled:
+        result["kill_switch_triggered"] = kill_switch_halted
+        result["kill_switch_baseline"] = ks_state.baseline
+        result["kill_switch_last_pass_at_1"] = ks_state.last_pass_at_1
+    return result
 
 
 # Public alias so callers don't need to reference the private name.
