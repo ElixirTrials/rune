@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "7283a4f5c8a6",
+  "session_id": "d816fa3d-1f8a-4fad-9523-e1a1dab5c063",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-23T07:29:04.080666Z",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "libs/evaluation/src/evaluation/benchmarks/swe_bench.py",
+    "libs/evaluation/tests/test_swe_bench_adapter.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "96ee003623ad",
+  "checkpoint_transcript_start": 276,
+  "transcript_lines_at_start": 276,
+  "token_usage": {
+    "input_tokens": 37,
+    "cache_creation_tokens": 29216,
+    "cache_read_tokens": 1585619,
+    "output_tokens": 14481,
+    "api_call_count": 12
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-23T07:29:03.931108Z",
+    "agent_lines": 0,
+    "human_added": 393,
+    "human_modified": 33,
+    "human_removed": 0,
+    "total_committed": 393,
+    "agent_percentage": 0
+  }
+}
