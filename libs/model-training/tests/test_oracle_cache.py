@@ -8,6 +8,7 @@ import pytest
 from model_training.oracle_cache import (
     DIAGNOSE_BIN_KEY,
     ORACLE_ID_PREFIX,
+    OracleAdapterCache,
     _bin_key_for_record,
     audit_oracle_coverage,
     lookup_oracle_path,
@@ -214,3 +215,109 @@ def test_audit_oracle_coverage_skips_unroutable_records() -> None:
     assert counts == {"decompose_humaneval": 1}
     # The unroutable record never triggered a registry lookup.
     registry.retrieve_by_id.assert_called_once()
+
+
+def _fake_lora_dict(marker: str) -> dict[str, dict[str, object]]:
+    """Return a sentinel-shaped LoRA dict distinguishable by marker."""
+    return {"q_proj": {"A": MagicMock(name=f"A:{marker}"),
+                       "B": MagicMock(name=f"B:{marker}")}}
+
+
+def test_oracle_cache_loads_once_per_bin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Second .get() for the same bin returns the cached lora_dict (no reload)."""
+    from model_training import oracle_cache
+
+    load_calls: list[str] = []
+
+    def _fake_loader(path: str, hc: object) -> dict[str, dict[str, object]]:
+        load_calls.append(path)
+        return _fake_lora_dict(path)
+
+    monkeypatch.setattr(oracle_cache, "_load_oracle_as_lora_dict", _fake_loader)
+
+    registry = MagicMock()
+    registry.retrieve_by_id.return_value = _fake_record(
+        adapter_id="oracle_decompose_humaneval",
+        file_path="/a/oracle_decompose_humaneval",
+    )
+
+    cache = OracleAdapterCache(registry=registry, hc=MagicMock(), max_loaded=4)
+
+    first = cache.get("decompose_humaneval")
+    second = cache.get("decompose_humaneval")
+
+    assert first is second
+    assert load_calls == ["/a/oracle_decompose_humaneval"]
+
+
+def test_oracle_cache_returns_none_when_bin_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unregistered bins return None; the loader is not called."""
+    from adapter_registry.exceptions import AdapterNotFoundError
+    from model_training import oracle_cache
+
+    called = []
+    monkeypatch.setattr(
+        oracle_cache,
+        "_load_oracle_as_lora_dict",
+        lambda *a, **kw: called.append(a) or _fake_lora_dict("nope"),
+    )
+
+    registry = MagicMock()
+    registry.retrieve_by_id.side_effect = AdapterNotFoundError("missing")
+
+    cache = OracleAdapterCache(registry=registry, hc=MagicMock(), max_loaded=4)
+    assert cache.get("plan_mbpp") is None
+    assert called == []
+
+
+def test_oracle_cache_evicts_lru_when_full(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Filling past max_loaded evicts the least-recently-used bin."""
+    from model_training import oracle_cache
+
+    load_calls: list[str] = []
+    monkeypatch.setattr(
+        oracle_cache,
+        "_load_oracle_as_lora_dict",
+        lambda path, hc: load_calls.append(path) or _fake_lora_dict(path),
+    )
+
+    registry = MagicMock()
+    registry.retrieve_by_id.side_effect = lambda aid: _fake_record(
+        adapter_id=aid, file_path=f"/a/{aid}"
+    )
+
+    cache = OracleAdapterCache(registry=registry, hc=MagicMock(), max_loaded=2)
+    cache.get("plan_mbpp")                  # LRU = [plan_mbpp]
+    cache.get("code_humaneval")             # LRU = [plan_mbpp, code_humaneval]
+    cache.get("plan_mbpp")                  # LRU = [code_humaneval, plan_mbpp]
+    cache.get("integrate_apps")             # evicts code_humaneval
+
+    before = len(load_calls)
+    cache.get("code_humaneval")              # re-load after eviction
+    after = len(load_calls)
+    assert after == before + 1
+
+
+def test_oracle_cache_clear_releases_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    """clear() empties the cache; subsequent get() reloads."""
+    from model_training import oracle_cache
+
+    load_calls: list[str] = []
+    monkeypatch.setattr(
+        oracle_cache,
+        "_load_oracle_as_lora_dict",
+        lambda path, hc: load_calls.append(path) or _fake_lora_dict(path),
+    )
+
+    registry = MagicMock()
+    registry.retrieve_by_id.side_effect = lambda aid: _fake_record(
+        adapter_id=aid, file_path=f"/a/{aid}"
+    )
+
+    cache = OracleAdapterCache(registry=registry, hc=MagicMock(), max_loaded=4)
+    cache.get("plan_mbpp")
+    cache.clear()
+    cache.get("plan_mbpp")
+    assert len(load_calls) == 2
