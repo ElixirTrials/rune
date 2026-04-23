@@ -3,9 +3,32 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SRC_PATHS = [
+    str(_REPO_ROOT / "libs" / "model-training" / "src"),
+    str(_REPO_ROOT / "libs" / "shared" / "src"),
+    str(_REPO_ROOT / "libs" / "adapter-registry" / "src"),
+    str(_REPO_ROOT / "libs" / "inference" / "src"),
+]
+
+
+def _subprocess_env() -> dict[str, str]:
+    """Return env dict with PYTHONPATH covering the workspace source tree.
+
+    Subprocess `python -m model_training.*` calls rely on this because
+    the runner's .venv may not have the workspace installed in
+    site-packages (only via pytest's pythonpath config).
+    """
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH", "")
+    extra = os.pathsep.join(_SRC_PATHS)
+    env["PYTHONPATH"] = f"{extra}{os.pathsep}{existing}" if existing else extra
+    return env
 
 
 def test_dry_run_prints_json_without_torch(tmp_path: Path) -> None:
@@ -28,6 +51,7 @@ def test_dry_run_prints_json_without_torch(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         check=True,
+        env=_subprocess_env(),
     )
 
     config = json.loads(result.stdout)
@@ -65,6 +89,7 @@ def test_dry_run_respects_overrides(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         check=True,
+        env=_subprocess_env(),
     )
 
     config = json.loads(result.stdout)
@@ -79,6 +104,7 @@ def test_help_exits_cleanly() -> None:
         [sys.executable, "-m", "model_training.encoder_pretrain.cli", "--help"],
         capture_output=True,
         text=True,
+        env=_subprocess_env(),
     )
     assert result.returncode == 0
     assert "augmented-dir" in result.stdout
@@ -91,5 +117,6 @@ def test_missing_required_arg_exits_nonzero() -> None:
         [sys.executable, "-m", "model_training.encoder_pretrain.cli"],
         capture_output=True,
         text=True,
+        env=_subprocess_env(),
     )
     assert result.returncode == 2
