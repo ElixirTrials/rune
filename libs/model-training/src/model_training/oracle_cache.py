@@ -52,3 +52,34 @@ def _bin_key_for_record(record: dict[str, Any]) -> str:
     if phase == "diagnose":
         return DIAGNOSE_BIN_KEY
     return f"{phase}_{benchmark}"
+
+
+def lookup_oracle_path(bin_key: str, registry: Any) -> str | None:
+    """Resolve a bin key to the on-disk path of its registered oracle adapter.
+
+    The adapter_id scheme follows :mod:`corpus_producer.trainer_bridge`:
+    ``oracle_<bin_key>``. Returns ``None`` when the adapter is missing or
+    archived so callers can decide whether to fall back to the base model
+    or skip the record.
+
+    Args:
+        bin_key: Oracle bin key (e.g. ``"decompose_humaneval"``,
+            ``"diagnose_pooled"``).
+        registry: An :class:`adapter_registry.registry.AdapterRegistry`
+            instance (or a mock with a compatible ``retrieve_by_id``).
+
+    Returns:
+        The adapter's ``file_path`` string, or ``None`` when missing / archived.
+    """
+    from adapter_registry.exceptions import AdapterNotFoundError  # noqa: PLC0415
+
+    adapter_id = f"{ORACLE_ID_PREFIX}{bin_key}"
+    try:
+        record = registry.retrieve_by_id(adapter_id)
+    except AdapterNotFoundError:
+        logger.warning("Oracle adapter %r not found in registry", adapter_id)
+        return None
+    if record.is_archived:
+        logger.warning("Oracle adapter %r is archived; ignoring", adapter_id)
+        return None
+    return str(record.file_path)

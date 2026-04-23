@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from model_training.oracle_cache import (
     DIAGNOSE_BIN_KEY,
     ORACLE_ID_PREFIX,
     _bin_key_for_record,
+    lookup_oracle_path,
 )
 
 
@@ -80,3 +83,52 @@ def test_bin_key_partial_metadata_fills_from_task_id(
 def test_oracle_id_prefix_constant() -> None:
     """ORACLE_ID_PREFIX matches trainer_bridge.py's adapter_id scheme."""
     assert ORACLE_ID_PREFIX == "oracle_"
+
+
+def _fake_record(
+    adapter_id: str,
+    file_path: str,
+    is_archived: bool = False,
+) -> MagicMock:
+    """Build a fake AdapterRecord with the fields lookup_oracle_path reads."""
+    rec = MagicMock()
+    rec.id = adapter_id
+    rec.file_path = file_path
+    rec.is_archived = is_archived
+    return rec
+
+
+def test_lookup_oracle_path_returns_file_path() -> None:
+    """Returns the registered file_path when the oracle exists."""
+    registry = MagicMock()
+    registry.retrieve_by_id.return_value = _fake_record(
+        adapter_id="oracle_decompose_humaneval",
+        file_path="/adapters/oracle_decompose_humaneval",
+    )
+    assert (
+        lookup_oracle_path("decompose_humaneval", registry)
+        == "/adapters/oracle_decompose_humaneval"
+    )
+    registry.retrieve_by_id.assert_called_once_with("oracle_decompose_humaneval")
+
+
+def test_lookup_oracle_path_returns_none_when_missing() -> None:
+    """Returns None when the registry has no record for the bin."""
+    from adapter_registry.exceptions import AdapterNotFoundError
+
+    registry = MagicMock()
+    registry.retrieve_by_id.side_effect = AdapterNotFoundError(
+        "oracle_plan_mbpp not found"
+    )
+    assert lookup_oracle_path("plan_mbpp", registry) is None
+
+
+def test_lookup_oracle_path_returns_none_when_archived() -> None:
+    """Archived adapters are treated as missing."""
+    registry = MagicMock()
+    registry.retrieve_by_id.return_value = _fake_record(
+        adapter_id="oracle_code_apps",
+        file_path="/adapters/oracle_code_apps",
+        is_archived=True,
+    )
+    assert lookup_oracle_path("code_apps", registry) is None
