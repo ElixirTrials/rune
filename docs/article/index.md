@@ -8,7 +8,7 @@ Rune Project
 
 !!! warning "Research Status: Pre-Validation"
     Rune's infrastructure is built and tested (five-phase pipeline, benchmark
-    evaluation framework, 433+ tests passing). GPU training runs and adapter
+    evaluation framework, 776+ tests passing). GPU training runs and adapter
     evaluations have not been conducted. All performance claims are qualified
     with a claim tier (validated/expected/proposed).
 
@@ -28,5 +28,6 @@ parametric episodic memory approach. It surveys composable weight-space memory
 strategies, specifies the Doc-to-LoRA trajectory extension, five-phase pipeline
 (decompose, plan, code, integrate, diagnose/repair), and Evolution Operator,
 proposes an experimental design for empirical validation using a tiered benchmark
-framework (HumanEval+, MBPP+, BigCodeBench), and discusses expected contributions
-and limitations honestly in terms of claim tier.
+framework across six suites (HumanEval, MBPP, APPS, BigCodeBench, DS-1000,
+LiveCodeBench), and discusses expected contributions and limitations honestly
+in terms of claim tier.

@@ -34,14 +34,12 @@ def evaluate_round2_gate(
             every benchmark in :data:`REQUIRED_BENCHMARKS`.
 
     Returns:
-        Report dict with keys:
-        - ``passed`` (bool): gate verdict.
-        - ``deltas``: ``{bench: r2 - r1}``.
-        - ``improved_count``: count of benchmarks with delta >= STRICT_IMPROVEMENT_MIN.
-        - ``max_regression``: largest absolute regression observed
-          (``max(0, -delta)``) across all benchmarks.
-        - ``reasons``: list[str] describing why the gate failed, or empty
-          when ``passed``.
+        Report dict with keys ``passed`` (bool, gate verdict), ``deltas``
+        (``{bench: r2 - r1}``), ``improved_count`` (count of benchmarks with
+        delta >= ``STRICT_IMPROVEMENT_MIN``), ``max_regression`` (largest
+        absolute regression observed, ``max(0, -delta)`` across all
+        benchmarks), and ``reasons`` (list[str] describing why the gate
+        failed, or empty when ``passed``).
 
     Raises:
         ValueError: When any required benchmark is missing from ``scores``.

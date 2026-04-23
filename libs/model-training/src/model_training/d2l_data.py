@@ -966,18 +966,18 @@ def pairs_to_chat_messages(
         system_prompt: System message for every conversation.
 
     Returns:
-        A tuple ``(conversations, pre_post_records)`` where:
+        A tuple ``(conversations, pre_post_records)``.
 
-        - ``conversations`` is a list of chat-message lists suitable for
-          ``datasets.Dataset.from_list([{"messages": m} for m in convs])``
-          and TRL's ``SFTTrainer`` with ``assistant_only_loss=True``.
-        - ``pre_post_records`` is a list of ``{"pre_code": str, "post_code":
-          str}`` dicts aligned 1:1 with ``conversations``. For multi-turn
-          conversations the pre/post codes are the concatenation (joined by
-          ``"\\n\\n"``) of each individual turn's pre/post code.
+        ``conversations`` is a list of chat-message lists suitable for
+        ``datasets.Dataset.from_list([{"messages": m} for m in convs])`` and
+        TRL's ``SFTTrainer`` with ``assistant_only_loss=True``.
 
-    Raises:
-        None — invalid or missing fields are handled gracefully: missing
+        ``pre_post_records`` is a list of ``{"pre_code": str, "post_code":
+        str}`` dicts aligned 1:1 with ``conversations``. For multi-turn
+        conversations the pre/post codes are the concatenation (joined by
+        ``"\\n\\n"``) of each individual turn's pre/post code.
+
+        Invalid or missing fields are handled gracefully: missing
         ``activation_text`` / ``teacher_text`` produce empty strings, and
         missing ``metadata`` keys fall back to empty string / 0 defaults.
     """

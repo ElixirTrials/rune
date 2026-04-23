@@ -19,13 +19,83 @@ End-to-end pipeline for training the hypernetwork on coding trajectory → adapt
 | Module | Purpose |
 |--------|---------|
 | `d2l_train.py` | Main training loop |
-| `d2l_data.py` | Dataset preparation and loading |
+| `d2l_data.py` | Dataset preparation and loading; `normalize_mined_pairs` (per-step pair extraction, task_id leakage guard); `pairs_to_chat_messages` SFT converter returning `(conversations, pre_post_records)` tuple; `task_description` propagated through `_make_pair_record` (unblocks `MIN_RETENTION_RATIO=0.80` gate) |
 | `d2l_config.py` | Training configuration |
 | `d2l_lora.py` | LoRA adapter utilities for D2L |
 | `d2l_prep.py` | Data preprocessing |
 | `d2l_mining.py` | Trajectory mining from coding sessions |
 | `d2l_probe.py` | Probing trained hypernetwork quality |
+| `d2l_diff.py` | RTK-style diff compression |
 | `sakana_d2l.py` | Sakana AI Doc-to-LoRA integration |
+| `diff_loss.py` | `DiffAwareSFTTrainer` + `DiffWeightedDataCollator`; hunk-weighted token loss; identity-under-uniform-weights (regression-guarded); fallback emits identity weights when side-channels or tokenizer are missing |
+| `kill_switch.py` | `KillSwitchConfig`, `KillSwitchState`, `maybe_run_kill_switch`, `build_benchmark_evaluate_fn`; wired into `train_d2l_qwen3` via `kill_switch_evaluate_fn` kwarg; default off; triggers on ≥5% Pass@1 regression on HumanEval (20–30 held-out tasks, k=5) |
+| `training_common.py` | `mlflow_log_params` shared helper |
+| `round2_config.py` | `Round2TrainConfig` (Pydantic, inherits `D2LTrainConfig`) |
+| `oracle_cache.py` | `_bin_key_for_record`, `lookup_oracle_path`, `audit_oracle_coverage`, `_load_oracle_as_lora_dict`, `OracleAdapterCache` (LRU, max 4 loaded, stores `LoraDict` tensor dicts) |
+| `round2_train.py` | `_apply_functional_lora`, `_teacher_forward_with_oracle`, `_compute_kl_ce_loss`, `_training_step_round2`, `train_d2l_qwen3_round2`, `register_round2_adapter` |
+| `round2_gate.py` | `evaluate_round2_gate` — strict success gate |
+
+### Round-2 Distillation
+
+Trains the Sakana HyperLoRA hypernetwork using **per-bin oracle adapters as teacher signals** instead of the bare base model.
+
+#### Oracle structure
+
+- 25 bins: `<phase>_<benchmark>` for 4 phases × 6 benchmarks, plus `diagnose_pooled`.
+- Oracle adapter IDs: `oracle_<bin_key>` — set by `libs/corpus-producer/src/corpus_producer/trainer_bridge.py`.
+- Required benchmarks: `humaneval`, `mbpp`, `apps`, `bigcodebench`, `ds_1000`, `livecodebench`.
+
+#### Functional-LoRA teacher
+
+Oracle is applied to the base model via `apply_functional_lora` context manager — identical mechanism used for the student pass. Base model is **never structurally mutated** (no `PeftModel` wrappers, no `LoraLayer` replacements), eliminating PEFT hook-leakage risk between passes.
+
+`OracleAdapterCache` stores `LoraDict` tensor dicts (`{module: {"A": Tensor[L,r,in], "B": Tensor[L,r,out]}}`); LRU cap of 4 loaded oracles.
+
+#### Round-2 adapter identity
+
+- ID: `round2_<uuid[:8]>`
+- `task_type="round2_hypernet"`, `generation=2`
+- `parent_ids=json.dumps(sorted(oracle_ids))` for lineage tracking
+
+#### `Round2TrainConfig` (beyond inherited `D2LTrainConfig`)
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `oracle_registry_url: str` | *(required)* | SQLAlchemy URL for the `AdapterRegistry` holding the 25 oracle records |
+| `max_loaded_oracles: int` | `4` | LRU cap for cached oracle LoRA dicts |
+| `min_oracle_coverage: float` | `0.8` | Minimum fraction of training records whose bin has a registered oracle; below → abort at startup |
+| `oracle_fallback: Literal["skip", "base_model"]` | `"skip"` | `"skip"` drops records with no oracle (preserves oracle-only signal); `"base_model"` is an ablation mode |
+| `checkpoint_dir: str` | `"./checkpoints/round2"` | Does not clobber round-1 checkpoints |
+| `experiment_name: str` | `"d2l-qwen3-round2"` | MLflow separation from round-1 |
+
+#### Startup guards
+
+- Coverage < `min_oracle_coverage` → `RuntimeError` before any model load. `dry_run` surfaces the same gate.
+- `_training_step_round2` returns `(None, {})` when an oracle is missing and `oracle_fallback == "skip"`; `steps_completed` only advances on successful optimizer steps.
+
+#### Strict success gate (`round2_gate.py`)
+
+- ≥ 4/6 benchmarks improved ≥ 2.0% Pass@1 **and** no regression > 1.0% on any benchmark.
+- Verdict JSON keys: `passed`, `deltas`, `improved_count`, `max_regression`, `reasons`, `round2_adapter_id`, `scores`.
+
+#### CLIs
+
+```bash
+# Train round-2 hypernet with oracle teachers
+uv run scripts/train_round2.py \
+    --sakana-checkpoint-path /path/to/sakana.bin \
+    --oracle-registry-url sqlite:///~/.rune/adapters.db \
+    --dataset-path data/phase_corpus/all_bins_concat.jsonl \
+    --num-steps 1000
+
+# Apply the strict gate (exit 0 = PASS, exit 1 = FAIL)
+uv run scripts/evaluate_round2.py \
+    --round2-adapter-id round2_<hex8> \
+    --base-model Qwen/Qwen3.5-9B \
+    --oracle-registry-url sqlite:///~/.rune/adapters.db \
+    --baseline-report round1_scores.json \
+    --output-report round2_verdict.json
+```
 
 ### Merging (`merging.py`)
 
@@ -75,8 +145,12 @@ without importing torch — useful for CI validation.
 
 `scripts/optimization/run_training_hpo.py` tunes the DeltaCoder warm-start
 fine-tune's training hyperparameters (LR, alpha, dropout, warmup, grad-accum,
-scheduler, diff-aware-loss flag). Uses Optuna with Hyperband pruning. See
-`docs/plans/training_upgrade.md` for search-space rationale and L4 budget.
+scheduler, diff-aware-loss flag). Uses Optuna with Hyperband pruning.
+
+Fitness metrics: `hunk_loss`, `hunk_accuracy`, `adapter_improvement`, `hunk_entropy`.
+Task-level heldout split with two strategies (`step_index` | `random`), no pair-level leakage.
+Heldout evaluator uses 4-bit NF4 `BitsAndBytesConfig` + `device_map="auto"` + `torch_dtype=torch.bfloat16`
++ `attention_mask` threading (required for 9B models; CPU eval is infeasible).
 
 ### Training Data Mining
 

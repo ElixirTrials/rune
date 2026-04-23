@@ -32,6 +32,28 @@ SQLite + filesystem store for LoRA adapter metadata with write-once enforcement.
 
 Weight files (`.safetensors`) and their hashes are immutable after creation. Metadata fields (`pass_rate`, `fitness_score`, `is_archived`) are mutable. No `update()` or `overwrite()` method exists.
 
+## Adapter ID Conventions
+
+| Adapter class | ID pattern | Set by |
+|---------------|------------|--------|
+| Standard (QLoRA / round-1 hypernet output) | `<uuid>` | Training pipeline |
+| Oracle adapters | `oracle_<bin_key>` | `libs/corpus-producer/src/corpus_producer/trainer_bridge.py` |
+| Round-2 hypernetwork adapters | `round2_<uuid[:8]>` | `libs/model-training/src/model_training/round2_train.py::register_round2_adapter` |
+
+`bin_key` is `<phase>_<benchmark>` (e.g., `code_humaneval`, `plan_mbpp`) or `diagnose_pooled` — 25 bins total across 4 pipeline phases × 6 benchmarks plus one pooled diagnose bin.
+
+### Reserved `task_type` values
+
+| Value | Meaning |
+|-------|---------|
+| `round2_hypernet` | Adapter produced by the round-2 oracle-teacher distillation loop |
+| `oracle_<bin_key>` patterns | Per-bin oracle adapters trained for round-2 teaching |
+
+### Lineage semantics
+
+- `generation`: round-2 adapters set `generation=2`. Standard round-1 adapters are `generation=1` (or unset). Evolution-produced merges follow their own generational counter.
+- `parent_ids`: for round-2 adapters, `parent_ids = json.dumps(sorted(oracle_ids))` — the sorted list of teacher oracle IDs used during training. For merged adapters, this stores the source adapter IDs. `get_lineage(id)` walks this chain.
+
 ## Usage
 
 ```python

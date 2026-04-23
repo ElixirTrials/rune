@@ -49,16 +49,12 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
 def mlflow_log_params(params: dict[str, Any]) -> None:
     """Log a dict of params to the active MLflow run. Silent no-op on failure.
 
+    All exceptions are caught and logged at DEBUG level so that MLflow
+    unavailability never interrupts training.
+
     Args:
         params: Mapping of parameter names to values forwarded verbatim to
             ``mlflow.log_params``.
-
-    Returns:
-        None
-
-    Raises:
-        None — all exceptions are caught and logged at DEBUG level so that
-        MLflow unavailability never interrupts training.
     """
     try:
         import mlflow  # noqa: PLC0415

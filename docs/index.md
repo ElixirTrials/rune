@@ -5,8 +5,11 @@ Rune is a local-first coding agent that uses LoRA weight space as episodic memor
 ## Core Subsystems
 
 - **Pipeline** — 5-phase coding pipeline with 18 Jinja2 templates, per-phase iteration, DAG-ordered code execution, and two-step diagnose/repair. Entry: `scripts/rune_runner.py`
-- **Adapter Registry** — SQLite + filesystem store for LoRA adapters with write-once enforcement, fitness queries, and lineage tracking. Entry: `libs/adapter-registry/`
-- **Hypernetwork** — Perceiver-based Doc-to-LoRA hypernetwork generating rank-8 LoRA adapters in a single forward pass. Entry: `libs/model-training/`
+- **Adapter Registry** — SQLite + filesystem store for LoRA adapters with write-once enforcement, fitness queries, and lineage tracking. Reserved ID patterns: `oracle_<bin_key>`, `round2_<uuid[:8]>`. Entry: `libs/adapter-registry/`
+- **Hypernetwork** — Perceiver-based Doc-to-LoRA hypernetwork generating rank-8 LoRA adapters in a single forward pass; trained in two rounds — round-1 against the bare base model, round-2 against per-bin oracle adapters as teacher signals. Entry: `libs/model-training/`
+- **Corpus Producer** — Self-distillation pipeline that produces the 25-bin oracle training corpus (4 phases × 6 benchmarks + `diagnose_pooled`) consumed by round-2 distillation. Entry: `libs/corpus-producer/`, CLI: `scripts/phase_corpus_producer.py`
+- **Oracle Adapters** — 25 per-bin teacher adapters registered as `oracle_<bin_key>`; functional-LoRA teachers for round-2 distillation.
+- **Kill-Switch** — Pass@1 regression guard wired into `train_d2l_qwen3` (default off); triggers on ≥ 5% HumanEval regression over baseline (k=5, 20–30 held-out tasks).
 
 ## Documentation
 

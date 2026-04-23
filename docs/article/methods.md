@@ -8,7 +8,7 @@ Building on the theoretical foundations established in the Background section �
 
 Rune is structured as five services collaborating around a central adapter registry. Each service owns a single responsibility; inter-service communication occurs via HTTP APIs and a shared filesystem-backed adapter store.
 
-**rune-agent** is the core execution service. It implements a five-phase pipeline — decompose, plan, code, integrate, diagnose/repair — with DAG-ordered subtask execution and a two-step error recovery mechanism. The agent receives a task description, decomposes it into dependency-ordered subtasks, plans each subtask, generates code in topological order (publishing interfaces to a typed blackboard for downstream subtasks), integrates the results, and applies diagnose-then-repair when code fails. The fifth phase (diagnose/repair) addresses the prompt-adapter tension described in [Background](background.md#the-prompt-adapter-tension-in-error-recovery): diagnosis places error context in the prompt and code in the adapter to produce a concise fix instruction; repair then uses that diagnosis as prompt guidance while the adapter retains domain context. This separation avoids forcing both error details and domain knowledge through the same channel. The pipeline is orchestrated by 18 Jinja2 templates (code.j2, code_continue.j2, code_repair.j2, code_retry.j2, decompose.j2, diagnose.j2, integrate.j2, plan.j2, prompt_code.j2, prompt_code_continue.j2, prompt_code_repair.j2, prompt_code_retry.j2, prompt_decompose.j2, prompt_decompose_concise.j2, prompt_diagnose.j2, prompt_integrate.j2, prompt_integrate_retry.j2, prompt_plan.j2), where each phase has both a trajectory template (adapter context) and a prompt template (model orientation). The pipeline structure is **specified** — it is implemented in the codebase and tested (433+ tests passing).
+**rune-agent** is the core execution service. It implements a five-phase pipeline — decompose, plan, code, integrate, diagnose/repair — with DAG-ordered subtask execution and a two-step error recovery mechanism. The agent receives a task description, decomposes it into dependency-ordered subtasks, plans each subtask, generates code in topological order (publishing interfaces to a typed blackboard for downstream subtasks), integrates the results, and applies diagnose-then-repair when code fails. The fifth phase (diagnose/repair) addresses the prompt-adapter tension described in [Background](background.md#the-prompt-adapter-tension-in-error-recovery): diagnosis places error context in the prompt and code in the adapter to produce a concise fix instruction; repair then uses that diagnosis as prompt guidance while the adapter retains domain context. This separation avoids forcing both error details and domain knowledge through the same channel. The pipeline is orchestrated by 18 Jinja2 templates (code.j2, code_continue.j2, code_repair.j2, code_retry.j2, decompose.j2, diagnose.j2, integrate.j2, plan.j2, prompt_code.j2, prompt_code_continue.j2, prompt_code_repair.j2, prompt_code_retry.j2, prompt_decompose.j2, prompt_decompose_concise.j2, prompt_diagnose.j2, prompt_integrate.j2, prompt_integrate_retry.j2, prompt_plan.j2), where each phase has both a trajectory template (adapter context) and a prompt template (model orientation). The pipeline structure is **specified** — it is implemented in the codebase and tested (776+ tests passing).
 
 **lora-server** wraps vLLM with optional pipeline parallelism and dynamic adapter loading following the S-LoRA unified paging pattern.[^sheng2023slora] It serves the base model with QLoRA quantization and exposes an OpenAI-compatible API that accepts adapter selection metadata per request. Development and benchmarking use Gemma 2 2B (google/gemma-2-2b-it) with a Sakana "gemma_demo" checkpoint variant; the production target is Qwen2.5-Coder-7B-Instruct. The serving configuration is discussed in detail in the Training Data Strategy and Serving Architecture subsection.
 
@@ -20,7 +20,7 @@ Rune is structured as five services collaborating around a central adapter regis
 
 **adapter-registry** is the shared dependency root: a SQLite-backed metadata store paired with safetensors adapter files on the local filesystem. Every service reads from or writes to the registry. Adapters are write-once and immutable after creation; metadata fields (fitness score, archive status) are mutable. The three-level hierarchy (project, domain, task) is encoded in both the filesystem path convention and the SQLite schema.
 
-**Claim tiers:** The five-service architecture and five-phase pipeline are **specified** — they are implemented in the codebase with 433+ tests passing. Phase 0 and Phase 1 empirical performance on coding tasks is **TBD**.
+**Claim tiers:** The five-service architecture and five-phase pipeline are **specified** — they are implemented in the codebase with 776+ tests passing. Phase 0 and Phase 1 empirical performance on coding tasks is **TBD**.
 
 ---
 
@@ -124,34 +124,54 @@ The Phase 3 distillation path (`direct_lora_finetune`) is **specified** — it u
 
 Applying a hypernetwork-generated adapter to a base model requires controlling the adapter's *influence strength* — the magnitude of the weight delta relative to the base model's existing parameters. This is governed by the LoRA scaling factor: PEFT computes `scaling = lora_alpha / r` and applies `ΔW = scaling * BA` to each targeted weight matrix. Sakana's original Doc-to-LoRA uses a large `lora_alpha` value that produces an effective scaling of approximately 45.25x, which achieves near-perfect factual recall on document QA tasks by strongly overriding the base model's behavior with document-specific knowledge.
 
-For coding trajectories, this full scaling is destructive. A 200-trial Bayesian optimization search (Optuna TPE sampler across 5 diverse coding tasks) found that **adapter influence must be attenuated to approximately 0.075x of the raw hypernetwork output** — roughly 600x weaker than Sakana's default. At full scaling, the adapter overwhelms the base model's code generation capabilities, producing degenerate repetition and syntactically invalid output. At the optimal attenuation, the adapter provides a contextual nudge — injecting domain knowledge (project conventions, subtask dependencies, prior execution traces) without displacing the base model's learned coding competence.
+For coding trajectories, this full scaling is destructive. A 200-trial Bayesian optimization search (Optuna TPE sampler across 5 diverse coding tasks) found that **adapter influence must be attenuated to approximately 0.16x of the raw hypernetwork output** — roughly 280x weaker than Sakana's default. At full scaling, the adapter overwhelms the base model's code generation capabilities, producing degenerate repetition and syntactically invalid output. At the optimal attenuation, the adapter provides a contextual nudge — injecting domain knowledge (project conventions, subtask dependencies, prior execution traces) without displacing the base model's learned coding competence.
 
 This finding has a theoretical interpretation: the adapter's role in coding is qualitatively different from its role in document QA. In factual recall, the adapter must override the base model's default response with document-specific facts — strong influence is necessary. In code generation, the base model already knows how to write code; the adapter's job is to steer that existing competence toward the specific patterns relevant to the current task. The adapter is a contextual signal, not a replacement for the model's knowledge. The optimal scaling reflects this asymmetry.
 
 Three bugs were discovered and fixed in the Sakana D2L → PEFT conversion path that were masked at full scaling but became visible at the correct attenuated scale: (1) `combine_lora` bias concatenation assumed single-chunk mode, (2) the alpha-to-PEFT scaling formula omitted rank compensation, and (3) module path prefixes were hardcoded without validation against the base model's architecture. These bugs are documented because they illustrate a general risk: high adapter scaling can mask conversion errors by dominating the output regardless of whether the adapter weights are correctly structured.
 
-Additional optimization findings from the Bayesian search:
+Additional optimization findings from the Bayesian search (200 trials, 5 diverse coding tasks):
 
 - **Per-task calibration** improves results. A 5-trial scaling sweep (0.5x–1.5x around the base scaling) before each task adapts the influence strength to task complexity. The pipeline implements this as a `CalibrationConfig` with configurable trial count and scaling range.
-- **Generation temperature 0.3** with repetition penalty 1.1 balances consistency with diversity. Lower temperatures produce more deterministic but less creative output; the mild repetition penalty prevents the degenerate loops that appear at higher adapter influence.
+- **Generation temperature 0.25** with repetition penalty 1.04 balances consistency with diversity. Lower temperatures produce more deterministic but less creative output; the mild repetition penalty prevents the degenerate loops that appear at higher adapter influence.
 - **Code-first prompt styles** (skeleton, must-include) outperform open-ended prompts. The model performs better when given structural constraints rather than free-form instructions.
 - **Full-context trajectories** (including error traces and corrections) produce better adapters than minimal summaries, supporting the recursive refinement hypothesis that correction steps are signal, not noise.
 
-**Claim tiers:** The adapter scaling finding (attenuation to ~0.075x) is **empirical** — observed across 200 optimization trials on 5 tasks using Gemma 2 2B with the Sakana gemma_demo checkpoint. Per-task calibration is **specified** and tested. Whether the optimal scaling transfers to other base models (e.g., Qwen 2.5 Coder 7B) is **TBD** — it will be validated during production-scale evaluation.
+**HPO fitness metrics.** The hyperparameter optimization objective couples multiple diff-aware signals: `hunk_loss` (token loss restricted to changed hunks), `hunk_accuracy` (per-token accuracy on hunk tokens), `adapter_improvement` (Pass@1 delta vs. the base model without adapter), and `hunk_entropy` (diversity of the model's hunk-level distribution). The heldout evaluator that computes these metrics loads the base model with 4-bit NF4 `BitsAndBytesConfig` + `device_map="auto"` + `torch_dtype=torch.bfloat16` and threads `attention_mask` through every forward call, making it viable on 9B-scale models. Task-level heldout splits use either `step_index` or `random` strategies with no pair-level leakage. The optimizer is Optuna with a Hyperband pruner.
+
+**Kill-switch.** `train_d2l_qwen3` accepts a `kill_switch_evaluate_fn` kwarg (default-disabled; opt-in via `config.kill_switch_enabled=True`). The switch triggers when Pass@1 regresses by ≥ 5% relative to baseline on HumanEval across 20–30 held-out tasks (k=5 completions per task), halting training before further weight corruption.
+
+**Claim tiers:** The adapter scaling finding (attenuation to ~0.16x) is **empirical** — observed across 200 optimization trials on 5 tasks using Gemma 2 2B with the Sakana gemma_demo checkpoint. Per-task calibration is **specified** and tested. Whether the optimal scaling transfers to other base models (e.g., Qwen 2.5 Coder 7B) is **TBD** — it will be validated during production-scale evaluation.
 
 ---
 
-### Two-Stage Training Pipeline
+### Three-Stage Training Pipeline
 
-The adapter pipeline has two complementary training paths that serve different roles in the system lifecycle:
+The adapter pipeline has three complementary training stages that serve distinct roles in the system lifecycle:
 
 **Stage 1: QLoRA Bootstrapping.** Standard PEFT fine-tuning on NF4-quantized base model using coding trajectories formatted as SFT chat messages. This path is slow (minutes per adapter) but produces high-quality, gradient-optimized adapters. Stage 1 uses a DeltaCoder warm-start (`danielcherubini/Qwen3.5-DeltaCoder-9B`) which provides three advantages: inherited GDN-aware target module coverage across all 12 module types, convergence acceleration from pre-trained weights (DeltaCoder was trained on 50K CoderForge tool-call examples), and preserved DPO alignment on self-correction pairs that maps directly to the Phase 5 diagnose/repair loop. Stage 1 produces the adapter corpus that trains Stage 2's hypernetwork.
+
+Stage 1 training uses `DiffAwareSFTTrainer`, a subclass of `trl.SFTTrainer` that applies hunk-weighted token loss. The associated `DiffWeightedDataCollator` wraps `trl.DataCollatorForCompletionOnlyLM` and emits a `loss_weights` tensor per batch. When `pre_code` / `post_code` side-channels are present and a tokenizer is configured, the collator computes per-line hunk ranges and assigns `changed_weight` to hunk tokens and `unchanged_weight` to context tokens — concentrating the training signal on the diff rather than boilerplate context. Under identity weights (`changed_weight == unchanged_weight == 1.0`) the trainer is a regression-guarded no-op, identical to standard SFT loss. When side-channels or the tokenizer are missing, the collator falls back to identity weights (1.0 for labeled tokens, 0.0 for `IGNORE_INDEX=-100`) rather than a silent uniform rescale, ensuring the fallback path never silently biases the objective.
 
 **Stage 2: Hypernetwork Production.** Single forward pass through `DocToLoraHypernetwork` generates rank-8 LoRA weights in milliseconds. This is the production path — used within the pipeline retry loop to inject per-subtask context without prompt stuffing. Once trained, the hypernetwork amortizes the cost of adapter generation, replacing minutes of gradient descent with a sub-second forward pass.
 
 Once the hypernetwork is trained, QLoRA's ongoing role shrinks to producing occasional high-value adapters for tasks where the hypernetwork's approximation is insufficient. Those adapters feed back into periodic hypernetwork retraining, creating a self-improving feedback loop.
 
-**Claim tiers:** The two-stage pipeline architecture is **specified** — both paths are implemented and tested. DeltaCoder warm-start is **specified** via the model registry. The feedback loop between stages is **proposed** — it requires a trained hypernetwork to validate.
+**Stage 3: Round-2 Distillation.** After the Stage 2 hypernetwork has been trained against the bare base model, Stage 3 re-trains the hypernetwork using **per-bin oracle adapters as teacher signals** instead of the base model. This introduces a richer supervisory signal: the oracle adapters have already been gradient-optimized for specific corpus bins, so the hypernetwork learns to reproduce their behavior rather than approximating the un-adapted base.
+
+The oracle set consists of 25 adapters, one per corpus bin: four pipeline phases (decompose, plan, code, integrate) × six evaluation benchmarks (HumanEval, MBPP, APPS, BigCodeBench, DS-1000, LiveCodeBench), plus one pooled diagnose adapter (`diagnose_pooled`). Oracle adapter IDs follow the scheme `oracle_<bin_key>` where `bin_key` is `<phase>_<benchmark>` or `diagnose_pooled`, set by `libs/corpus-producer/src/corpus_producer/trainer_bridge.py`.
+
+**Functional-LoRA teacher mechanism.** Oracle adapters are applied to the base model via the `apply_functional_lora` context manager (`round2_train.py`). This context manager modifies the base model's forward pass functionally — the base model is **never structurally mutated** (no `PeftModel` wrappers, no `LoraLayer` hook replacements). The oracle cache (`OracleAdapterCache`) stores each oracle as a `LoraDict` tensor dict (`{module: {"A": Tensor[L,r,in], "B": Tensor[L,r,out]}}`), with an LRU cap of four loaded oracles. The functional approach eliminates PEFT hook-leakage risk between teacher and student forward passes within the same training step.
+
+**KL + CE distillation loss.** Each training step performs two forward passes: one through the base model with the oracle adapter applied (teacher), and one through the student hypernetwork. The training loss is a weighted combination of KL divergence between student and teacher output distributions and cross-entropy against the ground-truth labels (`_compute_kl_ce_loss` in `round2_train.py`).
+
+**Startup guard.** If the fraction of training records whose bin has a registered oracle falls below `min_oracle_coverage=0.8`, the training loop raises `RuntimeError` before loading any model. `dry_run` mode surfaces this gate without paying the full training cost. Records whose bin has no oracle are dropped when `oracle_fallback="skip"` (the default); `oracle_fallback="base_model"` is an ablation mode that substitutes the unadorned base model as teacher.
+
+**Strict success gate.** After training, `round2_gate.evaluate_round2_gate` applies a binary success criterion before the adapter is promoted: ≥ 4 of the 6 benchmarks must show ≥ 2.0% Pass@1 improvement over the Stage 2 baseline, **and** no single benchmark may regress by more than 1.0%. `scripts/evaluate_round2.py` exits 0 on PASS and 1 on FAIL, enabling CI gating. The six required benchmarks are HumanEval, MBPP, APPS, BigCodeBench, DS-1000, and LiveCodeBench.
+
+**Round-2 adapter lineage.** Promoted adapters receive ID `round2_<uuid[:8]>`, `task_type="round2_hypernet"`, `generation=2`, and `parent_ids = json.dumps(sorted(oracle_ids))` for full lineage tracking in the adapter registry.
+
+**Claim tiers:** The three-stage pipeline architecture is **specified** — all three stages are implemented and tested. The Stage 3 functional-LoRA teacher mechanism is **specified** and tested. Empirical Pass@1 gains from oracle-teacher distillation vs. Stage 2 are **TBD** — Stage 3 requires production oracle adapters and GPU runs to validate.
 
 ---
 
@@ -221,11 +241,16 @@ The mining pipeline is **specified** — it is implemented in the codebase. The 
 
 ### Benchmark Evaluation Framework
 
-Rune includes a coding benchmark evaluation framework for systematic measurement of adapter quality across standard code generation benchmarks. The framework supports three benchmark suites:
+Rune includes a coding benchmark evaluation framework for systematic measurement of adapter quality across standard code generation benchmarks. The framework supports six benchmark suites:
 
-- **HumanEval+** (EvalPlus): Extended HumanEval with additional test cases for more rigorous evaluation of functional correctness.
-- **MBPP+** (EvalPlus): Extended Mostly Basic Python Programming benchmark with augmented test suites.
+- **HumanEval** (EvalPlus): Extended HumanEval with additional test cases for more rigorous evaluation of functional correctness.
+- **MBPP** (EvalPlus): Extended Mostly Basic Python Programming benchmark with augmented test suites.
+- **APPS**: Competitive programming problems across introductory, interview, and competition difficulty tiers.
 - **BigCodeBench**: A more challenging benchmark targeting complex, multi-step coding tasks that require API usage and library knowledge.
+- **DS-1000**: Data-science-oriented tasks drawn from Stack Overflow questions across seven libraries (NumPy, Pandas, SciPy, Matplotlib, sklearn, PyTorch, TensorFlow).
+- **LiveCodeBench**: A contamination-resistant benchmark sourced from live competitive programming contests after the model's training cutoff.
+
+These six suites also define the structure of the Stage 3 strict success gate: a round-2 adapter is promoted only when ≥ 4 of the 6 benchmarks show ≥ 2.0% Pass@1 improvement with no single benchmark regressing by more than 1.0%.
 
 Execution is organized into three tiers to support different evaluation contexts:
 

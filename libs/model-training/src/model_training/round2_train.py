@@ -325,12 +325,11 @@ def train_d2l_qwen3_round2(
             is True, the default benchmark evaluator is constructed.
 
     Returns:
-        Report dict. Shape depends on mode:
-          - dry_run: ``{"dry_run": True, "coverage_ratio", "bin_counts",
-            "num_records"}``
-          - full: ``{"dry_run": False, "coverage_ratio", "bin_counts",
-            "num_records", "final_loss", "best_loss", "steps_completed",
-            "kill_switch_triggered"}``
+        Report dict. Shape depends on mode. In dry_run mode the keys are
+        ``dry_run`` (``True``), ``coverage_ratio``, ``bin_counts``, and
+        ``num_records``. In full mode the keys are ``dry_run`` (``False``),
+        ``coverage_ratio``, ``bin_counts``, ``num_records``, ``final_loss``,
+        ``best_loss``, ``steps_completed``, and ``kill_switch_triggered``.
     """
     from model_training.oracle_cache import (  # noqa: PLC0415
         OracleAdapterCache,

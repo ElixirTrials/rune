@@ -3,7 +3,7 @@
 !!! note "Research Status"
     Rune's infrastructure is built and tested (five-phase pipeline, benchmark
     evaluation framework, adapter registry, model registry with DeltaCoder
-    warm-start, 433+ tests passing). GPU training runs and adapter evaluations
+    warm-start, 776+ tests passing). GPU training runs and adapter evaluations
     have not been conducted. All claims in this section are qualified as
     **expected** (grounded in prior work) or **proposed** (requiring empirical
     validation). No empirical claims are made.
@@ -20,13 +20,15 @@
 
 **4. PBB criterion validation for trajectory adapters (proposed).** If Rune's adapters satisfy the PBB program evaluation criterion (see [Results](results.md#pbb-inspired-evaluation-criterion-proposed-secondary-criterion)), this extends Cook et al.'s finding from instruction-following to trajectory-conditioned weight-based procedural encoding.[^cook2025pbb] The PBB criterion tests whether an adapter enables the model to evaluate a program on held-out inputs without those inputs in context — a stronger form of procedural encoding than Pass@1 improvement alone. This is **proposed** — a stronger test than Pass@1 improvement alone, contingent on Phase 1 infrastructure.
 
+**5. Round-2 oracle-teacher distillation via functional-LoRA teachers (specified; empirical results TBD).** PR #28 introduces a second hypernetwork training loop in which the Sakana HyperLoRA hypernetwork is distilled against 25 per-bin oracle adapters (4 phases × 6 benchmarks + `diagnose_pooled`) as teacher signals, using a combined KL + CE loss. The key architectural invariant is the functional-LoRA teacher mechanism: oracles are applied to the base model via an `apply_functional_lora` context manager that never structurally mutates the base model — no `PeftModel` wrappers and no `LoraLayer` replacements are introduced. This eliminates PEFT hook-leakage risk between teacher and student forward passes within the same training step, a non-trivial correctness property when two oracle passes execute over shared model state. A strict success gate (`round2_gate.evaluate_round2_gate`) requires ≥ 4 of 6 benchmarks to improve by ≥ 2.0% Pass@1 with no regression exceeding 1.0% on any single benchmark; the gate drives the `scripts/evaluate_round2.py` CLI, which exits 0 on PASS and 1 on FAIL for CI integration. This contribution is **specified** in full — the modules `round2_train.py`, `oracle_cache.py`, `round2_config.py`, `round2_gate.py`, and their associated CLIs are implemented and test-covered — but the empirical question of whether round-2 distillation yields measurable Pass@1 improvement over round-1 remains open pending GPU operator runs.
+
 ---
 
 ### Limitations
 
 #### Pre-Validation Status
 
-As of this writing, the system infrastructure is substantially implemented: the five-phase pipeline (decompose, plan, code, integrate, diagnose/repair), adapter registry, model registry with DeltaCoder warm-start, benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench with smoke/mini/full tiers), GitHub mining pipeline, and swarm orchestration are all built and tested with 433+ tests passing. However, no GPU training runs have been executed, no adapters have been generated from real trajectories, and no Pass@1 measurements have been taken. This article presents a research proposal with substantial infrastructure validation, not a completed study.
+As of this writing, the system infrastructure is substantially implemented: the five-phase pipeline (decompose, plan, code, integrate, diagnose/repair), adapter registry, model registry with DeltaCoder warm-start, benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench with smoke/mini/full tiers), GitHub mining pipeline, and swarm orchestration are all built and tested with 776+ tests passing. The round-2 distillation infrastructure introduced in PR #28 is also fully implemented and test-covered: the round-2 training CLI (`scripts/train_round2.py`), oracle adapter cache (`libs/model-training/src/model_training/oracle_cache.py::OracleAdapterCache`), strict success gate (`round2_gate.evaluate_round2_gate`; `scripts/evaluate_round2.py`), oracle validator (`scripts/validate_oracles.py`), S3 manifest upload (`libs/corpus-producer/src/corpus_producer/s3_uploader.py`), GPU-distributed corpus generation (`scripts/phase_corpus_producer.py` with `--shard` and `--cuda-visible-devices` flags), and SWE-Bench-Lite `score()` (previously `NotImplementedError`, now implemented with an env-gated clone/apply/pytest pipeline) are all in place. However, no GPU training runs have been executed, no adapters have been generated from real trajectories, and no Pass@1 measurements have been taken. This article presents a research proposal with substantial infrastructure validation, not a completed study.
 
 Phase 0 environment validation (vLLM + QLoRA compatibility) has not been confirmed. The kill-switch gate outcome is unknown. Every **expected** claim in this article depends on Phase 1 passing. The experimental design in [Results](results.md) describes planned measurements using the implemented benchmark framework; the Discussion interprets those planned measurements in terms of their implications — but neither the measurements nor the implications have been empirically grounded.
 
@@ -73,6 +75,8 @@ The question is not whether composition can interfere — it can — but at what
 #### Cold-Start Minimum
 
 What is the minimum corpus size — in terms of trajectory count and diversity — required to train a hypernetwork that generates useful adapters? The implementation plan uses 50--100 as a heuristic. The cold-start minimum determines the practical feasibility of the Phase 4 training approach and whether the Phase 3 accumulation rate is sufficient. If the minimum is substantially higher than 100, the bootstrapping phase becomes a bottleneck that delays the transition from direct LoRA fine-tuning to hypernetwork-based generation.
+
+PR #28 gap 6 resolved a previously blocking condition: `task_description` propagation through `_make_pair_record` in `libs/model-training/src/model_training/d2l_data.py` was absent, causing the Plan B encoder pretraining loop's `MIN_RETENTION_RATIO = 0.80` gate to observe 0% retention on well-formed trajectories. The fix threads `task_description` from the trajectory-level record through the closure into the returned pair dict; retention flips from 0% to ~100% on well-formed trajectories, and the gate is now cleared. This unblocks the Plan B encoder pretraining loop, but the broader cold-start question — how much retained corpus is sufficient for useful hypernetwork training — remains an empirical unknown.
 
 ---
 

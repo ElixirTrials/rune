@@ -24,7 +24,7 @@
 
 ## Abstract
 
-Rune encodes coding trajectories into LoRA adapters so that a local Small Language Model accumulates procedural knowledge across sessions — debugging patterns, project conventions, execution feedback — in weight space rather than context tokens. The system implements a 5-phase template-driven pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, a Doc-to-LoRA hypernetwork for single-forward-pass adapter generation, TIES/DARE merging for adapter evolution, and a flat adapter registry with lineage tracking. The codebase includes 433+ tests, an end-to-end pipeline exercising all phases, a coding benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench), a GitHub training data mining pipeline, and inference providers for Transformers, llama.cpp, Ollama, and vLLM. The pipeline runner defaults to Qwen 2.5 Coder 1.5B (`--base-model-id`); benchmarking and evaluation scripts default to Gemma 2 2B (`google/gemma-2-2b-it`). The production target is Qwen 2.5 Coder 7B. GPU fine-tuning and benchmarking are the current priorities.
+Rune encodes coding trajectories into LoRA adapters so that a local Small Language Model accumulates procedural knowledge across sessions — debugging patterns, project conventions, execution feedback — in weight space rather than context tokens. The system implements a 5-phase template-driven pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, a Doc-to-LoRA hypernetwork for single-forward-pass adapter generation, TIES/DARE merging for adapter evolution, and a flat adapter registry with lineage tracking. The codebase includes 776+ tests, an end-to-end pipeline exercising all phases, a coding benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench), a GitHub training data mining pipeline, and inference providers for Transformers, llama.cpp, Ollama, and vLLM. The pipeline runner defaults to Qwen 2.5 Coder 1.5B (`--base-model-id`); benchmarking and evaluation scripts default to Gemma 2 2B (`google/gemma-2-2b-it`). The production target is Qwen 2.5 Coder 7B. GPU fine-tuning and benchmarking are the current priorities.
 
 ---
 
@@ -66,15 +66,17 @@ Additional optimization findings:
 - Code-first prompt styles (skeleton, must-include) outperform open-ended prompts
 - Full-context trajectories (including error traces and corrections) produce better adapters than minimal summaries
 
-### Two-Stage Training Pipeline
+### Three-Stage Training Pipeline
 
-The adapter pipeline has two complementary training paths:
+The adapter pipeline has three complementary training paths:
 
 1. **QLoRA bootstrapping** (Stage 1): Gradient descent fine-tuning on NF4-quantized base model using coding trajectories formatted as SFT chat messages. Slow (minutes per adapter) but high quality. Uses DeltaCoder warm-start (`danielcherubini/Qwen3.5-DeltaCoder-9B`) for convergence acceleration and inherited GDN-aware target module coverage. Produces the training corpus for Stage 2.
 
 2. **Hypernetwork generation** (Stage 2): Single forward pass through `DocToLoraHypernetwork` generates rank-8 LoRA weights in milliseconds. This is the production path — used within the pipeline retry loop to inject per-subtask context without prompt stuffing. The hypernetwork is trained to approximate Stage 1's output.
 
 Once the hypernetwork is trained, QLoRA's ongoing role shrinks to producing occasional high-value adapters for tasks where the hypernetwork's approximation is insufficient, which feed back into periodic retraining.
+
+3. **Oracle-teacher distillation** (Stage 3): Trains the hypernetwork against 25 per-bin oracle adapters (4 phases × 6 benchmarks + `diagnose_pooled`) as teacher signals rather than the bare base model. The teacher is applied via `apply_functional_lora` — a context manager that injects oracle weights into the frozen base model for a single forward pass without structural mutation (no PEFT hook leakage). Loss is a KL+CE blend against teacher logits. A strict success gate (`evaluate_round2_gate`) requires ≥ 4/6 benchmarks improved ≥ 2.0% Pass@1 with no regression > 1.0% on any benchmark. CLIs: `scripts/train_round2.py`, `scripts/evaluate_round2.py`.
 
 ---
 
@@ -114,6 +116,17 @@ Adapters are stored in a flat structure indexed by `task_type`, `generation`, an
 Each `AdapterRecord` tracks: `id`, `version`, `task_type`, `base_model_id`, `rank`, `file_path`, `file_hash`, `file_size_bytes`, `pass_rate`, `fitness_score`, `source`, `session_id`, `parent_ids`, `generation`, `training_task_hash`, `agent_id`. Write-once enforcement prevents overwriting existing adapters (`AdapterAlreadyExistsError`). Metadata fields like `fitness_score` and `is_archived` are mutable; weight files are immutable.
 
 The evolution operator (`scripts/swarm_evolution.py`) periodically merges top adapters per task type using TIES or DARE merging, archives low-fitness adapters, and tracks generational lineage.
+
+**Adapter ID conventions:**
+
+| Adapter type | ID pattern | Set by |
+|---|---|---|
+| Oracle adapters | `oracle_<bin_key>` | `libs/corpus-producer/src/corpus_producer/trainer_bridge.py` |
+| Round-2 adapters | `round2_<uuid[:8]>` | `libs/model-training/src/model_training/round2_train.py` |
+
+`bin_key` is `<phase>_<benchmark>` (e.g., `code_humaneval`, `plan_mbpp`) or `diagnose_pooled` — 25 bins total across 4 phases × 6 benchmarks.
+
+Round-2 adapters carry reserved metadata: `task_type="round2_hypernet"`, `generation=2`, and `parent_ids=json.dumps(sorted(oracle_ids))` for full lineage tracking back to their oracle teachers.
 
 ### The Inference Layer
 
@@ -169,7 +182,7 @@ The swarm orchestrator defaults to single-GPU operation with sleep/wake time-sha
 
 **Stage:** Alpha (infrastructure complete, GPU fine-tuning and benchmarking in progress)
 
-As of 2026-04-05, the following components are implemented and tested (433+ tests passing):
+As of 2026-04-23, the following components are implemented and tested (776+ tests passing):
 
 - **5-phase pipeline** (`scripts/rune_runner.py`) — decompose → plan → code → integrate → diagnose/repair with 18 Jinja2 templates, per-phase iteration, DAG-ordered code execution, and early stopping
 - **Swarm orchestration** (`scripts/swarm.py`) — parallel agent execution, training pool, evolution worker, memory watchdog, checkpoint persistence
@@ -215,9 +228,9 @@ Rune is structured as a monorepo with services, libraries, and a scripts-based o
 
 | Component | Status | Role |
 |-----------|--------|------|
-| `scripts/` | Implemented | Fat orchestrator (primary execution path): `rune_runner.py` (5-phase pipeline), `swarm.py` (multi-agent), `swarm_workers.py` (training pool), `swarm_evolution.py` (merging/pruning), `mine_github.py` (training data mining), `e2e_test.py`, `e2e_benchmark.py`, `e2e_inference_smoke.py`, `e2e_training_smoke.py`, `experiment_harness.py` (adapter experiments), `benchmark_challenging.py`, `compare_output.py`, `demo_project.py`, `demo_run.py`, `bootstrap.py` |
+| `scripts/` | Implemented | Fat orchestrator (primary execution path): `rune_runner.py` (5-phase pipeline), `swarm.py` (multi-agent), `swarm_workers.py` (training pool), `swarm_evolution.py` (merging/pruning), `mine_github.py` (training data mining), `phase_corpus_producer.py` (25-bin oracle corpus, GPU sharding), `train_round2.py` (round-2 distillation), `evaluate_round2.py` (strict gate), `validate_oracles.py` (per-oracle validation), `train.sh` (unified training CLI wrapper), `e2e_test.py`, `e2e_benchmark.py`, `e2e_inference_smoke.py`, `e2e_training_smoke.py`, `experiment_harness.py` (adapter experiments), `benchmark_challenging.py`, `compare_output.py`, `demo_project.py`, `demo_run.py`, `bootstrap.py` |
 | `scripts/eval/` | Implemented | Coding benchmark evaluation: `run_benchmarks.py` (HumanEval+/MBPP+/BigCodeBench), `generate_completions.py`, `config.py` |
-| `scripts/optimization/` | Implemented | Bayesian parameter optimization (Optuna TPE): `run_optimization.py` (overnight runner), `scoring.py` (fitness scoring), `task_pool.py` (diverse task sampling), `template_library.py` (prompt/trajectory style variants) |
+| `scripts/optimization/` | Implemented | Bayesian parameter optimization (Optuna TPE + Hyperband pruner): `run_optimization.py` (overnight runner), `run_training_hpo.py` (HPO overhaul: hunk-weighted metrics, 4-bit NF4 eval, task-level heldout split), `scoring.py` (fitness scoring), `task_pool.py` (diverse task sampling), `template_library.py` (prompt/trajectory style variants) |
 | `services/rune-agent` | Implemented | LangGraph state graph: generate → execute → reflect → save, with single-iteration mode for outer loop control |
 | `services/training-svc` | Implemented | FastAPI service: POST /train/lora, POST /train/hypernetwork, GET /jobs/{id} — all endpoints functional with background job dispatch |
 | `services/evolution-svc` | Stubs | FastAPI service with 501 endpoint stubs: /evaluate, /evolve, /promote, /prune. Real evolution logic lives in `scripts/swarm_evolution.py` |
@@ -235,7 +248,7 @@ Rune is structured as a monorepo with services, libraries, and a scripts-based o
 
 Contributions are welcome. To get started:
 
-1. **Run the tests:** `uv sync --all-extras && uv run pytest` (433+ tests, runs in ~1 minute on CPU)
+1. **Run the tests:** `uv sync --all-extras && uv run pytest` (776+ tests, runs in ~1 minute on CPU)
 2. **Follow conventions:** Google docstrings, `ruff` for linting, `mypy` for type checking, `uv` for dependency management
 3. **Key entry points:** `scripts/rune_runner.py` (pipeline), `scripts/swarm.py` (orchestrator), `scripts/e2e_test.py` (end-to-end), `scripts/eval/run_benchmarks.py` (benchmarks)
 
