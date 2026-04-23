@@ -709,7 +709,8 @@ def _run_single_trial(
         cfg=fitness_cfg,
     )
     logger.info(
-        "Trial %d hunk_loss=%.4f hunk_acc=%.3f adapter_imp=%.3f entropy=%.3f fitness=%.4f",
+        "Trial %d hunk_loss=%.4f hunk_acc=%.3f"
+        " adapter_imp=%.3f entropy=%.3f fitness=%.4f",
         trial.number,
         eval_metrics["hunk_loss"],
         eval_metrics["hunk_accuracy"],
@@ -750,7 +751,18 @@ def _prune_retained_adapters(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for training-hyperparameter HPO."""
+    """CLI entrypoint for training-hyperparameter HPO.
+
+    Args:
+        argv: Argument list to parse. Defaults to ``sys.argv[1:]`` when
+            ``None``.
+
+    Returns:
+        Exit code: 0 on success.
+
+    Raises:
+        SystemExit: Raised by argparse on invalid arguments or ``--help``.
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
 

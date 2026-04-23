@@ -977,6 +977,11 @@ def pairs_to_chat_messages(
           str}`` dicts aligned 1:1 with ``conversations``. For multi-turn
           conversations the pre/post codes are the concatenation (joined by
           ``"\\n\\n"``) of each individual turn's pre/post code.
+
+    Raises:
+        None — invalid or missing fields are handled gracefully: missing
+        ``activation_text`` / ``teacher_text`` produce empty strings, and
+        missing ``metadata`` keys fall back to empty string / 0 defaults.
     """
     if not pairs:
         return [], []

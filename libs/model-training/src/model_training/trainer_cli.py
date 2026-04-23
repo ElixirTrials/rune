@@ -239,7 +239,18 @@ def _resolve_kwargs(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Parse argv, dispatch to train_and_register (or dry-run and exit)."""
+    """Parse argv, dispatch to train_and_register (or dry-run and exit).
+
+    Args:
+        argv: Argument list to parse. Defaults to ``sys.argv[1:]`` when
+            ``None``.
+
+    Returns:
+        Exit code: 0 on success.
+
+    Raises:
+        SystemExit: Raised by argparse on invalid arguments or ``--help``.
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
     kwargs = _resolve_kwargs(args)
