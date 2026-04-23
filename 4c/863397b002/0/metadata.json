@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "4c863397b002",
+  "session_id": "34f54b34-f215-4285-85c4-a127ea3ff4f8",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-23T07:59:41.159739Z",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7",
+  "turn_id": "13e427b5dc6a",
+  "checkpoint_transcript_start": 222,
+  "transcript_lines_at_start": 222,
+  "token_usage": {
+    "input_tokens": 100,
+    "cache_creation_tokens": 240952,
+    "cache_read_tokens": 3459175,
+    "output_tokens": 21452,
+    "api_call_count": 40
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
