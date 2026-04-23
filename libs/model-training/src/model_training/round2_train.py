@@ -508,6 +508,27 @@ def _run_training_loop(
             triggered = True
             break
 
+    # --- Final checkpoint + registry write-back (only when training ran) ---
+    round2_adapter_id: str | None = None
+    if steps_completed > 0:
+        final_ckpt = _save_checkpoint(
+            step=steps_completed,
+            hypernet=hypernet,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            config=config,
+            hc=hc,
+            best_loss=best_loss,
+            full=True,
+        )
+        round2_adapter_id = register_round2_adapter(
+            registry=_open_registry(config.oracle_registry_url),
+            bin_counts=bin_counts,
+            adapter_file_path=str(final_ckpt),
+            base_model_id=config.base_model_name,
+            rank=config.lora_r,
+        )
+
     return {
         "dry_run": False,
         "coverage_ratio": coverage_ratio,
@@ -517,6 +538,7 @@ def _run_training_loop(
         "best_loss": best_loss,
         "steps_completed": steps_completed,
         "kill_switch_triggered": triggered,
+        "round2_adapter_id": round2_adapter_id,
     }
 
 
@@ -574,7 +596,7 @@ def register_round2_adapter(
         task_type="round2_hypernet",
         base_model_id=base_model_id,
         rank=rank,
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=datetime.now(tz=timezone.utc).isoformat(),
         file_path=str(file_path),
         file_hash=file_hash,
         file_size_bytes=file_size,
