@@ -279,3 +279,96 @@ def test_training_step_round2_base_model_fallback_uses_bare_teacher(
     # Only the student-pass LoRA was applied; teacher ran bare base model.
     assert applied == [hypernet_lora_dict]
     assert loss is not None
+
+
+def test_training_step_round2_falls_back_to_cpu_when_no_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """base_model with no parameters → tensors moved to CPU via torch.device('cpu').
+
+    Matches round-1's device-placement contract.
+    """
+    from model_training import round2_train
+
+    cache = MagicMock()
+    oracle_lora_dict = {"q_proj": {"A": MagicMock(), "B": MagicMock()}}
+    cache.get.return_value = oracle_lora_dict
+
+    fake_features = MagicMock(name="features")
+    fake_mask = MagicMock(name="mask")
+    monkeypatch.setattr(
+        round2_train,
+        "_extract_activations_with_model",
+        lambda **_kw: (fake_features, fake_mask),
+    )
+
+    class _PassthroughCtxMgr:
+        def __enter__(self) -> None: return None
+        def __exit__(self, *exc: object) -> None: return None
+
+    monkeypatch.setattr(
+        round2_train,
+        "_apply_functional_lora",
+        lambda *a, **kw: _PassthroughCtxMgr(),
+    )
+    monkeypatch.setattr(round2_train, "_torch_no_grad", lambda: _PassthroughCtxMgr())
+    monkeypatch.setattr(
+        round2_train,
+        "_compute_kl_ce_loss",
+        lambda s, t, start, cfg: (MagicMock(), {"total_loss": 0.0}),
+    )
+
+    hypernet = MagicMock()
+    hypernet.generate_weights.return_value = (MagicMock(), None)
+
+    # Tensor stand-in that records what device it was moved to.
+    moved_to: list = []
+
+    class _FakeTensor:
+        def to(self, device: object) -> "_FakeTensor":
+            moved_to.append(device)
+            return self
+
+    # First tokenizer call (answer_start) must return a real list for len().
+    # Second call (teacher_inputs) returns _FakeTensor so we can track .to(device).
+    _call_count = [0]
+
+    def _tokenizer_side_effect(*args: object, **kwargs: object) -> dict:
+        _call_count[0] += 1
+        if _call_count[0] == 1:
+            # answer_start path: needs len(result["input_ids"])
+            return {"input_ids": [1, 2, 3], "attention_mask": [1, 1, 1]}
+        return {"input_ids": _FakeTensor(), "attention_mask": _FakeTensor()}
+
+    tokenizer = MagicMock(side_effect=_tokenizer_side_effect)
+
+    base = MagicMock(name="base")
+    base.return_value.logits = MagicMock()
+    # StopIteration: no parameters at all.
+    base.parameters.return_value = iter([])
+
+    config = MagicMock(max_length=512, oracle_fallback="skip")
+    hc = MagicMock(layer_indices=[0, 1])
+
+    record = {
+        "task_id": "humaneval/HE-0/decompose",
+        "activation_text": "a",
+        "teacher_text": "at",
+        "metadata": {"phase": "decompose", "benchmark": "humaneval"},
+    }
+    loss, _metrics = _training_step_round2(
+        record=record,
+        base_model=base,
+        tokenizer=tokenizer,
+        hypernet=hypernet,
+        hc=hc,
+        config=config,
+        oracle_cache=cache,
+    )
+
+    # StopIteration branch hit torch.device('cpu').
+    assert loss is not None
+    assert len(moved_to) == 2
+    for dev in moved_to:
+        # torch.device('cpu') has type attribute 'cpu'
+        assert str(dev) == "cpu"

@@ -195,9 +195,10 @@ def _training_step_round2(
     try:
         device = next(base_model.parameters()).device
     except StopIteration:
-        device = None
-    if device is not None:
-        teacher_inputs = {k: v.to(device) for k, v in teacher_inputs.items()}
+        import torch  # noqa: PLC0415
+
+        device = torch.device("cpu")
+    teacher_inputs = {k: v.to(device) for k, v in teacher_inputs.items()}
 
     # --- Pass 2 teacher: oracle LoRA (or bare base fallback) under no_grad ---
     with _torch_no_grad():
