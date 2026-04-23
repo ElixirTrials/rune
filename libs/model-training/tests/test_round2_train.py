@@ -8,6 +8,7 @@ import pytest
 from model_training.round2_train import (
     _teacher_forward_with_oracle,
     _training_step_round2,
+    register_round2_adapter,
     train_d2l_qwen3_round2,
 )
 
@@ -480,3 +481,28 @@ def test_cli_build_config_parses_flags(
     # Default propagation
     assert cfg.oracle_fallback == "skip"
     assert cfg.lora_r == 8
+
+
+def test_register_round2_adapter_writes_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Register round-2 adapter: parent_ids = sorted oracle_ids, generation=2."""
+    import json
+
+    registry = MagicMock()
+    bin_counts = {"plan_mbpp": 3, "decompose_humaneval": 5, "diagnose_pooled": 2}
+    adapter_id = register_round2_adapter(
+        registry=registry,
+        bin_counts=bin_counts,
+        adapter_file_path="/adapters/round2_run_42",
+        base_model_id="Qwen/Qwen3.5-9B",
+        rank=8,
+    )
+    assert adapter_id.startswith("round2_")
+    (stored_record,) = [c.args[0] for c in registry.store.call_args_list]
+    assert stored_record.source == "distillation"
+    assert stored_record.generation == 2
+    parent_ids = json.loads(stored_record.parent_ids)
+    assert parent_ids == sorted(
+        ["oracle_plan_mbpp", "oracle_decompose_humaneval", "oracle_diagnose_pooled"]
+    )

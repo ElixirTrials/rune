@@ -21,8 +21,13 @@ module stays importable in CPU-only CI.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -513,3 +518,75 @@ def _run_training_loop(
         "steps_completed": steps_completed,
         "kill_switch_triggered": triggered,
     }
+
+
+# ---------------------------------------------------------------------------
+# Registry write-back
+# ---------------------------------------------------------------------------
+
+ROUND2_GENERATION: int = 2
+ROUND2_SOURCE: str = "distillation"
+
+
+def register_round2_adapter(
+    *,
+    registry: Any,
+    bin_counts: dict[str, int],
+    adapter_file_path: str,
+    base_model_id: str,
+    rank: int,
+) -> str:
+    """Register the round-2 adapter output in AdapterRegistry.
+
+    The adapter_id is deterministic-per-run: ``round2_<uuid4[:8]>``. Lineage
+    is captured as ``parent_ids = json.dumps(sorted(oracle_ids))`` where
+    ``oracle_ids`` covers every bin that contributed at least one training
+    record. ``generation`` is set to 2 so lineage queries can distinguish
+    round-2 output from round-1 oracles (generation 0).
+
+    Args:
+        registry: :class:`AdapterRegistry` instance.
+        bin_counts: Per-bin record counts from the audit report.
+        adapter_file_path: On-disk path to the saved round-2 adapter.
+        base_model_id: Base model this adapter was trained against.
+        rank: LoRA rank used during training.
+
+    Returns:
+        The registered adapter_id.
+    """
+    from adapter_registry.models import AdapterRecord  # noqa: PLC0415
+
+    adapter_id = f"round2_{uuid4().hex[:8]}"
+    parent_ids = sorted(f"oracle_{bk}" for bk in bin_counts)
+
+    file_path = Path(adapter_file_path)
+    if file_path.exists() and file_path.is_file():
+        file_bytes = file_path.read_bytes()
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
+        file_size = len(file_bytes)
+    else:
+        file_hash = ""
+        file_size = 0
+
+    record = AdapterRecord(
+        id=adapter_id,
+        version=1,
+        task_type="round2_hypernet",
+        base_model_id=base_model_id,
+        rank=rank,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        file_path=str(file_path),
+        file_hash=file_hash,
+        file_size_bytes=file_size,
+        source=ROUND2_SOURCE,
+        session_id="",
+        parent_ids=json.dumps(parent_ids),
+        generation=ROUND2_GENERATION,
+    )
+    registry.store(record)
+    logger.info(
+        "Registered round-2 adapter %s with %d parent oracles",
+        adapter_id,
+        len(parent_ids),
+    )
+    return adapter_id
