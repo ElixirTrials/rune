@@ -593,6 +593,35 @@ def test_normalize_mined_pairs_single_commit_produces_step0() -> None:
     assert "## Implementation" in pairs[0]["teacher_text"]
 
 
+def test_normalize_mined_pairs_propagates_task_description() -> None:
+    """Each pair record carries the trajectory's task_description.
+
+    Plan B gate: augment_corpus drops pairs without task_description and
+    enforces MIN_RETENTION_RATIO = 0.80. Propagating the authentic
+    PR-title + body (or issue title + body) into each pair keeps retention
+    at 100% for well-formed trajectories.
+    """
+    from model_training.d2l_data import normalize_mined_pairs
+
+    trajectory = _make_mined_trajectory(
+        task_description="Add widget support",
+        steps=[
+            {"type": "commit", "description": "V1", "content": "+v1"},
+            {
+                "type": "review",
+                "description": "Review comment",
+                "content": "rename to Gadget",
+            },
+            {"type": "commit", "description": "V2", "content": "+v2 Gadget"},
+        ],
+    )
+    pairs = normalize_mined_pairs(trajectory)
+
+    assert len(pairs) >= 1
+    for pair in pairs:
+        assert pair.get("task_description") == "Add widget support"
+
+
 def test_normalize_mined_pairs_review_revision_cycle() -> None:
     """A commit-review-commit trajectory produces step_0 + step_1."""
     from model_training.d2l_data import normalize_mined_pairs

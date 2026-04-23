@@ -688,10 +688,12 @@ def _make_pair_record(
     idx: int,
     activation: str,
     teacher: str,
+    task_description: str = "",
 ) -> dict[str, Any]:
     """Build a single training pair record."""
     return {
         "task_id": task_id,
+        "task_description": task_description,
         "activation_text": activation,
         "teacher_text": teacher,
         "metadata": {
@@ -746,7 +748,15 @@ def normalize_mined_pairs(
         return compress_diff(raw, max_lines=max_diff_lines) if compress else raw
 
     def _record(idx: int, activation: str, teacher: str) -> dict[str, Any]:
-        return _make_pair_record(task_id, outcome, language, idx, activation, teacher)
+        return _make_pair_record(
+            task_id,
+            outcome,
+            language,
+            idx,
+            activation,
+            teacher,
+            task_description=task_desc,
+        )
 
     records: list[dict[str, Any]] = []
     step_idx = 0
