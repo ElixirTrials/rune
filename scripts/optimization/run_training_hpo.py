@@ -459,10 +459,25 @@ def _evaluate_adapter_on_heldout(
     )
     from model_training.diff_loss import _compute_hunk_ranges  # noqa: PLC0415
     from peft import PeftModel  # noqa: PLC0415
-    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+    from transformers import (  # noqa: PLC0415
+        AutoModelForCausalLM,
+        AutoTokenizer,
+        BitsAndBytesConfig,
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(base_model_id)
-    base_model = AutoModelForCausalLM.from_pretrained(base_model_id)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_model_id,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=torch.bfloat16,
+    )
     adapter_model = PeftModel.from_pretrained(base_model, adapter_path)
     adapter_model.eval()
 
@@ -491,9 +506,10 @@ def _evaluate_adapter_on_heldout(
 
                 enc = tokenizer(teach, return_offsets_mapping=True, return_tensors="pt")
                 input_ids = enc["input_ids"].to(model.device)
+                attention_mask = enc["attention_mask"].to(model.device)
                 offsets = enc["offset_mapping"][0].tolist()
 
-                logits = model(input_ids=input_ids).logits[0]
+                logits = model(input_ids=input_ids, attention_mask=attention_mask).logits[0]
                 shift_logits = logits[:-1]
                 shift_ids = input_ids[0][1:]
                 log_probs = torch.log_softmax(shift_logits, dim=-1)

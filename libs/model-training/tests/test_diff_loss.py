@@ -301,7 +301,7 @@ class TestDiffWeightedDataCollator:
     def test_collator_falls_back_on_missing_pre_post(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """When features lack pre/post, falls back to set-based path and warns."""
+        """When features lack pre/post, uses identity weights and warns."""
         import model_training.diff_loss as dl_module
         import torch
         from model_training.diff_loss import DiffWeightedDataCollator
@@ -318,15 +318,15 @@ class TestDiffWeightedDataCollator:
         features = self._make_features(n=1, include_pre_post=False)
 
         with caplog.at_level(logging.WARNING, logger="model_training.diff_loss"):
-            with patch(
-                "model_training.diff_loss.compute_diff_loss_weights",
-                wraps=dl_module.compute_diff_loss_weights,
-            ) as mock_legacy:
-                batch = collator(features)
+            batch = collator(features)
 
-        assert mock_legacy.called, "legacy fallback should have been used"
+        # Identity fallback: IGNORE_INDEX (-100) → 0.0, labeled tokens → 1.0.
         assert "loss_weights" in batch
         assert batch["loss_weights"].shape == torch.Size([1, 3])
+        weights = batch["loss_weights"][0].tolist()
+        assert weights[0] == 0.0, "IGNORE_INDEX position should get 0.0"
+        assert weights[1] == 1.0, "labeled token should get 1.0"
+        assert weights[2] == 1.0, "labeled token should get 1.0"
         assert any(
             "pre_code/post_code" in rec.message or "fallback" in rec.message.lower()
             for rec in caplog.records

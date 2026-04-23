@@ -387,7 +387,8 @@ class DiffWeightedDataCollator:
         if not use_hunk_path and not _HUNK_FALLBACK_WARNED:
             logger.warning(
                 "DiffWeightedDataCollator: pre_code/post_code side-channels missing "
-                "or tokenizer not set; falling back to set-based diff loss weights. "
+                "or tokenizer not set; falling back to identity loss weights "
+                "(1.0 for labeled tokens, 0.0 otherwise). "
                 "Pass tokenizer= and include pre_code/post_code in dataset features "
                 "to use the hunk path."
             )
@@ -409,13 +410,11 @@ class DiffWeightedDataCollator:
             if use_hunk_path:
                 w = self._weights_via_hunk_path(ids_seq, lab_seq, pre, post)
             else:
-                w = compute_diff_loss_weights(
-                    input_ids=ids_seq,
-                    labels=lab_seq,
-                    changed_ids=set(),
-                    changed_weight=self.changed_weight,
-                    unchanged_weight=self.unchanged_weight,
-                )
+                # Identity fallback: 1.0 for labeled tokens, 0.0 for IGNORE_INDEX.
+                # Avoids silently reducing the training objective to a uniform
+                # rescale when the diff cannot be computed (no side-channels
+                # or no tokenizer).
+                w = [1.0 if lab != -100 else 0.0 for lab in lab_seq]
             all_weights.append(w)
 
         batch["loss_weights"] = torch.tensor(all_weights, dtype=torch.float32)
