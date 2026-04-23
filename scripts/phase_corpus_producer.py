@@ -152,7 +152,7 @@ def _load_problems(
         List of (problem_id, prompt) tuples.
     """
     try:
-        from evaluation.benchmarks import load_problems  # type: ignore[import]
+        from evaluation.benchmarks import load_problems
 
         problems = load_problems(
             benchmark, problem_ids=problem_ids, max_samples=max_problems

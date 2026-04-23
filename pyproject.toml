@@ -63,6 +63,7 @@ dev = [
     "mlflow>=3.8.1",
     "pytest-xdist>=3.8.0",
     "requests-mock>=1.12.1",
+    "pandas-stubs>=3.0.0.260204",
 ]
 
 [tool.uv.sources]
@@ -162,7 +163,7 @@ module = [
     "rune_agent",
     "rune_agent.*",
     "shared",
-    "shared.models",
+    "shared.*",
     "training_svc",
     "training_svc.*",
 ]
@@ -213,16 +214,17 @@ module = [
     "optuna",
     "optuna.*",
     "inference",
-    "inference.factory",
-    "inference.transformers_provider",
+    "inference.*",
     "evaluation",
-    "evaluation.metrics",
+    "evaluation.*",
     "scoring",
     "task_pool",
     "template_library",
     "evalplus",
     "evalplus.*",
     "run_training_hpo",
+    "pandas",
+    "pandas.*",
 ]
 ignore_missing_imports = true
 
