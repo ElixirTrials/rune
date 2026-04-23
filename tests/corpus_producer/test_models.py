@@ -1,6 +1,5 @@
 """Tests for corpus_producer.models.PhaseArtifact."""
 
-import pytest
 from corpus_producer.models import PhaseArtifact
 
 
