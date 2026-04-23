@@ -1,0 +1,82 @@
+<task-notification>
+<task-id>a4bf1a6ce087a9d04</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/4ca84454-0551-4499-ad0c-e7a3ff14578f/tasks/a4bf1a6ce087a9d04.output</output-file>
+<status>completed</status>
+<summary>Agent "Execute Plan A benchmark harness" completed</summary>
+<result>Everything is complete and clean. Here is a summary of what was accomplished in this session:
+
+**Task 8 — `scripts/run_benchmark.py` CLI (completed and committed):**
+- Verified `--dry-run` produces correct JSON (CPU-safe, no torch/transformers loaded)
+- Fixed ruff I001 (import sort) with `--fix`
+- Fixed mypy `[assignment]` error by declaring `provider: InferenceProvider` before the branch so both `VLLMProvider` and `OllamaProvider` assignments narrow to a common base type
+- Committed as `feat(benchmarks): add run_benchmark CLI with --dry-run flag`
+
+**Task 9 — Smoke-import, full suite, lint/mypy clean (completed and committed):**
+- Smoke-import of all 7 public names from `evaluation.benchmarks` succeeded via `__getattr__` lazy loading
+- All 98 tests pass in ~10s with `HF_DATASETS_OFFLINE=1`
+- Fixed residual ruff E501 lines in `test_aggregator.py`, `test_protocol.py`, `test_adapter_stack.py`, `test_swe_bench_adapter.py`
+- Removed unused `pytest` and `os` imports from test files (F401)
+- Added `pandas-stubs` to dev deps to resolve mypy `import-untyped` errors
+- Changed `records: list[dict[str, Any]]` to `list[dict[Any, Any]]` in all 8 adapter `_load_rows` methods (pandas-stubs types `to_dict()` keys as `Hashable`, not `str`)
+- Added `ignore_errors = true` to the `[[tool.mypy.overrides]]` block for pandas/datasets as belt-and-suspenders
+- Committed as `chore(benchmarks): fix lint/mypy in evaluation library; add pandas-stubs`
+
+**Task 10 — Fixture verification:** All 8 parquet fixtures confirmed present and committed (`apps_mini`, `bigcodebench_mini`, `codecontests_mini`, `ds1000_mini`, `humaneval_mini`, `livecodebench_mini`, `mbpp_mini`, `swe_bench_lite_mini`). `scripts/generate_benchmark_fixtures.py` was already committed in a prior task.
+
+**Final state:** 98 tests passing, `ruff check` clean, `mypy` clean (18 source files), `--dry-run` CLI working end-to-end.</result>
+<usage><total_tokens>62086</total_tokens><tool_uses>212</tool_uses><duration_ms>1795850</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ac419b09d04cda51b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/4ca84454-0551-4499-ad0c-e7a3ff14578f/tasks/ac419b09d04cda51b.output</output-file>
+<status>completed</status>
+<summary>Agent "Execute Plan C phase corpus producer" completed</summary>
+<result>All 11 commits are on `feat/training-upgrade`. Here is the final report:
+
+---
+
+## Final Report — Plan C: Phase Corpus Producer
+
+### 11 Commit SHAs + Subjects
+
+| Task | SHA | Subject |
+|------|-----|---------|
+| 1 | `b0385c9` | feat(corpus-producer): add PhaseArtifact dataclass and library scaffold (Task 1) |
+| 2 | `9dfbf54` | feat(corpus-producer): add pipeline runner subprocess wrapper + FakePipelineRunner protocol (Task 2) |
+| 3 | `ad0eb68` | feat(corpus-producer): add Pass@1 success filter with run_benchmark integration (Task 3) |
+| 4 | `413cfa7` | feat(corpus-producer): add artifact binning into 25 oracle bins (Task 4) |
+| 5 | `c499c9c` | feat(corpus-producer): add JSONL manifest emission compatible with trainer dataset schema (Task 5) |
+| 6 | `f3cb580` | feat(corpus-producer): add SQLite progress/checkpoint table for resume support (Task 6) |
+| 7 | `6b831d4` | feat(corpus-producer): add STaR rationalization fallback for thin oracle bins (Task 7) |
+| 8 | `1bbe343` | feat(corpus-producer): add trainer bridge with Report_2 QLoRA defaults and DeltaCoder warm-start (Task 8) |
+| 9 | `7a1c721` | feat(corpus-producer): add phase_corpus_producer.py CLI orchestrator (Task 9) |
+| 10 | `c8966be` | feat(corpus-producer): add run_phase_corpus.sh batch runner for all 6 benchmarks (Task 10) |
+| 11 | `57ce1c5` | test(corpus-producer): add end-to-end integration test with mocked pipeline and run_benchmark (Task 11) |
+
+### Test Summary
+
+- `uv run pytest tests/corpus_producer/ -v`: **54 passed** (plan estimated 57; difference is the plan counted 9 pipeline_runner tests but only 7 are needed since there are no subprocess-calling tests)
+- `uv run pytest libs/ tests/ -q`: **631 passed, 5 failed** — the 5 failures are pre-existing in `libs/model-training/tests/test_encoder_cli.py` and `test_reconstruction_cli.py` on the `feat/training-upgrade` branch (not caused by this work)
+
+### Deviations from Plan
+
+1. **`run_benchmark` and `train_and_register` patchability**: The plan specified lazy `from X import Y` inside function bodies for INFRA-05, but `unittest.mock.patch` requires the name to exist at module level. Both `success_filter.py` and `trainer_bridge.py` use a `try/except ImportError` sentinel at module level instead — this is CPU-importable (INFRA-05 compliant) and patchable.
+
+2. **`if True:` integrate block removed**: The plan's `_parse_artifacts_from_output` had an awkward `if True:` guard; replaced with a cleaner `if "integrate" in phase_results:` check that's semantically equivalent and mypy-clean.
+
+3. **Shell script excluded from ruff**: `ruff check scripts/run_phase_corpus.sh` fails because ruff is a Python linter and cannot parse bash. The final ruff check target is `libs/corpus-producer/ scripts/phase_corpus_producer.py` (Python only).
+
+4. **Plan's `test_integration.py` patch paths adapted**: The plan patched `corpus_producer.phase_corpus_producer._load_problems` but `phase_corpus_producer` lives in `scripts/`, not the `corpus_producer` package. Tests use `patch.object(pcp, ...)` against the imported module object instead, which is equivalent and more robust.
+
+5. **`pyproject.toml` additions**: Added `corpus_producer` / `corpus_producer.*` to mypy `ignore_missing_imports` overrides (needed for scripts that import it after `bootstrap.setup_path()`).
+
+### Downstream Follow-Ups
+
+- Plan C's self-review items remain out of scope: round-2 hypernetwork loop, GPU-distributed corpus generation, S3 upload path for manifests, `load_problems` APPS stratification verification against Plan A's actual implementation.</result>
+<usage><total_tokens>151002</total_tokens><tool_uses>117</tool_uses><duration_ms>1010828</duration_ms></usage>
+</task-notification>
