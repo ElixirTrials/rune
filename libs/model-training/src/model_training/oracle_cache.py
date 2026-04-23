@@ -23,7 +23,7 @@ LoraDict = dict[str, dict[str, Any]]
 # mirrors the HF Qwen module path.
 _PEFT_LORA_KEY_RE = re.compile(
     r"(?:base_model\.model\.)?model\.layers\.(?P<layer>\d+)\."
-    r".*?\.(?P<module>[a-z_]+_proj)\.lora_(?P<ab>[AB])\.weight$"
+    r".*?\.(?P<module>[a-z_]+_proj)\.lora_(?P<ab>[AB])\.weight"
 )
 
 ORACLE_ID_PREFIX: str = "oracle_"
@@ -184,7 +184,7 @@ def _load_oracle_as_lora_dict(path: str, hc: Any) -> LoraDict:
     # Group by (module, layer) → {A, B}
     by_module: dict[str, dict[int, dict[str, Any]]] = {}
     for key, tensor in state.items():
-        m = _PEFT_LORA_KEY_RE.search(key)
+        m = _PEFT_LORA_KEY_RE.fullmatch(key)
         if m is None:
             continue
         module = m.group("module")
@@ -193,6 +193,11 @@ def _load_oracle_as_lora_dict(path: str, hc: Any) -> LoraDict:
         by_module.setdefault(module, {}).setdefault(layer_idx, {})[ab] = tensor
 
     target_layers: list[int] = sorted(int(i) for i in hc.layer_indices)
+
+    if not target_layers:
+        raise ValueError(
+            f"hc.layer_indices is empty; cannot load oracle from {p}"
+        )
 
     result: LoraDict = {}
     for module, layers in by_module.items():
@@ -278,7 +283,6 @@ class OracleAdapterCache:
         logger.info("Loading oracle LoRA dict for %r from %s", bin_key, path)
         lora_dict = _load_oracle_as_lora_dict(path, self._hc)
         self._cache[bin_key] = lora_dict
-        self._cache.move_to_end(bin_key)
         self._evict_if_full()
         return lora_dict
 

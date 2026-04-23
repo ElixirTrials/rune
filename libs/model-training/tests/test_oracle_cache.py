@@ -271,6 +271,11 @@ def test_oracle_cache_returns_none_when_bin_missing(
     assert cache.get("plan_mbpp") is None
     assert called == []
 
+    # Second lookup should hit the _missing set, not the registry.
+    assert cache.get("plan_mbpp") is None
+    registry.retrieve_by_id.assert_called_once()
+    assert called == []
+
 
 def test_oracle_cache_evicts_lru_when_full(monkeypatch: pytest.MonkeyPatch) -> None:
     """Filling past max_loaded evicts the least-recently-used bin."""
@@ -321,3 +326,12 @@ def test_oracle_cache_clear_releases_all(monkeypatch: pytest.MonkeyPatch) -> Non
     cache.clear()
     cache.get("plan_mbpp")
     assert len(load_calls) == 2
+
+
+def test_oracle_cache_rejects_non_positive_max_loaded() -> None:
+    """max_loaded must be >= 1."""
+    registry = MagicMock()
+    with pytest.raises(ValueError, match="max_loaded must be >= 1"):
+        OracleAdapterCache(registry=registry, hc=MagicMock(), max_loaded=0)
+    with pytest.raises(ValueError, match="max_loaded must be >= 1"):
+        OracleAdapterCache(registry=registry, hc=MagicMock(), max_loaded=-5)
