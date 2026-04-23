@@ -448,3 +448,32 @@ def test_training_step_round2_falls_back_to_cpu_when_no_params(
     for dev in moved_to:
         # torch.device('cpu') has type attribute 'cpu'
         assert str(dev) == "cpu"
+
+
+def test_cli_build_config_parses_flags(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI argv → Round2TrainConfig via build_config()."""
+    import importlib.util
+
+    script = (
+        __import__("pathlib").Path(__file__).resolve().parents[3]
+        / "scripts"
+        / "train_round2.py"
+    )
+    spec = importlib.util.spec_from_file_location("train_round2", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    argv = [
+        "--sakana-checkpoint-path", "/tmp/fake.bin",
+        "--oracle-registry-url", "sqlite:///tmp.db",
+        "--dataset-path", "/tmp/x.jsonl",
+        "--num-steps", "5",
+        "--dry-run",
+    ]
+    cfg = module.build_config(argv)
+    assert cfg.num_steps == 5
+    assert cfg.dry_run is True
+    assert cfg.oracle_registry_url == "sqlite:///tmp.db"
