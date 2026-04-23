@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import tempfile
 import uuid
@@ -66,6 +67,7 @@ class PipelineRunnerProtocol(Protocol):
         *,
         timeout: int = 300,
         base_model_id: str = "Qwen/Qwen3.5-9B",
+        cuda_visible_devices: str | None = None,
     ) -> PipelineRunResult:
         """Run the pipeline for one (benchmark, problem) pair."""
         ...
@@ -177,6 +179,7 @@ def run_pipeline_for_problem(
     *,
     timeout: int = 300,
     base_model_id: str = "Qwen/Qwen3.5-9B",
+    cuda_visible_devices: str | None = None,
 ) -> PipelineRunResult:
     """Run the full 5-phase Rune pipeline for one problem via subprocess.
 
@@ -189,6 +192,9 @@ def run_pipeline_for_problem(
         problem_prompt: Full problem text passed to rune_runner --project.
         timeout: Process timeout in seconds (default 300).
         base_model_id: Base model HF repo id.
+        cuda_visible_devices: Optional ``CUDA_VISIBLE_DEVICES`` value (e.g.
+            ``"0"``) forwarded to the subprocess env. Enables per-worker GPU
+            pinning on multi-GPU nodes.
 
     Returns:
         PipelineRunResult with artifacts and success flag.
@@ -218,6 +224,10 @@ def run_pipeline_for_problem(
             problem_id,
             run_id,
         )
+        env = None
+        if cuda_visible_devices is not None:
+            env = {**os.environ, "CUDA_VISIBLE_DEVICES": cuda_visible_devices}
+
         try:
             proc = subprocess.run(
                 cmd,
@@ -225,6 +235,7 @@ def run_pipeline_for_problem(
                 capture_output=True,
                 text=True,
                 cwd=str(_RUNE_ROOT),
+                env=env,
             )
         except subprocess.TimeoutExpired:
             logger.warning("Pipeline timed out for %s/%s", benchmark, problem_id)

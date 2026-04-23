@@ -151,7 +151,79 @@ def _build_parser() -> argparse.ArgumentParser:
             "Ignored when --s3-bucket is unset."
         ),
     )
+    parser.add_argument(
+        "--shard",
+        default=None,
+        dest="shard",
+        metavar="IDX/TOTAL",
+        help=(
+            "Round-robin shard spec, e.g. '0/4' for shard 0 of 4 workers. "
+            "Progress DB is shared; restarts are safe across shards."
+        ),
+    )
+    parser.add_argument(
+        "--cuda-visible-devices",
+        default=None,
+        dest="cuda_visible_devices",
+        metavar="DEVICES",
+        help=(
+            "Optional CUDA_VISIBLE_DEVICES value (e.g. '0') forwarded to each "
+            "pipeline subprocess. Combine with --shard for per-GPU workers."
+        ),
+    )
     return parser
+
+
+def _parse_shard(s: str) -> tuple[int, int]:
+    """Parse a ``"<idx>/<total>"`` shard spec.
+
+    Args:
+        s: Shard spec, e.g. ``"0/4"`` for shard 0 of 4.
+
+    Returns:
+        Tuple of ``(idx, total)`` with ``0 <= idx < total`` and ``total > 0``.
+
+    Raises:
+        ValueError: On malformed spec, non-integer components, non-positive
+            total, or out-of-range idx.
+    """
+    if "/" not in s:
+        raise ValueError(f"--shard must be '<idx>/<total>', got {s!r}")
+    idx_s, total_s = s.split("/", 1)
+    try:
+        idx = int(idx_s)
+        total = int(total_s)
+    except ValueError as exc:
+        raise ValueError(
+            f"--shard components must be integers, got {s!r}"
+        ) from exc
+    if total <= 0:
+        raise ValueError(f"--shard total must be > 0, got {total}")
+    if idx < 0 or idx >= total:
+        raise ValueError(
+            f"--shard idx must be in [0, {total - 1}], got {idx}"
+        )
+    return idx, total
+
+
+def apply_shard(
+    problems: list[tuple[str, str]], idx: int, total: int
+) -> list[tuple[str, str]]:
+    """Round-robin slice a problem list for shard ``idx`` of ``total``.
+
+    Round-robin (``problems[idx::total]``) balances per-problem runtime
+    variance better than contiguous chunks. The union of all ``total``
+    shards equals the input list with no overlaps.
+
+    Args:
+        problems: Full list of ``(problem_id, prompt)`` tuples.
+        idx: Shard index (0-based, must be < total).
+        total: Total number of shards.
+
+    Returns:
+        The subset of ``problems`` assigned to this shard.
+    """
+    return problems[idx::total]
 
 
 def _load_problems(
@@ -206,6 +278,9 @@ def produce_corpus(
     mlflow_experiment: str = "rune-qlora",
     s3_bucket: str | None = None,
     s3_prefix: str = "",
+    shard_idx: int = 0,
+    shard_total: int = 1,
+    cuda_visible_devices: str | None = None,
 ) -> dict[str, int]:
     """Main orchestration loop for phase corpus production.
 
@@ -246,9 +321,21 @@ def produce_corpus(
 
     for benchmark in benchmarks:
         problems = _load_problems(benchmark, problem_ids, max_problems)
-        logger.info(
-            "Processing %d problems for benchmark %s", len(problems), benchmark
-        )
+        if shard_total > 1:
+            problems = apply_shard(problems, shard_idx, shard_total)
+            logger.info(
+                "Shard %d/%d: processing %d problems for benchmark %s",
+                shard_idx,
+                shard_total,
+                len(problems),
+                benchmark,
+            )
+        else:
+            logger.info(
+                "Processing %d problems for benchmark %s",
+                len(problems),
+                benchmark,
+            )
 
         for problem_id, prompt in problems:
             # Resume: skip if all phases are already done
@@ -265,6 +352,7 @@ def produce_corpus(
                 prompt,
                 timeout=pipeline_timeout,
                 base_model_id=base_model,
+                cuda_visible_devices=cuda_visible_devices,
             )
 
             if not result.success:
@@ -358,6 +446,10 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    shard_idx, shard_total = (0, 1)
+    if args.shard:
+        shard_idx, shard_total = _parse_shard(args.shard)
+
     counts = produce_corpus(
         benchmarks=args.benchmark,
         out_dir=Path(args.out_dir),
@@ -372,6 +464,9 @@ def main() -> None:
         mlflow_experiment=args.mlflow_experiment,
         s3_bucket=args.s3_bucket,
         s3_prefix=args.s3_prefix,
+        shard_idx=shard_idx,
+        shard_total=shard_total,
+        cuda_visible_devices=args.cuda_visible_devices,
     )
 
     total = sum(counts.values())

@@ -59,6 +59,7 @@ def _fake_pipeline_runner(
     *,
     timeout: int = 300,
     base_model_id: str = "Qwen/Qwen3.5-9B",
+    cuda_visible_devices: str | None = None,
 ) -> PipelineRunResult:
     return PipelineRunResult(
         run_id="run-test",
@@ -196,6 +197,34 @@ def test_produce_corpus_uploads_manifests_to_s3_when_bucket_set(
                     for call in mock_upload.call_args_list:
                         assert call.kwargs["bucket"] == "my-bucket"
                         assert call.kwargs["prefix"] == "oracles/run-1"
+
+
+@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+def test_produce_corpus_shard_processes_only_its_slice(mock_rb: MagicMock) -> None:
+    """Shard 1/3 only runs the middle-third of the problem list."""
+    import phase_corpus_producer as pcp  # noqa: PLC0415
+
+    problems = [(f"HumanEval/{i}", f"prompt {i}") for i in range(6)]
+    seen: list[str] = []
+
+    def recording_runner(
+        bm: str, pid: str, prompt: str, **kw: object
+    ) -> PipelineRunResult:
+        seen.append(pid)
+        return _fake_pipeline_runner(bm, pid, prompt, **kw)  # type: ignore[arg-type]
+
+    with patch.object(pcp, "run_pipeline_for_problem", side_effect=recording_runner):
+        with patch.object(pcp, "_load_problems", return_value=problems):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pcp.produce_corpus(
+                    benchmarks=[_BENCHMARK],
+                    out_dir=Path(tmpdir),
+                    skip_training=True,
+                    shard_idx=1,
+                    shard_total=3,
+                )
+    # Round-robin slice [1::3] → indices 1, 4
+    assert seen == ["HumanEval/1", "HumanEval/4"]
 
 
 @patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
