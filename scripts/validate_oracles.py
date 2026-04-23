@@ -85,6 +85,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Base HF model repo id (e.g. Qwen/Qwen3.5-9B).",
     )
     parser.add_argument(
+        "--oracle-registry-url",
+        default="",
+        help=(
+            "SQLAlchemy URL for the AdapterRegistry SQLite DB holding the "
+            "oracles. Required unless --dry-run. Example: "
+            "sqlite:///~/.rune/adapters.db"
+        ),
+    )
+    parser.add_argument(
         "--oracle",
         action="append",
         required=True,
@@ -155,10 +164,16 @@ def _evaluate_one(
     max_samples: int | None,
     timeout_s: int,
     workers: int,
+    oracle_registry_url: str,
 ) -> dict[str, Any]:
     """Evaluate a single oracle against the base. Heavy imports deferred."""
-    from evaluation.benchmarks import BenchmarkConfig, run_benchmark
-    from evaluation.benchmarks.adapter_stack import load_adapter_stack
+    if not oracle_registry_url:
+        raise ValueError("oracle_registry_url is required when not dry-run")
+    from adapter_registry.registry import AdapterRegistry  # noqa: PLC0415
+    from evaluation.benchmarks import BenchmarkConfig, run_benchmark  # noqa: PLC0415
+    from evaluation.benchmarks.adapter_stack import load_adapter_stack  # noqa: PLC0415
+    from inference.factory import get_provider  # noqa: PLC0415
+    from sqlmodel import create_engine  # noqa: PLC0415
 
     cfg = BenchmarkConfig(
         timeout_s=timeout_s,
@@ -166,16 +181,30 @@ def _evaluate_one(
         max_samples=max_samples,
     )
 
-    base_stack = load_adapter_stack(base_model=base_model, adapter_ids=[])
-    stack = load_adapter_stack(base_model=base_model, adapter_ids=[adapter_id])
+    engine = create_engine(oracle_registry_url)
+    registry = AdapterRegistry(engine=engine)
+    provider = get_provider()
 
-    base_result = run_benchmark(
+    base_stack = load_adapter_stack(
+        base_model=base_model,
+        adapter_ids=[],
+        provider=provider,
+        registry=registry,
+    )
+    stack = load_adapter_stack(
+        base_model=base_model,
+        adapter_ids=[adapter_id],
+        provider=provider,
+        registry=registry,
+    )
+
+    base_result = run_benchmark(  # type: ignore[operator]
         adapter_stack=base_stack,
         benchmark_id=benchmark,
         max_samples=max_samples,
         config=cfg,
     )
-    stack_result = run_benchmark(
+    stack_result = run_benchmark(  # type: ignore[operator]
         adapter_stack=stack,
         benchmark_id=benchmark,
         max_samples=max_samples,
@@ -199,6 +228,7 @@ def validate_oracles(
     base_model: str,
     oracle_specs: list[str],
     *,
+    oracle_registry_url: str = "",
     threshold: float = DEFAULT_THRESHOLD,
     max_samples: int | None = None,
     timeout_s: int = 30,
@@ -210,6 +240,8 @@ def validate_oracles(
     Args:
         base_model: Base HF repo id.
         oracle_specs: List of "<bin_key>:<adapter_id>" strings.
+        oracle_registry_url: SQLAlchemy URL for the AdapterRegistry DB.
+            Required when dry_run is False.
         threshold: Absolute Pass@1 delta required.
         max_samples: Per-benchmark cap.
         timeout_s: Per-problem timeout.
@@ -218,14 +250,15 @@ def validate_oracles(
 
     Returns:
         List of result dicts, one per oracle.
+
+    Raises:
+        ValueError: If not dry_run and oracle_registry_url is empty.
     """
     results: list[dict[str, Any]] = []
     for spec in oracle_specs:
         bin_key, benchmark, adapter_id = _parse_oracle_spec(spec)
         if dry_run:
-            results.append(
-                _dry_run_result(bin_key, benchmark, adapter_id, threshold)
-            )
+            results.append(_dry_run_result(bin_key, benchmark, adapter_id, threshold))
             continue
         results.append(
             _evaluate_one(
@@ -237,6 +270,7 @@ def validate_oracles(
                 max_samples=max_samples,
                 timeout_s=timeout_s,
                 workers=workers,
+                oracle_registry_url=oracle_registry_url,
             )
         )
     return results
@@ -252,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     results = validate_oracles(
         base_model=args.base_model,
         oracle_specs=args.oracle,
+        oracle_registry_url=args.oracle_registry_url,
         threshold=args.threshold,
         max_samples=args.max_samples,
         timeout_s=args.timeout,
