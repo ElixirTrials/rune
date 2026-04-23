@@ -7,3 +7,7 @@ Read /Users/noahdolevelixir/Code/rune/instructions/2026-04-23-pr-28-summary.md e
 ---
 
 Run make docs-build and fix any errors or warnings
+
+---
+
+commit and push
