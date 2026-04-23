@@ -259,7 +259,8 @@ def _setup_training(config: Any) -> dict[str, Any]:
     )
 
 
-    _require_probe_cache(config.model_config_name)
+    if not config.smoke_test:
+        _require_probe_cache(config.model_config_name)
 
     tokenizer = AutoTokenizer.from_pretrained(config.base_model_name)
     base_model = AutoModelForCausalLM.from_pretrained(
@@ -422,6 +423,10 @@ def _run_training_loop(
     _setup_mlflow(config)
 
     trainable_params = [p for p in hypernet.parameters() if p.requires_grad]
+    logger.info(
+        "Round-2 trainable params: %d",
+        sum(p.numel() for p in trainable_params),
+    )
     optimizer = AdamW(trainable_params, lr=config.lr)
     scheduler = SequentialLR(
         optimizer,
@@ -486,6 +491,8 @@ def _run_training_loop(
                 full=(step % config.full_checkpoint_every == 0),
             )
 
+        steps_completed = step
+
         if kill_switch_evaluate_fn is not None and maybe_run_kill_switch(
             step=step,
             config=ks_config,
@@ -495,8 +502,6 @@ def _run_training_loop(
             logger.error("Round-2 kill-switch triggered at step %d; halting", step)
             triggered = True
             break
-
-        steps_completed = step
 
     return {
         "dry_run": False,
