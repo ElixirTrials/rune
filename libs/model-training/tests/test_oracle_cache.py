@@ -189,3 +189,28 @@ def test_audit_oracle_coverage_empty_records() -> None:
     ratio, counts = audit_oracle_coverage([], registry)
     assert ratio == pytest.approx(0.0)
     assert counts == {}
+
+
+def test_audit_oracle_coverage_skips_unroutable_records() -> None:
+    """Unroutable records penalise coverage but are excluded from bin_counts.
+
+    The denominator of coverage_ratio is the **original** len(records), so
+    unroutable records (those raising ValueError from _bin_key_for_record)
+    reduce the ratio. They do not appear in bin_counts because no bin could
+    be derived for them.
+    """
+    registry = MagicMock()
+    registry.retrieve_by_id.return_value = _fake_record(
+        adapter_id="oracle_decompose_humaneval",
+        file_path="/adapters/oracle_decompose_humaneval",
+    )
+    records = [
+        {"metadata": {"phase": "decompose", "benchmark": "humaneval"}},  # covered
+        {"task_id": "not-parseable"},                                     # unroutable
+    ]
+    ratio, counts = audit_oracle_coverage(records, registry)
+    # 1 covered out of 2 total (unroutable counts against denominator)
+    assert ratio == pytest.approx(0.5)
+    assert counts == {"decompose_humaneval": 1}
+    # The unroutable record never triggered a registry lookup.
+    registry.retrieve_by_id.assert_called_once()

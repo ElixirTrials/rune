@@ -101,9 +101,14 @@ def audit_oracle_coverage(
 
     Returns:
         Tuple ``(coverage_ratio, bin_counts)`` where:
-        - ``coverage_ratio`` is the fraction of records whose bin has a
-          registered oracle (0.0 when ``records`` is empty).
-        - ``bin_counts`` maps bin_key → record count in the input.
+        - ``coverage_ratio`` is ``covered / len(records)`` (using the
+          **original** record count as the denominator). Unroutable records
+          — those raising ``ValueError`` from :func:`_bin_key_for_record` —
+          are logged and skipped, but still count against the denominator.
+          Returns ``0.0`` when ``records`` is empty.
+        - ``bin_counts`` maps bin_key → record count for *routable* records
+          only; unroutable records are excluded, so
+          ``sum(bin_counts.values())`` may be less than ``len(records)``.
     """
     if not records:
         return 0.0, {}
