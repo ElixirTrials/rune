@@ -19,3 +19,7 @@ I accept your recommendations. Let's try strict.
 ---
 
 Yes, check if there is anything outstanding.
+
+---
+
+We don't want the docs/superpowers. Close anything outstanding. Push and create a well described PR.
