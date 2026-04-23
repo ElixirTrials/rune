@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "2c006940996f",
+  "session_id": "d816fa3d-1f8a-4fad-9523-e1a1dab5c063",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-23T07:25:48.889277Z",
+  "branch": "feat/training-upgrade",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "pyproject.toml",
+    "scripts/phase_corpus_producer.py",
+    "libs/evaluation/src/evaluation/benchmarks/__init__.py",
+    "libs/evaluation/tests/test_load_problems.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "96ee003623ad",
+  "token_usage": {
+    "input_tokens": 83,
+    "cache_creation_tokens": 176374,
+    "cache_read_tokens": 3730900,
+    "output_tokens": 25328,
+    "api_call_count": 48
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-23T07:25:48.777584Z",
+    "agent_lines": 0,
+    "human_added": 133,
+    "human_modified": 5,
+    "human_removed": 0,
+    "total_committed": 133,
+    "agent_percentage": 0
+  }
+}
