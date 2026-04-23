@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from corpus_producer.models import PhaseArtifact
 from corpus_producer.pipeline_runner import (
-    PipelineRunResult,
     PipelineRunnerProtocol,
+    PipelineRunResult,
     _parse_artifacts_from_output,
-    run_pipeline_for_problem,
 )
 
 
@@ -28,7 +26,9 @@ def _fake_output(with_diagnose: bool = False) -> dict[str, object]:
 
 
 def test_parse_artifacts_returns_four_phases():
-    arts = _parse_artifacts_from_output("run-1", "humaneval", "HumanEval/0", _fake_output())
+    arts = _parse_artifacts_from_output(
+        "run-1", "humaneval", "HumanEval/0", _fake_output()
+    )
     phases = [a.phase for a in arts]
     assert "decompose" in phases
     assert "plan" in phases
@@ -37,13 +37,17 @@ def test_parse_artifacts_returns_four_phases():
 
 
 def test_parse_artifacts_diagnose_present_when_repair_fired():
-    arts = _parse_artifacts_from_output("run-1", "humaneval", "HumanEval/0", _fake_output(with_diagnose=True))
+    arts = _parse_artifacts_from_output(
+        "run-1", "humaneval", "HumanEval/0", _fake_output(with_diagnose=True)
+    )
     phases = [a.phase for a in arts]
     assert "diagnose" in phases
 
 
 def test_parse_artifacts_no_diagnose_when_no_repair():
-    arts = _parse_artifacts_from_output("run-1", "humaneval", "HumanEval/0", _fake_output())
+    arts = _parse_artifacts_from_output(
+        "run-1", "humaneval", "HumanEval/0", _fake_output()
+    )
     phases = [a.phase for a in arts]
     assert "diagnose" not in phases
 
@@ -56,7 +60,9 @@ def test_parse_artifacts_benchmark_and_problem_tagged():
 
 
 def test_parse_artifacts_pipeline_run_id_set():
-    arts = _parse_artifacts_from_output("run-xyz", "humaneval", "HumanEval/0", _fake_output())
+    arts = _parse_artifacts_from_output(
+        "run-xyz", "humaneval", "HumanEval/0", _fake_output()
+    )
     for art in arts:
         assert art.pipeline_run_id == "run-xyz"
 

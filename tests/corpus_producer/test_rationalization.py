@@ -99,7 +99,7 @@ def test_rationalize_stops_when_bin_full():
             success=True,
         )
 
-    new = star_rationalize(
+    star_rationalize(
         "decompose_humaneval",
         existing_artifacts=existing,
         failing_problems=failing,
@@ -121,7 +121,9 @@ def test_rationalize_skips_problem_with_no_hints():
         bm: str, pid: str, prompt: str, **kw: object
     ) -> PipelineRunResult:
         calls.append(pid)
-        return PipelineRunResult(run_id="r", benchmark=bm, problem_id=pid, success=False)
+        return PipelineRunResult(
+            run_id="r", benchmark=bm, problem_id=pid, success=False
+        )
 
     new = star_rationalize(
         "decompose_humaneval",

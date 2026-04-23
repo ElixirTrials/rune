@@ -24,8 +24,8 @@ _SCRIPTS_DIR = str(Path(__file__).resolve().parents[2] / "scripts")
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from corpus_producer.models import PhaseArtifact
-from corpus_producer.pipeline_runner import PipelineRunResult
+from corpus_producer.models import PhaseArtifact  # noqa: E402
+from corpus_producer.pipeline_runner import PipelineRunResult  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -80,7 +80,7 @@ def _mock_run_benchmark_pass(
     verdict = MagicMock()
     verdict.passed = True
     result = MagicMock()
-    result.per_problem = {pid: verdict for pid in (problem_ids or [_PROBLEM_ID])}
+    result.per_problem = dict.fromkeys(problem_ids or [_PROBLEM_ID], verdict)
     return result
 
 
@@ -89,14 +89,21 @@ def _mock_run_benchmark_pass(
 # ---------------------------------------------------------------------------
 
 
-@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+@patch(
+    "corpus_producer.success_filter.run_benchmark",
+    side_effect=_mock_run_benchmark_pass,
+)
 def test_produce_corpus_one_problem_emits_manifests(mock_rb: MagicMock) -> None:
     """One HumanEval problem, Pass@1=1.0 → 4 manifest files (one per phase)."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
 
-    with patch.object(pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner):
+    with patch.object(
+        pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
+    ):
         with patch.object(
-            pcp, "_load_problems", return_value=[(_PROBLEM_ID, "Sort a list of integers.")]
+            pcp,
+            "_load_problems",
+            return_value=[(_PROBLEM_ID, "Sort a list of integers.")],
         ):
             with tempfile.TemporaryDirectory() as tmpdir:
                 counts = pcp.produce_corpus(
@@ -112,17 +119,24 @@ def test_produce_corpus_one_problem_emits_manifests(mock_rb: MagicMock) -> None:
     assert "diagnose_pooled" not in counts  # no diagnose phase in this run
 
 
-@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+@patch(
+    "corpus_producer.success_filter.run_benchmark",
+    side_effect=_mock_run_benchmark_pass,
+)
 def test_produce_corpus_dry_run_does_not_train(mock_rb: MagicMock) -> None:
     """dry_run=True should emit manifests but not call real train_and_register."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
 
-    with patch.object(pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner):
+    with patch.object(
+        pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
+    ):
         with patch.object(
             pcp, "_load_problems", return_value=[(_PROBLEM_ID, "Sort a list.")]
         ):
             with tempfile.TemporaryDirectory() as tmpdir:
-                with patch("corpus_producer.trainer_bridge.train_and_register") as mock_train:
+                with patch(
+                    "corpus_producer.trainer_bridge.train_and_register"
+                ) as mock_train:
                     pcp.produce_corpus(
                         benchmarks=[_BENCHMARK],
                         out_dir=Path(tmpdir),
@@ -132,14 +146,19 @@ def test_produce_corpus_dry_run_does_not_train(mock_rb: MagicMock) -> None:
                     mock_train.assert_not_called()
 
 
-@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+@patch(
+    "corpus_producer.success_filter.run_benchmark",
+    side_effect=_mock_run_benchmark_pass,
+)
 def test_produce_corpus_resume_skips_done_problems(mock_rb: MagicMock) -> None:
     """Second run with same out_dir skips already-done problem."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
 
     call_count: list[int] = [0]
 
-    def counting_runner(bm: str, pid: str, prompt: str, **kw: object) -> PipelineRunResult:
+    def counting_runner(
+        bm: str, pid: str, prompt: str, **kw: object
+    ) -> PipelineRunResult:
         call_count[0] += 1
         return _fake_pipeline_runner(bm, pid, prompt, **kw)  # type: ignore[arg-type]
 
@@ -169,14 +188,19 @@ def test_produce_corpus_resume_skips_done_problems(mock_rb: MagicMock) -> None:
     assert second_count == 0, "Resume should skip already-done problems"
 
 
-@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+@patch(
+    "corpus_producer.success_filter.run_benchmark",
+    side_effect=_mock_run_benchmark_pass,
+)
 def test_produce_corpus_uploads_manifests_to_s3_when_bucket_set(
     mock_rb: MagicMock,
 ) -> None:
     """When s3_bucket is set, upload_manifest is called once per emitted manifest."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
 
-    with patch.object(pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner):
+    with patch.object(
+        pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
+    ):
         with patch.object(
             pcp, "_load_problems", return_value=[(_PROBLEM_ID, "prompt")]
         ):
@@ -199,7 +223,10 @@ def test_produce_corpus_uploads_manifests_to_s3_when_bucket_set(
                         assert call.kwargs["prefix"] == "oracles/run-1"
 
 
-@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+@patch(
+    "corpus_producer.success_filter.run_benchmark",
+    side_effect=_mock_run_benchmark_pass,
+)
 def test_produce_corpus_shard_processes_only_its_slice(mock_rb: MagicMock) -> None:
     """Shard 1/3 only runs the middle-third of the problem list."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
@@ -227,12 +254,17 @@ def test_produce_corpus_shard_processes_only_its_slice(mock_rb: MagicMock) -> No
     assert seen == ["HumanEval/1", "HumanEval/4"]
 
 
-@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+@patch(
+    "corpus_producer.success_filter.run_benchmark",
+    side_effect=_mock_run_benchmark_pass,
+)
 def test_produce_corpus_no_upload_when_bucket_unset(mock_rb: MagicMock) -> None:
     """When s3_bucket is None, upload_manifest is NOT called."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
 
-    with patch.object(pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner):
+    with patch.object(
+        pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
+    ):
         with patch.object(
             pcp, "_load_problems", return_value=[(_PROBLEM_ID, "prompt")]
         ):
@@ -246,14 +278,19 @@ def test_produce_corpus_no_upload_when_bucket_unset(mock_rb: MagicMock) -> None:
                     mock_upload.assert_not_called()
 
 
-@patch("corpus_producer.success_filter.run_benchmark", side_effect=_mock_run_benchmark_pass)
+@patch(
+    "corpus_producer.success_filter.run_benchmark",
+    side_effect=_mock_run_benchmark_pass,
+)
 def test_produce_corpus_force_reruns_done_problems(mock_rb: MagicMock) -> None:
     """--force re-runs even done problems."""
     import phase_corpus_producer as pcp  # noqa: PLC0415
 
     call_count: list[int] = [0]
 
-    def counting_runner(bm: str, pid: str, prompt: str, **kw: object) -> PipelineRunResult:
+    def counting_runner(
+        bm: str, pid: str, prompt: str, **kw: object
+    ) -> PipelineRunResult:
         call_count[0] += 1
         return _fake_pipeline_runner(bm, pid, prompt, **kw)  # type: ignore[arg-type]
 

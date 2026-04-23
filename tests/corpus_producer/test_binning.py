@@ -16,7 +16,11 @@ def _art(phase: str, benchmark: str = "humaneval") -> PhaseArtifact:
 
 
 def test_bin_artifacts_groups_by_phase_benchmark():
-    arts = [_art("decompose", "humaneval"), _art("plan", "humaneval"), _art("decompose", "mbpp")]
+    arts = [
+        _art("decompose", "humaneval"),
+        _art("plan", "humaneval"),
+        _art("decompose", "mbpp"),
+    ]
     bins = bin_artifacts(arts)
     assert "decompose_humaneval" in bins
     assert "plan_humaneval" in bins
