@@ -29,7 +29,10 @@ def build_config(argv: Sequence[str]) -> Round2TrainConfig:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sakana-checkpoint-path", required=True)
     parser.add_argument("--oracle-registry-url", required=True)
-    parser.add_argument("--dataset-path", required=True)
+    parser.add_argument("--dataset-path", default=None)
+    parser.add_argument("--model-config-name", default="qwen3.5-9b")
+    parser.add_argument("--base-model-name", default="")
+    parser.add_argument("--lora-r", type=int, default=8)
     parser.add_argument("--num-steps", type=int, default=100)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--alpha", type=float, default=0.5)
@@ -69,6 +72,9 @@ def build_config(argv: Sequence[str]) -> Round2TrainConfig:
         experiment_name=ns.experiment_name,
         max_loaded_oracles=ns.max_loaded_oracles,
         min_oracle_coverage=ns.min_oracle_coverage,
+        model_config_name=ns.model_config_name,
+        base_model_name=ns.base_model_name,
+        lora_r=ns.lora_r,
         oracle_fallback=ns.oracle_fallback,
         dry_run=ns.dry_run,
         smoke_test=ns.smoke_test,
@@ -85,11 +91,13 @@ def build_config(argv: Sequence[str]) -> Round2TrainConfig:
 
 def main(argv: Sequence[str]) -> int:
     """Run round-2 training from the command line."""
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
-    config = build_config(argv)
-    report = train_d2l_qwen3_round2(config)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    try:
+        config = build_config(argv)
+        report = train_d2l_qwen3_round2(config)
+    except (ValueError, RuntimeError) as exc:
+        logging.error("%s", exc)
+        return 1
     logging.info("Round-2 run report: %s", report)
     return 0
 

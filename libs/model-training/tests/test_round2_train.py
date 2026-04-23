@@ -477,3 +477,6 @@ def test_cli_build_config_parses_flags(
     assert cfg.num_steps == 5
     assert cfg.dry_run is True
     assert cfg.oracle_registry_url == "sqlite:///tmp.db"
+    # Default propagation
+    assert cfg.oracle_fallback == "skip"
+    assert cfg.lora_r == 8
