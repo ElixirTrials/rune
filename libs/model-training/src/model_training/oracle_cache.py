@@ -83,3 +83,46 @@ def lookup_oracle_path(bin_key: str, registry: Any) -> str | None:
         logger.warning("Oracle adapter %r is archived; ignoring", adapter_id)
         return None
     return str(record.file_path)
+
+
+def audit_oracle_coverage(
+    records: list[dict[str, Any]],
+    registry: Any,
+) -> tuple[float, dict[str, int]]:
+    """Compute oracle-coverage ratio and per-bin record counts.
+
+    Iterates the records, derives each bin_key, and checks whether a
+    registered (non-archived) oracle exists for it. Caches lookup results
+    per bin_key to avoid repeated registry queries.
+
+    Args:
+        records: List of JSONL manifest records.
+        registry: AdapterRegistry instance.
+
+    Returns:
+        Tuple ``(coverage_ratio, bin_counts)`` where:
+        - ``coverage_ratio`` is the fraction of records whose bin has a
+          registered oracle (0.0 when ``records`` is empty).
+        - ``bin_counts`` maps bin_key → record count in the input.
+    """
+    if not records:
+        return 0.0, {}
+
+    bin_counts: dict[str, int] = {}
+    lookup_cache: dict[str, bool] = {}
+    covered = 0
+
+    for record in records:
+        try:
+            bin_key = _bin_key_for_record(record)
+        except ValueError as exc:
+            logger.warning("Skipping unroutable record: %s", exc)
+            continue
+        bin_counts[bin_key] = bin_counts.get(bin_key, 0) + 1
+
+        if bin_key not in lookup_cache:
+            lookup_cache[bin_key] = lookup_oracle_path(bin_key, registry) is not None
+        if lookup_cache[bin_key]:
+            covered += 1
+
+    return covered / len(records), bin_counts

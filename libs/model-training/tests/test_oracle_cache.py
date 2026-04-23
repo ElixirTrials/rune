@@ -9,6 +9,7 @@ from model_training.oracle_cache import (
     DIAGNOSE_BIN_KEY,
     ORACLE_ID_PREFIX,
     _bin_key_for_record,
+    audit_oracle_coverage,
     lookup_oracle_path,
 )
 
@@ -132,3 +133,59 @@ def test_lookup_oracle_path_returns_none_when_archived() -> None:
         is_archived=True,
     )
     assert lookup_oracle_path("code_apps", registry) is None
+
+
+def test_audit_oracle_coverage_full_coverage() -> None:
+    """Every record has a registered oracle → ratio 1.0."""
+    registry = MagicMock()
+    registry.retrieve_by_id.return_value = _fake_record(
+        adapter_id="irrelevant", file_path="/any/path"
+    )
+
+    records = [
+        {"metadata": {"phase": "decompose", "benchmark": "humaneval"}},
+        {"metadata": {"phase": "plan", "benchmark": "mbpp"}},
+        {"metadata": {"phase": "diagnose", "benchmark": "apps"}},
+    ]
+    ratio, counts = audit_oracle_coverage(records, registry)
+
+    assert ratio == pytest.approx(1.0)
+    assert counts == {
+        "decompose_humaneval": 1,
+        "plan_mbpp": 1,
+        "diagnose_pooled": 1,
+    }
+
+
+def test_audit_oracle_coverage_partial() -> None:
+    """Unregistered bins subtract from the coverage ratio."""
+    from adapter_registry.exceptions import AdapterNotFoundError
+
+    registry = MagicMock()
+
+    def _fake_lookup(adapter_id: str) -> MagicMock:
+        if adapter_id == "oracle_plan_mbpp":
+            raise AdapterNotFoundError("missing")
+        return _fake_record(adapter_id=adapter_id, file_path=f"/a/{adapter_id}")
+
+    registry.retrieve_by_id.side_effect = _fake_lookup
+
+    records = [
+        {"metadata": {"phase": "decompose", "benchmark": "humaneval"}},
+        {"metadata": {"phase": "plan", "benchmark": "mbpp"}},      # missing
+        {"metadata": {"phase": "plan", "benchmark": "mbpp"}},      # missing (dup bin)
+        {"metadata": {"phase": "code", "benchmark": "apps"}},
+    ]
+    ratio, counts = audit_oracle_coverage(records, registry)
+
+    assert ratio == pytest.approx(0.5)  # 2 of 4 records covered
+    assert counts["plan_mbpp"] == 2
+    assert counts["decompose_humaneval"] == 1
+
+
+def test_audit_oracle_coverage_empty_records() -> None:
+    """Empty record list returns 0.0 coverage and empty counts."""
+    registry = MagicMock()
+    ratio, counts = audit_oracle_coverage([], registry)
+    assert ratio == pytest.approx(0.0)
+    assert counts == {}
