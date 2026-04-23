@@ -466,7 +466,10 @@ def build_diff_aware_sft_trainer(
     Returns:
         A configured ``trl.SFTTrainer`` instance.
     """
-    from trl import DataCollatorForCompletionOnlyLM, SFTTrainer
+    from trl import (  # type: ignore[attr-defined]
+        DataCollatorForCompletionOnlyLM,
+        SFTTrainer,
+    )
 
     resolved_tokenizer = tokenizer if tokenizer is not None else processing_class
 
