@@ -6,6 +6,8 @@ import pytest
 from model_training.round2_config import (
     DEFAULT_MAX_LOADED_ORACLES,
     DEFAULT_MIN_ORACLE_COVERAGE,
+    DEFAULT_ROUND2_CHECKPOINT_DIR,
+    DEFAULT_ROUND2_EXPERIMENT_NAME,
     Round2TrainConfig,
 )
 
@@ -26,14 +28,17 @@ def test_round2_config_defaults_are_sane() -> None:
     assert cfg.max_loaded_oracles == DEFAULT_MAX_LOADED_ORACLES
     assert cfg.min_oracle_coverage == DEFAULT_MIN_ORACLE_COVERAGE
     assert cfg.oracle_fallback == "skip"
+    assert cfg.checkpoint_dir == DEFAULT_ROUND2_CHECKPOINT_DIR
+    assert cfg.experiment_name == DEFAULT_ROUND2_EXPERIMENT_NAME
     assert cfg.sakana_checkpoint_path == "/tmp/fake.bin"
     assert cfg.oracle_registry_url == "sqlite:///fake.db"
 
 
-def test_round2_config_rejects_non_positive_max_loaded() -> None:
+@pytest.mark.parametrize("bad_value", [0, -1, -100])
+def test_round2_config_rejects_non_positive_max_loaded(bad_value: int) -> None:
     """max_loaded_oracles must be >= 1."""
     with pytest.raises(ValueError, match="max_loaded_oracles must be >= 1"):
-        Round2TrainConfig(**_minimal_kwargs(max_loaded_oracles=0))
+        Round2TrainConfig(**_minimal_kwargs(max_loaded_oracles=bad_value))
 
 
 def test_round2_config_rejects_coverage_out_of_range() -> None:
@@ -46,7 +51,7 @@ def test_round2_config_rejects_coverage_out_of_range() -> None:
 
 def test_round2_config_rejects_unknown_fallback() -> None:
     """oracle_fallback must be 'base_model' or 'skip'."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="'base_model'|'skip'"):
         Round2TrainConfig(**_minimal_kwargs(oracle_fallback="nope"))
 
 
