@@ -8,6 +8,7 @@ import pytest
 from model_training.round2_train import (
     _teacher_forward_with_oracle,
     _training_step_round2,
+    train_d2l_qwen3_round2,
 )
 
 
@@ -279,6 +280,81 @@ def test_training_step_round2_base_model_fallback_uses_bare_teacher(
     # Only the student-pass LoRA was applied; teacher ran bare base model.
     assert applied == [hypernet_lora_dict]
     assert loss is not None
+
+
+def test_train_round2_aborts_when_coverage_below_threshold(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """coverage < min_oracle_coverage → RuntimeError before any training."""
+    from model_training import round2_train
+    from model_training.round2_config import Round2TrainConfig
+
+    # Stub dataset loader to return 4 records, none with a registered oracle.
+    records = [
+        {"metadata": {"phase": "decompose", "benchmark": "humaneval"},
+         "activation_text": "a", "teacher_text": "at", "task_id": "x/0/decompose"},
+    ] * 4
+    monkeypatch.setattr(round2_train, "_load_records", lambda path: records)
+
+    # Stub registry: nothing registered.
+    from adapter_registry.exceptions import AdapterNotFoundError
+
+    stub_registry = MagicMock()
+    stub_registry.retrieve_by_id.side_effect = AdapterNotFoundError("missing")
+    monkeypatch.setattr(
+        round2_train, "_open_registry", lambda url: stub_registry
+    )
+
+    # Stub model+hypernet setup so the pre-audit path does not load models.
+    monkeypatch.setattr(round2_train, "_setup_training", lambda cfg: MagicMock())
+
+    cfg = Round2TrainConfig(
+        sakana_checkpoint_path=str(tmp_path / "fake.bin"),
+        oracle_registry_url="sqlite:///tmp.db",
+        dataset_path=str(tmp_path / "x.jsonl"),
+        num_steps=2,
+        min_oracle_coverage=0.8,
+        dry_run=True,
+    )
+    with pytest.raises(RuntimeError, match="coverage"):
+        train_d2l_qwen3_round2(cfg)
+
+
+def test_train_round2_dry_run_reports_full_coverage(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """dry_run=True + full coverage → returns a report dict without training."""
+    from model_training import round2_train
+    from model_training.round2_config import Round2TrainConfig
+
+    records = [
+        {"metadata": {"phase": "plan", "benchmark": "humaneval"},
+         "activation_text": "a", "teacher_text": "at", "task_id": "humaneval/0/plan"},
+    ]
+    monkeypatch.setattr(round2_train, "_load_records", lambda path: records)
+
+    stub_registry = MagicMock()
+    fake_rec = MagicMock()
+    fake_rec.is_archived = False
+    fake_rec.file_path = "/a/oracle_plan_humaneval"
+    stub_registry.retrieve_by_id.return_value = fake_rec
+    monkeypatch.setattr(round2_train, "_open_registry", lambda url: stub_registry)
+
+    monkeypatch.setattr(round2_train, "_setup_training", lambda cfg: MagicMock())
+
+    cfg = Round2TrainConfig(
+        sakana_checkpoint_path=str(tmp_path / "fake.bin"),
+        oracle_registry_url="sqlite:///tmp.db",
+        dataset_path=str(tmp_path / "x.jsonl"),
+        num_steps=1,
+        dry_run=True,
+    )
+    report = train_d2l_qwen3_round2(cfg)
+
+    assert report["dry_run"] is True
+    assert report["coverage_ratio"] == pytest.approx(1.0)
+    assert report["bin_counts"] == {"plan_humaneval": 1}
+    assert report["num_records"] == 1
 
 
 def test_training_step_round2_falls_back_to_cpu_when_no_params(

@@ -215,3 +215,296 @@ def _training_step_round2(
     student_logits = student_out.logits
 
     return _compute_kl_ce_loss(student_logits, teacher_logits, answer_start, config)
+
+
+# -----------------------------------------------------------------------------
+# Infrastructure wrappers (monkeypatch seams for unit tests)
+# -----------------------------------------------------------------------------
+
+
+def _load_records(dataset_path: str) -> list[dict[str, Any]]:
+    """Load a JSONL manifest into a list of records."""
+    from model_training.d2l_data import load_jsonl  # noqa: PLC0415
+
+    return list(load_jsonl(dataset_path))
+
+
+def _open_registry(url: str) -> Any:
+    """Open an AdapterRegistry for the given SQLAlchemy URL."""
+    from adapter_registry.registry import AdapterRegistry  # noqa: PLC0415
+    from sqlmodel import create_engine  # noqa: PLC0415
+
+    engine = create_engine(url)
+    return AdapterRegistry(engine=engine)
+
+
+def _setup_training(config: Any) -> dict[str, Any]:
+    """Load base model, tokenizer, hypernet, hc.
+
+    Mirrors the inline setup block in :func:`model_training.d2l_train.train_d2l_qwen3`
+    (lines 563–594 as of the d710005 baseline). Duplicating the block keeps
+    round-1 untouched; a future refactor can factor these into shared helpers.
+    Returns a dict of handles consumed by :func:`_run_training_loop`.
+    """
+    import torch  # noqa: PLC0415
+    from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
+    from shared.hardware import get_best_device  # noqa: PLC0415
+    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+    from model_training.d2l_config import build_hypernet_config  # noqa: PLC0415
+    from model_training.d2l_train import _require_probe_cache  # noqa: PLC0415
+    from model_training.sakana_d2l import (  # noqa: PLC0415
+        get_aggregator_config,
+        transfer_aggregator_weights,
+    )
+
+
+    _require_probe_cache(config.model_config_name)
+
+    tokenizer = AutoTokenizer.from_pretrained(config.base_model_name)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        config.base_model_name,
+        output_hidden_states=True,
+    ).eval()
+
+    hc = build_hypernet_config(
+        config.model_config_name,
+        aggregator_config=get_aggregator_config(config.sakana_checkpoint_path),
+        lora_r=config.lora_r,
+    )
+    hypernet = HyperLoRA(hc).to(torch.float32)
+    hypernet = transfer_aggregator_weights(hypernet, config.sakana_checkpoint_path)
+    hypernet.train()
+
+    device = torch.device(get_best_device())
+    logger.info("Round-2 using device: %s", device)
+    base_model = base_model.to(device)
+    hypernet = hypernet.to(device)
+
+    return {
+        "base_model": base_model,
+        "tokenizer": tokenizer,
+        "hypernet": hypernet,
+        "hc": hc,
+        "device": device,
+    }
+
+
+# -----------------------------------------------------------------------------
+# Main driver
+# -----------------------------------------------------------------------------
+
+
+def train_d2l_qwen3_round2(
+    config: Any,
+    *,
+    kill_switch_evaluate_fn: Any | None = None,
+) -> dict[str, Any]:
+    """Round-2 hypernetwork training loop with per-bin oracle teachers.
+
+    Flow:
+      1. Load records from ``config.dataset_path``.
+      2. Open the AdapterRegistry, audit oracle coverage, abort when
+         coverage < ``config.min_oracle_coverage``.
+      3. When ``config.dry_run``: return a report dict and exit.
+      4. Setup base model, tokenizer, hypernet, hc.
+      5. Build :class:`OracleAdapterCache` and loop ``num_steps`` records,
+         calling :func:`_training_step_round2` per step. Skip sentinels
+         advance the step counter without an optimizer step.
+      6. Apply the same checkpoint + kill-switch cadence as round-1.
+
+    Args:
+        config: :class:`Round2TrainConfig` instance.
+        kill_switch_evaluate_fn: Optional zero-arg callable returning Pass@1
+            for the kill-switch. When ``None`` and ``config.kill_switch_enabled``
+            is True, the default benchmark evaluator is constructed.
+
+    Returns:
+        Report dict. Shape depends on mode:
+          - dry_run: ``{"dry_run": True, "coverage_ratio", "bin_counts",
+            "num_records"}``
+          - full: ``{"dry_run": False, "coverage_ratio", "bin_counts",
+            "num_records", "final_loss", "best_loss", "steps_completed",
+            "kill_switch_triggered"}``
+    """
+    from model_training.oracle_cache import (  # noqa: PLC0415
+        OracleAdapterCache,
+        audit_oracle_coverage,
+    )
+
+    if not config.dataset_path:
+        raise ValueError("config.dataset_path is required for round-2 training")
+
+    records = _load_records(config.dataset_path)
+    registry = _open_registry(config.oracle_registry_url)
+    coverage_ratio, bin_counts = audit_oracle_coverage(records, registry)
+
+    logger.info(
+        "Round-2 oracle coverage: %.3f (min=%.3f); per-bin counts: %s",
+        coverage_ratio,
+        config.min_oracle_coverage,
+        bin_counts,
+    )
+
+    if coverage_ratio < config.min_oracle_coverage:
+        raise RuntimeError(
+            f"Round-2 oracle coverage {coverage_ratio:.3f} < "
+            f"min_oracle_coverage {config.min_oracle_coverage:.3f}; aborting. "
+            f"Per-bin counts: {bin_counts}"
+        )
+
+    if config.dry_run:
+        return {
+            "dry_run": True,
+            "coverage_ratio": coverage_ratio,
+            "bin_counts": bin_counts,
+            "num_records": len(records),
+        }
+
+    handles = _setup_training(config)
+    base_model = handles["base_model"]
+    tokenizer = handles["tokenizer"]
+    hypernet = handles["hypernet"]
+    hc = handles["hc"]
+
+    oracle_cache = OracleAdapterCache(
+        registry=registry,
+        hc=hc,
+        max_loaded=config.max_loaded_oracles,
+    )
+
+    return _run_training_loop(
+        config=config,
+        records=records,
+        base_model=base_model,
+        tokenizer=tokenizer,
+        hypernet=hypernet,
+        hc=hc,
+        oracle_cache=oracle_cache,
+        kill_switch_evaluate_fn=kill_switch_evaluate_fn,
+        coverage_ratio=coverage_ratio,
+        bin_counts=bin_counts,
+    )
+
+
+def _run_training_loop(
+    *,
+    config: Any,
+    records: list[dict[str, Any]],
+    base_model: Any,
+    tokenizer: Any,
+    hypernet: Any,
+    hc: Any,
+    oracle_cache: Any,
+    kill_switch_evaluate_fn: Any | None,
+    coverage_ratio: float,
+    bin_counts: dict[str, int],
+) -> dict[str, Any]:
+    """Inner training loop: optimizer, scheduler, checkpoint, kill-switch."""
+    import torch  # noqa: PLC0415
+    from torch.optim import AdamW  # noqa: PLC0415
+    from torch.optim.lr_scheduler import (  # noqa: PLC0415
+        CosineAnnealingLR,
+        LinearLR,
+        SequentialLR,
+    )
+
+    from model_training.d2l_train import (  # noqa: PLC0415
+        _save_checkpoint,
+        _setup_mlflow,
+    )
+    from model_training.kill_switch import (  # noqa: PLC0415
+        KillSwitchConfig,
+        KillSwitchState,
+        maybe_run_kill_switch,
+    )
+
+    _setup_mlflow(config)
+
+    trainable_params = [p for p in hypernet.parameters() if p.requires_grad]
+    optimizer = AdamW(trainable_params, lr=config.lr)
+    scheduler = SequentialLR(
+        optimizer,
+        schedulers=[
+            LinearLR(optimizer, start_factor=0.01, total_iters=config.warmup_steps),
+            CosineAnnealingLR(
+                optimizer,
+                T_max=max(1, config.num_steps - config.warmup_steps),
+                eta_min=1e-6,
+            ),
+        ],
+        milestones=[config.warmup_steps],
+    )
+
+    ks_config = KillSwitchConfig(
+        enabled=config.kill_switch_enabled,
+        step_cadence=config.kill_switch_step_cadence,
+        benchmark_id=config.kill_switch_benchmark_id,
+        max_samples=config.kill_switch_max_samples,
+        delta=config.kill_switch_delta,
+    )
+    ks_state = KillSwitchState()
+
+    best_loss = float("inf")
+    last_loss = 0.0
+    steps_completed = 0
+    triggered = False
+
+    for step in range(1, config.num_steps + 1):
+        record = records[(step - 1) % len(records)]
+        loss, metrics = _training_step_round2(
+            record=record,
+            base_model=base_model,
+            tokenizer=tokenizer,
+            hypernet=hypernet,
+            hc=hc,
+            config=config,
+            oracle_cache=oracle_cache,
+        )
+        if loss is None:
+            continue
+
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(hypernet.parameters(), config.grad_clip)
+        optimizer.step()
+        scheduler.step()
+
+        last_loss = metrics["total_loss"]
+        if last_loss < best_loss:
+            best_loss = last_loss
+
+        if step % config.checkpoint_every == 0:
+            _save_checkpoint(
+                step=step,
+                hypernet=hypernet,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                config=config,
+                hc=hc,
+                best_loss=best_loss,
+                full=(step % config.full_checkpoint_every == 0),
+            )
+
+        if kill_switch_evaluate_fn is not None and maybe_run_kill_switch(
+            step=step,
+            config=ks_config,
+            state=ks_state,
+            evaluate_fn=kill_switch_evaluate_fn,
+        ):
+            logger.error("Round-2 kill-switch triggered at step %d; halting", step)
+            triggered = True
+            break
+
+        steps_completed = step
+
+    return {
+        "dry_run": False,
+        "coverage_ratio": coverage_ratio,
+        "bin_counts": bin_counts,
+        "num_records": len(records),
+        "final_loss": last_loss,
+        "best_loss": best_loss,
+        "steps_completed": steps_completed,
+        "kill_switch_triggered": triggered,
+    }
