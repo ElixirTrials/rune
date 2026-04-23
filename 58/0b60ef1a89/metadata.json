@@ -5,6 +5,7 @@
   "branch": "feat/training-upgrade",
   "checkpoints_count": 2,
   "files_touched": [
+    "libs/model-training/src/model_training/d2l_data.py",
     "libs/model-training/tests/test_d2l_data.py"
   ],
   "sessions": [
@@ -13,13 +14,19 @@
       "transcript": "/58/0b60ef1a89/0/full.jsonl",
       "content_hash": "/58/0b60ef1a89/0/content_hash.txt",
       "prompt": "/58/0b60ef1a89/0/prompt.txt"
+    },
+    {
+      "metadata": "/58/0b60ef1a89/1/metadata.json",
+      "transcript": "/58/0b60ef1a89/1/full.jsonl",
+      "content_hash": "/58/0b60ef1a89/1/content_hash.txt",
+      "prompt": "/58/0b60ef1a89/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 45,
-    "cache_creation_tokens": 191867,
-    "cache_read_tokens": 3389316,
-    "output_tokens": 11956,
-    "api_call_count": 25
+    "input_tokens": 99,
+    "cache_creation_tokens": 317957,
+    "cache_read_tokens": 4749602,
+    "output_tokens": 20667,
+    "api_call_count": 50
   }
 }
