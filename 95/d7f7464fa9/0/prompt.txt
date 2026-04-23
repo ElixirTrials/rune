@@ -1,0 +1,13 @@
+Write a new plan in instructions subfolder using superpowers writing plans skill
+
+---
+
+Execution option 1. BUT interview me first to make sure you are 95% confident in your plan and why we are doing this.
+
+---
+
+Questions 1-2, your defaults are correct. 3. I am not sure where this fallback would occur? In training? At inference? Explain. 4. Yes, we should see improvement in the benchmarks. This is success. 5. Explain better the issue here. Explain what is happening where and when and what the options are.
+
+---
+
+I accept your recommendations. Let's try strict.
