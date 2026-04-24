@@ -60,7 +60,7 @@ def mlflow_log_params(params: dict[str, Any]) -> None:
         None.
 
     Raises:
-        Exception: All exceptions from ``mlflow.log_params`` are caught and
+        None: All exceptions from ``mlflow.log_params`` are caught and
             logged at DEBUG level; MLflow unavailability never interrupts
             training.
     """

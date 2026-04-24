@@ -982,7 +982,7 @@ def pairs_to_chat_messages(
         missing ``metadata`` keys fall back to empty string / 0 defaults.
 
     Raises:
-        Exception: No exceptions are raised — invalid input fields fall back
+        None: No exceptions are raised — invalid input fields fall back
             to empty-string / zero defaults.
     """
     if not pairs:
