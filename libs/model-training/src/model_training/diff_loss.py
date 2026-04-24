@@ -16,12 +16,9 @@ from typing import Any
 
 try:
     from trl import SFTTrainer  # type: ignore[attr-defined]
-
-    _TRL_AVAILABLE = True
 except ModuleNotFoundError:
     # ModuleNotFoundError only — broken trl installs should surface loudly.
     SFTTrainer = object  # type: ignore[misc,assignment]
-    _TRL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -540,15 +537,12 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
         loss_weights = inputs.pop("loss_weights", None)
 
         if loss_weights is None:
-            # No weights provided — delegate to standard SFTTrainer loss.
-            if _TRL_AVAILABLE:
-                return super().compute_loss(
-                    model,
-                    inputs,
-                    return_outputs=return_outputs,
-                    num_items_in_batch=num_items_in_batch,
-                )
-            # CPU-only stub path (trl not installed): plain CE via forward.
+            # No weights provided — fall back to the model's own CE loss.
+            # HuggingFace causal-LM heads honor -100 label masking internally,
+            # so outputs.loss is standard CE on the labeled tokens. Avoids
+            # super().compute_loss() which depends on full Trainer init state
+            # (self.model, self.processing_class, …) and can't be exercised
+            # from a minimal subclass used in unit tests.
             outputs = model(**inputs)
             return (outputs.loss, outputs) if return_outputs else outputs.loss
 
@@ -581,9 +575,11 @@ def build_diff_aware_sft_trainer(
 ) -> Any:
     """Build an SFTTrainer that uses diff-aware loss weighting.
 
-    Constructs a :class:`DiffWeightedDataCollator` wrapping the default TRL
-    completion-only collator, then instantiates :class:`DiffAwareSFTTrainer`
-    with it.
+    Constructs a :class:`DiffWeightedDataCollator` wrapping trl's
+    ``DataCollatorForLanguageModeling`` (completion-only masking via
+    ``completion_mask``/``assistant_masks`` set upstream by SFTTrainer's
+    chat-template preprocessing), then instantiates
+    :class:`DiffAwareSFTTrainer` with it.
 
     The ``tokenizer`` kwarg enables the hunk (line-level diff) path in the
     collator.  When ``None`` (default), the collator falls back to the legacy
@@ -607,14 +603,32 @@ def build_diff_aware_sft_trainer(
 
     Returns:
         A configured :class:`DiffAwareSFTTrainer` instance.
+
+    Raises:
+        RuntimeError: If ``resolved_tokenizer.pad_token_id`` is ``None``.
+            trl's DataCollatorForLanguageModeling requires an explicit pad id.
     """
-    from trl import DataCollatorForCompletionOnlyLM  # type: ignore[attr-defined]
+    # trl 0.19+ relocated DataCollatorForLanguageModeling (with completion-only
+    # masking) into trl.trainer.sft_trainer; the legacy top-level
+    # DataCollatorForCompletionOnlyLM was removed.
+    from trl.trainer.sft_trainer import (  # type: ignore[attr-defined]
+        DataCollatorForLanguageModeling,
+    )
 
     resolved_tokenizer = tokenizer if tokenizer is not None else processing_class
 
-    inner_collator = DataCollatorForCompletionOnlyLM(
-        response_template="<|im_start|>assistant",
-        tokenizer=resolved_tokenizer,
+    pad_token_id = getattr(resolved_tokenizer, "pad_token_id", None)
+    if pad_token_id is None:
+        pad_token_id = getattr(resolved_tokenizer, "eos_token_id", None)
+    if pad_token_id is None:
+        raise RuntimeError(
+            "build_diff_aware_sft_trainer requires a tokenizer with "
+            "pad_token_id or eos_token_id set."
+        )
+
+    inner_collator = DataCollatorForLanguageModeling(
+        pad_token_id=pad_token_id,
+        completion_only_loss=True,
     )
     collator = DiffWeightedDataCollator(
         inner_collator,

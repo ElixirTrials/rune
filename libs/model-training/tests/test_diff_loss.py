@@ -617,32 +617,45 @@ class TestAllMaskedBatch:
 
 
 class TestBuildDiffAwareSftTrainerIntegration:
-    @pytest.mark.slow
-    def test_factory_returns_diff_aware_trainer(self) -> None:
-        """build_diff_aware_sft_trainer returns a DiffAwareSFTTrainer instance."""
+    def test_factory_wires_diff_aware_trainer_and_weighted_collator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Factory constructs DiffAwareSFTTrainer with a DiffWeightedDataCollator.
+
+        Avoids actually instantiating a full trl.SFTTrainer (which would need a
+        real model, dataset and tokenizer). Patches the trainer class with a
+        recording stub and asserts the factory targets the right class with a
+        wrapped collator.
+        """
         pytest.importorskip("trl", reason="trl not installed")
 
         from unittest.mock import MagicMock
 
+        from model_training import diff_loss as diff_loss_module
         from model_training.diff_loss import (
-            DiffAwareSFTTrainer,
+            DiffWeightedDataCollator,
             build_diff_aware_sft_trainer,
         )
 
-        model = MagicMock()
-        args = MagicMock()
-        dataset = MagicMock()
+        recorded_kwargs: dict[str, Any] = {}
+
+        class _RecordingTrainer:
+            def __init__(self, **kwargs: Any) -> None:
+                recorded_kwargs.update(kwargs)
+
+        monkeypatch.setattr(diff_loss_module, "DiffAwareSFTTrainer", _RecordingTrainer)
+
         tokenizer = MagicMock()
         tokenizer.pad_token_id = 0
         tokenizer.eos_token_id = 1
 
         trainer = build_diff_aware_sft_trainer(
-            model,
-            args,
-            dataset,
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
             processing_class=tokenizer,
         )
 
-        assert isinstance(trainer, DiffAwareSFTTrainer), (
-            f"Expected DiffAwareSFTTrainer, got {type(trainer)}"
-        )
+        assert isinstance(trainer, _RecordingTrainer)
+        assert "data_collator" in recorded_kwargs
+        assert isinstance(recorded_kwargs["data_collator"], DiffWeightedDataCollator)
