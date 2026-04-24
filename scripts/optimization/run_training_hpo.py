@@ -689,51 +689,57 @@ def _run_single_trial(
     # don't collide with the default ~/.rune/adapters layout.
     os.environ["RUNE_ADAPTER_DIR"] = str(trial_dir / "adapter_root")
 
+    import mlflow  # noqa: PLC0415
     from model_training.trainer import train_and_register  # noqa: PLC0415
 
-    train_and_register(**kwargs)
-
-    adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
-
-    # Resolve base model ID the same way train_and_register does.
-    base_model_id = kwargs.get("base_model_id") or os.environ.get(
-        "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
+    # Open an HPO-owned MLflow run BEFORE training so the hpo.* tags are
+    # attached even if training crashes (e.g. CUDA OOM). The trainer's
+    # TRL MLflowCallback attaches to the active run, so its params and
+    # training metrics land inside this same run. Using the context
+    # manager ensures the run is terminated on exception.
+    mlflow.set_experiment(kwargs.get("mlflow_experiment") or run_args.experiment_name)
+    mlflow.start_run(
+        run_name=f"{run_args.adapter_id_prefix}-t{trial.number:03d}",
     )
-    eval_metrics = _evaluate_adapter_on_heldout(
-        adapter_output_dir,
-        heldout_pairs,
-        base_model_id=base_model_id,
-        compute_adapter_delta=run_args.compute_adapter_delta,
-    )
-
-    import mlflow  # noqa: PLC0415
-
-    if mlflow.active_run() is None:
-        raise RuntimeError(
-            f"Trial {trial.number}: no active MLflow run to attach eval metrics to. "
-            "train_and_register should have opened one; check trainer MLflow setup."
+    try:
+        mlflow.set_tags(
+            {
+                "hpo.study_name": run_args.adapter_id_prefix,
+                "hpo.trial_number": str(trial.number),
+                "hpo.dataset": run_args.dataset,
+                "hpo.warm_start": run_args.warm_start,
+                "hpo.diff_aware_loss": str(sampled["diff_aware_loss"]),
+                "hpo.heldout_strategy": run_args.heldout_strategy,
+                "hpo.heldout_fraction": str(run_args.heldout_fraction),
+                "hpo.subsample_size": str(n),
+                "hpo.train_pairs": str(len(train_pairs)),
+                "hpo.heldout_pairs": str(len(heldout_pairs)),
+                "hpo.adapter_id": adapter_id,
+            }
         )
-    # Tag the trial run with HPO context so the MLflow UI can filter by
-    # study, trial, dataset, etc. without having to parse adapter_id strings.
-    mlflow.set_tags(
-        {
-            "hpo.study_name": run_args.adapter_id_prefix,
-            "hpo.trial_number": str(trial.number),
-            "hpo.dataset": run_args.dataset,
-            "hpo.warm_start": run_args.warm_start,
-            "hpo.diff_aware_loss": str(sampled["diff_aware_loss"]),
-            "hpo.heldout_strategy": run_args.heldout_strategy,
-            "hpo.heldout_fraction": str(run_args.heldout_fraction),
-            "hpo.subsample_size": str(n),
-            "hpo.train_pairs": str(len(train_pairs)),
-            "hpo.heldout_pairs": str(len(heldout_pairs)),
-            "hpo.adapter_id": adapter_id,
-        }
-    )
-    mlflow.log_metrics(
-        {f"eval/{k}": v for k, v in eval_metrics.items()},
-        step=trial.number,
-    )
+
+        train_and_register(**kwargs)
+
+        adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
+        # Resolve base model ID the same way train_and_register does.
+        base_model_id = kwargs.get("base_model_id") or os.environ.get(
+            "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
+        )
+        eval_metrics = _evaluate_adapter_on_heldout(
+            adapter_output_dir,
+            heldout_pairs,
+            base_model_id=base_model_id,
+            compute_adapter_delta=run_args.compute_adapter_delta,
+        )
+        mlflow.log_metrics(
+            {f"eval/{k}": v for k, v in eval_metrics.items()},
+            step=trial.number,
+        )
+    except BaseException:
+        mlflow.end_run(status="FAILED")
+        raise
+    else:
+        mlflow.end_run(status="FINISHED")
 
     fitness = _compute_fitness(
         eval_metrics["hunk_loss"],

@@ -101,6 +101,12 @@ def mlflow_run(
     When enabled, logs ``params`` at entry and ensures ``mlflow.end_run()`` on
     exit even if training raises. When disabled, the body runs unchanged.
 
+    If an MLflow run is already active in the current thread (e.g. the HPO
+    harness opened one to attach study-level tags), attach params to it
+    instead of starting a new run — MLflow permits only one top-level run
+    per thread, and forcing a nested run here would hide trainer metrics
+    inside an extra layer the caller didn't ask for.
+
     Args:
         enabled: Whether MLflow tracking is active for this run.
         run_name: Display name for the MLflow run.
@@ -110,6 +116,13 @@ def mlflow_run(
         yield
         return
     import mlflow  # noqa: PLC0415
+
+    # Respect an already-active run: the caller owns it and is responsible
+    # for closing it. We just decorate it with params.
+    if mlflow.active_run() is not None:
+        mlflow_log_params(params)
+        yield
+        return
 
     mlflow.start_run(run_name=run_name)
     try:
