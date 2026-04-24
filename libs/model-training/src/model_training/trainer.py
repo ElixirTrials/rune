@@ -550,7 +550,7 @@ def train_qlora(
     # Resolve model ID — read env var inside function body for monkeypatch testability
     resolved_model_id = params["base_model_id"]
     model_id: str = resolved_model_id or os.environ.get(
-        "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
+        "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
     )  # type: ignore[assignment]
 
     # Build dataset from either a mined-pairs JSONL or a recorded trajectory.
@@ -789,7 +789,7 @@ def train_and_register(
 
         model_id = ModelRegistry.default().get(model_config_name).model_id
     if model_id is None:
-        model_id = os.environ.get("RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct")
+        model_id = os.environ.get("RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B")
 
     # Resolve training params to get the actual rank used for training
     resolved = _resolve_training_params(

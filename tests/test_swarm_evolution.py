@@ -34,7 +34,7 @@ def _make_record(registry, adapter_id, task_type="bug-fix", fitness=None, **kwar
         id=adapter_id,
         version=1,
         task_type=task_type,
-        base_model_id="Qwen/Qwen2.5-Coder-7B",
+        base_model_id="Qwen/Qwen3.5-9B",
         rank=16,
         created_at="2026-01-01T00:00:00Z",
         file_path=f"/adapters/{adapter_id}.safetensors",

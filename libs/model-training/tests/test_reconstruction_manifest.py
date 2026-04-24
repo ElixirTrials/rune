@@ -77,7 +77,7 @@ def test_validate_homogeneity_passes_for_matching_records() -> None:
 def test_validate_homogeneity_raises_on_base_mismatch() -> None:
     records = [
         _rec(task_id="a"),
-        _rec(task_id="b", base_model_id="Qwen/Qwen2.5-Coder-7B"),
+        _rec(task_id="b", base_model_id="Qwen/Qwen3-Coder-Next"),
     ]
     with pytest.raises(ValueError, match="base_model_id"):
         validate_homogeneity(

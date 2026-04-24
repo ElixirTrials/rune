@@ -34,7 +34,7 @@ class VLLMProvider(InferenceProvider):
 
     Example:
         >>> provider = VLLMProvider(base_url="http://localhost:8100/v1")
-        >>> result = await provider.generate("def hello", model="Qwen2.5-Coder-7B")
+        >>> result = await provider.generate("def hello", model="Qwen3.5-9B")
     """
 
     def __init__(self, base_url: str | None = None) -> None:
@@ -83,7 +83,7 @@ class VLLMProvider(InferenceProvider):
             GenerationResult with the generated text and metadata.
 
         Example:
-            >>> result = await provider.generate("def fib", model="Qwen2.5-Coder-7B")
+            >>> result = await provider.generate("def fib", model="Qwen3.5-9B")
             >>> print(result.text)
         """
         effective_model = adapter_id if adapter_id is not None else model

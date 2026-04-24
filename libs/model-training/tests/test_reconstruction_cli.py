@@ -110,7 +110,8 @@ def test_base_model_aliases() -> None:
     from model_training.reconstruction.cli import _resolve_base_model
 
     assert _resolve_base_model("qwen3.5-9b") == "Qwen/Qwen3.5-9B"
-    assert _resolve_base_model("Qwen/Qwen2.5-Coder-7B") == "Qwen/Qwen2.5-Coder-7B"
+    # Non-aliased repo ids pass through unchanged.
+    assert _resolve_base_model("some-org/some-model") == "some-org/some-model"
 
 
 def test_cli_module_is_cpu_importable() -> None:

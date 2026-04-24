@@ -21,7 +21,8 @@ The **primary** evaluation benchmark is HumanEval+ (EvalPlus), an extended versi
 
 Each task is evaluated with k=5 samples. Tasks in the held-out subset are excluded from the training trajectory corpus so that the evaluation measures generalization to unseen problems, not memorization of training data. The subset is selected to be diverse in task type (string manipulation, arithmetic, data structures, algorithms) to avoid biasing the evaluation toward a narrow skill distribution.
 
-The development evaluation target is Gemma 2 2B (google/gemma-2-2b-it), which fits within consumer GPU memory constraints and enables rapid iteration. The Sakana Doc-to-LoRA checkpoint includes a "gemma_demo" variant compatible with this model. Production-scale evaluation will target Qwen2.5-Coder-7B-Instruct on the full benchmark suite including MBPP, APPS, BigCodeBench, DS-1000, and LiveCodeBench.
+The development evaluation target is Gemma 2 2B (google/gemma-2-2b-it), which fits within consumer GPU memory constraints and enables rapid iteration. The Sakana Doc-to-LoRA checkpoint includes a "gemma_demo" variant compatible with this model. Production-scale evaluation will target Qwen/Qwen3.5-9B on the full benchmark suite including MBPP, APPS, BigCodeBench, DS-1000, and LiveCodeBench. <!-- TODO(benchmarks-pending): production-scale benchmarks on Qwen3.5-9B have not yet been run -->
+
 
 **SWE-Bench-Lite:** `benchmarks/swe_bench.py::score()` is now fully implemented with an env-gated clone/apply/pytest pipeline (previously raised `NotImplementedError`). This unblocks SWE-Bench-Lite as an additional evaluation surface for future phases.
 
@@ -38,7 +39,7 @@ Pass@1 for a single task is the probability that the first generated sample pass
 The formal hypothesis pair for the Phase 1 kill-switch gate:
 
 - **H\(_0\) (null):** A Doc-to-LoRA hypernetwork trained on coding trajectories produces adapters that do not improve Pass@1 over the baseline (improvement < 5%).
-- **H\(_1\) (alternative):** Trajectory-conditioned adapters improve Pass@1 by \(\geq\) 5% on the 20--30 task HumanEval+ subset compared to the base model (Gemma 2 2B for development evaluation, Qwen2.5-Coder-7B-Instruct for production evaluation) with no adapter.
+- **H\(_1\) (alternative):** Trajectory-conditioned adapters improve Pass@1 by \(\geq\) 5% on the 20--30 task HumanEval+ subset compared to the base model (Gemma 2 2B for development evaluation, Qwen/Qwen3.5-9B for production evaluation) with no adapter.
 
 H\(_1\) passing is necessary but not sufficient to proceed to Phase 2. H\(_0\) acceptance terminates infrastructure development and triggers reassessment. The kill-switch is a research gate, not a quality bar — it tests whether the core hypothesis has empirical support, not whether the system is production-ready.
 
@@ -59,7 +60,7 @@ The **specified** training dataset protocol for Phase 1:
 
 | Condition | Description | Claim Tier |
 |-----------|-------------|-----------|
-| Vanilla model (bfloat16) | Gemma 2 2B (dev) / Qwen2.5-Coder-7B-Instruct (prod), no adapter, bfloat16 | Planned baseline |
+| Vanilla model (bfloat16) | Gemma 2 2B (dev) / Qwen/Qwen3.5-9B (prod), no adapter, bfloat16 | Planned baseline <!-- TODO(benchmarks-pending): Pass@1 number to be filled in --> |
 | RAG baseline | Retrieved trajectory snippets in context (no weight update) | Planned baseline |
 | Directly fine-tuned LoRA | Standard PEFT fine-tuning on same trajectory data (no hypernetwork) | Planned baseline |
 | Hypernetwork-generated adapter | Rune Phase 1 (Doc-to-LoRA on coding trajectories, gemma_demo checkpoint) | **Kill-switch condition** |

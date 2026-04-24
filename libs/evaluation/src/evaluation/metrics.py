@@ -105,7 +105,7 @@ def run_kill_switch_gate(
 def run_humaneval_subset(
     adapter_id: Optional[str],
     subset_size: int = 20,
-    model: str = "Qwen/Qwen2.5-Coder-7B",
+    model: str = "Qwen/Qwen3.5-9B",
     completions: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
     """Run a HumanEval benchmark subset to evaluate an adapter.

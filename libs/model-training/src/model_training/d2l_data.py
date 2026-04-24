@@ -527,7 +527,7 @@ def generate_trajectory_dataset(
 def augment_trajectories(
     trajectories: list[dict[str, Any]],
     n_variants: int = 3,
-    model: str = "qwen2.5-coder:1.5b",
+    model: str = "Qwen/Qwen3.5-9B",
     ollama_base_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """Produce LLM-augmented variants of trajectory records.

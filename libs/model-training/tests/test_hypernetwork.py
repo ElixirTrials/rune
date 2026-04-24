@@ -216,7 +216,7 @@ def test_save_hypernetwork_adapter_writes_files() -> None:
             save_hypernetwork_adapter(
                 weights=mock_weights,
                 output_dir=str(output_dir),
-                base_model_id="Qwen/Qwen2.5-Coder-7B",
+                base_model_id="Qwen/Qwen3.5-9B",
             )
 
         # safetensors.save_file was called
@@ -249,7 +249,7 @@ def test_save_hypernetwork_adapter_config_fields() -> None:
             save_hypernetwork_adapter(
                 weights=mock_weights,
                 output_dir=str(output_dir),
-                base_model_id="Qwen/Qwen2.5-Coder-7B",
+                base_model_id="Qwen/Qwen3.5-9B",
                 rank=8,
                 target_modules=["q_proj", "v_proj"],
             )
@@ -265,7 +265,7 @@ def test_save_hypernetwork_adapter_config_fields() -> None:
             "modules_to_save must be null to avoid vLLM rejection"
         )
         assert config["task_type"] == "CAUSAL_LM"
-        assert config["base_model_name_or_path"] == "Qwen/Qwen2.5-Coder-7B"
+        assert config["base_model_name_or_path"] == "Qwen/Qwen3.5-9B"
 
 
 # ---------------------------------------------------------------------------

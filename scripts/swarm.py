@@ -221,7 +221,7 @@ async def agent_supervisor(
     checkpoint_db: SwarmCheckpointDB,
     training_queue: asyncio.Queue[TrainingRequest],
     registry: "AdapterRegistry",
-    base_model_id: str = "Qwen/Qwen2.5-Coder-7B",
+    base_model_id: str = "Qwen/Qwen3.5-9B",
     device: str = "cpu",
     dry_run: bool = False,
     max_failures: int = 5,

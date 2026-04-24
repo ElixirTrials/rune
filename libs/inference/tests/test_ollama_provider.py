@@ -48,7 +48,7 @@ class TestOllamaProviderGenerate:
         provider = OllamaProvider()
         mock_response = _make_openai_response(
             text="def hello(): pass",
-            model="qwen2.5-coder:7b",
+            model="qwen3.5:9b",
             token_count=10,
         )
 
@@ -59,7 +59,7 @@ class TestOllamaProviderGenerate:
         ):
             result = await provider.generate(
                 prompt="write a hello function",
-                model="qwen2.5-coder:7b",
+                model="qwen3.5:9b",
             )
 
         assert isinstance(result, GenerationResult)
@@ -69,7 +69,7 @@ class TestOllamaProviderGenerate:
     async def test_generate_calls_openai_with_correct_model(self) -> None:
         """Test 3: generate() calls chat.completions.create with correct model."""
         provider = OllamaProvider()
-        mock_response = _make_openai_response(text="output", model="qwen2.5-coder:7b")
+        mock_response = _make_openai_response(text="output", model="qwen3.5:9b")
         captured_calls: list[dict[str, Any]] = []
 
         async def capturing_create(**kwargs: Any) -> Any:
@@ -81,14 +81,14 @@ class TestOllamaProviderGenerate:
             "create",
             side_effect=capturing_create,
         ):
-            await provider.generate(prompt="hello", model="qwen2.5-coder:7b")
+            await provider.generate(prompt="hello", model="qwen3.5:9b")
 
-        assert captured_calls[0]["model"] == "qwen2.5-coder:7b"
+        assert captured_calls[0]["model"] == "qwen3.5:9b"
 
     async def test_generate_ignores_adapter_id_and_logs_warning(self) -> None:
         """Test 8: generate() ignores adapter_id (logs warning, does not fail)."""
         provider = OllamaProvider()
-        mock_response = _make_openai_response(text="output", model="qwen2.5-coder:7b")
+        mock_response = _make_openai_response(text="output", model="qwen3.5:9b")
         captured_calls: list[dict[str, Any]] = []
 
         async def capturing_create(**kwargs: Any) -> Any:
@@ -102,12 +102,12 @@ class TestOllamaProviderGenerate:
         ):
             result = await provider.generate(
                 prompt="hello",
-                model="qwen2.5-coder:7b",
+                model="qwen3.5:9b",
                 adapter_id="adapter-001",
             )
 
         # Should still use base model, not the adapter_id
-        assert captured_calls[0]["model"] == "qwen2.5-coder:7b"
+        assert captured_calls[0]["model"] == "qwen3.5:9b"
         # adapter_id is None in the result
         assert result.adapter_id is None
 
