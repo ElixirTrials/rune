@@ -55,6 +55,14 @@ def mlflow_log_params(params: dict[str, Any]) -> None:
     Args:
         params: Mapping of parameter names to values forwarded verbatim to
             ``mlflow.log_params``.
+
+    Returns:
+        None.
+
+    Raises:
+        Exception: All exceptions from ``mlflow.log_params`` are caught and
+            logged at DEBUG level; MLflow unavailability never interrupts
+            training.
     """
     try:
         import mlflow  # noqa: PLC0415

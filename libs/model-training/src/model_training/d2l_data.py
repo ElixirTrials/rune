@@ -980,6 +980,10 @@ def pairs_to_chat_messages(
         Invalid or missing fields are handled gracefully: missing
         ``activation_text`` / ``teacher_text`` produce empty strings, and
         missing ``metadata`` keys fall back to empty string / 0 defaults.
+
+    Raises:
+        Exception: No exceptions are raised — invalid input fields fall back
+            to empty-string / zero defaults.
     """
     if not pairs:
         return [], []

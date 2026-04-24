@@ -26,8 +26,9 @@ cd "${REPO_ROOT}"
 
 # Surface a clear error if uv is missing before Python even starts.
 if ! command -v uv >/dev/null 2>&1; then
-    echo "train.sh: 'uv' not found on PATH. Install with 'pip install uv' or" \
-         "see https://docs.astral.sh/uv/." >&2
+    echo "train.sh: 'uv' not found on PATH. Install with" \
+         "'curl -LsSf https://astral.sh/uv/install.sh | sh'" \
+         "or see https://docs.astral.sh/uv/." >&2
     exit 127
 fi
 
