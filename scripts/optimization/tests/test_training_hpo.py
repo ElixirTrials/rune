@@ -292,6 +292,62 @@ def test_heldout_split_random_no_task_overlap() -> None:
     assert train_tids.isdisjoint(heldout_tids)
 
 
+def test_heldout_split_fraction_zero_returns_all_train() -> None:
+    """fraction=0 must return (pairs, []) unchanged — no heldout."""
+    pairs = [_mkpair(f"t{i}", 0) for i in range(5)]
+    train, heldout = _stratify_heldout_split(
+        pairs, fraction=0, strategy="random", seed=0
+    )
+    assert heldout == []
+    assert len(train) == len(pairs)
+
+
+def test_heldout_split_single_task_raises() -> None:
+    """One task + fraction>0 must raise ValueError (empty train guard)."""
+    pairs = [_mkpair("only", 0), _mkpair("only", 1)]
+    with pytest.raises(ValueError, match="N_tasks=1"):
+        _stratify_heldout_split(pairs, fraction=0.5, strategy="random", seed=0)
+
+
+def test_heldout_split_two_tasks_half_fraction() -> None:
+    """2 tasks, fraction=0.5 → 1 heldout, 1 train (clamp not needed)."""
+    pairs = [_mkpair("a", 0), _mkpair("b", 0)]
+    train, heldout = _stratify_heldout_split(
+        pairs, fraction=0.5, strategy="random", seed=0
+    )
+    train_tids = {(p.get("metadata") or {}).get("source_task_id") for p in train}
+    heldout_tids = {(p.get("metadata") or {}).get("source_task_id") for p in heldout}
+    assert len(heldout_tids) == 1
+    assert len(train_tids) == 1
+    assert train_tids.isdisjoint(heldout_tids)
+
+
+def test_heldout_split_clamp_fires_for_high_fraction() -> None:
+    """fraction=0.9 with 2 tasks must clamp to n_heldout=1 (not 2)."""
+    pairs = [_mkpair("a", 0), _mkpair("b", 0)]
+    train, heldout = _stratify_heldout_split(
+        pairs, fraction=0.9, strategy="random", seed=0
+    )
+    heldout_tids = {(p.get("metadata") or {}).get("source_task_id") for p in heldout}
+    train_tids = {(p.get("metadata") or {}).get("source_task_id") for p in train}
+    # ceil(0.9 * 2) = 2 → clamped to 1 so train is non-empty.
+    assert len(heldout_tids) == 1
+    assert len(train_tids) == 1
+
+
+def test_heldout_split_five_tasks_high_fraction_no_clamp() -> None:
+    """5 tasks, fraction=0.6 → ceil(3)=3 heldout, 2 train. Clamp not needed."""
+    pairs = [_mkpair(f"t{i}", 0) for i in range(5)]
+    train, heldout = _stratify_heldout_split(
+        pairs, fraction=0.6, strategy="random", seed=0
+    )
+    heldout_tids = {(p.get("metadata") or {}).get("source_task_id") for p in heldout}
+    train_tids = {(p.get("metadata") or {}).get("source_task_id") for p in train}
+    assert len(heldout_tids) == 3
+    assert len(train_tids) == 2
+    assert train_tids.isdisjoint(heldout_tids)
+
+
 # ---------------------------------------------------------------------------
 # Evaluator shape (CPU path: empty pairs, no torch imports needed)
 # ---------------------------------------------------------------------------

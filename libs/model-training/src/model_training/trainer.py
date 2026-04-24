@@ -346,6 +346,70 @@ def _build_sft_config(
     return sft_config_cls(**kwargs)
 
 
+def _build_run_params(
+    *,
+    model_id: str,
+    warm_start: str | None,
+    resolved_rank: int,
+    resolved_alpha: int,
+    resolved_epochs: int,
+    learning_rate: float,
+    resolved_grad_accum: int,
+    resolved_lr_sched: str,
+    attn_impl: str | None,
+    dataset_size: int,
+    diff_aware_loss: bool,
+    task_type: str,
+    adapter_id: str,
+    session_id: str | None,
+    dataset_path: str | None,
+    encoding_mode: str,
+    diff_changed_weight: float,
+    diff_unchanged_weight: float,
+    override_lora_alpha: int | None,
+    override_lora_dropout: float | None,
+    warmup_ratio: float | None,
+    neftune_noise_alpha: float | None,
+) -> dict[str, object]:
+    """Build the MLflow run-params dict from resolved training parameters.
+
+    ``assistant_only_loss`` mirrors the SFTConfig value: True when
+    diff_aware_loss is off (SFTConfig handles masking), False when it is on
+    (custom collator subsumes masking so the SFTConfig flag is disabled).
+    """
+    return {
+        "model_id": model_id,
+        "warm_start": warm_start or "",
+        "rank": resolved_rank,
+        "alpha": resolved_alpha,
+        "epochs": resolved_epochs,
+        "learning_rate": learning_rate,
+        "grad_accum": resolved_grad_accum,
+        "lr_scheduler_type": resolved_lr_sched,
+        "attn_implementation": attn_impl or "",
+        "dataset_size": dataset_size,
+        "assistant_only_loss": not diff_aware_loss,
+        "task_type": task_type,
+        "adapter_id": adapter_id,
+        "session_id": session_id or "",
+        "dataset_path": dataset_path or "",
+        "encoding_mode": encoding_mode,
+        "diff_aware_loss": diff_aware_loss,
+        "diff_changed_weight": diff_changed_weight if diff_aware_loss else "",
+        "diff_unchanged_weight": diff_unchanged_weight if diff_aware_loss else "",
+        "override_lora_alpha": (
+            override_lora_alpha if override_lora_alpha is not None else ""
+        ),
+        "override_lora_dropout": (
+            override_lora_dropout if override_lora_dropout is not None else ""
+        ),
+        "warmup_ratio": warmup_ratio if warmup_ratio is not None else 0.03,
+        "neftune_noise_alpha": (
+            neftune_noise_alpha if neftune_noise_alpha is not None else ""
+        ),
+    }
+
+
 def train_qlora(
     session_id: str | None,
     adapter_id: str,
@@ -591,37 +655,30 @@ def train_qlora(
     # Log training-run metadata (params streamed as per-step metrics by TRL's
     # MLflow reporter via training_args.report_to="mlflow"). When disabled,
     # contextlib.nullcontext is a zero-cost placeholder.
-    run_params = {
-        "model_id": model_id,
-        "warm_start": warm_start or "",
-        "rank": resolved_rank,
-        "alpha": resolved_alpha,
-        "epochs": resolved_epochs,
-        "learning_rate": learning_rate,
-        "grad_accum": resolved_grad_accum,
-        "lr_scheduler_type": resolved_lr_sched,
-        "attn_implementation": attn_impl or "",
-        "dataset_size": len(dataset),
-        "assistant_only_loss": True,
-        "task_type": task_type,
-        "adapter_id": adapter_id,
-        "session_id": session_id or "",
-        "dataset_path": dataset_path or "",
-        "encoding_mode": encoding_mode,
-        "diff_aware_loss": diff_aware_loss,
-        "diff_changed_weight": diff_changed_weight if diff_aware_loss else "",
-        "diff_unchanged_weight": diff_unchanged_weight if diff_aware_loss else "",
-        "override_lora_alpha": (
-            override_lora_alpha if override_lora_alpha is not None else ""
-        ),
-        "override_lora_dropout": (
-            override_lora_dropout if override_lora_dropout is not None else ""
-        ),
-        "warmup_ratio": warmup_ratio if warmup_ratio is not None else 0.03,
-        "neftune_noise_alpha": (
-            neftune_noise_alpha if neftune_noise_alpha is not None else ""
-        ),
-    }
+    run_params = _build_run_params(
+        model_id=model_id,
+        warm_start=warm_start,
+        resolved_rank=resolved_rank,
+        resolved_alpha=resolved_alpha,
+        resolved_epochs=resolved_epochs,
+        learning_rate=learning_rate,
+        resolved_grad_accum=resolved_grad_accum,
+        resolved_lr_sched=resolved_lr_sched,
+        attn_impl=attn_impl,
+        dataset_size=len(dataset),
+        diff_aware_loss=diff_aware_loss,
+        task_type=task_type,
+        adapter_id=adapter_id,
+        session_id=session_id,
+        dataset_path=dataset_path,
+        encoding_mode=encoding_mode,
+        diff_changed_weight=diff_changed_weight,
+        diff_unchanged_weight=diff_unchanged_weight,
+        override_lora_alpha=override_lora_alpha,
+        override_lora_dropout=override_lora_dropout,
+        warmup_ratio=warmup_ratio,
+        neftune_noise_alpha=neftune_noise_alpha,
+    )
     with mlflow_run(
         enabled=mlflow_enabled,
         run_name=f"{adapter_id}-r{resolved_rank}-lr{learning_rate:.1e}",

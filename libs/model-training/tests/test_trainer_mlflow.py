@@ -101,3 +101,72 @@ def test_train_and_register_accepts_mlflow_kwargs() -> None:
     sig = inspect.signature(train_and_register)
     assert "mlflow_experiment" in sig.parameters
     assert "mlflow_tracking_uri" in sig.parameters
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 (qodo item 13): assistant_only_loss in MLflow run_params
+# ---------------------------------------------------------------------------
+
+
+def test_run_params_assistant_only_loss_without_diff_aware() -> None:
+    """assistant_only_loss must be True when diff_aware_loss=False."""
+    from model_training.trainer import _build_run_params
+
+    params = _build_run_params(
+        model_id="test-model",
+        warm_start=None,
+        resolved_rank=64,
+        resolved_alpha=128,
+        resolved_epochs=3,
+        learning_rate=2e-4,
+        resolved_grad_accum=16,
+        resolved_lr_sched="constant",
+        attn_impl=None,
+        dataset_size=10,
+        diff_aware_loss=False,
+        task_type="code-gen",
+        adapter_id="test-adapter",
+        session_id=None,
+        dataset_path=None,
+        encoding_mode="multi_turn",
+        diff_changed_weight=1.0,
+        diff_unchanged_weight=0.3,
+        override_lora_alpha=None,
+        override_lora_dropout=None,
+        warmup_ratio=None,
+        neftune_noise_alpha=None,
+    )
+    assert params["assistant_only_loss"] is True
+    assert params["diff_aware_loss"] is False
+
+
+def test_run_params_assistant_only_loss_with_diff_aware() -> None:
+    """assistant_only_loss must be False when diff_aware_loss=True."""
+    from model_training.trainer import _build_run_params
+
+    params = _build_run_params(
+        model_id="test-model",
+        warm_start=None,
+        resolved_rank=64,
+        resolved_alpha=128,
+        resolved_epochs=3,
+        learning_rate=2e-4,
+        resolved_grad_accum=16,
+        resolved_lr_sched="constant",
+        attn_impl=None,
+        dataset_size=10,
+        diff_aware_loss=True,
+        task_type="code-gen",
+        adapter_id="test-adapter",
+        session_id=None,
+        dataset_path=None,
+        encoding_mode="multi_turn",
+        diff_changed_weight=1.0,
+        diff_unchanged_weight=0.3,
+        override_lora_alpha=None,
+        override_lora_dropout=None,
+        warmup_ratio=None,
+        neftune_noise_alpha=None,
+    )
+    assert params["assistant_only_loss"] is False
+    assert params["diff_aware_loss"] is True

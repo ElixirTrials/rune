@@ -378,9 +378,21 @@ def _stratify_heldout_split(
         groups[str(tid)].append(p)
 
     task_ids = sorted(groups.keys())
+    if fraction <= 0:
+        return list(pairs), []
+
     rng = _rand.Random(seed)
     rng.shuffle(task_ids)
-    n_heldout = max(1, math.ceil(len(task_ids) * fraction)) if task_ids else 0
+    n_tasks = len(task_ids)
+    if n_tasks <= 1:
+        raise ValueError(
+            f"Heldout split would leave train set empty: got N_tasks={n_tasks}; "
+            "at least 2 tasks are required when fraction > 0."
+        )
+    n_heldout = min(
+        max(1, math.ceil(n_tasks * fraction)),
+        n_tasks - 1,
+    )
     heldout_task_ids = set(task_ids[:n_heldout])
 
     train: list[dict[str, Any]] = []
