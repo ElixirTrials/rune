@@ -52,6 +52,87 @@ if command -v aws &>/dev/null; then
   fi
 fi
 
+# -----------------------------------------------------------------------------
+# `login` bootstrap wrapper + convenience aliases
+#
+# Installs /usr/local/bin/infra-login: first invocation runs `gh auth login
+# --web` (device flow), clones the private ElixirTrials/infra repo, then runs
+# the shared login.sh via `make login` (AWS instance role + Secrets Manager
+# for HF, gh SSO for GitHub, SSO for Claude). Later runs `git pull --ff-only`
+# then re-run. No stored PAT, no extra Secrets Manager entry.
+# -----------------------------------------------------------------------------
+sudo tee /usr/local/bin/infra-login >/dev/null <<'LOGIN_STUB'
+#!/bin/bash
+# infra-login: devpod bootstrap for AWS/HF/GitHub/Claude auth.
+set -euo pipefail
+
+PROJECT_NAME="elixirtrials"
+ENVIRONMENT="dev"
+AWS_REGION="eu-west-2"
+
+# Prefer the shared bind-mounted workspace if writable; fall back to $HOME.
+if [ -d /opt/workspace ] && [ -w /opt/workspace ]; then
+  INFRA_DIR="/opt/workspace/infra"
+else
+  INFRA_DIR="$HOME/workspace/infra"
+fi
+TFVARS_DIR="$INFRA_DIR/providers/aws/environments"
+TFVARS_FILE="$TFVARS_DIR/dev.tfvars"
+
+log() { printf '\033[0;36m[infra-login]\033[0m %s\n' "$*"; }
+
+write_tfvars() {
+  # dev.tfvars is gitignored; synthesize so login.sh can read
+  # project_name/environment/aws_region.
+  mkdir -p "$TFVARS_DIR"
+  cat > "$TFVARS_FILE" <<TFV
+project_name = "$PROJECT_NAME"
+environment  = "$ENVIRONMENT"
+aws_region   = "$AWS_REGION"
+TFV
+}
+
+clone_infra() {
+  if ! gh auth status >/dev/null 2>&1; then
+    log "First run — authenticating with GitHub (device flow)..."
+    gh auth login --hostname github.com --git-protocol https --web
+  fi
+  local token
+  token="$(gh auth token)"
+  [ -n "$token" ] || { echo "[infra-login] gh auth token empty" >&2; exit 1; }
+  log "Cloning ElixirTrials/infra to $INFRA_DIR ..."
+  mkdir -p "$(dirname "$INFRA_DIR")"
+  git clone --depth=1 \
+    "https://x-access-token:$token@github.com/ElixirTrials/infra.git" \
+    "$INFRA_DIR"
+  # Strip the embedded token — future pulls use gh's credential helper.
+  git -C "$INFRA_DIR" remote set-url origin \
+    "https://github.com/ElixirTrials/infra.git"
+}
+
+if [ ! -d "$INFRA_DIR/.git" ]; then
+  clone_infra
+else
+  git -C "$INFRA_DIR" pull --ff-only >/dev/null 2>&1 || true
+fi
+
+write_tfvars
+gh auth setup-git >/dev/null 2>&1 || true
+exec make -C "$INFRA_DIR" login
+LOGIN_STUB
+sudo chmod +x /usr/local/bin/infra-login
+
+# Idempotent: append convenience aliases only if marker is absent.
+if ! grep -q "### devpod-aliases ###" ~/.bashrc 2>/dev/null; then
+  cat >> ~/.bashrc <<'ALIASES'
+
+### devpod-aliases ###
+alias login='/usr/local/bin/infra-login'
+alias eclaude='claude --dangerously-skip-permissions'
+### end devpod-aliases ###
+ALIASES
+fi
+
 # Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
 if [ -f pyproject.toml ]; then
   echo "Installing rune dependencies (with GPU extras)..."
