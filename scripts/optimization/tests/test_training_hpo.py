@@ -358,7 +358,7 @@ def test_evaluate_adapter_on_heldout_empty_returns_zeros() -> None:
     out = _evaluate_adapter_on_heldout(
         "/nonexistent/adapter",
         [],
-        base_model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+        base_model_id="Qwen/Qwen3.5-9B",
         compute_adapter_delta=True,
     )
     assert out == {

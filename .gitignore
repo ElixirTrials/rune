@@ -373,3 +373,6 @@ node_modules
 instructions/
 trained_d2l/
 evaluation_results/
+hpo_artifacts/
+optuna_*.db
+*.optuna.db

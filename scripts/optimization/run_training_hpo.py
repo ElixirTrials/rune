@@ -262,26 +262,43 @@ def _suggest_trial_params(trial: Any) -> dict[str, Any]:
 
 
 def _subsample_dataset(src: Path, n: int, dest: Path) -> int:
-    """Write the first ``n`` lines of ``src`` into ``dest`` as JSONL.
+    """Write up to ``n`` records from ``src`` into ``dest`` as JSONL.
 
-    Kept simple — deterministic head-sample, not random. Random sampling
-    could be added later, but for HPO proxy runs a stable subsample
-    makes trials directly comparable.
+    Deterministic and task-aware: does a first-pass round-robin over
+    ``task_id`` (preferring ``metadata.source_task_id``) so that small
+    subsamples span multiple tasks — required by the no-leakage held-out
+    split in ``_stratify_heldout_split``. Record order within each task
+    is preserved. Input order determines task visitation order, so the
+    sample is still stable across trials.
     """
+    import json as _json  # noqa: PLC0415
+    from collections import OrderedDict  # noqa: PLC0415
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    written = 0
-    with (
-        src.open("r", encoding="utf-8") as fin,
-        dest.open("w", encoding="utf-8") as fout,
-    ):
+    buckets: OrderedDict[str, list[str]] = OrderedDict()
+    with src.open("r", encoding="utf-8") as fin:
         for line in fin:
             line = line.strip()
             if not line:
                 continue
-            fout.write(line + "\n")
-            written += 1
-            if written >= n:
-                break
+            try:
+                rec = _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+            meta = rec.get("metadata") or {}
+            tid = str(meta.get("source_task_id") or rec.get("task_id") or "")
+            buckets.setdefault(tid, []).append(line)
+
+    written = 0
+    with dest.open("w", encoding="utf-8") as fout:
+        while written < n and any(buckets.values()):
+            for tid in list(buckets.keys()):
+                if not buckets[tid]:
+                    continue
+                fout.write(buckets[tid].pop(0) + "\n")
+                written += 1
+                if written >= n:
+                    break
     return written
 
 
@@ -674,45 +691,49 @@ def _run_single_trial(
 
     from model_training.trainer import train_and_register  # noqa: PLC0415
 
-    try:
-        train_and_register(**kwargs)
-    except Exception as exc:  # noqa: BLE001 — one bad trial mustn't sink the study
-        logger.exception("Trial %d crashed: %s", trial.number, exc)
-        return 0.0
+    train_and_register(**kwargs)
 
     adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
 
     # Resolve base model ID the same way train_and_register does.
     base_model_id = kwargs.get("base_model_id") or os.environ.get(
-        "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
+        "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
     )
-    try:
-        eval_metrics = _evaluate_adapter_on_heldout(
-            adapter_output_dir,
-            heldout_pairs,
-            base_model_id=base_model_id,
-            compute_adapter_delta=run_args.compute_adapter_delta,
+    eval_metrics = _evaluate_adapter_on_heldout(
+        adapter_output_dir,
+        heldout_pairs,
+        base_model_id=base_model_id,
+        compute_adapter_delta=run_args.compute_adapter_delta,
+    )
+
+    import mlflow  # noqa: PLC0415
+
+    if mlflow.active_run() is None:
+        raise RuntimeError(
+            f"Trial {trial.number}: no active MLflow run to attach eval metrics to. "
+            "train_and_register should have opened one; check trainer MLflow setup."
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Trial %d heldout eval crashed: %s", trial.number, exc)
-        eval_metrics = {
-            "hunk_loss": float("inf"),
-            "hunk_accuracy": 0.0,
-            "adapter_improvement": 0.0,
-            "hunk_entropy": 0.0,
+    # Tag the trial run with HPO context so the MLflow UI can filter by
+    # study, trial, dataset, etc. without having to parse adapter_id strings.
+    mlflow.set_tags(
+        {
+            "hpo.study_name": run_args.adapter_id_prefix,
+            "hpo.trial_number": str(trial.number),
+            "hpo.dataset": run_args.dataset,
+            "hpo.warm_start": run_args.warm_start,
+            "hpo.diff_aware_loss": str(sampled["diff_aware_loss"]),
+            "hpo.heldout_strategy": run_args.heldout_strategy,
+            "hpo.heldout_fraction": str(run_args.heldout_fraction),
+            "hpo.subsample_size": str(n),
+            "hpo.train_pairs": str(len(train_pairs)),
+            "hpo.heldout_pairs": str(len(heldout_pairs)),
+            "hpo.adapter_id": adapter_id,
         }
-
-    # Log diagnostic metrics to MLflow when available (silent no-op otherwise).
-    try:
-        import mlflow  # noqa: PLC0415
-
-        if mlflow.active_run() is not None:
-            mlflow.log_metrics(
-                {f"eval/{k}": v for k, v in eval_metrics.items()},
-                step=trial.number,
-            )
-    except ImportError:
-        pass
+    )
+    mlflow.log_metrics(
+        {f"eval/{k}": v for k, v in eval_metrics.items()},
+        step=trial.number,
+    )
 
     fitness = _compute_fitness(
         eval_metrics["hunk_loss"],
@@ -862,7 +883,27 @@ def main(argv: list[str] | None = None) -> int:
             prior_losses=prior_losses,
         )
 
-    study.optimize(_objective, n_trials=n_trials, show_progress_bar=False)
+    # Tell Optuna that a per-trial exception is a *failed trial*, not a
+    # study-halting bug and not a zero-fitness completion. Failed trials
+    # are excluded from ``study.best_trial`` — preventing a crashed run
+    # from being reported as "best".
+    study.optimize(
+        _objective,
+        n_trials=n_trials,
+        show_progress_bar=False,
+        catch=(Exception,),
+    )
+
+    completed = [t for t in study.trials if t.state.name == "COMPLETE"]
+    failed = [t for t in study.trials if t.state.name == "FAIL"]
+    if not completed:
+        msg = (
+            f"HPO study '{study.study_name}' produced no successful trials "
+            f"({len(failed)} failed, {len(study.trials)} total). Refusing to "
+            "emit a 'best trial' summary."
+        )
+        logger.error(msg)
+        raise SystemExit(msg)
 
     # Retention pruning.
     _prune_retained_adapters(study, run_args)
@@ -879,9 +920,72 @@ def main(argv: list[str] | None = None) -> int:
         "best_trial": best.number,
         "best_fitness": best.value,
         "best_params": best.params,
+        "n_trials_completed": len(completed),
+        "n_trials_failed": len(failed),
+        "n_trials_total": len(study.trials),
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
+
+    # Emit a study-level MLflow summary run so the UI shows one canonical
+    # artifact per study alongside the per-trial runs. Placed after the
+    # trials finish so it doesn't collide with any trial's active run.
+    _log_study_summary_to_mlflow(
+        experiment_name=f"{args.experiment_name}-studies",
+        summary=summary,
+        args=args,
+        run_args=run_args,
+        fitness_cfg=fitness_cfg,
+    )
     return 0
+
+
+def _log_study_summary_to_mlflow(
+    *,
+    experiment_name: str,
+    summary: dict[str, Any],
+    args: argparse.Namespace,
+    run_args: HPORunArgs,
+    fitness_cfg: FitnessConfig,
+) -> None:
+    """Log a study-level parent run aggregating best-trial stats."""
+    import mlflow  # noqa: PLC0415
+
+    mlflow.set_experiment(experiment_name)
+    with mlflow.start_run(run_name=f"study-{args.study_name}"):
+        mlflow.set_tags(
+            {
+                "hpo.study_name": args.study_name,
+                "hpo.dataset": run_args.dataset,
+                "hpo.warm_start": run_args.warm_start,
+                "hpo.model_config_name": run_args.model_config_name,
+                "hpo.db": args.db,
+                "hpo.output_root": str(run_args.output_root),
+                "hpo.kind": "training-hpo-study-summary",
+            }
+        )
+        mlflow.log_params(
+            {
+                "n_trials_requested": args.n_trials if not args.smoke else 2,
+                "subsample": run_args.subsample,
+                "heldout_fraction": run_args.heldout_fraction,
+                "heldout_strategy": run_args.heldout_strategy,
+                "keep_top_k": run_args.keep_top_k,
+                "startup_trials": args.startup_trials,
+                "hunk_loss_weight": fitness_cfg.hunk_loss_weight,
+                "hunk_accuracy_weight": fitness_cfg.hunk_accuracy_weight,
+                "adapter_improvement_weight": fitness_cfg.adapter_improvement_weight,
+                **{f"best.{k}": v for k, v in summary["best_params"].items()},
+            }
+        )
+        mlflow.log_metrics(
+            {
+                "best_fitness": summary["best_fitness"],
+                "n_trials_completed": summary["n_trials_completed"],
+                "n_trials_failed": summary["n_trials_failed"],
+                "n_trials_total": summary["n_trials_total"],
+                "best_trial_number": summary["best_trial"],
+            }
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover
