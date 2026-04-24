@@ -567,7 +567,57 @@ class TestComputeWeightedLoss:
 # ---------------------------------------------------------------------------
 
 
+class TestAllMaskedBatch:
+    """Verify _compute_weighted_loss handles all-masked batches gracefully."""
+
+    def test_all_weights_zero_logs_warning_and_returns_finite(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """loss_weights=zeros → denom<1e-8 → warning logged, loss is finite."""
+        import math
+
+        import torch
+        from model_training.diff_loss import _compute_weighted_loss
+
+        torch.manual_seed(0)
+        logits = torch.randn(1, 4, 8)
+        labels = torch.tensor([[IGNORE_INDEX, 1, 2, IGNORE_INDEX]])
+        # All-zero weights → denom == 0 after masking.
+        loss_weights = torch.zeros(1, 4)
+
+        with caplog.at_level(logging.WARNING, logger="model_training.diff_loss"):
+            loss = _compute_weighted_loss(logits, labels, loss_weights)
+
+        assert math.isfinite(loss.item()), "loss must be finite (not NaN/inf)"
+        assert any("all-masked batch" in rec.message for rec in caplog.records), (
+            "expected all-masked batch warning"
+        )
+
+    def test_all_labels_ignored_logs_warning_and_returns_finite(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """All labels=-100 → denom<1e-8 → warning logged, loss is finite."""
+        import math
+
+        import torch
+        from model_training.diff_loss import _compute_weighted_loss
+
+        torch.manual_seed(0)
+        logits = torch.randn(1, 4, 8)
+        labels = torch.full((1, 4), IGNORE_INDEX, dtype=torch.long)
+        loss_weights = torch.ones(1, 4)
+
+        with caplog.at_level(logging.WARNING, logger="model_training.diff_loss"):
+            loss = _compute_weighted_loss(logits, labels, loss_weights)
+
+        assert math.isfinite(loss.item()), "loss must be finite (not NaN/inf)"
+        assert any("all-masked batch" in rec.message for rec in caplog.records), (
+            "expected all-masked batch warning"
+        )
+
+
 class TestBuildDiffAwareSftTrainerIntegration:
+    @pytest.mark.slow
     def test_factory_returns_diff_aware_trainer(self) -> None:
         """build_diff_aware_sft_trainer returns a DiffAwareSFTTrainer instance."""
         pytest.importorskip("trl", reason="trl not installed")

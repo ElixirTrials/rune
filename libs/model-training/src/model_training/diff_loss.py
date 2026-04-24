@@ -18,7 +18,8 @@ try:
     from trl import SFTTrainer  # type: ignore[attr-defined]
 
     _TRL_AVAILABLE = True
-except ImportError:
+except ModuleNotFoundError:
+    # ModuleNotFoundError only — broken trl installs should surface loudly.
     SFTTrainer = object  # type: ignore[misc,assignment]
     _TRL_AVAILABLE = False
 
@@ -479,9 +480,16 @@ def _compute_weighted_loss(
     weighted = per_token_loss * shift_weights * label_mask
     denom = (shift_weights * label_mask).sum()
 
-    # Guard against zero denominator (all-masked batch).
-    loss = weighted.sum() / denom.clamp(min=1e-8)
-    return loss
+    # Guard: all-masked batch (no labeled/weighted tokens).  This indicates a
+    # data-pipeline bug — warn loudly rather than returning a silent near-zero.
+    if denom.item() < 1e-8:
+        logger.warning(
+            "DiffAwareSFTTrainer: all-masked batch (denom=%.3e); "
+            "weighted loss will be clamped. Check loss_weights / label masking.",
+            denom.item(),
+        )
+    weighted_loss = weighted.sum() / denom.clamp(min=1e-8)
+    return weighted_loss
 
 
 # ---------------------------------------------------------------------------
