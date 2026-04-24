@@ -19,3 +19,7 @@ Can you double check that everything mentioned here has been taken care of: http
 ---
 
 Let's address all the concerns, fix what needs fixing, comment and resolve everything in the PR. /superpowers:subagent-driven-development
+
+---
+
+I see some ci/cd failures
