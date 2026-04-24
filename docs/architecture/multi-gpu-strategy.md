@@ -20,7 +20,7 @@ For the services that use GPUs, see [Monorepo Mapping](monorepo-mapping.md). For
 | `--quantization` | awq or gptq (serving) | 4-bit quantized serving for VRAM headroom |
 | Base model | Qwen2.5-Coder-7B-Instruct | 7B parameter SLM; fits in consumer GPUs with quantization |
 
-All parallelism settings are configurable in `services/lora-server/config.yaml` or via environment variables. The server defaults to single-GPU operation.
+All parallelism settings are configurable via inference provider configuration (`libs/inference/`) or environment variables. (The standalone `services/inference layer/` service referenced in earlier revisions has been replaced by the provider-agnostic inference layer — `TransformersProvider`, `LlamaCppProvider`, `OllamaProvider`, `VLLMProvider`.) The default is single-GPU operation.
 
 ### Pipeline Parallelism (multi-GPU option)
 
@@ -85,36 +85,76 @@ QLoRA is recommended for training: the base model is frozen in NF4 4-bit, and gr
 
 ---
 
+## Corpus-Producer Sharding
+
+For the round-2 distillation pipeline, the 25-bin oracle corpus is produced by running the full 5-phase Rune pipeline across a large problem set (see [Build Order](../appendices/build-order.md)). This workload is **embarrassingly parallel** across problems, so `scripts/phase_corpus_producer.py` supports direct multi-GPU scale-out via sharding rather than time-sharing.
+
+### Sharding Flags
+
+- `--shard IDX/TOTAL` — round-robin slice of problems for this shard (e.g. `--shard 0/4` takes problems 0, 4, 8, …; `--shard 1/4` takes 1, 5, 9, …).
+- `--cuda-visible-devices DEVICES` — sets `CUDA_VISIBLE_DEVICES` in each subprocess pipeline run, pinning the shard to one GPU.
+
+The progress DB (`libs/corpus-producer/src/corpus_producer/progress_db.py`) is shared across shards with file locking, so restarts resume cleanly and shards never duplicate work.
+
+### Multi-GPU Example
+
+```bash
+for i in 0 1 2 3; do
+    uv run scripts/phase_corpus_producer.py \
+        --shard $i/4 --cuda-visible-devices $i \
+        --out-dir data/phase_corpus &
+done
+wait
+```
+
+### Corpus Parallelism vs Lease-Based Time-Sharing
+
+These two patterns are **not interchangeable**:
+
+| Pattern | Parallelism type | When to use |
+|---------|------------------|-------------|
+| Corpus-producer sharding (`--shard`) | Data parallelism across independent problems; one GPU per shard for the full run | Oracle corpus generation (batch workload; no serving concurrency) |
+| GPU lease mechanism (below) | Time-sharing between serving and training workloads on the same GPU(s) | Continuous operation with both inference serving and ad-hoc training jobs |
+
+Corpus-producer sharding runs each GPU to completion on its own slice; the lease mechanism hands off a single GPU between workloads over time.
+
+### Round-2 Training VRAM Profile
+
+Round-2 oracle-teacher distillation (`scripts/train_round2.py`) runs **two forward passes per training step** — one through the base model with the oracle adapter applied (teacher), and one through the student hypernetwork. Peak VRAM is correspondingly higher than standard QLoRA training. Plan the GPU configuration accordingly:
+
+- The `OracleAdapterCache` is LRU-bounded (default `max_loaded_oracles=4`) to keep concurrently resident oracle tensor dicts below a known ceiling.
+- Teacher/student passes share the base model weights; only the applied LoRA delta differs per pass, so the base model is allocated once.
+
 ## GPU Lease Mechanism
 
-When using multiple GPUs, the lora-server normally occupies all configured GPUs for inference. When training-svc needs GPU time for fine-tuning or hypernetwork training, a lease mechanism coordinates the handoff.
+When using multiple GPUs, the inference layer normally occupies all configured GPUs for inference. When training-svc needs GPU time for fine-tuning or hypernetwork training, a lease mechanism coordinates the handoff.
 
 ### Lease Protocol
 
 ```mermaid
 flowchart TD
-    Idle([lora-server serving on available GPUs]) --> Request
+    Idle([inference layer serving on available GPUs]) --> Request
     Request[training-svc requests GPU lease] --> Drain
-    Drain[lora-server drains in-flight requests] --> Reconfigure
-    Reconfigure[lora-server reconfigures to primary GPU only] --> Grant
+    Drain[inference layer drains in-flight requests] --> Reconfigure
+    Reconfigure[inference layer reconfigures to primary GPU only] --> Grant
     Grant[Secondary GPU lease granted to training-svc] --> Train
     Train[training-svc runs on leased GPU] --> Complete
     Complete[training-svc releases lease] --> Restore
-    Restore[lora-server restores full multi-GPU config] --> Idle
+    Restore[inference layer restores full multi-GPU config] --> Idle
 ```
 
 ### Lease States
 
 | State | Primary GPU | Secondary GPU(s) | Serving | Training |
 |-------|-------------|-----------------|---------|----------|
-| Normal | lora-server (first pipeline stage) | lora-server (remaining stages) | Full pipeline parallelism | Unavailable |
-| Training lease | lora-server (single GPU, reduced capacity) | training-svc | Degraded (single GPU) | Active |
+| Normal | inference layer (first pipeline stage) | inference layer (remaining stages) | Full pipeline parallelism | Unavailable |
+| Training lease | inference layer (single GPU, reduced capacity) | training-svc | Degraded (single GPU) | Active |
 | Transitioning | Draining requests | Awaiting release | Paused briefly | Pending |
 
 ### Design Decisions
 
 **Why not dedicate one GPU per workload permanently?** A permanently split configuration leaves each workload with less VRAM headroom. Time-sharing via the lease mechanism gives each workload full access during its active period.
 
-**Why does lora-server yield, not training-svc queue indefinitely?** Inference is latency-sensitive but interruptible between requests. Training jobs run for minutes to hours. The lease mechanism prioritizes training throughput (no VRAM competition) while keeping inference available in degraded mode on the remaining GPU.
+**Why does the inference layer yield, not training-svc queue indefinitely?** Inference is latency-sensitive but interruptible between requests. Training jobs run for minutes to hours. The lease mechanism prioritizes training throughput (no VRAM competition) while keeping inference available in degraded mode on the remaining GPU.
 
-**Lease coordination is implemented via a shared state file** at `~/.rune/gpu_lease.json`, protected by file locking. The lora-server polls this file between request batches. The state file contains: `holder` (service name or null), `granted_at` (timestamp), `gpu_id` (which GPU is leased), and `expires_at` (maximum lease duration, default 2 hours).
+**Lease coordination is implemented via a shared state file** at `~/.rune/gpu_lease.json`, protected by file locking. The inference layer polls this file between request batches. The state file contains: `holder` (service name or null), `granted_at` (timestamp), `gpu_id` (which GPU is leased), and `expires_at` (maximum lease duration, default 2 hours).

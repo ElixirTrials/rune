@@ -45,7 +45,13 @@ Standardized coding benchmarks for evaluating base models and adapted models aga
 |-----------|--------|-------|
 | HumanEval+ | EvalPlus | Function-level code generation |
 | MBPP+ | EvalPlus | Python programming problems |
+| APPS | APPS | Competitive programming (introductory, interview, competition tiers). Stratification now delegates to Plan A's canonical implementation (`benchmarks/apps.py::load_problems`) |
 | BigCodeBench | BigCodeBench | Complex coding tasks |
+| DS-1000 | DS-1000 | Data-science tasks across 7 libraries (NumPy, Pandas, SciPy, Matplotlib, sklearn, PyTorch, TensorFlow) |
+| LiveCodeBench | LiveCodeBench | Contamination-resistant competitive programming tasks from live contests |
+| SWE-Bench-Lite | SWE-Bench-Lite | Repository-level patch generation. `benchmarks/swe_bench.py::score()` is now implemented with an env-gated clone/apply/pytest pipeline (previously raised `NotImplementedError`) |
+
+These six benchmarks (HumanEval, MBPP, APPS, BigCodeBench, DS-1000, LiveCodeBench) form the structure of the round-2 strict success gate: `evaluate_round2_gate` requires ≥ 4/6 benchmarks improved ≥ 2.0% Pass@1 with no regression > 1.0% on any benchmark.
 
 ### Execution Tiers
 

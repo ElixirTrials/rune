@@ -4,7 +4,7 @@
 
 Rune proposes to validate and implement a system that encodes coding trajectories into LoRA adapters using a Doc-to-LoRA hypernetwork, giving Small Language Models an unbounded reasoning horizon via parametric episodic memory. This plan covers the full journey from hardware validation through hypernetwork training across five implementation phases (Phase 0 through Phase 4), structured so that the core hypothesis is validated before infrastructure is built.
 
-### Status Summary (as of 2026-04-05)
+### Status Summary (as of 2026-04-23)
 
 | Phase | Status | Notes |
 |-------|--------|-------|
@@ -12,11 +12,12 @@ Rune proposes to validate and implement a system that encodes coding trajectorie
 | Phase 1: Core Hypothesis Validation | ✅ Complete | Hypernetwork implemented (`hypernetwork.py`, `sakana_d2l.py`), e2e test exercises it |
 | Phase 2: Adapter Library & Serving | ✅ Complete | adapter-registry implemented; lora-server replaced by inference providers (TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider); training-svc has REST endpoints |
 | Phase 3: Recursive Agent Loop | ✅ Complete | Agent loop in `rune_runner.py` with 5-phase pipeline (decompose → plan → code → integrate → diagnose/repair); sandbox in `shared/sandbox.py`; e2e test at `scripts/e2e_test.py` |
-| Phase 4: Evolution & Hypernetwork | ✅ Complete | Evolution in `swarm_evolution.py`; TIES/DARE in `merging.py`; hypernetwork training pipeline in `d2l_train.py` et al. |
+| Phase 4: Evolution & Hypernetwork | ✅ Complete | Evolution in `swarm_evolution.py`; TIES/DARE in `merging.py`; hypernetwork training pipeline in `d2l_train.py` et al.; round-1 and round-2 distillation paths implemented (PR #28) |
+| PR #28: Training Infrastructure + 9-Gap Closure | ✅ Merged | Diff-aware SFT loss, HPO overhaul (Optuna + Hyperband), kill-switch wiring, round-2 distillation loop, strict success gate, 9 infrastructure gaps closed |
 
-**Important caveat:** All code exists and 433+ tests pass, but no real GPU end-to-end training has been validated yet. The "Complete" status reflects that the code is written and tests pass in CI (with mocked GPU dependencies), not that the system has been proven on real hardware.
+**Important caveat:** All code exists and 776+ tests pass, but no real GPU end-to-end training has been validated yet. The "Complete" status reflects that the code is written and tests pass in CI (with mocked GPU dependencies), not that the system has been proven on real hardware.
 
-**Next milestone:** GPU end-to-end validation — running the full pipeline on real hardware to measure Pass@1 improvement.
+**Next milestone:** GPU end-to-end validation — running the full pipeline on real hardware to measure Pass@1 improvement. Operator activities required: oracle adapter training (25 bins), round-1 baseline report, round-2 training + gate evaluation (see post-merge operator checklist in PR #28 summary).
 
 ### Recent Additions (post-plan)
 
@@ -27,7 +28,13 @@ Features built after the original implementation plan was written:
 | Coding benchmark evaluation framework | #22 | HumanEval+, MBPP+, BigCodeBench evaluation via `scripts/eval/` |
 | Model registry with DeltaCoder warm-start | #23 | Training strategy alignment, DeltaCoder warm-start support |
 | GitHub training data mining pipeline | #17, #19 | `scripts/mine_github.py` for mining training data from GitHub |
-| GPU devcontainer hardening | #7-#16, #25 | Torch pinning, flash-attn wheels, devpod setup improvements |
+| GPU devcontainer hardening | #7–#16, #25 | Torch pinning, flash-attn wheels, devpod setup improvements |
+| Diff-aware SFT loss | #28 | `DiffAwareSFTTrainer` + `DiffWeightedDataCollator`; hunk-weighted token loss with identity fallback |
+| HPO overhaul | #28 | Optuna + Hyperband pruner; diff-restricted fitness metrics (`hunk_loss`, `hunk_accuracy`, `adapter_improvement`, `hunk_entropy`); task-level heldout split; 4-bit NF4 heldout evaluator |
+| Kill-switch wiring | #28 | `kill_switch_evaluate_fn` kwarg in `train_d2l_qwen3` (default-disabled); triggers on ≥5% HumanEval Pass@1 regression, 20–30 held-out tasks, k=5 |
+| Round-2 distillation loop | #28 | New modules: `round2_config.py`, `oracle_cache.py`, `round2_train.py`, `round2_gate.py`; CLIs: `scripts/train_round2.py`, `scripts/evaluate_round2.py`; trains hypernetwork against 25 per-bin oracle adapters as teacher signals |
+| 9-gap closure | #28 | Workspace mypy config, APPS stratification parity, SWE-Bench-Lite `score()` implemented, oracle validation runner `scripts/validate_oracles.py`, `task_description` propagation, S3 manifest upload, GPU-distributed corpus generation |
+| Strict success gate | #28 | `evaluate_round2_gate`: ≥4/6 benchmarks ≥2.0% Pass@1 improvement, no regression >1.0% |
 
 The phase descriptions below are preserved as historical context documenting the original rationale and design decisions.
 
@@ -53,6 +60,13 @@ Three primary research risks are tracked throughout this plan. See [Risk Matrix]
 
 The recommended component build sequence is detailed in [Build Order](appendices/build-order.md). The dependency root is `libs/adapter-registry` — it must be built first, as all other components depend on it for adapter storage and retrieval.
 
+For the round-2 path, the production dependency chain is:
+
+1. **Oracle corpus production** (multi-GPU): `scripts/phase_corpus_producer.py --shard IDX/TOTAL --cuda-visible-devices DEVICES` → produces 25-bin corpus in `data/phase_corpus/`.
+2. **Oracle validation**: `scripts/validate_oracles.py --base-model <model> --oracle <bin_key>:<adapter_id> ...` → asserts ≥3% Pass@1 improvement per oracle bin.
+3. **Round-2 training**: `scripts/train_round2.py --sakana-checkpoint-path ... --oracle-registry-url ... --dataset-path ...` → produces `round2_<uuid[:8]>` adapter.
+4. **Strict gate evaluation**: `scripts/evaluate_round2.py --round2-adapter-id ... --baseline-report round1_scores.json --output-report round2_verdict.json` → exit 0 (PASS) or exit 1 (FAIL).
+
 ### Phase Dependency Graph
 
 ```mermaid
@@ -63,6 +77,10 @@ flowchart TD
     P2["Phase 2<br>Adapter Library<br>+ Serving"] --> P3
     P3["Phase 3<br>Recursive Agent<br>Loop"] --> P4
     P4["Phase 4<br>Evolution Operator<br>+ Hypernetwork"]
+    P4 --> OracleCorpus["Oracle corpus production<br>(phase_corpus_producer.py --shard)"]
+    OracleCorpus --> OracleValidation["Oracle validation<br>(validate_oracles.py)"]
+    OracleValidation --> Round2Train["Round-2 training<br>(train_round2.py)"]
+    Round2Train --> Round2Gate["Strict gate<br>(evaluate_round2.py)"]
 ```
 
 ### Research-Stage Framing
@@ -276,6 +294,8 @@ Phase 3 also produces the adapter corpus required by Phase 4. The hypernetwork t
 
 Contingent on Phase 3 delivering a functional recursive agent loop, Phase 4 builds the adapter lifecycle management system (`services/evolution-svc`) and the Doc-to-LoRA hypernetwork inference path (`services/training-svc` hypernetwork job). This is the final phase and closes the loop: adapters produced by Phase 3 train the hypernetwork that generates future adapters.
 
+Phase 4 now has two distinct hypernetwork training paths: **round-1** (trains against the bare base model, original implementation) and **round-2** (trains against per-bin oracle adapters as teacher signals, added in PR #28). Both paths are implemented and tested; GPU execution remains pending.
+
 ### Why This Phase Comes Last
 
 The hypernetwork requires a corpus of pre-trained adapters as training data — a cold-start problem that cannot be bypassed. Without Phase 3 producing diverse task-adapter pairs, the hypernetwork has nothing to train on. The evolution operator (`services/evolution-svc`) also depends on a populated adapter registry: fitness evaluation requires existing adapters to compare and promote.
@@ -288,12 +308,83 @@ Attempting to build Phase 4 before Phase 3 is complete would require synthetic a
 - [x] `services/training-svc`: hypernetwork training job (trains on Phase 3 adapter corpus), hypernetwork inference path (single forward pass → adapter weights, without gradient descent)
 - [x] Adapter hierarchy: project-root, domain, and task-specific levels populated by the evolution operator from Phase 3 adapters
 - [x] MLflow tracking: adapter fitness scores per evaluation run, evolution events (promotions, prunings, merges), hypernetwork reconstruction loss on held-out adapters
+- [x] Round-2 distillation loop (`round2_train.py`): trains hypernetwork against 25 per-bin oracle adapters as functional-LoRA teacher signals
+- [x] Strict success gate (`round2_gate.py`, `scripts/evaluate_round2.py`): ≥4/6 benchmarks ≥2.0% Pass@1 improvement, no regression >1.0%
+
+### Hypernetwork Training: Round-1 and Round-2 Distillation
+
+**Round-1 (original path):** Trains the Sakana HyperLoRA perceiver against the bare base model. Entry point: `scripts/train.sh` (wraps `trainer_cli.py`). Adapter IDs follow the standard `<uuid>` scheme. MLflow experiment: `d2l-qwen3`.
+
+**Round-2 (oracle-teacher path, PR #28):** Trains the hypernetwork using 25 per-bin oracle adapters as teacher signals instead of the bare base model. Oracle bins cover 4 pipeline phases × 6 benchmarks + `diagnose_pooled`.
+
+Key architectural invariants for round-2:
+
+- **Functional-LoRA teacher, not PeftModel teacher.** Oracle adapters are applied to the base model via `apply_functional_lora` context manager. The base model is never structurally mutated (no `PeftModel` wrappers, no `LoraLayer` replacements), eliminating PEFT hook-leakage risk between teacher and student passes.
+- **`OracleAdapterCache`** (LRU, max 4 loaded concurrently) stores `LoraDict` tensor dicts (`{module: {"A": Tensor, "B": Tensor}}`), not `PeftModel` wrappers. Loaded lazily from safetensors via `_load_oracle_as_lora_dict`.
+- **Oracle ID scheme:** `oracle_<bin_key>` where `bin_key` is `<phase>_<benchmark>` or `diagnose_pooled`. Set upstream by `libs/corpus-producer/src/corpus_producer/trainer_bridge.py`.
+- **Round-2 adapter ID scheme:** `round2_<uuid[:8]>`. Registry fields: `task_type="round2_hypernet"`, `generation=2`, `parent_ids=json.dumps(sorted(oracle_ids))` for lineage tracking.
+- **Startup gate:** `min_oracle_coverage=0.8` — if fewer than 80% of training records have a registered oracle, `train_d2l_qwen3_round2` raises `RuntimeError` before any model load. `--dry-run` surfaces the same gate without GPU cost.
+- **Skip sentinel:** when `oracle_fallback="skip"` (default) and a record's bin has no oracle, `_training_step_round2` returns `(None, {})` and the outer loop uses `continue`. Only successful optimizer steps advance `steps_completed`.
+- MLflow experiment: `d2l-qwen3-round2`.
+
+**`Round2TrainConfig` key fields:**
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `oracle_registry_url` | *(required)* | SQLAlchemy URL for registry holding 25 oracle records |
+| `max_loaded_oracles` | `4` | LRU cap for cached oracle LoRA dicts |
+| `min_oracle_coverage` | `0.8` | Minimum fraction of records whose bin has a registered oracle |
+| `oracle_fallback` | `"skip"` | `"skip"` drops record; `"base_model"` is ablation mode |
+| `checkpoint_dir` | `"./checkpoints/round2"` | Separate from round-1 checkpoints |
+| `experiment_name` | `"d2l-qwen3-round2"` | MLflow separation from round-1 |
+
+### Oracle Production and Round-2 Build Chain
+
+Before round-2 training can run, 25 oracle adapters must be produced and validated:
+
+```bash
+# Step 1: Produce oracle corpus (multi-GPU, 4-shard example)
+for i in 0 1 2 3; do
+    uv run scripts/phase_corpus_producer.py \
+        --shard $i/4 --cuda-visible-devices $i \
+        --out-dir data/phase_corpus &
+done
+wait
+
+# Step 2: Validate each oracle (≥3% Pass@1 improvement over base model)
+uv run scripts/validate_oracles.py \
+    --base-model Qwen/Qwen3.5-9B \
+    --oracle code_humaneval:<adapter_id> \
+    --oracle plan_mbpp:<adapter_id> \
+    # ... all 25 bins
+
+# Step 3: Train round-2 hypernetwork
+uv run scripts/train_round2.py \
+    --sakana-checkpoint-path /path/to/sakana.bin \
+    --oracle-registry-url sqlite:///~/.rune/adapters.db \
+    --dataset-path data/phase_corpus/all_bins_concat.jsonl \
+    --num-steps 1000 \
+    --kill-switch-enabled
+
+# Step 4: Apply strict success gate
+uv run scripts/evaluate_round2.py \
+    --round2-adapter-id round2_<hex8> \
+    --base-model Qwen/Qwen3.5-9B \
+    --oracle-registry-url sqlite:///~/.rune/adapters.db \
+    --baseline-report round1_scores.json \
+    --output-report round2_verdict.json
+# Exit 0 → gate passed; exit 1 → regression or insufficient improvement
+```
 
 ### Risk Callouts
 
 > **Hypernetwork mode collapse** (see [Risk Matrix](appendices/risk-matrix.md)): Diversity regularization must be in the training loss from the start of hypernetwork training. Monitor adapter cosine diversity at each checkpoint — if it falls below the threshold (< 0.1), stop training and investigate. The Phase 1 experiment will have provided a reference baseline for what healthy cosine diversity looks like.
 
 > **Minimum corpus size:** The hypernetwork training requires a diverse adapter corpus. Diversity here is over task types, failure modes, and correction patterns — not just adapter count. If the Phase 3 corpus lacks sufficient diversity (e.g., all adapters trained on similar tasks), delay hypernetwork training and continue accumulating adapters from a wider task distribution. The Phase 3 end-to-end test verifies individual adapters; this is a separate concern about corpus-level diversity.
+
+> **Oracle coverage gap (round-2):** If `min_oracle_coverage` falls below 0.8 at startup, training aborts. Use `--dry-run` to check coverage before committing to a full run. Run `scripts/validate_oracles.py` to confirm each oracle meets the ≥3% improvement threshold before seeding the registry.
+
+> **Round-2 VRAM profile:** Round-2 runs two forward passes per step (teacher oracle + student hypernetwork), producing higher peak VRAM than standard QLoRA. Plan accordingly when selecting GPU configuration.
 
 ### Success Criteria
 
@@ -304,6 +395,13 @@ Attempting to build Phase 4 before Phase 3 is complete would require synthetic a
 | Evolution operator promotes, prunes, archives without corrupting registry | Checklist | Pass |
 | Hypernetwork-generated adapters load and run in vLLM without error | Checklist | Pass |
 | Hypernetwork-generated adapter Pass@1 vs direct fine-tuned adapter Pass@1 | Metric | Logged in MLflow (directional comparison, not a gate) |
+| Round-2 strict gate (`evaluate_round2_gate`) | **Gate** | ≥ 4/6 benchmarks improved ≥ 2.0% Pass@1 AND no regression > 1.0% on any benchmark |
+
+**Round-2 gate details:**
+
+- Required benchmarks: `humaneval`, `mbpp`, `apps`, `bigcodebench`, `ds_1000`, `livecodebench`.
+- Verdict JSON keys: `passed`, `deltas`, `improved_count`, `max_regression`, `reasons`, `round2_adapter_id`, `scores`.
+- `scripts/evaluate_round2.py` exits `0` on PASS / `1` on FAIL — suitable for CI gating.
 
 ### Experiment Sketch
 
@@ -311,7 +409,9 @@ Attempting to build Phase 4 before Phase 3 is complete would require synthetic a
 
 **Baseline:** Random adapter (Gaussian weight initialization at the same rank) as reconstruction loss reference; direct fine-tuned adapter Pass@1 as inference quality reference.
 
-**Evaluation method:** Reconstruction loss (MSE between hypernetwork-generated adapter weights and held-out fine-tuned adapter weights); cosine diversity across a batch of hypernetwork-generated adapters; Pass@1 comparison on held-out HumanEval tasks using hypernetwork-generated vs fine-tuned adapters.
+**Evaluation method (round-1):** Reconstruction loss (MSE between hypernetwork-generated adapter weights and held-out fine-tuned adapter weights); cosine diversity across a batch of hypernetwork-generated adapters; Pass@1 comparison on held-out HumanEval tasks using hypernetwork-generated vs fine-tuned adapters.
+
+**Evaluation method (round-2):** All 6 benchmarks evaluated via `scripts/evaluate_round2.py`. Delta computed against `round1_scores.json` baseline. Gate applied by `evaluate_round2_gate`. MLflow schema adds: `hunk_loss`, `hunk_accuracy`, `adapter_improvement`, `hunk_entropy`.
 
 **Expected range:** Reconstruction loss below random baseline confirms the hypernetwork is learning the adapter manifold. Cosine diversity > 0.1 confirms diversity is preserved. Pass@1 parity with fine-tuned adapters (±5%) would be a strong result; 50-80% of fine-tuned adapter quality is the expected range for a first-pass hypernetwork.
 

@@ -168,3 +168,144 @@ The trajectory flowing through the pipeline maps to `CodingSession` from `shared
 - **Sandbox** (`shared.sandbox.SubprocessBackend`): Executes generated code
 - **Hypernetwork** (`model_training.hypernetwork.DocToLoraHypernetwork`): Generates adapters from trajectories
 - **Swarm** (`scripts/swarm.py`): Orchestrates parallel execution of Phases 2 and 3
+
+---
+
+## Hypernetwork Training: Round-1 and Round-2 Distillation
+
+The Sakana HyperLoRA hypernetwork (H) is trained in up to two rounds. The 5-phase pipeline above is the direct source of training signal: execution trajectories from decompose, plan, code, integrate, and diagnose phases are collected by `libs/corpus-producer` and binned by phase and benchmark into the oracle corpus used for training.
+
+### Phase-to-Bin Mapping
+
+Each of the 5 pipeline phases produces a distinct class of trajectory. `corpus_producer/trainer_bridge.py` bins these trajectories into 25 oracle bins: one bin per (phase, benchmark) pair for the 4 non-diagnose phases across 6 benchmarks, plus one pooled bin for diagnose trajectories across all benchmarks.
+
+| Phase | Benchmarks | Bins produced |
+|-------|------------|---------------|
+| decompose | humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench | 6 |
+| plan | humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench | 6 |
+| code | humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench | 6 |
+| integrate | humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench | 6 |
+| diagnose | (pooled across all benchmarks) | 1 |
+| **Total** | | **25** |
+
+The oracle adapter for each bin is registered as `oracle_<bin_key>` where `bin_key` is `<phase>_<benchmark>` (e.g. `oracle_code_humaneval`) or `diagnose_pooled`.
+
+### Round-1: Training Against the Base Model
+
+Round-1 is the existing training path. The hypernetwork is trained using the base model (Qwen/Qwen3.5-9B) as the sole reference. No oracle adapters are required. The result is a hypernetwork that can generate task-specific LoRA adapters from trajectory documents alone.
+
+Entry point: `scripts/train.sh` (wraps `libs/model-training/src/model_training/trainer_cli.py`).
+
+### Round-2: Oracle-Teacher Distillation
+
+Round-2 retrains the hypernetwork using the 25 per-bin oracle adapters as teacher signals rather than the bare base model. The objective is KL divergence + cross-entropy loss between the student forward pass (base model + hypernetwork-generated adapter) and the teacher forward pass (base model + oracle adapter). The result is a hypernetwork whose generated adapters are steered toward oracle-quality task specialisation.
+
+Source modules:
+
+| Module | Purpose |
+|--------|---------|
+| `libs/model-training/src/model_training/round2_config.py` | `Round2TrainConfig` (Pydantic, inherits `D2LTrainConfig`) |
+| `libs/model-training/src/model_training/oracle_cache.py` | `OracleAdapterCache`, oracle lookup, coverage audit, `_load_oracle_as_lora_dict` |
+| `libs/model-training/src/model_training/round2_train.py` | Training loop, functional-LoRA application, KL+CE loss, adapter registration |
+| `libs/model-training/src/model_training/round2_gate.py` | `evaluate_round2_gate` — strict success gate |
+| `scripts/train_round2.py` | Training CLI (exposes every `Round2TrainConfig` field) |
+| `scripts/evaluate_round2.py` | Success-gate CLI; exits `0` on PASS, `1` on FAIL |
+
+#### Round2TrainConfig
+
+`Round2TrainConfig` inherits all fields from `D2LTrainConfig` and adds:
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `oracle_registry_url: str` | *(required)* | SQLAlchemy URL for the `AdapterRegistry` holding the 25 oracle records |
+| `max_loaded_oracles: int` | `4` | LRU cap for `OracleAdapterCache` |
+| `min_oracle_coverage: float` | `0.8` | Minimum fraction of training records whose bin has a registered oracle; below this → abort at startup |
+| `oracle_fallback: Literal["base_model", "skip"]` | `"skip"` | Behaviour when a record's bin has no registered oracle |
+| `checkpoint_dir: str` | `"./checkpoints/round2"` | Overrides parent so round-2 does not clobber round-1 checkpoints |
+| `experiment_name: str` | `"d2l-qwen3-round2"` | Overrides parent for MLflow separation |
+
+#### Functional-LoRA Teacher Mechanism
+
+The oracle adapter is applied to the base model via the `apply_functional_lora` context manager — the same mechanism used for the student pass. The base model is **never structurally mutated**: no `PeftModel` wrappers are attached and no `LoraLayer` replacements are made. This eliminates PEFT hook-leakage risk between teacher and student forward passes.
+
+Both teacher and student use the identical code path:
+
+```
+with apply_functional_lora(base_model, oracle_lora_dict):
+    teacher_logits = base_model(input_ids, ...)
+
+with apply_functional_lora(base_model, student_lora_dict):
+    student_logits = base_model(input_ids, ...)
+```
+
+#### OracleAdapterCache
+
+`OracleAdapterCache` holds oracle adapters as `LoraDict` tensor dicts rather than `PeftModel` wrappers:
+
+```
+LoraDict = {module: {"A": Tensor[L, r, in], "B": Tensor[L, r, out]}}
+```
+
+`_load_oracle_as_lora_dict` parses a PEFT safetensors checkpoint using the regex:
+
+```
+(?:base_model\.model\.)?model\.layers\.<L>\..*?\.<module>_proj\.lora_<A|B>\.weight
+```
+
+and stacks per-layer tensors across `hc.layer_indices`. The cache is LRU-bounded at `max_loaded_oracles=4` (default).
+
+#### Oracle and Round-2 Adapter ID Schemes
+
+- **Oracle adapters:** `oracle_<bin_key>` — set upstream by `libs/corpus-producer/src/corpus_producer/trainer_bridge.py`.
+- **Round-2 adapters:** `round2_<uuid[:8]>` — registered by `round2_train.register_round2_adapter` with `task_type="round2_hypernet"`, `generation=2`, and `parent_ids=json.dumps(sorted(oracle_ids))` for lineage tracking.
+
+#### Startup Guards
+
+Two guards fire before any model is loaded:
+
+1. **Coverage gate:** if the fraction of training records with a registered oracle bin falls below `min_oracle_coverage` (default `0.8`), training aborts with `RuntimeError`. `dry_run=True` surfaces this gate without running training, so operators can diagnose coverage gaps cheaply.
+
+2. **Per-step skip sentinel:** `_training_step_round2` returns `(None, {})` when a record's bin has no oracle and `oracle_fallback == "skip"`. The outer training loop calls `continue` on that sentinel — `steps_completed` only advances on successful optimizer steps. Under `oracle_fallback="base_model"` (ablation mode), the bare base model is used as the teacher instead.
+
+#### Strict Success Gate
+
+`round2_gate.evaluate_round2_gate(scores) -> report` applies the following bar after training completes:
+
+- **Pass condition:** ≥ 4 of 6 benchmarks improved by ≥ 2.0% Pass@1 **AND** no single benchmark regresses by more than 1.0%.
+- **Required benchmarks:** `humaneval`, `mbpp`, `apps`, `bigcodebench`, `ds_1000`, `livecodebench`.
+- **Verdict JSON keys:** `passed`, `deltas`, `improved_count`, `max_regression`, `reasons`, `round2_adapter_id`, `scores`.
+
+`scripts/evaluate_round2.py` runs all 6 benchmarks, applies the gate, writes the verdict JSON, and exits `0` on PASS or `1` on FAIL so CI can gate promotion.
+
+#### End-to-End Flow
+
+```bash
+# 1. Produce 25-bin oracle corpus (multi-GPU via gap-8 sharding)
+for i in 0 1 2 3; do
+    uv run scripts/phase_corpus_producer.py \
+        --shard $i/4 --cuda-visible-devices $i \
+        --out-dir data/phase_corpus &
+done
+wait
+
+# 2. Train round-1 hypernet + capture baseline benchmark report
+uv run scripts/train.sh
+# ... run 6 benchmarks → round1_scores.json
+
+# 3. Train round-2 hypernet with oracle teachers
+uv run scripts/train_round2.py \
+    --sakana-checkpoint-path /path/to/sakana.bin \
+    --oracle-registry-url sqlite:///~/.rune/adapters.db \
+    --dataset-path data/phase_corpus/all_bins_concat.jsonl \
+    --num-steps 1000 \
+    --kill-switch-enabled
+
+# 4. Apply the strict gate
+uv run scripts/evaluate_round2.py \
+    --round2-adapter-id round2_<hex8> \
+    --base-model Qwen/Qwen3.5-9B \
+    --oracle-registry-url sqlite:///~/.rune/adapters.db \
+    --baseline-report round1_scores.json \
+    --output-report round2_verdict.json
+# Exit 0 → gate passed; exit 1 → regression or insufficient improvement
+```

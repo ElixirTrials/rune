@@ -1,6 +1,6 @@
 """TDD tests for shared.rune_models — field types, defaults, and serialization."""
 
-from shared.rune_models import AdapterRef, CodingSession, EvolMetrics
+from shared.rune_models import AdapterRef, CodingSession, EvolMetrics, PipelinePhase
 
 # --- AdapterRef tests ---
 
@@ -83,3 +83,18 @@ def test_evol_metrics_round_trip_serialization(make_evol_metrics) -> None:
     assert restored.pass_rate == original.pass_rate
     assert restored.fitness_score == original.fitness_score
     assert restored.generalization_delta == 0.05
+
+
+# --- PipelinePhase tests ---
+
+
+def test_pipeline_phase_has_all_five_canonical_values() -> None:
+    """PipelinePhase enumerates all 5 Rune pipeline phases (incl. DIAGNOSE)."""
+    values = {p.value for p in PipelinePhase}
+    assert values == {"decompose", "plan", "code", "integrate", "diagnose"}
+
+
+def test_pipeline_phase_diagnose_round_trips_via_string() -> None:
+    """PipelinePhase is a str-Enum — DIAGNOSE round-trips through its string value."""
+    assert PipelinePhase("diagnose") is PipelinePhase.DIAGNOSE
+    assert PipelinePhase.DIAGNOSE.value == "diagnose"

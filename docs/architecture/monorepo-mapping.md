@@ -24,12 +24,13 @@ For the component build order and dependency chain, see [Build Order](../appendi
 | Rune Library | Path | Extends / New | Consumers |
 |-------------|------|---------------|-----------|
 | `adapter-registry` | `libs/adapter-registry/` | New (implemented) | `rune-agent`, `training-svc`, `evolution-svc`, `api-service` |
+| `corpus-producer` | `libs/corpus-producer/` | New (implemented) | `scripts/phase_corpus_producer.py`; oracle training pipeline |
 
 ### Extended Existing Components
 
 | Component | Path | What Changes |
 |-----------|------|-------------|
-| `model-training` | `libs/model-training/` | Hypernetwork (DocToLoraHypernetwork), D2L training pipeline (d2l_train, d2l_data, d2l_probe, d2l_config, d2l_lora, d2l_prep, d2l_mining), TIES/DARE merging (merging.py), QLoRA trainer, PEFT utilities, Sakana D2L integration |
+| `model-training` | `libs/model-training/` | Hypernetwork (DocToLoraHypernetwork), D2L training pipeline (d2l_train, d2l_data, d2l_probe, d2l_config, d2l_lora, d2l_prep, d2l_mining), TIES/DARE merging (merging.py), QLoRA trainer, PEFT utilities, Sakana D2L integration; **PR #28 additions:** `diff_loss.py` (DiffAwareSFTTrainer + DiffWeightedDataCollator, hunk-weighted token loss), `kill_switch.py` (kill-switch wiring), `training_common.py` (mlflow_log_params shared helper), `round2_config.py` (Round2TrainConfig), `oracle_cache.py` (OracleAdapterCache LRU max 4, LoraDict format), `round2_train.py` (round-2 training loop, functional-LoRA teacher, KL+CE loss), `round2_gate.py` (evaluate_round2_gate strict success gate); `d2l_diff.py` (RTK-style diff compression); `d2l_data.py` additions: `normalize_mined_pairs`, `pairs_to_chat_messages`, `task_description` propagation |
 | `api-service` | `services/api-service/` | REST routes defined for `/adapters` (registry CRUD), `/sessions` (agent session state); domain endpoints are stubs returning 501, only health/ready work |
 | `inference` | `libs/inference/` | Provider-agnostic interface (InferenceProvider ABC) with TransformersProvider, LlamaCppProvider, OllamaProvider, VLLMProvider backends and factory for configuration-based selection |
 | `shared` | `libs/shared/` | Hardware probe, sandbox (SubprocessBackend), checkpoint DB, template loader, Rune data models (CodingSession, SwarmConfig, PipelinePhase), storage utils |
@@ -109,10 +110,16 @@ The `scripts/` directory is the primary execution layer, collapsing the microser
 | `eval/generate_completions.py` | Completion generation for benchmark evaluation |
 | `eval/config.py` | Benchmark evaluation configuration |
 | `optimization/run_optimization.py` | Bayesian parameter optimization (Optuna TPE) |
+| `optimization/run_training_hpo.py` | HPO overhaul — Optuna + Hyperband pruner, hunk-weighted fitness metrics (`hunk_loss`, `hunk_accuracy`, `adapter_improvement`, `hunk_entropy`), task-level heldout split, 4-bit NF4 heldout evaluator with attention_mask threading |
 | `optimization/scoring.py` | Fitness scoring for optimization trials |
 | `optimization/task_pool.py` | Diverse task sampling for optimization |
 | `optimization/template_library.py` | Prompt/trajectory style variants |
 | `experiment_harness.py` | Isolated adapter/prompt experiments (~15s/trial) |
+| `phase_corpus_producer.py` | 25-bin oracle corpus producer; flags: `--shard IDX/TOTAL --cuda-visible-devices DEVICES --s3-bucket --s3-prefix` |
+| `train_round2.py` | Round-2 oracle-teacher distillation CLI |
+| `evaluate_round2.py` | Strict success gate CLI (exit 0 PASS, 1 FAIL) |
+| `validate_oracles.py` | Per-oracle validator (≥3% Pass@1 improvement) |
+| `train.sh` | Unified training wrapper |
 
 ---
 
@@ -142,12 +149,18 @@ rune/
     e2e_training_smoke.py   # Training smoke test
     mine_github.py          # GitHub training data mining
     compare_output.py       # Output comparison tool
+    phase_corpus_producer.py  # 25-bin oracle corpus producer (--shard, --cuda-visible-devices, --s3-bucket, --s3-prefix)
+    train_round2.py         # Round-2 oracle-teacher distillation CLI
+    evaluate_round2.py      # Strict success gate CLI (exit 0 PASS / 1 FAIL)
+    validate_oracles.py     # Per-oracle validator (≥3% Pass@1 improvement)
+    train.sh                # Unified training wrapper
     eval/                   # Coding benchmark evaluation
       run_benchmarks.py     # HumanEval+, MBPP+, BigCodeBench runner
       generate_completions.py
       config.py
     optimization/           # Bayesian parameter optimization (Optuna)
       run_optimization.py   # Overnight TPE search
+      run_training_hpo.py   # HPO overhaul: Hyperband pruner, hunk-weighted metrics, 4-bit NF4 eval
       scoring.py            # Fitness scoring
       task_pool.py          # Diverse task sampling
       template_library.py   # Prompt/trajectory variants
@@ -159,7 +172,22 @@ rune/
     evolution-svc/          # Adapter lifecycle endpoints (FastAPI, stubs — logic in scripts/)
   libs/
     adapter-registry/       # SQLite + filesystem adapter store
-    model-training/         # Hypernetwork, D2L pipeline, TIES/DARE, trainer
+    corpus-producer/        # 25-bin oracle corpus generation
+      src/corpus_producer/
+        __init__.py
+        binning.py          # Bin assignment logic
+        manifest.py         # Corpus manifest management
+        models.py           # Data models
+        pipeline_runner.py  # Per-problem pipeline execution
+        progress_db.py      # Restart-safe progress tracking
+        rationalization.py  # Rationalization step
+        s3_uploader.py      # S3 manifest upload (lazy boto3, graceful degradation)
+        success_filter.py   # Success filtering
+        trainer_bridge.py   # oracle_<bin_key> ID scheme
+      tests/
+      pyproject.toml
+      README.md
+    model-training/         # Hypernetwork, D2L pipeline, TIES/DARE, trainer, round-2 distillation
     inference/              # Provider-agnostic: Transformers, llama.cpp, Ollama, vLLM
     shared/                 # Hardware, sandbox, templates, models, checkpoint DB
     evaluation/             # OOD benchmark, Pass@k, fitness scoring

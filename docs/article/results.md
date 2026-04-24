@@ -1,7 +1,7 @@
 ## Results
 
 !!! warning "Research Status: Pre-Validation"
-    The evaluation infrastructure is built and tested (433+ tests passing,
+    The evaluation infrastructure is built and tested (776+ tests passing,
     benchmark framework implemented), but no GPU training runs or adapter
     evaluations have been conducted. This section presents the planned
     experimental design for Phase 1 hypothesis validation. All tables, figures,
@@ -15,13 +15,15 @@ Phase 1 is a minimal hypothesis test that gates all subsequent infrastructure in
 
 #### Evaluation Benchmark
 
-Rune's benchmark evaluation framework (described in [Methods](methods.md#benchmark-evaluation-framework)) provides three benchmark suites — HumanEval+, MBPP+, and BigCodeBench — organized into three execution tiers (smoke ~5 min, mini ~30 min, full ~2 hr). The Phase 1 kill-switch evaluation uses this framework as follows:
+Rune's benchmark evaluation framework (described in [Methods](methods.md#benchmark-evaluation-framework)) provides six benchmark suites — HumanEval, MBPP, APPS, BigCodeBench, DS-1000, and LiveCodeBench — organized into three execution tiers (smoke ~5 min, mini ~30 min, full ~2 hr). The Phase 1 kill-switch evaluation uses this framework as follows:
 
 The **primary** evaluation benchmark is HumanEval+ (EvalPlus), an extended version of HumanEval (Chen et al., 2021) with additional test cases that reduce false positives from undertested solutions. Phase 1 uses a held-out subset of 20--30 tasks, not the full benchmark, because Phase 1 is a minimal hypothesis test — statistical power over a small, well-controlled subset is sufficient to detect the **specified** threshold effect. The smoke tier enables rapid iteration during hyperparameter tuning; the full tier provides definitive measurements for the kill-switch decision.
 
 Each task is evaluated with k=5 samples. Tasks in the held-out subset are excluded from the training trajectory corpus so that the evaluation measures generalization to unseen problems, not memorization of training data. The subset is selected to be diverse in task type (string manipulation, arithmetic, data structures, algorithms) to avoid biasing the evaluation toward a narrow skill distribution.
 
-The development evaluation target is Gemma 2 2B (google/gemma-2-2b-it), which fits within consumer GPU memory constraints and enables rapid iteration. The Sakana Doc-to-LoRA checkpoint includes a "gemma_demo" variant compatible with this model. Production-scale evaluation will target Qwen2.5-Coder-7B-Instruct on the full benchmark suite including MBPP+ and BigCodeBench.
+The development evaluation target is Gemma 2 2B (google/gemma-2-2b-it), which fits within consumer GPU memory constraints and enables rapid iteration. The Sakana Doc-to-LoRA checkpoint includes a "gemma_demo" variant compatible with this model. Production-scale evaluation will target Qwen2.5-Coder-7B-Instruct on the full benchmark suite including MBPP, APPS, BigCodeBench, DS-1000, and LiveCodeBench.
+
+**SWE-Bench-Lite:** `benchmarks/swe_bench.py::score()` is now fully implemented with an env-gated clone/apply/pytest pipeline (previously raised `NotImplementedError`). This unblocks SWE-Bench-Lite as an additional evaluation surface for future phases.
 
 **Isolation note:** Phase 1 baseline runs in bfloat16 — NOT QLoRA.[^dettmers2023qlora] This isolation is deliberate: the Phase 1 experiment tests the trajectory-to-adapter hypothesis (does a Doc-to-LoRA hypernetwork[^charakorn2026doc2lora] trained on coding trajectories produce useful adapters?) independently of the quantization variable (does NF4 quantization degrade adapter quality?). QLoRA is introduced in Phase 2 after the bfloat16 baseline passes. Confounding these two variables in a single experiment would make a negative result uninterpretable.
 
@@ -71,10 +73,47 @@ The four baselines isolate distinct variables. The **vanilla model** establishes
 The **specified** tracking schema records all kill-switch evaluation runs, with adapter weights managed via the S-LoRA unified paging pattern[^sheng2023slora] during serving:
 
 ```
-run_id | phase | adapter_id | pass_at_1 | training_loss | adapter_cosine_diversity | delta_w_norm
+run_id | phase | adapter_id | pass_at_1 | training_loss | adapter_cosine_diversity | delta_w_norm | hunk_loss | hunk_accuracy | adapter_improvement | hunk_entropy
 ```
 
+The four diff-restricted fitness fields (`hunk_loss`, `hunk_accuracy`, `adapter_improvement`, `hunk_entropy`) are logged by the HPO overhaul in `scripts/optimization/run_training_hpo.py` and reflect per-hunk token-level training signal quality, independent of benchmark-level Pass@1.
+
 The gate decision is recorded as an MLflow run note: `"Gate PASSED"` or `"Gate FAILED — reassessing"`.
+
+---
+
+### Round-2 Strict Gate (Phase 4 Success Criterion)
+
+Beyond the Phase 1 kill-switch (which tests single-benchmark improvement over baseline), Phase 4 introduces a **strict multi-benchmark gate** for the round-2 hypernetwork distillation loop. This gate is implemented by `round2_gate.evaluate_round2_gate` and enforced at the CLI level by `scripts/evaluate_round2.py`.
+
+#### Gate Criterion
+
+The round-2 gate passes if and only if **both** conditions hold simultaneously:
+
+1. **Improvement bar:** ≥ 4 of the 6 required benchmarks show ≥ 2.0% Pass@1 improvement over the round-1 baseline.
+2. **Regression guard:** No single benchmark regresses by more than 1.0% Pass@1.
+
+**Required benchmarks:** `humaneval`, `mbpp`, `apps`, `bigcodebench`, `ds_1000`, `livecodebench`.
+
+This is a stricter criterion than the Phase 1 kill-switch (which tests a single benchmark with a 5% threshold). The multi-benchmark structure guards against adapters that improve on one benchmark by degrading performance on others — a failure mode that single-benchmark gates cannot detect.
+
+#### Verdict JSON
+
+`scripts/evaluate_round2.py` writes a structured verdict document with the following keys:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `passed` | `bool` | `true` if both gate conditions are satisfied |
+| `deltas` | `dict[str, float]` | Per-benchmark Pass@1 delta (round-2 minus round-1 baseline) |
+| `improved_count` | `int` | Number of benchmarks meeting the ≥ 2.0% improvement bar |
+| `max_regression` | `float` | Worst (most negative) delta across all required benchmarks |
+| `reasons` | `list[str]` | Human-readable strings explaining each failing condition |
+| `round2_adapter_id` | `str` | Adapter ID in `round2_<uuid[:8]>` format |
+| `scores` | `dict[str, float]` | Raw Pass@1 scores for the round-2 adapter on each benchmark |
+
+#### CI Integration
+
+`scripts/evaluate_round2.py` exits `0` on PASS and `1` on FAIL, making it directly composable with CI pipelines. A non-zero exit prevents round-2 adapter promotion and triggers reassessment. This parallels the Phase 1 kill-switch mechanism but operates at post-training evaluation time rather than mid-training.
 
 ---
 
@@ -155,6 +194,9 @@ The ablation targets derive from **specified** architecture choices in [Methods]
 - **Fitness weight \(\alpha\):** Default 0.7 (specified in the evolution operator fitness function \(\phi(a) = \alpha \cdot \text{pass\_rate}(a) + (1 - \alpha) \cdot \text{generalization}(a)\) in [Methods](methods.md)); ablation range TBD. The \(\alpha\) parameter controls specialization vs generalization trade-off — values closer to 1.0 favor task-specific adapters, values closer to 0.5 favor cross-task utility.
 - **Multi-adapter composition:** Additive accumulation \(\Delta W_{\text{composite}} = \Delta W_{\text{project}} + \Delta W_{\text{domain}} + \Delta W_{\text{task}}\) (proposed in Methods) vs single-adapter selection (specified default). The composition question is whether combining adapters from different hierarchy levels produces coherent behavior or introduces the interference documented by Zhang et al.[^zhang2025orthogonality] and Zou.[^zou2026merging]
 - **Merge operation:** Empirical test of whether merged adapters achieve higher fitness than individual components.[^prabhakar2024lorasoups] The merge operation is an ablation target in the Evolution Operator — it will only be retained if empirical evaluation confirms behavioral coherence.
+- **Diff-aware loss vs uniform loss:** `DiffAwareSFTTrainer` (hunk-weighted token loss via `DiffWeightedDataCollator`) vs baseline `SFTTrainer` (uniform token weighting). The diff-aware trainer assigns `changed_weight` to hunk tokens and `unchanged_weight` to context tokens when `pre_code`/`post_code` side-channels are present; without side-channels it falls back to identity weights (no-op on the objective). This ablation measures whether concentrating loss on changed lines improves adapter quality relative to uniform supervision.
+- **Oracle fallback modes:** `oracle_fallback="skip"` (default, drops records whose bin has no registered oracle — preserves the invariant that the hypernetwork learns only from oracle signal) vs `oracle_fallback="base_model"` (ablation, substitutes the bare base model as teacher for uncovered bins). The `"skip"` default is the conservative choice; `"base_model"` trades oracle purity for higher data utilization and may be appropriate when oracle coverage is below `min_oracle_coverage=0.8`.
+- **Round-2 vs round-1 Pass@1 delta:** Direct comparison of round-2 adapter scores against round-1 baseline across all six benchmarks (`humaneval`, `mbpp`, `apps`, `bigcodebench`, `ds_1000`, `livecodebench`). The round-2 strict gate (≥ 4/6 benchmarks improved ≥ 2.0% Pass@1, no regression > 1.0%) formalizes the threshold, but the full per-benchmark delta table is retained as an ablation artifact for understanding where oracle-teacher distillation provides the most and least benefit.
 
 #### Phase 4 Experiment Parameters
 

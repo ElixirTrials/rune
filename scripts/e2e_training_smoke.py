@@ -9,7 +9,7 @@ Three sections:
   1. LoRA fine-tuning: train direct LoRA params via functional injection
      to memorize a specific completion. Verify loss drops and the model
      generates the correct target tokens after training.
-  2. Shift-aware loss: verify _compute_kl_ce_loss applies the causal LM
+  2. Shift-aware loss: verify compute_kl_ce_loss applies the causal LM
      shift correctly.
   3. Adapter merging: train two LoRA adapters on different targets,
      TIES-merge them, verify the merged adapter retains both behaviors.
@@ -352,10 +352,10 @@ def main() -> int:
     # Section 2: Shift-Aware Loss Validation
     # ═════════════════════════════════════════════════════════
     print(f"\n{'─' * 65}")
-    print("[2/3] Shift-aware _compute_kl_ce_loss validation")
+    print("[2/3] Shift-aware compute_kl_ce_loss validation")
     print(f"{'─' * 65}")
 
-    from model_training.d2l_train import D2LTrainConfig, _compute_kl_ce_loss
+    from model_training.d2l_train import D2LTrainConfig, compute_kl_ce_loss
 
     d2l_config = D2LTrainConfig(
         sakana_checkpoint_path="dummy", alpha=0.5, temperature=2.0
@@ -363,7 +363,7 @@ def main() -> int:
 
     # Create logits where student == teacher → KL should be ~0
     logits = torch.randn(1, 10, base_model.config.vocab_size, device=device)
-    loss_same, m_same = _compute_kl_ce_loss(
+    loss_same, m_same = compute_kl_ce_loss(
         logits, logits, answer_start=3, config=d2l_config
     )
     check(
@@ -376,15 +376,15 @@ def main() -> int:
     # Loss at answer_start=1 (logit_start=0, full seq) vs answer_start=3 (logit_start=2)
     s = torch.randn(1, 10, 100, device=device)
     t = torch.randn(1, 10, 100, device=device)
-    loss_full, m_full = _compute_kl_ce_loss(s, t, answer_start=1, config=d2l_config)
-    loss_part, m_part = _compute_kl_ce_loss(s, t, answer_start=5, config=d2l_config)
+    loss_full, m_full = compute_kl_ce_loss(s, t, answer_start=1, config=d2l_config)
+    loss_part, m_part = compute_kl_ce_loss(s, t, answer_start=5, config=d2l_config)
     check(
         "Different answer_start → different loss",
         m_full["total_loss"] != m_part["total_loss"],
     )
 
     # Empty span guard
-    loss_empty, m_empty = _compute_kl_ce_loss(s, t, answer_start=20, config=d2l_config)
+    loss_empty, m_empty = compute_kl_ce_loss(s, t, answer_start=20, config=d2l_config)
     check("Empty span returns zero loss", m_empty["total_loss"] == 0.0)
     check("Empty span loss has requires_grad", loss_empty.requires_grad)
 

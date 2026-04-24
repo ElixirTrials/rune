@@ -24,8 +24,25 @@ Adapters are stored under a configurable root directory (default: `~/.rune/adapt
 | Component | Format | Example |
 |-----------|--------|---------|
 | Task type | Kebab-case task category | `bug-fix`, `feature-impl`, `refactor` |
-| Adapter ID | UUID v4 | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| Adapter ID | UUID v4 (or reserved pattern — see below) | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
 | Version | Monotonically increasing integer | `v1`, `v2`, `v3` |
+
+### Adapter ID Naming Conventions
+
+Not every adapter ID is a raw UUID. Two reserved naming patterns carry semantic meaning encoded in the ID itself:
+
+| Adapter class | ID pattern | Set by | Purpose |
+|---------------|------------|--------|---------|
+| Standard / round-1 hypernet output | `<uuid>` (v4) | Training pipeline | General-purpose adapters |
+| Oracle adapters | `oracle_<bin_key>` | `libs/corpus-producer/src/corpus_producer/trainer_bridge.py::invoke_bin_training` | Per-bin teacher adapters for round-2 distillation |
+| Round-2 hypernet adapters | `round2_<uuid[:8]>` | `libs/model-training/src/model_training/round2_train.py::register_round2_adapter` | Hypernetwork adapters produced by oracle-teacher distillation |
+
+**Bin key structure.** Oracle adapters are produced per corpus bin. There are 25 bins:
+
+- `<phase>_<benchmark>` for 4 pipeline phases (`decompose`, `plan`, `code`, `integrate`) × 6 benchmarks (`humaneval`, `mbpp`, `apps`, `bigcodebench`, `ds_1000`, `livecodebench`) = 24 bins.
+- `diagnose_pooled` for the 5th phase, pooled across all benchmarks = 1 bin.
+
+Example oracle IDs: `oracle_code_humaneval`, `oracle_plan_mbpp`, `oracle_diagnose_pooled`.
 
 ### File Contents
 
@@ -60,6 +77,7 @@ The schema is defined as a SQLModel class (`AdapterRecord`). Fields with `(index
 | `pass_rate` | REAL | 0.0-1.0, NULL if unevaluated |
 | `fitness_score` | REAL | Composite fitness, NULL if unevaluated |
 | `source` | TEXT NOT NULL | 'distillation', 'evolution', 'manual' |
+| `task_type` reserved values | — | `round2_hypernet` is reserved for round-2 distillation adapters; `oracle_<bin_key>` patterns are set for per-bin oracle adapters |
 | `session_id` | TEXT NOT NULL | Session that produced this |
 | `is_archived` | INTEGER DEFAULT 0 | Soft delete |
 | `parent_ids` | TEXT | JSON list of parent adapter IDs |
@@ -100,6 +118,16 @@ Metadata fields (`pass_rate`, `fitness_score`, `is_archived`) are mutable becaus
 ### New Versions, Not Overwrites
 
 When the evolution operator produces a new adapter from one or more parents, it creates a new adapter entry with `parent_ids` (a JSON list) pointing to the sources. The original adapters remain unchanged. The version field tracks lineage — version 2 of an adapter is a successor to version 1, but version 1 still exists and is still queryable.
+
+### Round-2 Lineage
+
+Round-2 hypernetwork adapters follow a specific lineage pattern distinct from evolution merges:
+
+- `generation = 2` — distinguishes round-2 adapters from round-1 output.
+- `parent_ids = json.dumps(sorted(oracle_ids))` — the sorted list of teacher oracle adapter IDs used during training (up to 25, one per bin).
+- `task_type = "round2_hypernet"` — reserved value identifying the adapter class.
+
+`get_lineage(id)` on a round-2 adapter walks the `parent_ids` chain back to the oracle set, giving a reproducible audit trail from the distilled hypernetwork output back to every teacher signal that shaped it. Because `parent_ids` is sorted, two round-2 adapters trained from the same oracle set have byte-identical `parent_ids` strings, which simplifies reproducibility checks.
 
 ---
 

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import re
@@ -1900,6 +1901,11 @@ def main() -> None:
         default=5,
         help="Max evolutionary iterations per phase (default: 5, early stops on success)",
     )
+    parser.add_argument(
+        "--output-json",
+        default=None,
+        help="If set, serialize the pipeline return dict to this path as JSON",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -1932,6 +1938,10 @@ def main() -> None:
     logger.info("Final tests passed: %s", result["final_tests_passed"])
     logger.info("Adapters saved to: %s", result["adapter_dir"])
     logger.info("Adapters registered: %d", len(result["adapters"]))
+
+    if args.output_json:
+        Path(args.output_json).write_text(json.dumps(result, default=str, indent=2))
+        logger.info("Pipeline output written to %s", args.output_json)
 
 
 if __name__ == "__main__":

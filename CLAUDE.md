@@ -6,7 +6,7 @@ Local-first coding agent that encodes coding trajectories into LoRA adapters, bu
 
 ```bash
 uv sync --all-extras
-uv run pytest                    # 314+ tests, ~30s on GPU
+uv run pytest                    # 776+ tests, ~30s on GPU
 uv run pytest -x                 # stop on first failure
 uv run pytest tests/             # root-level integration tests only
 uv run ruff check                # lint
@@ -20,9 +20,15 @@ uv run mypy libs/ services/      # type check
 - `scripts/e2e_test.py` — End-to-end test exercising full pipeline
 - `scripts/benchmark_challenging.py` — 3-task end-to-end benchmark
 - `scripts/optimization/run_optimization.py` — Bayesian parameter optimization (Optuna)
+- `scripts/optimization/run_training_hpo.py` — HPO overhaul (Optuna + Hyperband pruner, hunk-weighted metrics, 4-bit NF4 heldout eval)
 - `scripts/experiment_harness.py` — Isolated adapter/prompt experiments (~15s/trial)
 - `scripts/swarm_workers.py` — Training pool manager (QLoRA in subprocess, vLLM sleep/wake)
 - `scripts/swarm_evolution.py` — Evolution worker (TIES/DARE merge, pruning, lineage)
+- `scripts/train.sh` — Unified training CLI wrapper (threads warmup_ratio, LoRA overrides, NEFTune, diff-aware loss)
+- `scripts/phase_corpus_producer.py` — 25-bin oracle corpus producer (GPU sharding via `--shard IDX/TOTAL --cuda-visible-devices`)
+- `scripts/train_round2.py` — Round-2 oracle-teacher distillation training
+- `scripts/evaluate_round2.py` — Strict success gate (≥4/6 benchmarks ≥2.0% Pass@1, no regression >1.0%); exits 0 PASS / 1 FAIL
+- `scripts/validate_oracles.py` — Per-oracle validator (≥3% Pass@1 improvement over base)
 
 ## Conventions
 
@@ -50,7 +56,16 @@ The scripts layer is the primary execution path. Services provide REST APIs but 
 - `libs/model-training/src/model_training/sakana_d2l.py` — Sakana Doc-to-LoRA adapter generation (HyperLoRA perceiver → PEFT adapter)
 - `libs/model-training/src/model_training/hypernetwork.py` — DocToLoraHypernetwork (Perceiver-based)
 - `libs/model-training/src/model_training/merging.py` — TIES/DARE adapter merging
-- `libs/adapter-registry/src/adapter_registry/registry.py` — AdapterRegistry (SQLite CRUD)
+- `libs/model-training/src/model_training/diff_loss.py` — `DiffAwareSFTTrainer` + `DiffWeightedDataCollator` (hunk-weighted token loss, identity fallback)
+- `libs/model-training/src/model_training/kill_switch.py` — Kill-switch wiring (≥5% HumanEval Pass@1 regression trigger, k=5, 20–30 held-out tasks)
+- `libs/model-training/src/model_training/training_common.py` — `mlflow_log_params` shared helper
+- `libs/model-training/src/model_training/round2_config.py` — `Round2TrainConfig` (Pydantic, inherits `D2LTrainConfig`)
+- `libs/model-training/src/model_training/oracle_cache.py` — `OracleAdapterCache` (LRU max 4, stores `LoraDict` tensor dicts), bin-key lookup, coverage audit
+- `libs/model-training/src/model_training/round2_train.py` — Round-2 training loop (`apply_functional_lora`, KL+CE loss, `train_d2l_qwen3_round2`, `register_round2_adapter`)
+- `libs/model-training/src/model_training/round2_gate.py` — `evaluate_round2_gate` strict success gate
+- `libs/adapter-registry/src/adapter_registry/registry.py` — AdapterRegistry (SQLite CRUD); reserved `task_type="round2_hypernet"`, `generation=2`, `parent_ids=json.dumps(sorted(oracle_ids))`
+- `libs/corpus-producer/src/corpus_producer/trainer_bridge.py` — Sets oracle adapter IDs (`oracle_<bin_key>`)
+- `libs/corpus-producer/src/corpus_producer/s3_uploader.py` — S3 manifest upload (lazy boto3 import, graceful degradation)
 - `libs/inference/src/inference/provider.py` — InferenceProvider ABC (with temperature/top_p/repetition_penalty)
 - `libs/shared/src/shared/sandbox.py` — SubprocessBackend for code execution
 

@@ -46,6 +46,7 @@ class PipelinePhase(str, Enum):
     PLAN = "plan"
     CODE = "code"
     INTEGRATE = "integrate"
+    DIAGNOSE = "diagnose"
 
 
 class AdapterRef(BaseModel):

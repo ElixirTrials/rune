@@ -63,6 +63,7 @@ dev = [
     "mlflow>=3.8.1",
     "pytest-xdist>=3.8.0",
     "requests-mock>=1.12.1",
+    "pandas-stubs>=3.0.0.260204",
 ]
 
 [tool.uv.sources]
@@ -87,6 +88,7 @@ members = [
     "libs/model-training",
     "libs/shared",
     "libs/adapter-registry",
+    "libs/corpus-producer",
 ]
 
 [tool.uv]
@@ -143,6 +145,15 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
+    "boto3",
+    "boto3.*",
+    "botocore",
+    "botocore.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
     "fitz",
     "fitz.*",
 ]
@@ -152,6 +163,8 @@ ignore_missing_imports = true
 module = [
     "adapter_registry",
     "adapter_registry.*",
+    "corpus_producer",
+    "corpus_producer.*",
     "evolution_svc",
     "evolution_svc.*",
     "model_training",
@@ -159,7 +172,7 @@ module = [
     "rune_agent",
     "rune_agent.*",
     "shared",
-    "shared.models",
+    "shared.*",
     "training_svc",
     "training_svc.*",
 ]
@@ -210,15 +223,17 @@ module = [
     "optuna",
     "optuna.*",
     "inference",
-    "inference.factory",
-    "inference.transformers_provider",
+    "inference.*",
     "evaluation",
-    "evaluation.metrics",
+    "evaluation.*",
     "scoring",
     "task_pool",
     "template_library",
     "evalplus",
     "evalplus.*",
+    "run_training_hpo",
+    "pandas",
+    "pandas.*",
 ]
 ignore_missing_imports = true
 
@@ -229,6 +244,7 @@ markers = [
     "e2e: end-to-end API workflow tests",
     "integration: marks tests as integration tests",
     "requires_gpu: test requires GPU libraries (torch, peft, trl)",
+    "slow: test is slow; opt-in via -m slow (e.g. encoder round-trip GPU tests)",
 ]
 filterwarnings = [
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
@@ -246,6 +262,7 @@ pythonpath = [
     "services/rune-agent/src",
     "services/training-svc/src",
     "libs/adapter-registry/src",
+    "libs/corpus-producer/src",
     "libs/evaluation/src",
     "libs/events-py/src",
     "libs/inference/src",

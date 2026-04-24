@@ -13,11 +13,13 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from model_training.d2l_diff import compress_diff
 
 logger = logging.getLogger(__name__)
+
+SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanation."
 
 __all__ = [
     "format_for_distillation",
@@ -29,6 +31,7 @@ __all__ = [
     "load_jsonl",
     "split_by_task_id",
     "normalize_mined_pairs",
+    "pairs_to_chat_messages",
 ]
 
 # ---------------------------------------------------------------------------
@@ -683,10 +686,12 @@ def _make_pair_record(
     idx: int,
     activation: str,
     teacher: str,
+    task_description: str = "",
 ) -> dict[str, Any]:
     """Build a single training pair record."""
     return {
         "task_id": task_id,
+        "task_description": task_description,
         "activation_text": activation,
         "teacher_text": teacher,
         "metadata": {
@@ -741,7 +746,15 @@ def normalize_mined_pairs(
         return compress_diff(raw, max_lines=max_diff_lines) if compress else raw
 
     def _record(idx: int, activation: str, teacher: str) -> dict[str, Any]:
-        return _make_pair_record(task_id, outcome, language, idx, activation, teacher)
+        return _make_pair_record(
+            task_id,
+            outcome,
+            language,
+            idx,
+            activation,
+            teacher,
+            task_description=task_desc,
+        )
 
     records: list[dict[str, Any]] = []
     step_idx = 0
@@ -777,3 +790,236 @@ def normalize_mined_pairs(
             bi += 1
 
     return records
+
+
+# ---------------------------------------------------------------------------
+# SFT chat-message converter (consumed by trainer.py for mined-pair training)
+# ---------------------------------------------------------------------------
+
+
+def _extract_revision(activation_text: str, teacher_text: str) -> str:
+    r"""Return the assistant-side text from a mined pair record.
+
+    A pair's ``teacher_text`` is always ``activation_text`` plus a trailing
+    section produced by :func:`normalize_mined_pairs` — either
+    ``"\n\n## Revision\n..."`` for review cycles or
+    ``"\n\n## Implementation\n..."`` for the initial commit pair. We return
+    that suffix verbatim so the model learns to output the section header
+    (which mirrors what reviewers see in diff tools) alongside the code.
+
+    When ``teacher_text`` is identical to ``activation_text`` (degenerate
+    record with no delta) an empty string is returned so the caller skips
+    the pair. When ``teacher_text`` does not start with ``activation_text``
+    (corrupt record), the full ``teacher_text`` is returned as a best-effort
+    fallback rather than dropping the datum silently.
+    """
+    if teacher_text.startswith(activation_text):
+        return teacher_text[len(activation_text) :].lstrip("\n")
+    return teacher_text
+
+
+def _extract_pre_revision(activation_text: str) -> str:
+    """Extract the ``## Current Code`` body from an activation_text string.
+
+    The activation_text produced by :func:`normalize_mined_pairs` looks like::
+
+        ## Task
+        <description>
+
+        ## Current Code
+        <diff>
+
+        ## Review Feedback
+        <feedback>
+
+    The ``## Current Code`` section is absent for initial-commit pairs whose
+    activation_text only contains ``## Task``.
+
+    Args:
+        activation_text: The activation-side prompt for one mined pair.
+
+    Returns:
+        The code body under ``## Current Code`` up to the next ``## ``
+        heading or end-of-string.  Returns ``""`` when the section is absent.
+    """
+    marker = "## Current Code\n"
+    start = activation_text.find(marker)
+    if start == -1:
+        return ""
+    body_start = start + len(marker)
+    # Find the next "## " heading that follows the marker.
+    next_heading = activation_text.find("\n## ", body_start)
+    if next_heading == -1:
+        return activation_text[body_start:].rstrip("\n")
+    return activation_text[body_start:next_heading].rstrip("\n")
+
+
+def _extract_post_revision(activation_text: str, teacher_text: str) -> str:
+    """Extract the code body from the assistant-side section of a pair.
+
+    Calls :func:`_extract_revision` then strips the leading section header
+    line (``## Revision`` or ``## Implementation``) so that ``post_code``
+    contains only the code body.
+
+    Args:
+        activation_text: The activation-side prompt for one mined pair.
+        teacher_text: The full teacher-side text (activation + revision).
+
+    Returns:
+        The code body after the section header, or ``""`` when
+        :func:`_extract_revision` returns empty (degenerate pair).
+    """
+    revision = _extract_revision(activation_text, teacher_text)
+    if not revision:
+        return ""
+    # Strip the first line if it looks like a section header.
+    first_newline = revision.find("\n")
+    if first_newline != -1:
+        first_line = revision[:first_newline]
+        if first_line.startswith("## "):
+            return revision[first_newline:].lstrip("\n")
+    return revision
+
+
+def _pairs_to_single_turn(
+    pairs: list[dict[str, Any]], system_prompt: str
+) -> tuple[list[list[dict[str, str]]], list[dict[str, str]]]:
+    """single_turn helper: one [system, user, assistant] per pair.
+
+    Returns:
+        Tuple of (conversations, pre_post_records) where each element of
+        pre_post_records is aligned 1:1 with the corresponding conversation.
+    """
+    conversations: list[list[dict[str, str]]] = []
+    pre_post_records: list[dict[str, str]] = []
+    for pair in pairs:
+        user = pair.get("activation_text", "")
+        teacher = pair.get("teacher_text", "")
+        assistant = _extract_revision(user, teacher)
+        if not assistant:
+            continue
+        conversations.append(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user},
+                {"role": "assistant", "content": assistant},
+            ]
+        )
+        pre_post_records.append(
+            {
+                "pre_code": _extract_pre_revision(user),
+                "post_code": _extract_post_revision(user, teacher),
+            }
+        )
+    return conversations, pre_post_records
+
+
+def _group_pairs_by_task(
+    pairs: list[dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    """Group pairs by source_task_id, preserving first-appearance order.
+
+    Falls back to ``task_id`` when ``metadata.source_task_id`` is missing.
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for pair in pairs:
+        meta = pair.get("metadata") or {}
+        key = meta.get("source_task_id") or pair.get("task_id", "")
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(pair)
+    return groups, order
+
+
+def pairs_to_chat_messages(
+    pairs: list[dict[str, Any]],
+    *,
+    mode: Literal["multi_turn", "single_turn"] = "multi_turn",
+    system_prompt: str = SYSTEM_PROMPT,
+) -> tuple[list[list[dict[str, str]]], list[dict[str, str]]]:
+    r"""Convert mined pair records into SFT chat conversations.
+
+    ``multi_turn`` (preferred when pairs share a ``source_task_id``): emits
+    one conversation per task grouping — ``[system, user_1, assistant_1,
+    user_2, assistant_2, ...]`` — where each (user, assistant) pair is one
+    review→revision cycle. This preserves the attempt-error-correction
+    structure so the adapter can encode the trajectory rather than only the
+    final code.
+
+    ``single_turn``: emits one conversation per pair (no clustering). Useful
+    when ``metadata.source_task_id`` is missing or the caller prefers flat
+    examples. Each conversation is ``[system, user, assistant]``.
+
+    Pairs are grouped in the order they appear in the input; within a group,
+    pairs are sorted by ``metadata.step_index`` to preserve chronological
+    order of review cycles. Empty input returns ``([], [])``.
+
+    Args:
+        pairs: List of pair records as emitted by ``normalize_mined_pairs``.
+            Each record must have ``activation_text`` and ``teacher_text``.
+            ``metadata.source_task_id`` and ``metadata.step_index`` are used
+            for grouping/ordering when present; fall back to ``task_id``.
+        mode: ``"multi_turn"`` clusters pairs by task_id; ``"single_turn"``
+            emits one conversation per pair.
+        system_prompt: System message for every conversation.
+
+    Returns:
+        A tuple ``(conversations, pre_post_records)``.
+
+        ``conversations`` is a list of chat-message lists suitable for
+        ``datasets.Dataset.from_list([{"messages": m} for m in convs])`` and
+        TRL's ``SFTTrainer`` with ``assistant_only_loss=True``.
+
+        ``pre_post_records`` is a list of ``{"pre_code": str, "post_code":
+        str}`` dicts aligned 1:1 with ``conversations``. For multi-turn
+        conversations the pre/post codes are the concatenation (joined by
+        ``"\\n\\n"``) of each individual turn's pre/post code.
+
+        Invalid or missing fields are handled gracefully: missing
+        ``activation_text`` / ``teacher_text`` produce empty strings, and
+        missing ``metadata`` keys fall back to empty string / 0 defaults.
+
+    Raises:
+        None: No exceptions are raised — invalid input fields fall back
+            to empty-string / zero defaults.
+    """
+    if not pairs:
+        return [], []
+
+    if mode == "single_turn":
+        return _pairs_to_single_turn(pairs, system_prompt)
+
+    # multi_turn: cluster by source_task_id (or task_id), sort by step_index.
+    groups, group_order = _group_pairs_by_task(pairs)
+    conversations: list[list[dict[str, str]]] = []
+    pre_post_records: list[dict[str, str]] = []
+    for key in group_order:
+        group = sorted(
+            groups[key],
+            key=lambda p: (p.get("metadata") or {}).get("step_index", 0),
+        )
+        messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+        turn_pre_codes: list[str] = []
+        turn_post_codes: list[str] = []
+        for pair in group:
+            user = pair.get("activation_text", "")
+            teacher = pair.get("teacher_text", "")
+            assistant = _extract_revision(user, teacher)
+            if not assistant:
+                continue
+            messages.append({"role": "user", "content": user})
+            messages.append({"role": "assistant", "content": assistant})
+            turn_pre_codes.append(_extract_pre_revision(user))
+            turn_post_codes.append(_extract_post_revision(user, teacher))
+        # A valid SFT conversation needs at least one user/assistant turn.
+        if len(messages) >= 3:
+            conversations.append(messages)
+            pre_post_records.append(
+                {
+                    "pre_code": "\n\n".join(turn_pre_codes),
+                    "post_code": "\n\n".join(turn_post_codes),
+                }
+            )
+    return conversations, pre_post_records
