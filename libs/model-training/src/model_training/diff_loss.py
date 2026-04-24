@@ -1,9 +1,11 @@
 """Line-level diff-aware loss weighting for SFT training.
 
-All GPU-dependent imports (torch, trl, transformers) are deferred inside
-function bodies to ensure CPU-only importability (INFRA-05).
+GPU-heavy imports (torch, transformers) are deferred inside function bodies to
+ensure CPU-only importability (INFRA-05).
 
-Module-level imports: stdlib + typing only.
+trl.SFTTrainer is imported at module top-level with a try/except guard so that
+``DiffAwareSFTTrainer`` is importable on CPU-only machines (it falls back to
+subclassing ``object`` when trl is absent).
 """
 
 from __future__ import annotations
@@ -11,6 +13,14 @@ from __future__ import annotations
 import difflib
 import logging
 from typing import Any
+
+try:
+    from trl import SFTTrainer  # type: ignore[attr-defined]
+
+    _TRL_AVAILABLE = True
+except ImportError:
+    SFTTrainer = object  # type: ignore[misc,assignment]
+    _TRL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +433,129 @@ class DiffWeightedDataCollator:
 
 
 # ---------------------------------------------------------------------------
+# Pure weighted-loss helper (no Trainer base dependency — unit-testable)
+# ---------------------------------------------------------------------------
+
+
+def _compute_weighted_loss(
+    logits: Any,
+    labels: Any,
+    loss_weights: Any,
+) -> Any:
+    """Compute weighted per-token cross-entropy loss.
+
+    Applies the causal-LM shift (``logits[:, :-1]`` vs ``labels[:, 1:]``),
+    masks IGNORE_INDEX positions, and returns the weighted mean:
+
+        L = sum(per_token_CE * w * mask) / sum(w * mask)
+
+    This reduces to standard mean CE when all ``loss_weights == 1.0``.
+
+    Args:
+        logits: Float tensor of shape ``[batch, seq_len, vocab_size]``.
+        labels: Long tensor of shape ``[batch, seq_len]`` with
+            ``IGNORE_INDEX`` (``-100``) for masked positions.
+        loss_weights: Float tensor of shape ``[batch, seq_len]``.
+
+    Returns:
+        Scalar loss tensor.
+    """
+    import torch.nn.functional as F  # noqa: N812
+
+    # Causal-LM shift: predict token t+1 from hidden state at t.
+    shift_logits = logits[:, :-1, :].contiguous()  # [B, S-1, V]
+    shift_labels = labels[:, 1:].contiguous()  # [B, S-1]
+    shift_weights = loss_weights[:, 1:].contiguous()  # [B, S-1]
+
+    # Per-token CE with no internal reduction.
+    per_token_loss = F.cross_entropy(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1),
+        ignore_index=IGNORE_INDEX,
+        reduction="none",
+    ).view(shift_labels.shape)  # [B, S-1]
+
+    label_mask = (shift_labels != IGNORE_INDEX).float()  # [B, S-1]
+    weighted = per_token_loss * shift_weights * label_mask
+    denom = (shift_weights * label_mask).sum()
+
+    # Guard against zero denominator (all-masked batch).
+    loss = weighted.sum() / denom.clamp(min=1e-8)
+    return loss
+
+
+# ---------------------------------------------------------------------------
+# DiffAwareSFTTrainer
+# ---------------------------------------------------------------------------
+
+
+class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
+    """SFTTrainer that applies per-token loss weights from the batch.
+
+    Expects the data collator (e.g. ``DiffWeightedDataCollator``) to populate
+    ``batch["loss_weights"]`` as a ``Tensor[batch, seq_len]`` float32 aligned
+    with ``labels``.  The weighted loss is:
+
+        L = sum(per_token_CE * loss_weights * label_mask) /
+            sum(loss_weights * label_mask)
+
+    where ``label_mask = (labels != IGNORE_INDEX)``.  This reduces to the
+    standard CE loss when all ``loss_weights == 1.0``, so the
+    identity-under-uniform-weights invariant holds.
+
+    When ``loss_weights`` is absent from the batch, falls back to standard
+    SFTTrainer loss (no ``KeyError``).
+    """
+
+    def compute_loss(
+        self,
+        model: Any,
+        inputs: dict[str, Any],
+        return_outputs: bool = False,
+        num_items_in_batch: int | None = None,
+    ) -> Any:
+        """Compute weighted cross-entropy loss.
+
+        Pops ``loss_weights`` from ``inputs`` before the forward pass so the
+        model never receives an unexpected keyword argument.  When
+        ``loss_weights`` is absent, delegates to the parent implementation.
+
+        Args:
+            model: The language model.
+            inputs: Batch dict (possibly containing ``"loss_weights"``).
+            return_outputs: If ``True``, return ``(loss, outputs)`` tuple.
+            num_items_in_batch: Passed through to parent when falling back.
+
+        Returns:
+            Scalar loss, or ``(loss, outputs)`` when ``return_outputs=True``.
+        """
+        loss_weights = inputs.pop("loss_weights", None)
+
+        if loss_weights is None:
+            # No weights provided — delegate to standard SFTTrainer loss.
+            if _TRL_AVAILABLE:
+                return super().compute_loss(
+                    model,
+                    inputs,
+                    return_outputs=return_outputs,
+                    num_items_in_batch=num_items_in_batch,
+                )
+            # CPU-only stub path (trl not installed): plain CE via forward.
+            outputs = model(**inputs)
+            return (outputs.loss, outputs) if return_outputs else outputs.loss
+
+        outputs = model(**inputs)
+        logits = outputs.logits
+        labels = inputs["labels"]
+
+        # Move loss_weights to the same device as logits.
+        loss_weights = loss_weights.to(logits.device)
+
+        loss = _compute_weighted_loss(logits, labels, loss_weights)
+        return (loss, outputs) if return_outputs else loss
+
+
+# ---------------------------------------------------------------------------
 # Trainer factory
 # ---------------------------------------------------------------------------
 
@@ -441,7 +574,8 @@ def build_diff_aware_sft_trainer(
     """Build an SFTTrainer that uses diff-aware loss weighting.
 
     Constructs a :class:`DiffWeightedDataCollator` wrapping the default TRL
-    completion-only collator, then instantiates ``trl.SFTTrainer`` with it.
+    completion-only collator, then instantiates :class:`DiffAwareSFTTrainer`
+    with it.
 
     The ``tokenizer`` kwarg enables the hunk (line-level diff) path in the
     collator.  When ``None`` (default), the collator falls back to the legacy
@@ -464,12 +598,9 @@ def build_diff_aware_sft_trainer(
             ``tokenizer`` is ``None`` and ``processing_class`` is provided.
 
     Returns:
-        A configured ``trl.SFTTrainer`` instance.
+        A configured :class:`DiffAwareSFTTrainer` instance.
     """
-    from trl import (  # type: ignore[attr-defined]
-        DataCollatorForCompletionOnlyLM,
-        SFTTrainer,
-    )
+    from trl import DataCollatorForCompletionOnlyLM  # type: ignore[attr-defined]
 
     resolved_tokenizer = tokenizer if tokenizer is not None else processing_class
 
@@ -484,7 +615,7 @@ def build_diff_aware_sft_trainer(
         tokenizer=resolved_tokenizer,
     )
 
-    return SFTTrainer(
+    return DiffAwareSFTTrainer(
         model=model,
         args=args,
         train_dataset=train_dataset,

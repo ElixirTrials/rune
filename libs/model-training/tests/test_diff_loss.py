@@ -334,3 +334,265 @@ class TestDiffWeightedDataCollator:
             "pre_code/post_code" in rec.message or "fallback" in rec.message.lower()
             for rec in caplog.records
         ), "expected a fallback warning in logs"
+
+
+# ---------------------------------------------------------------------------
+# _compute_weighted_loss tests (pure function, no Trainer needed)
+# ---------------------------------------------------------------------------
+
+
+class TestComputeWeightedLoss:
+    """Unit tests for the pure _compute_weighted_loss helper.
+
+    All tests use a tiny stub model that returns fixed logits; no trl/GPU
+    required.
+    """
+
+    def _make_inputs(
+        self,
+        batch: int = 1,
+        seq: int = 4,
+        vocab: int = 8,
+        seed: int = 0,
+    ):
+        """Return (logits, labels, all-ones weights) tensors."""
+        import torch
+
+        torch.manual_seed(seed)
+        logits = torch.randn(batch, seq, vocab)
+        # Labels: first and last positions masked, middle ones active.
+        labels = torch.full((batch, seq), IGNORE_INDEX, dtype=torch.long)
+        for b in range(batch):
+            for s in range(1, seq - 1):
+                labels[b, s] = (b * seq + s) % vocab
+        loss_weights = torch.ones(batch, seq)
+        return logits, labels, loss_weights
+
+    def test_identity_under_uniform_weights(self) -> None:
+        """All weights == 1.0 → matches standard mean CE on labeled tokens."""
+        import torch.nn.functional as F  # noqa: N812
+        from model_training.diff_loss import _compute_weighted_loss
+
+        logits, labels, loss_weights = self._make_inputs(batch=1, seq=4)
+
+        got = _compute_weighted_loss(logits, labels, loss_weights)
+
+        # Reference: standard CE with shift, mean over non-masked shifted tokens.
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
+        ref = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="mean",
+        )
+
+        assert got.item() == pytest.approx(ref.item(), rel=1e-5)
+
+    def test_weighted_loss_correctness(self) -> None:
+        """Manually computed weighted mean matches _compute_weighted_loss."""
+        import torch
+        import torch.nn.functional as F  # noqa: N812
+        from model_training.diff_loss import _compute_weighted_loss
+
+        logits, labels, _ = self._make_inputs(batch=1, seq=4)
+        # weights: [0.5, 1.0, 0.0, 2.0]
+        loss_weights = torch.tensor([[0.5, 1.0, 0.0, 2.0]])
+
+        got = _compute_weighted_loss(logits, labels, loss_weights)
+
+        # Manual reference (causal shift: predict token[1..] from logits[0..]).
+        shift_logits = logits[:, :-1, :]  # [1, 3, V]
+        shift_labels = labels[:, 1:]  # [1, 3]
+        shift_weights = loss_weights[:, 1:]  # [1, 3] → [1.0, 0.0, 2.0]
+
+        per_token = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="none",
+        ).view(shift_labels.shape)  # [1, 3]
+
+        label_mask = (shift_labels != IGNORE_INDEX).float()
+        numerator = (per_token * shift_weights * label_mask).sum()
+        denominator = (shift_weights * label_mask).sum()
+        expected = (numerator / denominator).item()
+
+        assert got.item() == pytest.approx(expected, rel=1e-5)
+
+    def test_loss_weights_popped_from_inputs(self) -> None:
+        """loss_weights must NOT reach model(**inputs)."""
+        import torch
+        from model_training.diff_loss import DiffAwareSFTTrainer
+
+        # Build a minimal trainer subclass that overrides __init__ to avoid
+        # the heavy SFTTrainer constructor.
+        class _StubTrainer(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                pass  # skip SFTTrainer.__init__
+
+        trainer = _StubTrainer()
+
+        logits_tensor = torch.randn(1, 4, 8)
+        labels_tensor = torch.tensor([[IGNORE_INDEX, 1, 2, IGNORE_INDEX]])
+
+        received_keys: list[list[str]] = []
+
+        class _FakeOutputs:
+            logits = logits_tensor
+
+        def _fake_model(**kwargs):  # type: ignore[return]
+            received_keys.append(list(kwargs.keys()))
+            return _FakeOutputs()
+
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "labels": labels_tensor,
+            "loss_weights": torch.ones(1, 4),
+        }
+        trainer.compute_loss(_fake_model, inputs, return_outputs=False)  # type: ignore[arg-type]
+
+        assert received_keys, "model was never called"
+        assert "loss_weights" not in received_keys[0], (
+            "loss_weights leaked into model(**inputs)"
+        )
+
+    def test_missing_loss_weights_no_keyerror(self) -> None:
+        """When batch has no loss_weights, compute_loss does not raise."""
+        import torch
+        from model_training.diff_loss import DiffAwareSFTTrainer
+
+        class _StubTrainer(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                pass
+
+        trainer = _StubTrainer()
+
+        logits_tensor = torch.randn(1, 4, 8)
+        labels_tensor = torch.tensor([[IGNORE_INDEX, 1, 2, IGNORE_INDEX]])
+
+        class _FakeOutputs:
+            logits = logits_tensor
+            loss = torch.tensor(1.23)
+
+        def _fake_model(**kwargs):  # type: ignore[return]
+            return _FakeOutputs()
+
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "labels": labels_tensor,
+            # no "loss_weights" key
+        }
+
+        # Should not raise; falls back to outputs.loss.
+        loss = trainer.compute_loss(_fake_model, inputs, return_outputs=False)  # type: ignore[arg-type]
+        assert loss is not None
+
+    def test_batch_shape_handling(self) -> None:
+        """batch=2, seq=3: weighted reduction is correct across rows."""
+        import torch
+        import torch.nn.functional as F  # noqa: N812
+        from model_training.diff_loss import _compute_weighted_loss
+
+        torch.manual_seed(42)
+        batch, seq, vocab = 2, 3, 6
+        logits = torch.randn(batch, seq, vocab)
+        labels = torch.tensor(
+            [
+                [IGNORE_INDEX, 2, 3],
+                [IGNORE_INDEX, 4, 1],
+            ]
+        )
+        loss_weights = torch.tensor(
+            [
+                [1.0, 2.0, 0.5],
+                [1.0, 0.5, 3.0],
+            ]
+        )
+
+        got = _compute_weighted_loss(logits, labels, loss_weights)
+
+        # Manual reference.
+        shift_logits = logits[:, :-1, :]  # [2, 2, V]
+        shift_labels = labels[:, 1:]  # [2, 2]
+        shift_weights = loss_weights[:, 1:]  # [2, 2]
+        per_token = F.cross_entropy(
+            shift_logits.reshape(-1, vocab),
+            shift_labels.reshape(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="none",
+        ).view(batch, seq - 1)
+        label_mask = (shift_labels != IGNORE_INDEX).float()
+        expected = (
+            (per_token * shift_weights * label_mask).sum()
+            / (shift_weights * label_mask).sum()
+        ).item()
+
+        assert got.item() == pytest.approx(expected, rel=1e-5)
+
+    def test_return_outputs_tuple(self) -> None:
+        """return_outputs=True returns (loss, outputs) tuple."""
+        import torch
+        from model_training.diff_loss import DiffAwareSFTTrainer
+
+        class _StubTrainer(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                pass
+
+        trainer = _StubTrainer()
+
+        logits_tensor = torch.randn(1, 4, 8)
+        labels_tensor = torch.tensor([[IGNORE_INDEX, 1, 2, IGNORE_INDEX]])
+
+        class _FakeOutputs:
+            logits = logits_tensor
+
+        def _fake_model(**kwargs):  # type: ignore[return]
+            return _FakeOutputs()
+
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "labels": labels_tensor,
+            "loss_weights": torch.ones(1, 4),
+        }
+        result = trainer.compute_loss(_fake_model, inputs, return_outputs=True)  # type: ignore[arg-type]
+        assert isinstance(result, tuple) and len(result) == 2
+        loss, outputs = result
+        assert hasattr(loss, "item"), "first element should be a scalar tensor"
+        assert isinstance(outputs, _FakeOutputs)
+
+
+# ---------------------------------------------------------------------------
+# Integration test: factory returns DiffAwareSFTTrainer (requires trl)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDiffAwareSftTrainerIntegration:
+    def test_factory_returns_diff_aware_trainer(self) -> None:
+        """build_diff_aware_sft_trainer returns a DiffAwareSFTTrainer instance."""
+        pytest.importorskip("trl", reason="trl not installed")
+
+        from unittest.mock import MagicMock
+
+        from model_training.diff_loss import (
+            DiffAwareSFTTrainer,
+            build_diff_aware_sft_trainer,
+        )
+
+        model = MagicMock()
+        args = MagicMock()
+        dataset = MagicMock()
+        tokenizer = MagicMock()
+        tokenizer.pad_token_id = 0
+        tokenizer.eos_token_id = 1
+
+        trainer = build_diff_aware_sft_trainer(
+            model,
+            args,
+            dataset,
+            processing_class=tokenizer,
+        )
+
+        assert isinstance(trainer, DiffAwareSFTTrainer), (
+            f"Expected DiffAwareSFTTrainer, got {type(trainer)}"
+        )
