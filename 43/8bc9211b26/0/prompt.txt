@@ -1,0 +1,25 @@
+Read /Users/noahdolevelixir/Code/rune/instructions/2026-04-23-pr-28-summary.md end-to-end. Using the "Documentation revision checklist" section
+   (ordered Critical → Important → Minor with a suggested editing order at the bottom), update every affected doc to match PR #28. Work top-down
+  through the list, one file per subagent dispatch. Don't touch files marked Clean. Cross-reference the "File-level changelog" and "Part A/B/C"
+  sections for the canonical facts (module names, commit SHAs, adapter ID schemes, threshold values). After each file lands, show me the diff;
+  stop if anything is ambiguous rather than guessing. Don't commit — leave changes staged so I can review.
+
+---
+
+Run make docs-build and fix any errors or warnings
+
+---
+
+commit and push
+
+---
+
+Can you double check that everything mentioned here has been taken care of: https://github.com/ElixirTrials/rune/pull/28#issuecomment-4295005905
+
+---
+
+Let's address all the concerns, fix what needs fixing, comment and resolve everything in the PR. /superpowers:subagent-driven-development
+
+---
+
+I see some ci/cd failures
