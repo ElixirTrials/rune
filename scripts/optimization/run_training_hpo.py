@@ -389,8 +389,15 @@ def _stratify_heldout_split(
             f"Heldout split would leave train set empty: got N_tasks={n_tasks}; "
             "at least 2 tasks are required when fraction > 0."
         )
+    raw_heldout = math.ceil(n_tasks * fraction)
+    if raw_heldout >= n_tasks:
+        raise ValueError(
+            f"Heldout split would leave train set empty: fraction={fraction} with "
+            f"N_tasks={n_tasks} would hold out all tasks. Reduce fraction so at "
+            "least one task remains for training."
+        )
     n_heldout = min(
-        max(1, math.ceil(n_tasks * fraction)),
+        max(1, raw_heldout),
         n_tasks - 1,
     )
     heldout_task_ids = set(task_ids[:n_heldout])

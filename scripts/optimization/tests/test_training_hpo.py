@@ -303,7 +303,7 @@ def test_heldout_split_fraction_zero_returns_all_train() -> None:
 
 
 def test_heldout_split_single_task_raises() -> None:
-    """One task + fraction>0 must raise ValueError (empty train guard)."""
+    """Two pairs sharing one task_id (N_tasks=1) with fraction>0 raises ValueError."""
     pairs = [_mkpair("only", 0), _mkpair("only", 1)]
     with pytest.raises(ValueError, match="N_tasks=1"):
         _stratify_heldout_split(pairs, fraction=0.5, strategy="random", seed=0)
@@ -322,17 +322,18 @@ def test_heldout_split_two_tasks_half_fraction() -> None:
     assert train_tids.isdisjoint(heldout_tids)
 
 
-def test_heldout_split_clamp_fires_for_high_fraction() -> None:
-    """fraction=0.9 with 2 tasks must clamp to n_heldout=1 (not 2)."""
+def test_heldout_split_full_fraction_raises() -> None:
+    """n_tasks=2, fraction=1.0 must raise ValueError (would hold out all tasks)."""
     pairs = [_mkpair("a", 0), _mkpair("b", 0)]
-    train, heldout = _stratify_heldout_split(
-        pairs, fraction=0.9, strategy="random", seed=0
-    )
-    heldout_tids = {(p.get("metadata") or {}).get("source_task_id") for p in heldout}
-    train_tids = {(p.get("metadata") or {}).get("source_task_id") for p in train}
-    # ceil(0.9 * 2) = 2 → clamped to 1 so train is non-empty.
-    assert len(heldout_tids) == 1
-    assert len(train_tids) == 1
+    with pytest.raises(ValueError, match="would leave train set empty"):
+        _stratify_heldout_split(pairs, fraction=1.0, strategy="random", seed=0)
+
+
+def test_heldout_split_clamp_fires_for_high_fraction() -> None:
+    """fraction=0.9 with 2 tasks raises ValueError (ceil(0.9*2)=2 >= n_tasks)."""
+    pairs = [_mkpair("a", 0), _mkpair("b", 0)]
+    with pytest.raises(ValueError, match="would leave train set empty"):
+        _stratify_heldout_split(pairs, fraction=0.9, strategy="random", seed=0)
 
 
 def test_heldout_split_five_tasks_high_fraction_no_clamp() -> None:
