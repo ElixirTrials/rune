@@ -520,7 +520,7 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
         model: Any,
         inputs: dict[str, Any],
         return_outputs: bool = False,
-        num_items_in_batch: int | None = None,
+        num_items_in_batch: Any = None,
     ) -> Any:
         """Compute weighted cross-entropy loss.
 
