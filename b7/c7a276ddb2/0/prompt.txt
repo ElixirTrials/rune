@@ -15,3 +15,7 @@ commit and push
 ---
 
 Can you double check that everything mentioned here has been taken care of: https://github.com/ElixirTrials/rune/pull/28#issuecomment-4295005905
+
+---
+
+Let's address all the concerns, fix what needs fixing, comment and resolve everything in the PR. /superpowers:subagent-driven-development
