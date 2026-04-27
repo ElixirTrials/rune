@@ -1,0 +1,5 @@
+/superpowers:writing-plans Open a subagent to investigate each of the issues described in the training issues doc: '/Users/noahdolevelixir/Code/rune/instructions/training_issues.md'. Each agent should do a root cause analysis and record it's findings. Then you should take these findings and write a plan to solve all the issues. Then run a skeptical subagent to find flaws in your plan and run a peer review. Taking into account, the subagent's remarks, adjust your plan, present it to me, and upon acceptance, execute it in parallel with subagents.
+
+---
+
+Consider your plan carefully. Do you concur with the findings and proposal of your subagents?
