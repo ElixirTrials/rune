@@ -24,7 +24,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 os.environ.setdefault("INFERENCE_PROVIDER", "transformers")
 os.environ.setdefault("TRANSFORMERS_MODEL_NAME", "google/gemma-2-2b-it")
@@ -172,7 +172,8 @@ def _generate_with_adapter(
             )
 
         new_tokens = outputs[0][input_len:]
-        text = _tokenizer.decode(new_tokens, skip_special_tokens=True)
+        # decode() returns str | list[str]; 1D tensor → always str.
+        text = cast(str, _tokenizer.decode(new_tokens, skip_special_tokens=True))
 
         del model
         gc.collect()
