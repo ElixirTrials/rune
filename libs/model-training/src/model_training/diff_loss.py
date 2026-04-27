@@ -478,12 +478,15 @@ def _compute_weighted_loss(
     denom = (shift_weights * label_mask).sum()
 
     # Guard: all-masked batch (no labeled/weighted tokens).  Clamping at
-    # 1e-8 prevents NaN; the condition fires on degenerate pad-only batches
-    # which are correct behavior to skip, so this is DEBUG, not WARNING.
+    # 1e-8 prevents NaN; after Task 1's masking fix this can only fire on a
+    # genuinely degenerate batch — operators must see it (RCA-5 visibility).
     if denom.item() < 1e-8:
-        logger.debug(
+        # Visible at WARNING because after Task 1's masking fix, this can
+        # only fire on a genuinely degenerate batch — operators must see it.
+        logger.warning(
             "DiffAwareSFTTrainer: all-masked batch (denom=%.3e); "
-            "weighted loss clamped to 1e-8.",
+            "weighted loss clamped to 1e-8. If this fires every step, "
+            "training has zero gradient signal (RCA-5 H2 regression).",
             denom.item(),
         )
     weighted_loss = weighted.sum() / denom.clamp(min=1e-8)

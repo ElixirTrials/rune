@@ -262,3 +262,134 @@ def test_train_and_register_creates_adapter_dir(
 # def test_train_qlora_warm_start_loads_deltacoder(tmp_path, monkeypatch):
 #     """DeltaCoder adapter loads via PeftModel.from_pretrained on real GPU."""
 #     ...
+
+
+def test_attach_assistant_masks_preserves_diff_side_channels(monkeypatch) -> None:
+    """The diff-aware path needs both assistant_masks (for completion-only
+    masking inside DataCollatorForLanguageModeling) AND pre_code/post_code
+    side-channel columns (for DiffWeightedDataCollator.hunk_path). Stripping
+    pre_code/post_code is the reason trainer.py originally skipped this call,
+    which collapsed gradient signal (RCA-5 H2). Fix: preserve_columns must
+    keep listed columns intact while still attaching assistant_masks.
+
+    We mock compute_assistant_masks directly to avoid coupling this test to
+    Qwen-marker tokenization quirks — that pipeline is exercised by
+    test_trajectory.py. This test asserts ONLY the column-preservation
+    contract of _attach_assistant_masks.
+    """
+    import model_training.trajectory as trajectory_mod
+    from datasets import Dataset
+    from model_training.trainer import _attach_assistant_masks
+
+    # Stub compute_assistant_masks so we don't depend on tokenizer markers.
+    # It must return a dict with input_ids and assistant_masks keys; the
+    # dataset.map call will replace each row's payload with this dict.
+    monkeypatch.setattr(
+        trajectory_mod,
+        "compute_assistant_masks",
+        lambda tok, messages: {
+            "input_ids": [10, 20, 30, 40],
+            "assistant_masks": [0, 0, 1, 1],
+        },
+    )
+
+    ds = Dataset.from_list([
+        {
+            "messages": [
+                {"role": "user", "content": "fix the bug"},
+                {"role": "assistant", "content": "return 42"},
+            ],
+            "pre_code": "return 0",
+            "post_code": "return 42",
+        }
+    ])
+
+    class _DummyTok:  # placeholder — never called because we stubbed above
+        pass
+
+    out = _attach_assistant_masks(
+        ds, _DummyTok(), preserve_columns=["pre_code", "post_code"]
+    )
+    cols = set(out.column_names)
+    assert "input_ids" in cols, "missing input_ids"
+    assert "assistant_masks" in cols, "missing assistant_masks"
+    assert "pre_code" in cols, "pre_code dropped — diff path will lose hunk weights"
+    assert "post_code" in cols, "post_code dropped — diff path will lose hunk weights"
+    row = out[0]
+    assert row["pre_code"] == "return 0", "pre_code value corrupted"
+    assert row["post_code"] == "return 42", "post_code value corrupted"
+    # The non-preserved 'messages' column should be removed.
+    assert "messages" not in cols, "non-preserved column leaked through"
+
+
+def test_release_trial_state_strips_peft_config_residue() -> None:
+    """After _release_trial_state, the cached base model must not retain a
+    `peft_config` attribute (regression: RCA-3 — discarded unload() return
+    leaves residue that triggers double-wrap on the next trial).
+    """
+    from model_training.trainer import _release_trial_state
+
+    class _Base:
+        def __init__(self) -> None:
+            # Instance attribute mirrors real PEFT (BaseTuner.__init__ does
+            # self.peft_config = {...}); class-level attrs are not removable
+            # via delattr on the instance.
+            self.peft_config = {"default": object()}  # simulates PEFT residue
+
+    class _Wrapper:
+        def __init__(self, base: object) -> None:
+            self._base = base
+
+        def unload(self) -> object:
+            # Real PEFT unload() returns the base; we mirror that contract.
+            return self._base
+
+    class _FakeTrainer:
+        def __init__(self, model: object) -> None:
+            self.model = model
+
+    base = _Base()
+    wrapper = _Wrapper(base)
+    trainer = _FakeTrainer(wrapper)
+
+    _release_trial_state(trainer, wrapper, dataset=None, persist_base=True)
+
+    assert not hasattr(base, "peft_config"), \
+        "peft_config residue not cleared — next trial will double-wrap"
+
+
+def test_setup_lora_adapter_rejects_pre_wrapped_base() -> None:
+    """If the cached base still has a peft_config residue (e.g. previous
+    trial didn't clean up), _setup_lora_adapter must raise rather than
+    silently double-wrap (RCA-3 defence-in-depth).
+    """
+    from model_training.trainer import _setup_lora_adapter
+
+    class _DirtyBase:
+        def __init__(self) -> None:
+            self.peft_config = {"default": object()}
+
+    with pytest.raises(RuntimeError, match="peft_config residue"):
+        _setup_lora_adapter(
+            model=_DirtyBase(),
+            warm_start=None,
+            model_config_name=None,
+            resolved_rank=8,
+            resolved_alpha=16,
+            override_lora_alpha=None,
+            override_lora_dropout=None,
+        )
+
+
+def test_bnb_config_enables_fp32_cpu_offload() -> None:
+    """BitsAndBytesConfig in train_qlora must enable fp32 CPU offload so that
+    accelerate's auto device-mapping can spill to CPU instead of erroring at
+    load time when VRAM is tight (RCA-4 (b))."""
+    import importlib
+
+    trainer_mod = importlib.import_module("model_training.trainer")
+    fn = getattr(trainer_mod, "_build_bnb_config", None)
+    assert fn is not None, "_build_bnb_config helper not yet defined"
+
+    cfg = fn()
+    assert getattr(cfg, "llm_int8_enable_fp32_cpu_offload", False) is True

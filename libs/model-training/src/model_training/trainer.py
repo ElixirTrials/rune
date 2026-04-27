@@ -11,6 +11,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import logging
+import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -87,7 +88,22 @@ def _release_trial_state(
         peft_wrapper = getattr(trainer, "model", None) or model
         if hasattr(peft_wrapper, "unload"):
             try:
-                peft_wrapper.unload()
+                # PEFT's unload() returns the restored base. Capture it so we
+                # can strip the lingering `peft_config` attribute, which
+                # `BaseTuner.__init__` stamps onto the inner model
+                # (tuners_utils.py:301) and never removes — triggering the
+                # "Already found a peft_config" warning on the next wrap and
+                # causing adapter stacking + VRAM doubling (RCA-2 Cause 1,
+                # RCA-3).
+                restored = peft_wrapper.unload()
+                inner = restored if restored is not None else getattr(
+                    peft_wrapper, "model", None
+                )
+                if inner is not None and hasattr(inner, "peft_config"):
+                    try:
+                        delattr(inner, "peft_config")
+                    except AttributeError:
+                        pass
             except Exception:  # noqa: BLE001 — never break training cleanup
                 logger.exception(
                     "PEFT unload() failed; cache may be in a wrapped state"
@@ -103,6 +119,27 @@ def _release_trial_state(
         torch.cuda.empty_cache()
     except Exception:  # noqa: BLE001 — torch may be absent in CPU-only paths
         pass
+
+
+def _build_bnb_config() -> Any:
+    """Construct the NF4 BitsAndBytesConfig used by every QLoRA load.
+
+    ``llm_int8_enable_fp32_cpu_offload=True`` lets ``accelerate`` spill
+    transformer layers to CPU when VRAM is exhausted, instead of bnb erroring
+    at load time with an opaque message (RCA-4 (b)). This is graceful
+    degradation, not a perf default — CPU-offloaded forward is much slower,
+    but a slow trial is recoverable; a load-time crash is not.
+    """
+    import torch  # noqa: PLC0415
+    from transformers import BitsAndBytesConfig  # noqa: PLC0415
+
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+    )
 
 
 def _get_or_load_base(
@@ -132,6 +169,20 @@ def _get_or_load_base(
         model_kwargs["attn_implementation"] = attn_impl
     model = auto_model_cls.from_pretrained(model_id, **model_kwargs)
     tokenizer = auto_tokenizer_cls.from_pretrained(model_id)
+
+    # Surface silent CPU offload — accelerate's "auto" device map will spill
+    # transformer layers to CPU when VRAM is tight, with
+    # llm_int8_enable_fp32_cpu_offload=True making this silent. CPU-offloaded
+    # forward runs at ~1/100x throughput (review feedback on RCA-4 (b)).
+    device_map = getattr(model, "hf_device_map", None) or {}
+    cpu_layers = [k for k, v in device_map.items() if str(v) == "cpu"]
+    if cpu_layers:
+        logger.warning(
+            "Loaded %s with %d CPU-resident layers (accelerate fp32 offload). "
+            "Forward will be 30-100x slower than full-GPU. Reduce model size "
+            "or free VRAM before retry.",
+            model_id, len(cpu_layers),
+        )
 
     if _persist_base_enabled():
         _BASE_MODEL_CACHE[model_id] = (model, tokenizer)
@@ -385,6 +436,14 @@ def _setup_lora_adapter(
     """
     from model_training.peft_utils import build_qlora_config  # noqa: PLC0415
 
+    if hasattr(model, "peft_config"):
+        raise RuntimeError(
+            "Base model entered _setup_lora_adapter with peft_config residue. "
+            "Either a previous trial's _release_trial_state did not strip it "
+            "(RCA-3) or this base was loaded from a wrapped cache. Refusing "
+            "to double-wrap; clear peft_config or reload the base."
+        )
+
     if warm_start:
         from peft import PeftModel  # noqa: PLC0415
 
@@ -422,7 +481,12 @@ def _setup_lora_adapter(
     return model, lora_config
 
 
-def _attach_assistant_masks(dataset: Any, tokenizer: Any) -> Any:
+def _attach_assistant_masks(
+    dataset: Any,
+    tokenizer: Any,
+    *,
+    preserve_columns: list[str] | None = None,
+) -> Any:
     """Pre-tokenize ``messages`` rows and attach ``assistant_masks``.
 
     Bypasses TRL's ``get_training_chat_template`` pre-flight check on
@@ -433,15 +497,23 @@ def _attach_assistant_masks(dataset: Any, tokenizer: Any) -> Any:
     ``DataCollatorForLanguageModeling`` consumes ``assistant_masks`` from
     the batch at sft_trainer.py:179-180.
 
+    The diff-aware path passes ``preserve_columns=["pre_code", "post_code"]``
+    so :class:`~model_training.diff_loss.DiffWeightedDataCollator` still has
+    its hunk-weighting side-channels after pre-tokenization. Without this
+    preservation the diff path silently loses its weights AND its labels
+    (RCA-5 H2).
+
     Extracted from ``train_qlora`` to keep that function under the C901
     complexity threshold.
     """
     from model_training.trajectory import compute_assistant_masks  # noqa: PLC0415
 
+    keep = set(preserve_columns or [])
     original_columns = list(dataset.column_names)
+    columns_to_remove = [c for c in original_columns if c not in keep]
     return dataset.map(
         lambda ex: compute_assistant_masks(tokenizer, ex["messages"]),
-        remove_columns=original_columns,
+        remove_columns=columns_to_remove,
         desc="Pre-tokenizing with assistant_masks",
     )
 
@@ -649,6 +721,7 @@ def _build_run_params(
     override_lora_alpha: int | None,
     override_lora_dropout: float | None,
     neftune_noise_alpha: float | None,
+    total_steps: int | None = None,
 ) -> dict[str, object]:
     """Build the MLflow run-params dict from resolved training parameters.
 
@@ -662,6 +735,9 @@ def _build_run_params(
 
     None values are skipped defensively to avoid ``log_param('foo', None)``
     locking ``''`` and colliding with later ``log_param('foo', 5.0)``.
+    ``dataset.size_post_clustering`` and ``schedule.total_steps`` are always
+    included (even when None) so operators can detect step-starved trials
+    (RCA-5 H3) from the MLflow params panel.
     """
     raw: dict[str, object | None] = {
         "model_id": model_id,
@@ -689,7 +765,12 @@ def _build_run_params(
         "override_lora_dropout": override_lora_dropout,
         "requested_neftune_noise_alpha": neftune_noise_alpha,
     }
-    return {k: v for k, v in raw.items() if v is not None}
+    result: dict[str, object] = {k: v for k, v in raw.items() if v is not None}
+    # Always include these observability keys (even when None) so operators
+    # can detect step-starved trials without inspecting training curves.
+    result["dataset.size_post_clustering"] = dataset_size
+    result["schedule.total_steps"] = total_steps
+    return result
 
 
 def train_qlora(
@@ -817,9 +898,9 @@ def train_qlora(
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     # Deferred GPU imports — all in function body for CPU-only importability
-    import torch
+    import torch  # noqa: F401 — needed for _build_bnb_config's bfloat16 dtype
     from datasets import Dataset
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import SFTConfig, SFTTrainer
 
     # Resolve defaults from model registry and explicit overrides
@@ -856,13 +937,10 @@ def train_qlora(
         diff_aware_loss=diff_aware_loss,
     )
 
-    # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss)
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
+    # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss).
+    # _build_bnb_config also enables llm_int8_enable_fp32_cpu_offload so
+    # accelerate degrades gracefully when VRAM is tight (RCA-4 (b)).
+    bnb_config = _build_bnb_config()
 
     # Load model and tokenizer (or reuse the cached base when
     # RUNE_PERSIST_BASE_MODEL=1; see _get_or_load_base).
@@ -874,7 +952,17 @@ def train_qlora(
         auto_tokenizer_cls=AutoTokenizer,
     )
 
-    if not diff_aware_loss:
+    if diff_aware_loss:
+        # The diff path needs assistant_masks (for label masking via the
+        # inner DataCollatorForLanguageModeling) AND pre_code/post_code
+        # (for DiffWeightedDataCollator.hunk_path). Preserve the latter
+        # so we do not regress to RCA-5 H2 (zero gradient) or to identity
+        # weights (loss collapses to mean CE on assistant tokens only,
+        # ignoring hunks — still functional but defeats the purpose).
+        dataset = _attach_assistant_masks(
+            dataset, tokenizer, preserve_columns=["pre_code", "post_code"]
+        )
+    else:
         dataset = _attach_assistant_masks(dataset, tokenizer)
 
     model, lora_config = _setup_lora_adapter(
@@ -926,6 +1014,15 @@ def train_qlora(
     # Log training-run metadata (params streamed as per-step metrics by TRL's
     # MLflow reporter via training_args.report_to="mlflow"). When disabled,
     # contextlib.nullcontext is a zero-cost placeholder.
+    # Mirrors the schedule math in _build_sft_config. Kept inline rather than
+    # refactoring _build_sft_config to return a tuple (that would silently
+    # break train_qlora if the call site forgot to unpack — CPU-only tests
+    # don't exercise that call path).
+    _ds_size = len(dataset)
+    _steps_per_epoch = max(1, math.ceil(_ds_size / max(1, resolved_grad_accum)))
+    _total_steps_for_log: int | None = (
+        max(1, resolved_epochs * _steps_per_epoch) if _ds_size > 0 else None
+    )
     run_params = _build_run_params(
         model_id=model_id,
         warm_start=warm_start,
@@ -948,6 +1045,7 @@ def train_qlora(
         override_lora_alpha=override_lora_alpha,
         override_lora_dropout=override_lora_dropout,
         neftune_noise_alpha=neftune_noise_alpha,
+        total_steps=_total_steps_for_log,
     )
     with mlflow_run(
         enabled=mlflow_enabled,
@@ -956,8 +1054,28 @@ def train_qlora(
     ):
         trainer.train()
 
-        # Save adapter weights only (PEFT-aware: safetensors + adapter_config.json)
-        trainer.save_model(output_dir)
+        # Save adapter weights ONCE with save_embedding_layers=False so PEFT
+        # skips its hub-probe (which returns None under HF_HUB_OFFLINE=1 and
+        # emits the cosmetic "Could not find a config file" warning — RCA-1).
+        # Our LoRA never resizes embeddings, so the assumption is correct.
+        # We bypass trainer.save_model (which would call save_pretrained with
+        # default kwargs) and call save_pretrained directly to avoid the
+        # double-write race the reviewer flagged.
+        try:
+            from peft import PeftModel  # noqa: PLC0415
+
+            inner = getattr(trainer, "model", None)
+            if isinstance(inner, PeftModel):
+                inner.save_pretrained(output_dir, save_embedding_layers=False)
+            else:
+                # Non-PEFT path (shouldn't fire in QLoRA but stays correct).
+                trainer.save_model(output_dir)
+        except Exception:  # noqa: BLE001 — fall back to default save path
+            logger.exception(
+                "PeftModel.save_pretrained failed; falling back to "
+                "trainer.save_model (Qwen config warning may resurface)"
+            )
+            trainer.save_model(output_dir)
 
         if mlflow_enabled:
             mlflow_log_output_artifacts(output_dir)
