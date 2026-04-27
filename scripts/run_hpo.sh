@@ -57,6 +57,18 @@ nvidia-smi -L | grep -q "GPU 0" \
 mkdir -p "${HOME}/.rune"
 mkdir -p .tmp "$OUTPUT_ROOT"
 
+# ── HPO speed-ups ──────────────────────────────────────────────────────────
+# RUNE_PERSIST_BASE_MODEL=1 enables the in-process NF4 base-model cache
+# (libs/model-training/src/model_training/trainer.py:_get_or_load_base) so the
+# 9B base loads once per study instead of per trial. Heldout eval reuses the
+# same cached base via PeftModel + unload() at trial end.
+export RUNE_PERSIST_BASE_MODEL=1
+# Skip Hugging Face Hub HEAD checks per trial — the model is already cached
+# locally after the first download. Saves ~1-2 s per trial × N trials and
+# avoids flaky-network failure modes mid-study.
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+
 TS="$(date +%Y%m%d-%H%M%S)"
 LOG=".tmp/hpo_${TS}.log"
 
@@ -68,6 +80,7 @@ echo "Experiment:     $EXPERIMENT"
 echo "Output root:    $OUTPUT_ROOT"
 echo "MLflow URI:     ${MLFLOW_TRACKING_URI:-sqlite:///./mlflow.db}"
 echo "Log:            $LOG"
+echo "Persist base:   ${RUNE_PERSIST_BASE_MODEL} (HF_HUB_OFFLINE=${HF_HUB_OFFLINE})"
 echo
 
 ARGS=(

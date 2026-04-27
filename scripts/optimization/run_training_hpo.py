@@ -490,18 +490,24 @@ def _evaluate_adapter_on_heldout(
         BitsAndBytesConfig,
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model_id)
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
     )
-    base_model = AutoModelForCausalLM.from_pretrained(
+    # Reuse the trainer's cached NF4 base when RUNE_PERSIST_BASE_MODEL=1 is
+    # set by the HPO runner — avoids a second from_pretrained that doubles
+    # VRAM during eval. Use the trainer's _get_or_load_base so the cache is
+    # shared across train+eval within a study.
+    from model_training.trainer import _get_or_load_base  # noqa: PLC0415
+
+    base_model, tokenizer = _get_or_load_base(
         base_model_id,
-        quantization_config=bnb_config,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
+        bnb_config=bnb_config,
+        attn_impl=None,
+        auto_model_cls=AutoModelForCausalLM,
+        auto_tokenizer_cls=AutoTokenizer,
     )
     adapter_model = PeftModel.from_pretrained(base_model, adapter_path)
     adapter_model.eval()
@@ -579,6 +585,21 @@ def _evaluate_adapter_on_heldout(
         base_loss, _, _, _ = _forward_hunk_metrics(adapter_model, disable=True)
         if base_loss > 0.0 and math.isfinite(base_loss):
             adapter_improvement = 1.0 - (hunk_loss / base_loss)
+
+    # Detach the trial's adapter from the (possibly cached) base so the next
+    # trial's PeftModel.from_pretrained / get_peft_model sees a clean base.
+    # PeftModel.unload() removes the LoRA layers and returns the base ref;
+    # the original base is mutated in place, so we don't need to update the
+    # cache map. If the cache is hot, this restores it for the next trial.
+    try:
+        adapter_model.unload()
+    except Exception:  # noqa: BLE001 — never break HPO on cleanup
+        logger.exception("Heldout eval: PeftModel.unload() failed")
+    del adapter_model
+    import gc as _gc  # noqa: PLC0415
+
+    _gc.collect()
+    torch.cuda.empty_cache()
 
     return {
         "hunk_loss": float(hunk_loss),

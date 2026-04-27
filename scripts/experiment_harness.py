@@ -74,7 +74,7 @@ def setup() -> None:
     dtype = resolve_model_dtype(param_count=param_count, device=DEVICE)
     print(f"Inference dtype: {dtype}")
 
-    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=dtype)
+    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=dtype)
     _model.to(DEVICE)  # type: ignore[arg-type]
     _model.eval()
     print("Model loaded.\n")

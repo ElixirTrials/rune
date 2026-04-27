@@ -8,6 +8,7 @@ Module-level imports: stdlib only.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import logging
 import os
@@ -40,6 +41,101 @@ class _KnownWarningFilter(logging.Filter):
 
 
 _WARNINGS_SILENCED = False
+
+
+# ---------------------------------------------------------------------------
+# Persistent base-model cache (HPO speed-up)
+# ---------------------------------------------------------------------------
+#
+# Optuna's study.optimize runs trials in-process; without a cache each trial's
+# train_and_register calls AutoModelForCausalLM.from_pretrained from scratch
+# (~2.5 min cold; ~30-60 s warm via OS page cache). Persisting the NF4 base
+# model + tokenizer across trials skips that cost entirely. The HPO wrapper
+# enables this via RUNE_PERSIST_BASE_MODEL=1.
+#
+# Cached entry shape: model_id -> (base_model, tokenizer). The base model is
+# the *unwrapped* AutoModelForCausalLM — PEFT wrapping happens per-trial and
+# is undone via PeftModel.unload() at the end of each trial.
+
+_BASE_MODEL_CACHE: dict[str, tuple[Any, Any]] = {}
+
+
+def _persist_base_enabled() -> bool:
+    """Whether to share the NF4 base model across trials in this process."""
+    return os.environ.get("RUNE_PERSIST_BASE_MODEL") == "1"
+
+
+def _release_trial_state(
+    trainer: Any, model: Any, dataset: Any, *, persist_base: bool
+) -> None:
+    """Free trial-scoped state at the end of train_qlora.
+
+    When ``persist_base`` is True, the cached base model is preserved — only
+    the trainer, optimizer state, dataset, and any PEFT wrapper around the
+    base are released. When False, everything is released for full teardown.
+
+    PEFT wraps the base in place (``get_peft_model`` / ``PeftModel.from_pretrained``
+    mutate the base's module tree). To restore the cache to a usable state
+    for the next trial we call ``unload()`` which removes the LoRA layers
+    and restores the original ``AutoModelForCausalLM`` modules. SFTTrainer
+    holds the PeftModel reference at ``trainer.model`` (the outer ``model``
+    var may still point to the unwrapped base when ``peft_config`` is passed
+    rather than the warm-start path), so we unload via ``trainer.model``
+    when available and fall back to ``model``.
+    """
+    if persist_base:
+        peft_wrapper = getattr(trainer, "model", None) or model
+        if hasattr(peft_wrapper, "unload"):
+            try:
+                peft_wrapper.unload()
+            except Exception:  # noqa: BLE001 — never break training cleanup
+                logger.exception(
+                    "PEFT unload() failed; cache may be in a wrapped state"
+                )
+    del trainer, dataset
+    if not persist_base:
+        del model
+        _BASE_MODEL_CACHE.clear()
+    gc.collect()
+    try:
+        import torch  # noqa: PLC0415
+
+        torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001 — torch may be absent in CPU-only paths
+        pass
+
+
+def _get_or_load_base(
+    model_id: str,
+    *,
+    bnb_config: Any,
+    attn_impl: str | None,
+    auto_model_cls: Any,
+    auto_tokenizer_cls: Any,
+) -> tuple[Any, Any]:
+    """Return cached (base_model, tokenizer) or load fresh.
+
+    When ``RUNE_PERSIST_BASE_MODEL=1`` is set, the loaded model+tokenizer are
+    cached at module level keyed by ``model_id``. The cache is bound to the
+    Python process; cleared on process exit or by ``_release_trial_state``
+    when persistence is off.
+    """
+    if _persist_base_enabled() and model_id in _BASE_MODEL_CACHE:
+        logger.info("Reusing cached NF4 base model for %s", model_id)
+        return _BASE_MODEL_CACHE[model_id]
+
+    model_kwargs: dict[str, Any] = {
+        "quantization_config": bnb_config,
+        "device_map": "auto",
+    }
+    if attn_impl:
+        model_kwargs["attn_implementation"] = attn_impl
+    model = auto_model_cls.from_pretrained(model_id, **model_kwargs)
+    tokenizer = auto_tokenizer_cls.from_pretrained(model_id)
+
+    if _persist_base_enabled():
+        _BASE_MODEL_CACHE[model_id] = (model, tokenizer)
+    return model, tokenizer
 
 
 def _silence_known_warnings() -> None:
@@ -768,16 +864,15 @@ def train_qlora(
         bnb_4bit_use_double_quant=True,
     )
 
-    # Load model and tokenizer
-    model_kwargs: dict[str, object] = {
-        "quantization_config": bnb_config,
-        "device_map": "auto",
-    }
-    if attn_impl:
-        model_kwargs["attn_implementation"] = attn_impl
-
-    model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    # Load model and tokenizer (or reuse the cached base when
+    # RUNE_PERSIST_BASE_MODEL=1; see _get_or_load_base).
+    model, tokenizer = _get_or_load_base(
+        model_id,
+        bnb_config=bnb_config,
+        attn_impl=attn_impl,
+        auto_model_cls=AutoModelForCausalLM,
+        auto_tokenizer_cls=AutoTokenizer,
+    )
 
     if not diff_aware_loss:
         dataset = _attach_assistant_masks(dataset, tokenizer)
@@ -866,6 +961,14 @@ def train_qlora(
 
         if mlflow_enabled:
             mlflow_log_output_artifacts(output_dir)
+
+    # Release VRAM before any subsequent allocation in the caller (e.g. the
+    # HPO heldout-eval at run_training_hpo.py:_evaluate_adapter_on_heldout
+    # will load adapter weights and run forward passes; without this drop
+    # the trainer's optimizer + dataset cache co-resides with the eval
+    # state and pushes the L4 close to OOM). Persistent-base mode keeps the
+    # cached base model resident — only the trial-scoped objects are freed.
+    _release_trial_state(trainer, model, dataset, persist_base=_persist_base_enabled())
 
     return output_dir
 
