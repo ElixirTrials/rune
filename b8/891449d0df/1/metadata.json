@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "b8891449d0df",
+  "session_id": "a3fb47b4-9485-4c7f-afb6-3134baa20d12",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-27T19:43:20.226693Z",
+  "branch": "feat/qwen3.5-migration",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "libs/model-training/tests/test_training_common.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "34224cae40d2",
+  "checkpoint_transcript_start": 141,
+  "transcript_lines_at_start": 141,
+  "token_usage": {
+    "input_tokens": 1,
+    "cache_creation_tokens": 3386,
+    "cache_read_tokens": 96050,
+    "output_tokens": 160,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-27T19:43:20.088831Z",
+    "agent_lines": 35,
+    "human_added": 6,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 41,
+    "agent_percentage": 85.36585365853658
+  }
+}

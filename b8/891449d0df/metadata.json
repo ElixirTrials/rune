@@ -3,9 +3,10 @@
   "checkpoint_id": "b8891449d0df",
   "strategy": "manual-commit",
   "branch": "feat/qwen3.5-migration",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
-    "libs/model-training/src/model_training/training_common.py"
+    "libs/model-training/src/model_training/training_common.py",
+    "libs/model-training/tests/test_training_common.py"
   ],
   "sessions": [
     {
@@ -13,13 +14,19 @@
       "transcript": "/b8/891449d0df/0/full.jsonl",
       "content_hash": "/b8/891449d0df/0/content_hash.txt",
       "prompt": "/b8/891449d0df/0/prompt.txt"
+    },
+    {
+      "metadata": "/b8/891449d0df/1/metadata.json",
+      "transcript": "/b8/891449d0df/1/full.jsonl",
+      "content_hash": "/b8/891449d0df/1/content_hash.txt",
+      "prompt": "/b8/891449d0df/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 561,
-    "cache_creation_tokens": 978640,
-    "cache_read_tokens": 73271475,
-    "output_tokens": 152867,
-    "api_call_count": 327
+    "input_tokens": 562,
+    "cache_creation_tokens": 982026,
+    "cache_read_tokens": 73367525,
+    "output_tokens": 153027,
+    "api_call_count": 328
   }
 }

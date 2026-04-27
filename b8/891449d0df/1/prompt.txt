@@ -1,0 +1,5 @@
+/superpowers:writing-plans Evaluate, revise and then implement with parallel subagents this plan: '/Users/noahdolevelixir/Code/rune/instructions/persistent_mlflow.md'
+
+---
+
+Try again
