@@ -725,7 +725,7 @@ def _run_single_trial(
     # to sqlite). Precedence mirrors training_common.setup_mlflow.
     mlflow.set_tracking_uri(
         kwargs.get("mlflow_tracking_uri")
-        or os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///./mlflow.db")
+        or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     )
     mlflow.set_experiment(kwargs.get("mlflow_experiment") or run_args.experiment_name)
     mlflow.start_run(
@@ -987,7 +987,7 @@ def _log_study_summary_to_mlflow(
     import mlflow  # noqa: PLC0415
 
     mlflow.set_tracking_uri(
-        os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///./mlflow.db")
+        os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     )
     mlflow.set_experiment(experiment_name)
     with mlflow.start_run(run_name=f"study-{args.study_name}"):
