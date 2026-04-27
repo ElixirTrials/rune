@@ -85,6 +85,17 @@ export RUNE_PERSIST_BASE_MODEL=1
 # avoids flaky-network failure modes mid-study.
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
+# Reduce VRAM fragmentation across HPO trials. Must be set before any torch
+# import — PyTorch reads PYTORCH_CUDA_ALLOC_CONF once at import time, so
+# os.environ.setdefault inside Python is fragile (RCA-2 Cause 4). We set
+# this UNCONDITIONALLY (overriding any pre-existing value) because RCA-2's
+# concern is specifically about expandable_segments being present. If the
+# user has set a different value (e.g. max_split_size_mb), append to it.
+if [[ -n "${PYTORCH_CUDA_ALLOC_CONF:-}" && "$PYTORCH_CUDA_ALLOC_CONF" != *expandable_segments:True* ]]; then
+    export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF},expandable_segments:True"
+else
+    export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+fi
 
 TS="$(date +%Y%m%d-%H%M%S)"
 LOG=".tmp/hpo_${TS}.log"
@@ -98,6 +109,7 @@ echo "Output root:    $OUTPUT_ROOT"
 echo "MLflow URI:     ${MLFLOW_TRACKING_URI}"
 echo "Log:            $LOG"
 echo "Persist base:   ${RUNE_PERSIST_BASE_MODEL} (HF_HUB_OFFLINE=${HF_HUB_OFFLINE})"
+echo "Alloc conf:     ${PYTORCH_CUDA_ALLOC_CONF}"
 echo
 
 ARGS=(
