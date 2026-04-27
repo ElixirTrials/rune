@@ -13,10 +13,10 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
-      - DATABASE_URL=sqlite:////data/rune.db
+      - DATABASE_URL=sqlite:////data/rune/rune.db
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     volumes:
-      - rune_data:/data
+      - ${HOME}/.rune:/data/rune
     depends_on:
       db:
         condition: service_healthy
@@ -46,14 +46,63 @@ services:
     image: ghcr.io/mlflow/mlflow:v2.16.2
     ports:
       - "5000:5000"
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow
+    environment:
+      AWS_DEFAULT_REGION: eu-west-2
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////data/mlflow/mlflow.db
+      --default-artifact-root s3://elixirtrials-949678234935-eu-west-2-artifacts/mlflow/artifacts/
+      --serve-artifacts
     volumes:
-      - mlflow_data:/mlflow
+      - mlflow_data:/data/mlflow
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      litestream-restore:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
+
+  # One-shot restore: pulls latest replica from S3 before mlflow boots.
+  # `service_completed_successfully` ensures the server starts only after
+  # this exits 0. Idempotent — `-if-replica-exists` no-ops on first ever
+  # boot when S3 prefix is empty.
+  litestream-restore:
+    image: litestream/litestream:0.3.13
+    environment:
+      AWS_DEFAULT_REGION: eu-west-2
+    volumes:
+      - mlflow_data:/data/mlflow
+      - ${HOME}/.rune:/data/rune
+      - ./litestream/litestream.yml:/etc/litestream.yml:ro
+      - ${HOME}/.aws:/root/.aws:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        mkdir -p /data/mlflow /data/rune
+        litestream restore -if-replica-exists -config /etc/litestream.yml /data/mlflow/mlflow.db
+        litestream restore -if-replica-exists -config /etc/litestream.yml /data/rune/rune.db
+
+  # Continuous WAL shipping. Watches both DBs; tolerates the trainer
+  # process writing rune.db on the host because the bind mount exposes
+  # the same inode.
+  litestream:
+    image: litestream/litestream:0.3.13
+    restart: unless-stopped
+    environment:
+      AWS_DEFAULT_REGION: eu-west-2
+    volumes:
+      - mlflow_data:/data/mlflow
+      - ${HOME}/.rune:/data/rune
+      - ./litestream/litestream.yml:/etc/litestream.yml:ro
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      litestream-restore:
+        condition: service_completed_successfully
+    command: replicate -config /etc/litestream.yml
 
   pubsub-emulator:
     image: 3apag/pubsub-emulator:latest
@@ -79,7 +128,7 @@ services:
       - "${LORA_HEALTH_PORT:-8001}:8001"
     volumes:
       - adapters_data:/adapters
-      - rune_data:/data
+      - ${HOME}/.rune:/data/rune
     # Passes through all available GPUs to the container. Adjust `count`
     # to limit GPU access (e.g. count: 1 for single-GPU operation).
     deploy:
@@ -103,4 +152,3 @@ volumes:
   mlflow_data:
   pubsub_data:
   adapters_data:
-  rune_data:
