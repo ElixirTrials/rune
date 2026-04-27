@@ -193,12 +193,32 @@ def test_format_for_sft_no_successful_step_returns_empty() -> None:
 
 
 class _FakeTokenizer:
-    """Stand-in tokenizer using simple per-message integer ranges.
+    """Stand-in ChatML-family tokenizer with <|im_start|>/<|im_end|> markers.
 
-    apply_chat_template assigns each message a deterministic block of token
-    ids — enough to validate the prefix-tokenization → mask logic without
-    pulling a real chat template.
+    The synthetic render mirrors the real Qwen3.5 layout so the marker-scan
+    in compute_assistant_masks operates on realistic token sequences:
+
+        <|im_start|> {role_id} \\n {content_tokens...} <|im_end|> \\n
     """
+
+    IM_START_ID = 1
+    IM_END_ID = 2
+    NEWLINE_ID = 3
+    UNK_ID = 99
+    _ROLE_IDS: dict[str, int] = {"system": 10, "user": 11, "assistant": 12}
+
+    unk_token_id: int = 99
+
+    def convert_tokens_to_ids(self, token: str) -> int:
+        return {
+            "<|im_start|>": self.IM_START_ID,
+            "<|im_end|>": self.IM_END_ID,
+        }.get(token, self.UNK_ID)
+
+    def encode(self, text: str, add_special_tokens: bool = True) -> list[int]:
+        if text in self._ROLE_IDS:
+            return [self._ROLE_IDS[text]]
+        return [ord(c) + 100 for c in text]
 
     def apply_chat_template(
         self,
@@ -208,18 +228,19 @@ class _FakeTokenizer:
         add_generation_prompt: bool,
         return_dict: bool = True,
     ) -> list[int]:
-        # Each message contributes 4 + len(content) tokens (header+content+end).
         ids: list[int] = []
-        next_id = 1
         for msg in messages:
-            block = 4 + len(msg["content"])
-            ids.extend(range(next_id, next_id + block))
-            next_id += block
+            ids.append(self.IM_START_ID)
+            ids.append(self._ROLE_IDS.get(msg["role"], self.UNK_ID))
+            ids.append(self.NEWLINE_ID)
+            ids.extend(ord(c) + 100 for c in msg["content"])
+            ids.append(self.IM_END_ID)
+            ids.append(self.NEWLINE_ID)
         return ids
 
 
-def test_compute_assistant_masks_marks_only_assistant_tokens() -> None:
-    """Assistant turn tokens are 1, system/user turns are 0."""
+def test_compute_assistant_masks_marks_only_assistant_turn_span() -> None:
+    """Assistant turn (im_start..im_end inclusive) → 1; rest → 0."""
     tok = _FakeTokenizer()
     messages = [
         {"role": "system", "content": "sys"},
@@ -231,11 +252,12 @@ def test_compute_assistant_masks_marks_only_assistant_tokens() -> None:
     assert "input_ids" in result
     assert "assistant_masks" in result
     assert len(result["input_ids"]) == len(result["assistant_masks"])
-    assert 1 in result["assistant_masks"]
-    # System (4+3=7) + user (4+5=9) tokens must all be 0.
-    assert all(m == 0 for m in result["assistant_masks"][:16])
-    # Assistant (4+2=6) tokens must all be 1.
-    assert all(m == 1 for m in result["assistant_masks"][16:22])
+    # System turn = 1+1+1+3+1+1 = 8 tokens, user turn = 1+1+1+5+1+1 = 10.
+    # Assistant turn = 1+1+1+2+1+1 = 7 tokens, six of which (im_start through
+    # im_end inclusive) are marked; trailing newline is not.
+    assert sum(result["assistant_masks"]) == 6
+    assert all(m == 0 for m in result["assistant_masks"][: 8 + 10])  # sys + user
+    assert all(m == 1 for m in result["assistant_masks"][18:24])  # assistant span
 
 
 def test_compute_assistant_masks_no_assistant_yields_all_zero() -> None:
@@ -261,8 +283,67 @@ def test_compute_assistant_masks_multi_turn_marks_each_assistant_turn() -> None:
         {"role": "assistant", "content": "a2"},
     ]
     result = compute_assistant_masks(tok, messages)
-    # Two assistant blocks of (4+2)=6 tokens each → at least 12 ones.
+    # Each assistant turn spans 1+1+1+2+1+1=7 tokens, six marked → 12 ones.
     assert sum(result["assistant_masks"]) == 12
+
+
+def test_compute_assistant_masks_truncated_tail_marks_to_eos() -> None:
+    """Missing trailing <|im_end|> → mask extends to end-of-sequence."""
+
+    class TruncatedTokenizer(_FakeTokenizer):
+        def apply_chat_template(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tokenize: bool,
+            add_generation_prompt: bool,
+            return_dict: bool = True,
+        ) -> list[int]:
+            ids = super().apply_chat_template(
+                messages,
+                tokenize=tokenize,
+                add_generation_prompt=add_generation_prompt,
+                return_dict=return_dict,
+            )
+            # Drop the trailing <|im_end|>\n of the last assistant turn.
+            if messages and messages[-1].get("role") == "assistant" and len(ids) >= 2:
+                ids = ids[:-2]
+            return ids
+
+    tok = TruncatedTokenizer()
+    messages = [
+        {"role": "user", "content": "u"},
+        {"role": "assistant", "content": "a"},
+    ]
+    result = compute_assistant_masks(tok, messages)
+    # All assistant tokens through end-of-sequence (no im_end terminator).
+    assert result["assistant_masks"][-1] == 1
+
+
+def test_compute_assistant_masks_raises_when_markers_missing() -> None:
+    """Tokenizers without <|im_start|>/<|im_end|> markers must raise."""
+
+    class NoMarkerTokenizer:
+        unk_token_id = 99
+
+        def convert_tokens_to_ids(self, token: str) -> int:
+            return 99  # always unk
+
+        def encode(self, text: str, add_special_tokens: bool = True) -> list[int]:
+            return [12]
+
+        def apply_chat_template(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tokenize: bool,
+            add_generation_prompt: bool,
+            return_dict: bool = True,
+        ) -> list[int]:
+            return [1, 2, 3]
+
+    with pytest.raises(ValueError, match="lacks <\\|im_start\\|>"):
+        compute_assistant_masks(NoMarkerTokenizer(), [{"role": "user", "content": "x"}])
 
 
 def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> None:
@@ -276,10 +357,10 @@ def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> N
     with ``ValueError: too many dimensions 'str'``.
     """
 
-    class BatchEncodingLikeTokenizer:
+    class BatchEncodingLikeTokenizer(_FakeTokenizer):
         """Mimics newer transformers' default return_dict=True behavior."""
 
-        def apply_chat_template(
+        def apply_chat_template(  # type: ignore[override]
             self,
             messages: list[dict[str, str]],
             *,
@@ -287,7 +368,12 @@ def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> N
             add_generation_prompt: bool,
             return_dict: bool = True,
         ) -> Any:
-            ids = list(range(1, 1 + 4 * len(messages)))
+            ids = super().apply_chat_template(
+                messages,
+                tokenize=tokenize,
+                add_generation_prompt=add_generation_prompt,
+                return_dict=False,
+            )
             if return_dict:
                 # Mimic BatchEncoding: list(obj) returns the dict keys.
                 class _BE:
@@ -313,28 +399,3 @@ def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> N
     assert all(isinstance(t, int) for t in result["input_ids"]), (
         f"expected list[int], got {[type(t).__name__ for t in result['input_ids']]}"
     )
-
-
-def test_compute_assistant_masks_raises_on_prefix_invariant_failure() -> None:
-    """If prefix tokenization isn't a prefix of full, raise ValueError."""
-
-    class BadTokenizer:
-        def apply_chat_template(
-            self,
-            messages: list[dict[str, str]],
-            *,
-            tokenize: bool,
-            add_generation_prompt: bool,
-            return_dict: bool = True,
-        ) -> list[int]:
-            # Return non-prefixing ids depending on call (full vs prefix).
-            return [99] if len(messages) == 1 else [1, 2, 3, 4]
-
-    with pytest.raises(ValueError, match="prefix-of-full invariant"):
-        compute_assistant_masks(
-            BadTokenizer(),
-            [
-                {"role": "user", "content": "x"},
-                {"role": "assistant", "content": "y"},
-            ],
-        )

@@ -137,15 +137,19 @@ def compute_assistant_masks(
     (sft_trainer.py:1067) and ``DataCollatorForLanguageModeling.torch_call``
     consumes ``assistant_masks`` from the batch (sft_trainer.py:179-180).
 
-    Approach: render prefixes ``messages[:i+1]`` with ``add_generation_prompt
-    =False`` and diff token counts to find each turn's boundary. The mask is
-    1 on the entire assistant turn (including ``<|im_start|>assistant\\n``
-    and ``<|im_end|>`` wrappers) — TRL's reference path with
-    ``{% generation %}`` markers wraps only the content, so this is a small
-    over-mask of ~5 trivially-predictable wrapper tokens per assistant turn.
+    Approach (Qwen-family marker scan): tokenize once and walk the token
+    stream looking for ``<|im_start|>{assistant_role_token}`` boundaries
+    that close at ``<|im_end|>``. Marks the whole assistant turn —
+    role+wrapper+content+thinking-blocks, since training the model to
+    reproduce its own thinking is desirable. This avoids the prefix-of-
+    full invariant failure that bites stateful templates: Qwen3.5 injects
+    ``<think>`` markers only on the *trailing* assistant turn, so
+    incremental prefix tokenization breaks. Marker scan reads only the
+    final, ground-truth tokenization and is therefore stable.
 
     Args:
-        tokenizer: A HuggingFace tokenizer with a chat_template.
+        tokenizer: A HuggingFace tokenizer that uses ``<|im_start|>`` /
+            ``<|im_end|>`` role markers (Qwen and ChatML-family).
         messages: A list of ``{"role", "content"}`` dicts.
 
     Returns:
@@ -154,8 +158,9 @@ def compute_assistant_masks(
         any message has ``role == "assistant"``.
 
     Raises:
-        ValueError: If the prefix-of-full token-id invariant fails (would
-            indicate template-side state that we cannot reliably mask).
+        ValueError: If the tokenizer doesn't expose ``<|im_start|>`` /
+            ``<|im_end|>`` token IDs — the marker-scan algorithm depends
+            on them.
     """
     # ``return_dict=False`` is critical: with ``return_dict=True`` (the
     # default in newer transformers) the call returns a BatchEncoding whose
@@ -171,34 +176,53 @@ def compute_assistant_masks(
     )
     mask: list[int] = [0] * len(full_ids)
 
-    # Some chat templates (e.g. Qwen3.5) refuse to render conversations
-    # without at least one user message. We can't tokenize a system-only
-    # prefix in that case; skip until the first user message and rely on
-    # the default-zero mask for those leading system tokens (correct, since
-    # role=system → mask=0 by definition).
-    first_user_idx = next(
-        (i for i, m in enumerate(messages) if m.get("role") == "user"), None
+    im_start_id = tokenizer.convert_tokens_to_ids("<|im_start|>")
+    im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+    # ``convert_tokens_to_ids`` returns the unk-id for unknown markers on
+    # most tokenizers; treat any non-distinct or None result as "missing".
+    unk_id = getattr(tokenizer, "unk_token_id", None)
+    if (
+        im_start_id is None
+        or im_end_id is None
+        or im_start_id == unk_id
+        or im_end_id == unk_id
+    ):
+        raise ValueError(
+            "compute_assistant_masks: tokenizer lacks <|im_start|> / "
+            "<|im_end|> markers; the marker-scan path requires a Qwen- or "
+            "ChatML-family tokenizer."
+        )
+
+    # The role token sequence that follows <|im_start|>. For Qwen3.5,
+    # tokenizer.encode("assistant") → [74455] (single-token role). We
+    # encode at runtime so non-Qwen ChatML tokenizers with multi-token
+    # role names still work.
+    assistant_role_ids: list[int] = list(
+        tokenizer.encode("assistant", add_special_tokens=False)
     )
-    if first_user_idx is None:
+    if not assistant_role_ids:
         return {"input_ids": full_ids, "assistant_masks": mask}
 
-    cursor = 0
-    for i in range(first_user_idx, len(messages)):
-        prefix_ids: list[int] = list(
-            tokenizer.apply_chat_template(
-                messages[: i + 1],
-                tokenize=True,
-                add_generation_prompt=False,
-                return_dict=False,
-            )
-        )
-        if full_ids[: len(prefix_ids)] != prefix_ids:
-            raise ValueError(
-                "compute_assistant_masks: prefix-of-full invariant violated "
-                f"at message {i}; cannot reliably compute assistant_masks."
-            )
-        if messages[i].get("role") == "assistant":
-            for j in range(cursor, len(prefix_ids)):
-                mask[j] = 1
-        cursor = len(prefix_ids)
+    n = len(full_ids)
+    role_len = len(assistant_role_ids)
+    i = 0
+    while i < n:
+        if full_ids[i] != im_start_id:
+            i += 1
+            continue
+        # Match <|im_start|> + assistant role tokens.
+        head_end = i + 1 + role_len
+        if head_end > n or full_ids[i + 1 : head_end] != assistant_role_ids:
+            i += 1
+            continue
+        # Walk to the closing <|im_end|>; if missing (truncated tail),
+        # extend to end-of-sequence.
+        j = head_end
+        while j < n and full_ids[j] != im_end_id:
+            j += 1
+        end = j if j < n else n - 1
+        for k in range(i, end + 1):
+            mask[k] = 1
+        i = end + 1
+
     return {"input_ids": full_ids, "assistant_masks": mask}
