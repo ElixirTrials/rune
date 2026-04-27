@@ -96,8 +96,10 @@ def _release_trial_state(
                 # causing adapter stacking + VRAM doubling (RCA-2 Cause 1,
                 # RCA-3).
                 restored = peft_wrapper.unload()
-                inner = restored if restored is not None else getattr(
-                    peft_wrapper, "model", None
+                inner = (
+                    restored
+                    if restored is not None
+                    else getattr(peft_wrapper, "model", None)
                 )
                 if inner is not None and hasattr(inner, "peft_config"):
                     try:
@@ -181,7 +183,8 @@ def _get_or_load_base(
             "Loaded %s with %d CPU-resident layers (accelerate fp32 offload). "
             "Forward will be 30-100x slower than full-GPU. Reduce model size "
             "or free VRAM before retry.",
-            model_id, len(cpu_layers),
+            model_id,
+            len(cpu_layers),
         )
 
     if _persist_base_enabled():

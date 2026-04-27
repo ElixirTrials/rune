@@ -677,7 +677,6 @@ def test_compute_weighted_loss_warns_on_all_masked_batch(caplog) -> None:
         _compute_weighted_loss(logits, labels, weights)
 
     assert any(
-        "all-masked batch" in r.getMessage().lower()
-        and r.levelno >= logging.WARNING
+        "all-masked batch" in r.getMessage().lower() and r.levelno >= logging.WARNING
         for r in caplog.records
     ), "all-masked-batch warning not emitted at WARNING level"

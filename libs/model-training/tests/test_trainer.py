@@ -293,16 +293,18 @@ def test_attach_assistant_masks_preserves_diff_side_channels(monkeypatch) -> Non
         },
     )
 
-    ds = Dataset.from_list([
-        {
-            "messages": [
-                {"role": "user", "content": "fix the bug"},
-                {"role": "assistant", "content": "return 42"},
-            ],
-            "pre_code": "return 0",
-            "post_code": "return 42",
-        }
-    ])
+    ds = Dataset.from_list(
+        [
+            {
+                "messages": [
+                    {"role": "user", "content": "fix the bug"},
+                    {"role": "assistant", "content": "return 42"},
+                ],
+                "pre_code": "return 0",
+                "post_code": "return 42",
+            }
+        ]
+    )
 
     class _DummyTok:  # placeholder — never called because we stubbed above
         pass
@@ -354,8 +356,9 @@ def test_release_trial_state_strips_peft_config_residue() -> None:
 
     _release_trial_state(trainer, wrapper, dataset=None, persist_base=True)
 
-    assert not hasattr(base, "peft_config"), \
+    assert not hasattr(base, "peft_config"), (
         "peft_config residue not cleared — next trial will double-wrap"
+    )
 
 
 def test_setup_lora_adapter_rejects_pre_wrapped_base() -> None:

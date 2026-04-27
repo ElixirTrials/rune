@@ -380,8 +380,11 @@ def test_tokenize_for_eval_passes_max_length_and_truncation() -> None:
     class _FakeTok:
         def __call__(self, text: str, **kwargs: object) -> dict[str, object]:
             captured.update(kwargs)
-            return {"input_ids": [[1]], "attention_mask": [[1]],
-                    "offset_mapping": [[(0, 0)]]}
+            return {
+                "input_ids": [[1]],
+                "attention_mask": [[1]],
+                "offset_mapping": [[(0, 0)]],
+            }
 
     hpo = importlib.import_module("run_training_hpo")
     fn = getattr(hpo, "_tokenize_for_eval", None)
@@ -408,14 +411,22 @@ def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) ->
         device = "cpu"
         peft_config = {"default": object()}
 
-        def eval(self) -> "_FakeAdapterModel": return self
+        def eval(self) -> "_FakeAdapterModel":
+            return self
+
         def disable_adapter(self) -> object:
             class _NullCtx:
-                def __enter__(self) -> object: return self
-                def __exit__(self, *exc: object) -> None: return None
+                def __enter__(self) -> object:
+                    return self
+
+                def __exit__(self, *exc: object) -> None:
+                    return None
+
             return _NullCtx()
+
         def __call__(self, *a: object, **k: object) -> None:
             raise RuntimeError("simulated OOM")
+
         def unload(self) -> object:
             unload_calls.append("unload")
             return None
@@ -439,10 +450,16 @@ def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) ->
     # Patch the class methods directly on the already-imported objects so the
     # deferred `from transformers import ...` inside _evaluate_adapter_on_heldout
     # picks up our fakes (the deferred import resolves the same class object).
-    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained",
-                        classmethod(lambda cls, *a, **k: _FakeTok()))
-    monkeypatch.setattr(transformers.AutoModelForCausalLM, "from_pretrained",
-                        classmethod(lambda cls, *a, **k: object()))
+    monkeypatch.setattr(
+        transformers.AutoTokenizer,
+        "from_pretrained",
+        classmethod(lambda cls, *a, **k: _FakeTok()),
+    )
+    monkeypatch.setattr(
+        transformers.AutoModelForCausalLM,
+        "from_pretrained",
+        classmethod(lambda cls, *a, **k: object()),
+    )
     # Patch __init__ on the real class so the deferred `from transformers import
     # BitsAndBytesConfig` still gets the same class but with no-op init.
     monkeypatch.setattr(_real_bnb, "__init__", lambda self, **kwargs: None)
@@ -456,8 +473,9 @@ def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) ->
             base_model_id="x",
             compute_adapter_delta=False,
         )
-    assert unload_calls == ["unload"], \
+    assert unload_calls == ["unload"], (
         "adapter_model.unload() not called on OOM — residue leaks to next trial"
+    )
 
 
 def test_flush_gpu_runs_after_train_and_register_in_trial_body() -> None:
@@ -476,8 +494,9 @@ def test_flush_gpu_runs_after_train_and_register_in_trial_body() -> None:
     # Pick the enclosing function — whichever one actually defines the trial
     # body. Module-level _run_single_trial first, fall back to _objective.
     target = getattr(hpo, "_run_single_trial", None) or getattr(hpo, "_objective", None)
-    assert target is not None, \
+    assert target is not None, (
         "neither _run_single_trial nor _objective is module-level; adjust test"
+    )
 
     src = inspect.getsource(target)
     train_idx = src.find("train_and_register(")
@@ -501,7 +520,9 @@ def test_flush_gpu_helper_invokes_gc_collect(monkeypatch: pytest.MonkeyPatch) ->
     import run_training_hpo as hpo
 
     collect_calls: list[None] = []
-    monkeypatch.setattr(gc_module, "collect", lambda *a, **k: collect_calls.append(None))
+    monkeypatch.setattr(
+        gc_module, "collect", lambda *a, **k: collect_calls.append(None)
+    )
 
     hpo._flush_gpu_between_phases()
     assert len(collect_calls) >= 2, "expected at least two gc.collect passes"

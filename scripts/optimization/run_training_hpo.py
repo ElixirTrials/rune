@@ -654,8 +654,10 @@ def _evaluate_adapter_on_heldout(
         # and strip lingering peft_config (RCA-3, RCA-5 H1).
         try:
             restored = adapter_model.unload()
-            inner = restored if restored is not None else getattr(
-                adapter_model, "model", None
+            inner = (
+                restored
+                if restored is not None
+                else getattr(adapter_model, "model", None)
             )
             if inner is not None and hasattr(inner, "peft_config"):
                 try:
@@ -670,21 +672,6 @@ def _evaluate_adapter_on_heldout(
             torch.cuda.empty_cache()
         except Exception:  # noqa: BLE001 — torch may be unavailable on CPU CI
             pass
-
-    # Detach the trial's adapter from the (possibly cached) base so the next
-    # trial's PeftModel.from_pretrained / get_peft_model sees a clean base.
-    # PeftModel.unload() removes the LoRA layers and returns the base ref;
-    # the original base is mutated in place, so we don't need to update the
-    # cache map. If the cache is hot, this restores it for the next trial.
-    try:
-        adapter_model.unload()
-    except Exception:  # noqa: BLE001 — never break HPO on cleanup
-        logger.exception("Heldout eval: PeftModel.unload() failed")
-    del adapter_model
-    import gc as _gc  # noqa: PLC0415
-
-    _gc.collect()
-    torch.cuda.empty_cache()
 
     return {
         "hunk_loss": float(hunk_loss),
@@ -816,7 +803,6 @@ def _run_single_trial(
     mlflow.start_run(
         run_name=f"{run_args.adapter_id_prefix}-t{trial.number:03d}",
     )
-    _flush_gpu_between_phases()
     try:
         mlflow.set_tags(
             {
@@ -835,6 +821,12 @@ def _run_single_trial(
         )
 
         train_and_register(**kwargs)
+
+        # Force a deterministic GPU flush before eval — the trainer's
+        # paged_adamw_8bit + cyclic SFTTrainer↔model refs are not freed
+        # synchronously by del+GC, so eval can re-wrap the cached base on
+        # top of training residuals (RCA-2 Cause 3).
+        _flush_gpu_between_phases()
 
         adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
         # Resolve base model ID the same way train_and_register does.
