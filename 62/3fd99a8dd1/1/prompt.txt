@@ -1,0 +1,76 @@
+/superpowers:writing-plans Evaluate, revise and then implement with parallel subagents this plan: '/Users/noahdolevelixir/Code/rune/instructions/persistent_mlflow.md'
+
+---
+
+Try again
+
+---
+
+<task-notification>
+<task-id>a2c5722444a39f5d2</task-id>
+<tool-use-id>toolu_014VVQEst2r8AtHt3QCfWHdv</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a3fb47b4-9485-4c7f-afb6-3134baa20d12/tasks/a2c5722444a39f5d2.output</output-file>
+<status>completed</status>
+<summary>Agent "Subagent A: infra + litestream" completed</summary>
+<result>Both tasks complete.
+
+**Commit SHAs:**
+- Task 1: `baa16cf7` — `infra(litestream): add replica config for mlflow.db + rune.db`
+- Task 2: `695b1f93` — `infra(compose): mlflow→sqlite+S3, litestream sidecar, bind ~/.rune`
+
+**Verification:** Docker not available; used `uv run python -c "import yaml; yaml.safe_load(...)"` for both files — both exited 0 cleanly.
+
+**docker-compose.yml summary:** Replaced the mlflow service (sqlite backend + S3 artifact root + `~/.aws` mount), added `litestream-restore` (one-shot S3 restore) and `litestream` (continuous WAL sidecar) services, swapped `rune_data:/data` for `${HOME}/.rune:/data/rune` in api and lora-server, and dropped `rune_data:` from the top-level volumes block.</result>
+<usage><total_tokens>32940</total_tokens><tool_uses>18</tool_uses><duration_ms>82837</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a005032a5c9e7a1ef</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a3fb47b4-9485-4c7f-afb6-3134baa20d12/tasks/a005032a5c9e7a1ef.output</output-file>
+<status>completed</status>
+<summary>Agent "Subagent C: operator script + docs" completed</summary>
+<result>Done. Report:
+
+**(a) Commit SHAs**
+- Task 5: `146ac39` — feat(hpo): export MLFLOW_TRACKING_URI + RUNE_DATABASE_URL, add MLflow pre-flight
+- Task 6: `96554a5` — docs(model-training): document persistent MLflow + Litestream setup
+
+**(b) Dry-run output**
+The plan's Step 4 command (`--dataset /dev/null`) was unusable because `/dev/null` is a char device; `[[ -f "$DATASET" ]]` rejects it before reaching the curl block. Used a `mktemp` file with a stubbed `nvidia-smi` instead (nvidia-smi prereq also fires before MLflow). The script printed:
+```
+curl: (7) Failed to connect to 127.0.0.1 port 9 after 0 ms: Couldn't connect to server
+MLflow server not reachable at http://127.0.0.1:9
+Start the stack first:  docker compose -f infra/docker-compose.yml up -d mlflow litestream
+```
+grep for `"MLflow server not reachable"` matched → `OK`.
+
+**(c) README insertion point**
+Appended as a new `## Persistence (MLflow + AdapterRegistry)` section at the end of `/Users/noahdolevelixir/Code/rune/libs/model-training/README.md`, after the existing `## GPU Import Pattern` section (line 171). No "Setup" section existed, so end-of-file was the correct location.</result>
+<usage><total_tokens>33388</total_tokens><tool_uses>12</tool_uses><duration_ms>77012</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>aa470ec7f59153c31</task-id>
+<tool-use-id>toolu_01LJjrPoPeEX54auQrz3duco</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/a3fb47b4-9485-4c7f-afb6-3134baa20d12/tasks/aa470ec7f59153c31.output</output-file>
+<status>completed</status>
+<summary>Agent "Subagent B: URI defaults + tests" completed</summary>
+<result>Tasks 1-6 were already partially done by prior work. `09573ac` is Task 3 and `d8ab8bb` is Task 4. The `96554a5` and others are Tasks 2/5/6 done earlier on this branch.
+
+Both tasks are committed:
+
+- **Task 3** commit: `09573ac` — `feat(mlflow): default tracking URI → http://localhost:5000`
+- **Task 4** commit: `d8ab8bb` — `feat(hpo): default MLflow tracking URI → http://localhost:5000`
+
+**Summary:**
+
+- **Task 3 SHA:** `09573ac` | **Task 4 SHA:** `d8ab8bb`
+- **Task 3 pytest output:** `6 passed in 0.24s` — all 6 tests in `test_training_common.py` passed after the URI flip (was 1 FAIL before the change, with `assert 'sqlite:///./mlflow.db' == 'http://localhost:5000'`)
+- **mypy/ruff:** Both clean — `Success: no issues found in 1 source file` (baseline and post-change identical), ruff `All checks passed!`. No new errors introduced.</result>
+<usage><total_tokens>38673</total_tokens><tool_uses>22</tool_uses><duration_ms>127927</duration_ms></usage>
+</task-notification>

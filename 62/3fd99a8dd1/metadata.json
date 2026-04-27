@@ -3,8 +3,9 @@
   "checkpoint_id": "623fd99a8dd1",
   "strategy": "manual-commit",
   "branch": "feat/qwen3.5-migration",
-  "checkpoints_count": 2,
+  "checkpoints_count": 6,
   "files_touched": [
+    "docs/superpowers/plans/2026-04-27-persistent-mlflow.md",
     "docs/superpowers/plans/2026-04-27-training-issues-fix.md",
     "docs/superpowers/rca/issue-1-qwen-config-warning.md",
     "docs/superpowers/rca/issue-2-cuda-oom.md",
@@ -19,13 +20,19 @@
       "transcript": "/62/3fd99a8dd1/0/full.jsonl",
       "content_hash": "/62/3fd99a8dd1/0/content_hash.txt",
       "prompt": "/62/3fd99a8dd1/0/prompt.txt"
+    },
+    {
+      "metadata": "/62/3fd99a8dd1/1/metadata.json",
+      "transcript": "/62/3fd99a8dd1/1/full.jsonl",
+      "content_hash": "/62/3fd99a8dd1/1/content_hash.txt",
+      "prompt": "/62/3fd99a8dd1/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 163,
-    "cache_creation_tokens": 475727,
-    "cache_read_tokens": 9592970,
-    "output_tokens": 90917,
-    "api_call_count": 58
+    "input_tokens": 217,
+    "cache_creation_tokens": 611487,
+    "cache_read_tokens": 11310444,
+    "output_tokens": 118348,
+    "api_call_count": 82
   }
 }
