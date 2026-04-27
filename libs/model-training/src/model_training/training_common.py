@@ -24,10 +24,11 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
     in the environment, or when mlflow itself is not importable.
 
     Tracking URI precedence: explicit ``tracking_uri`` arg, then the
-    ``MLFLOW_TRACKING_URI`` env var, then ``sqlite:///./mlflow.db`` as a
-    local-dev fallback. The filesystem ``./mlruns`` backend was deprecated
-    by MLflow in February 2026; the SQLite backend is the supported
-    successor for single-host deployments.
+    ``MLFLOW_TRACKING_URI`` env var, then ``http://localhost:5000`` (the
+    in-pod MLflow server started by ``infra/docker-compose.yml``). The
+    sqlite/filesystem backends were dropped from the default path because
+    they cannot be replicated to S3 by Litestream when multiple processes
+    open the file concurrently.
 
     Args:
         experiment_name: MLflow experiment name to activate.
@@ -58,7 +59,7 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
         )
         return True
 
-    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///./mlflow.db")
+    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(uri)
     mlflow.set_experiment(experiment_name)
     logger.info("MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name)
