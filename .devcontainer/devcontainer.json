@@ -33,6 +33,7 @@
   "remoteEnv": {
     "PATH": "${containerEnv:PATH}:${containerEnv:HOME}/.local/bin:/usr/local/cuda/bin",
     "LD_LIBRARY_PATH": "/usr/local/cuda/lib64:${containerEnv:LD_LIBRARY_PATH}",
-    "NVIDIA_VISIBLE_DEVICES": "all"
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "UV_LINK_MODE": "copy"
   }
 }
