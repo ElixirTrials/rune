@@ -134,6 +134,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="NEFTune noise alpha for embedding perturbation (disabled when unset).",
     )
+    parser.add_argument(
+        "--max-seq-length",
+        dest="max_length",
+        type=int,
+        default=2048,
+        help=(
+            "Truncation length for SFT tokenization. Caps activation memory; "
+            "the loss-step logits/attention scratch scales with seq_len."
+        ),
+    )
 
     # --- Trajectory encoding ---
     parser.add_argument(
@@ -233,6 +243,7 @@ def _resolve_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "override_lora_alpha": args.override_lora_alpha,
         "override_lora_dropout": args.override_lora_dropout,
         "neftune_noise_alpha": args.neftune_noise_alpha,
+        "max_length": args.max_length,
     }
 
 

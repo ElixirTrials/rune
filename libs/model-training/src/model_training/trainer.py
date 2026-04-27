@@ -315,6 +315,8 @@ def _build_sft_config(
     report_to: str,
     diff_aware_loss: bool,
     neftune_noise_alpha: float | None,
+    max_length: int | None = None,
+    dataset_size: int | None = None,
 ) -> Any:
     """Construct an SFTConfig with optional NEFTune support.
 
@@ -322,11 +324,13 @@ def _build_sft_config(
     ``neftune_noise_alpha`` is only passed when not None so SFTConfig's own
     default (feature disabled) applies when the caller omits it.
     """
+    import math  # noqa: PLC0415
+
+    effective_warmup_ratio = warmup_ratio if warmup_ratio is not None else 0.03
     kwargs: dict[str, Any] = {
         "output_dir": output_dir,
         "num_train_epochs": resolved_epochs,
         "learning_rate": learning_rate,
-        "warmup_ratio": warmup_ratio if warmup_ratio is not None else 0.03,
         "lr_scheduler_type": resolved_lr_sched,
         "bf16": True,
         "per_device_train_batch_size": 1,
@@ -336,7 +340,24 @@ def _build_sft_config(
         "report_to": report_to,
         "eval_strategy": "no",
         "assistant_only_loss": not diff_aware_loss,
+        # PEFT + reentrant checkpointing silently zeros LoRA grads on some
+        # transformers versions; non-reentrant is the supported path.
+        "gradient_checkpointing": True,
+        "gradient_checkpointing_kwargs": {"use_reentrant": False},
+        # Paged 8-bit AdamW spills optimizer state to host RAM under pressure;
+        # required to fit Qwen3.5-9B QLoRA + adapter grads on a 22 GB L4.
+        "optim": "paged_adamw_8bit",
     }
+    # transformers v5.2 removes warmup_ratio in favour of warmup_steps; convert
+    # here using the resolved schedule so SFTConfig stops emitting the warning.
+    if dataset_size is not None and dataset_size > 0:
+        steps_per_epoch = max(1, math.ceil(dataset_size / max(1, resolved_grad_accum)))
+        total_steps = max(1, resolved_epochs * steps_per_epoch)
+        kwargs["warmup_steps"] = max(0, int(total_steps * effective_warmup_ratio))
+    else:
+        kwargs["warmup_ratio"] = effective_warmup_ratio
+    if max_length is not None:
+        kwargs["max_length"] = max_length
     if neftune_noise_alpha is not None:
         kwargs["neftune_noise_alpha"] = neftune_noise_alpha
     if diff_aware_loss:
@@ -436,6 +457,7 @@ def train_qlora(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
+    max_length: int = 2048,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -509,6 +531,10 @@ def train_qlora(
             When set, passed to ``SFTConfig(neftune_noise_alpha=...)``.
             When ``None`` (default), the kwarg is omitted so SFTConfig's
             own default (feature disabled) applies.
+        max_length: SFT tokenizer truncation length. Caps activation
+            memory; both the cross-entropy logits tensor and (with
+            ``attn_implementation="eager"``) the materialised attention
+            matrix scale with this value. Defaults to ``2048``.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -519,6 +545,11 @@ def train_qlora(
     """
     # Validate mutually-exclusive data sources up front (no GPU imports yet).
     _validate_data_source(session_id, dataset_path, encoding_mode)
+
+    # Reduce CUDA fragmentation overhead on the L4 (22 GB) — set BEFORE the
+    # first torch import so the allocator picks it up. Only sets the var when
+    # the user hasn't already configured PYTORCH_CUDA_ALLOC_CONF themselves.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     # Deferred GPU imports — all in function body for CPU-only importability
     import torch
@@ -638,6 +669,8 @@ def train_qlora(
         report_to=report_to,
         diff_aware_loss=diff_aware_loss,
         neftune_noise_alpha=neftune_noise_alpha,
+        max_length=max_length,
+        dataset_size=len(dataset),
     )
 
     trainer = _construct_sft_trainer(
@@ -721,6 +754,7 @@ def train_and_register(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
+    max_length: int = 2048,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -762,6 +796,8 @@ def train_and_register(
             Defaults to ``0.03`` when ``None``.
         neftune_noise_alpha: NEFTune noise alpha forwarded to ``train_qlora``.
             When ``None`` (default), NEFTune is disabled.
+        max_length: SFT tokenizer truncation length forwarded to
+            ``train_qlora``. Defaults to ``2048``.
 
     Returns:
         adapter_id of the registered adapter.
@@ -829,6 +865,7 @@ def train_and_register(
         override_lora_dropout=override_lora_dropout,
         warmup_ratio=warmup_ratio,
         neftune_noise_alpha=neftune_noise_alpha,
+        max_length=max_length,
     )
 
     # Compute file hash and size from the saved safetensors file
