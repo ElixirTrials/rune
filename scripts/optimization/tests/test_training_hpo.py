@@ -391,3 +391,70 @@ def test_tokenize_for_eval_passes_max_length_and_truncation() -> None:
     assert captured.get("max_length") == 2048
     assert captured.get("return_offsets_mapping") is True
     assert captured.get("return_tensors") == "pt"
+
+
+def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the heldout forward pass raises (e.g. OOM), the adapter unload
+    must still run so the cached base re-enters the next trial clean
+    (regression: RCA-5 H1).
+    """
+    import torch
+    import transformers
+    import peft as peft_mod
+
+    unload_calls: list[str] = []
+
+    class _FakeAdapterModel:
+        device = "cpu"
+        peft_config = {"default": object()}
+
+        def eval(self) -> "_FakeAdapterModel": return self
+        def disable_adapter(self) -> object:
+            class _NullCtx:
+                def __enter__(self) -> object: return self
+                def __exit__(self, *exc: object) -> None: return None
+            return _NullCtx()
+        def __call__(self, *a: object, **k: object) -> None:
+            raise RuntimeError("simulated OOM")
+        def unload(self) -> object:
+            unload_calls.append("unload")
+            return None
+
+    class _FakeTok:
+        def __call__(self, text: str, **kwargs: object) -> dict[str, object]:
+            return {
+                "input_ids": torch.tensor([[1, 2]]),
+                "attention_mask": torch.tensor([[1, 1]]),
+                "offset_mapping": torch.tensor([[(0, 0), (0, 1)]]),
+            }
+
+    class _FakePeftModel:
+        @staticmethod
+        def from_pretrained(base: object, path: str) -> "_FakeAdapterModel":
+            return _FakeAdapterModel()
+
+    # Resolve lazy-loaded classes first (transformers uses _LazyModule).
+    _RealBnb = transformers.BitsAndBytesConfig
+
+    # Patch the class methods directly on the already-imported objects so the
+    # deferred `from transformers import ...` inside _evaluate_adapter_on_heldout
+    # picks up our fakes (the deferred import resolves the same class object).
+    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained",
+                        classmethod(lambda cls, *a, **k: _FakeTok()))
+    monkeypatch.setattr(transformers.AutoModelForCausalLM, "from_pretrained",
+                        classmethod(lambda cls, *a, **k: object()))
+    # Patch __init__ on the real class so the deferred `from transformers import
+    # BitsAndBytesConfig` still gets the same class but with no-op init.
+    monkeypatch.setattr(_RealBnb, "__init__", lambda self, **kwargs: None)
+    monkeypatch.setattr(peft_mod, "PeftModel", _FakePeftModel)
+
+    pairs = [{"activation_text": "a", "teacher_text": "post = 1"}]
+    with pytest.raises(RuntimeError, match="simulated OOM"):
+        _evaluate_adapter_on_heldout(
+            "y",
+            pairs,
+            base_model_id="x",
+            compute_adapter_delta=False,
+        )
+    assert unload_calls == ["unload"], \
+        "adapter_model.unload() not called on OOM — residue leaks to next trial"

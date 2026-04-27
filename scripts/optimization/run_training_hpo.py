@@ -612,16 +612,42 @@ def _evaluate_adapter_on_heldout(
             total_tok,
         )
 
-    # Adapter-active pass.
-    hunk_loss, hunk_acc, hunk_ent, n_tok = _forward_hunk_metrics(
-        adapter_model, disable=False
-    )
+    import gc as _gc  # noqa: PLC0415
 
-    adapter_improvement = 0.0
-    if compute_adapter_delta and n_tok > 0:
-        base_loss, _, _, _ = _forward_hunk_metrics(adapter_model, disable=True)
-        if base_loss > 0.0 and math.isfinite(base_loss):
-            adapter_improvement = 1.0 - (hunk_loss / base_loss)
+    try:
+        # Adapter-active pass.
+        hunk_loss, hunk_acc, hunk_ent, n_tok = _forward_hunk_metrics(
+            adapter_model, disable=False
+        )
+
+        adapter_improvement = 0.0
+        if compute_adapter_delta and n_tok > 0:
+            base_loss, _, _, _ = _forward_hunk_metrics(adapter_model, disable=True)
+            if base_loss > 0.0 and math.isfinite(base_loss):
+                adapter_improvement = 1.0 - (hunk_loss / base_loss)
+    finally:
+        # Detach the trial's adapter from the (possibly cached) base BEFORE
+        # propagating any forward-pass exception so the next trial sees a
+        # clean cached base. unload() returns the restored base — capture it
+        # and strip lingering peft_config (RCA-3, RCA-5 H1).
+        try:
+            restored = adapter_model.unload()
+            inner = restored if restored is not None else getattr(
+                adapter_model, "model", None
+            )
+            if inner is not None and hasattr(inner, "peft_config"):
+                try:
+                    delattr(inner, "peft_config")
+                except AttributeError:
+                    pass
+        except Exception:  # noqa: BLE001 — never break HPO on cleanup
+            logger.exception("Heldout eval: PeftModel.unload() failed")
+        del adapter_model
+        _gc.collect()
+        try:
+            torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001 — torch may be unavailable on CPU CI
+            pass
 
     # Detach the trial's adapter from the (possibly cached) base so the next
     # trial's PeftModel.from_pretrained / get_peft_model sees a clean base.
