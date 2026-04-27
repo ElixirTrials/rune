@@ -159,9 +159,7 @@ def _run_hypernetwork_job(
         text = " ".join(m["content"] for m in messages)
 
         # Resolve env vars inside function body for testability
-        base_model_id = os.environ.get(
-            "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
-        )
+        base_model_id = os.environ.get("RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B")
         hypernetwork_weights_path = os.environ.get(
             "RUNE_HYPERNETWORK_WEIGHTS_PATH",
             str(Path.home() / ".rune" / "hypernetwork.pt"),
