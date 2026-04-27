@@ -58,7 +58,7 @@ class AdapterRecord(SQLModel, table=True):
     pass_rate: float | None = Field(default=None)
     fitness_score: float | None = Field(default=None)
     source: str
-    session_id: str
+    session_id: str | None = Field(default=None)
     is_archived: bool = Field(default=False)
     parent_ids: str | None = Field(default=None)
     generation: int = Field(default=0)
