@@ -461,6 +461,28 @@ def _tokenize_for_eval(tokenizer: Any, text: str) -> dict[str, Any]:
     )
 
 
+def _flush_gpu_between_phases() -> None:
+    """Force a deterministic GPU flush between training and eval.
+
+    SFTTrainer holds cyclic refs to its model and optimizer; del-then-GC is
+    not synchronous. The ``paged_adamw_8bit`` optimizer keeps small
+    CUDA-resident bookkeeping tensors alive until the trainer object is
+    finalised. Without this explicit flush the cached base re-enters
+    PeftModel.from_pretrained on top of training residuals (RCA-2 Cause 3).
+    """
+    import gc  # noqa: PLC0415
+
+    gc.collect()
+    gc.collect()  # second pass clears generations promoted by the first
+    try:
+        import torch  # noqa: PLC0415
+
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    except Exception:  # noqa: BLE001 — torch may be missing on CPU CI
+        pass
+
+
 def _evaluate_adapter_on_heldout(
     adapter_path: str,
     pairs: list[dict[str, Any]],
@@ -794,6 +816,7 @@ def _run_single_trial(
     mlflow.start_run(
         run_name=f"{run_args.adapter_id_prefix}-t{trial.number:03d}",
     )
+    _flush_gpu_between_phases()
     try:
         mlflow.set_tags(
             {

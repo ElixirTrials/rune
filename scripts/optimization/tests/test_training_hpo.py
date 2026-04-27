@@ -398,9 +398,9 @@ def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) ->
     must still run so the cached base re-enters the next trial clean
     (regression: RCA-5 H1).
     """
+    import peft as peft_mod
     import torch
     import transformers
-    import peft as peft_mod
 
     unload_calls: list[str] = []
 
@@ -434,7 +434,7 @@ def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) ->
             return _FakeAdapterModel()
 
     # Resolve lazy-loaded classes first (transformers uses _LazyModule).
-    _RealBnb = transformers.BitsAndBytesConfig
+    _real_bnb = transformers.BitsAndBytesConfig
 
     # Patch the class methods directly on the already-imported objects so the
     # deferred `from transformers import ...` inside _evaluate_adapter_on_heldout
@@ -445,7 +445,7 @@ def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) ->
                         classmethod(lambda cls, *a, **k: object()))
     # Patch __init__ on the real class so the deferred `from transformers import
     # BitsAndBytesConfig` still gets the same class but with no-op init.
-    monkeypatch.setattr(_RealBnb, "__init__", lambda self, **kwargs: None)
+    monkeypatch.setattr(_real_bnb, "__init__", lambda self, **kwargs: None)
     monkeypatch.setattr(peft_mod, "PeftModel", _FakePeftModel)
 
     pairs = [{"activation_text": "a", "teacher_text": "post = 1"}]
@@ -458,3 +458,50 @@ def test_evaluate_adapter_unload_runs_on_oom(monkeypatch: pytest.MonkeyPatch) ->
         )
     assert unload_calls == ["unload"], \
         "adapter_model.unload() not called on OOM — residue leaks to next trial"
+
+
+def test_flush_gpu_runs_after_train_and_register_in_trial_body() -> None:
+    """The trial body must call _flush_gpu_between_phases AFTER
+    train_and_register and BEFORE _evaluate_adapter_on_heldout (RCA-2 Cause 3).
+
+    Source-level contract check: this avoids reconstructing a full HPO trial
+    fixture in CPU CI. If _run_single_trial is nested inside _objective
+    (closure), substitute hpo._objective in the getsource call below and
+    adjust the surrounding scope.
+    """
+    import inspect
+
+    import run_training_hpo as hpo
+
+    # Pick the enclosing function — whichever one actually defines the trial
+    # body. Module-level _run_single_trial first, fall back to _objective.
+    target = getattr(hpo, "_run_single_trial", None) or getattr(hpo, "_objective", None)
+    assert target is not None, \
+        "neither _run_single_trial nor _objective is module-level; adjust test"
+
+    src = inspect.getsource(target)
+    train_idx = src.find("train_and_register(")
+    flush_idx = src.find("_flush_gpu_between_phases(")
+    eval_idx = src.find("_evaluate_adapter_on_heldout(")
+    assert train_idx >= 0, "train_and_register call site not found"
+    assert eval_idx >= 0, "_evaluate_adapter_on_heldout call site not found"
+    assert flush_idx >= 0, "_flush_gpu_between_phases call site not found"
+    assert train_idx < flush_idx < eval_idx, (
+        "Wrong ordering: flush must run between train_and_register and "
+        "_evaluate_adapter_on_heldout (RCA-2 Cause 3)"
+    )
+
+
+def test_flush_gpu_helper_invokes_gc_collect(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_flush_gpu_between_phases must run gc.collect (twice for promoted gens).
+    torch path is best-effort and not asserted (CPU CI may not have torch).
+    """
+    import gc as gc_module
+
+    import run_training_hpo as hpo
+
+    collect_calls: list[None] = []
+    monkeypatch.setattr(gc_module, "collect", lambda *a, **k: collect_calls.append(None))
+
+    hpo._flush_gpu_between_phases()
+    assert len(collect_calls) >= 2, "expected at least two gc.collect passes"
