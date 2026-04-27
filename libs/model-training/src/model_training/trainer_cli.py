@@ -181,7 +181,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mlflow-uri",
         dest="mlflow_tracking_uri",
         default=None,
-        help="Overrides MLFLOW_TRACKING_URI env; defaults to ./mlruns.",
+        help="Overrides MLFLOW_TRACKING_URI env; defaults to sqlite:///./mlflow.db.",
     )
 
     # --- Task metadata + registry ---

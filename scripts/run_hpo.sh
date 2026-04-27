@@ -7,7 +7,8 @@
 #  watch trials live.
 #
 #  Required: uv on PATH, NVIDIA GPU visible, dataset JSONL on disk.
-#  Optional: MLFLOW_TRACKING_URI for a remote MLflow server (else ./mlruns).
+#  Optional: MLFLOW_TRACKING_URI for a remote MLflow server (else
+#  sqlite:///./mlflow.db).
 #
 #  Usage:
 #    scripts/run_hpo.sh                                 # 30 trials, all repos
@@ -35,7 +36,7 @@ while [[ $# -gt 0 ]]; do
         --experiment-name) EXPERIMENT="$2"; shift 2;;
         --output-root)     OUTPUT_ROOT="$2"; shift 2;;
         --smoke)           SMOKE=1; shift;;
-        -h|--help)         sed -n '2,17p' "$0"; exit 0;;
+        -h|--help)         sed -n '2,18p' "$0"; exit 0;;
         *)                 EXTRA_ARGS+=("$1"); shift;;
     esac
 done
@@ -65,7 +66,7 @@ echo "Trials:         $N_TRIALS  (subsample=$SUBSAMPLE per trial)"
 echo "Keep top-k:     $KEEP_TOP_K"
 echo "Experiment:     $EXPERIMENT"
 echo "Output root:    $OUTPUT_ROOT"
-echo "MLflow URI:     ${MLFLOW_TRACKING_URI:-./mlruns (filesystem)}"
+echo "MLflow URI:     ${MLFLOW_TRACKING_URI:-sqlite:///./mlflow.db}"
 echo "Log:            $LOG"
 echo
 

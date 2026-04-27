@@ -697,6 +697,15 @@ def _run_single_trial(
     # TRL MLflowCallback attaches to the active run, so its params and
     # training metrics land inside this same run. Using the context
     # manager ensures the run is terminated on exception.
+    #
+    # Pin the tracking URI BEFORE set_experiment so MLflow doesn't fall
+    # back to its default filesystem backend (which emits a v2.x deprecation
+    # warning and would orphan our run when the trainer later resets the URI
+    # to sqlite). Precedence mirrors training_common.setup_mlflow.
+    mlflow.set_tracking_uri(
+        kwargs.get("mlflow_tracking_uri")
+        or os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///./mlflow.db")
+    )
     mlflow.set_experiment(kwargs.get("mlflow_experiment") or run_args.experiment_name)
     mlflow.start_run(
         run_name=f"{run_args.adapter_id_prefix}-t{trial.number:03d}",
@@ -956,6 +965,9 @@ def _log_study_summary_to_mlflow(
     """Log a study-level parent run aggregating best-trial stats."""
     import mlflow  # noqa: PLC0415
 
+    mlflow.set_tracking_uri(
+        os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///./mlflow.db")
+    )
     mlflow.set_experiment(experiment_name)
     with mlflow.start_run(run_name=f"study-{args.study_name}"):
         mlflow.set_tags(

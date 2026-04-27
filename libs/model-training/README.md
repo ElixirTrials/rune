@@ -123,9 +123,11 @@ QLoRA fine-tuning utilities:
   biased toward the revision delta vs. carried-over context.
 
 MLflow tracking is enabled by default (`report_to="mlflow"`,
-experiment `rune-qlora`). Tracking URI falls back to `./mlruns`; override
-via `MLFLOW_TRACKING_URI` or the `mlflow_tracking_uri` kwarg. Set
-`RUNE_DISABLE_MLFLOW=1` to skip MLflow for CPU CI.
+experiment `rune-qlora`). Tracking URI falls back to
+`sqlite:///./mlflow.db` (the filesystem `./mlruns` backend was deprecated
+by MLflow in February 2026); override via `MLFLOW_TRACKING_URI` or the
+`mlflow_tracking_uri` kwarg. Set `RUNE_DISABLE_MLFLOW=1` to skip MLflow
+for CPU CI.
 
 ### CLI wrapper
 

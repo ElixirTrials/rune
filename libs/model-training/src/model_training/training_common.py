@@ -24,7 +24,10 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
     in the environment, or when mlflow itself is not importable.
 
     Tracking URI precedence: explicit ``tracking_uri`` arg, then the
-    ``MLFLOW_TRACKING_URI`` env var, then ``./mlruns`` as a local-dev fallback.
+    ``MLFLOW_TRACKING_URI`` env var, then ``sqlite:///./mlflow.db`` as a
+    local-dev fallback. The filesystem ``./mlruns`` backend was deprecated
+    by MLflow in February 2026; the SQLite backend is the supported
+    successor for single-host deployments.
 
     Args:
         experiment_name: MLflow experiment name to activate.
@@ -39,7 +42,23 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
         import mlflow  # noqa: PLC0415
     except ImportError:
         return False
-    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "./mlruns")
+
+    # If a parent harness (e.g. the HPO wrapper at run_training_hpo.py:701)
+    # already started a run, respect the URI it was started against.
+    # Re-setting the tracking URI here would orphan that run because MLflow
+    # binds run-ids to a backend at start time — the run would still be
+    # 'active' in the client but the backend lookup would fail with
+    # 'Run with id=... not found'.
+    active = mlflow.active_run()
+    if active is not None:
+        logger.info(
+            "MLflow already active under run_id=%s uri=%s; reusing",
+            active.info.run_id,
+            mlflow.get_tracking_uri(),
+        )
+        return True
+
+    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///./mlflow.db")
     mlflow.set_tracking_uri(uri)
     mlflow.set_experiment(experiment_name)
     logger.info("MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name)
