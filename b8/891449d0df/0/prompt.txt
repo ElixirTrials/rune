@@ -1,0 +1,172 @@
+Read /Users/noahdolevelixir/Code/rune/instructions/2026-04-23-pr-28-summary.md end-to-end. Using the "Documentation revision checklist" section
+   (ordered Critical → Important → Minor with a suggested editing order at the bottom), update every affected doc to match PR #28. Work top-down
+  through the list, one file per subagent dispatch. Don't touch files marked Clean. Cross-reference the "File-level changelog" and "Part A/B/C"
+  sections for the canonical facts (module names, commit SHAs, adapter ID schemes, threshold values). After each file lands, show me the diff;
+  stop if anything is ambiguous rather than guessing. Don't commit — leave changes staged so I can review.
+
+---
+
+Run make docs-build and fix any errors or warnings
+
+---
+
+commit and push
+
+---
+
+Can you double check that everything mentioned here has been taken care of: https://github.com/ElixirTrials/rune/pull/28#issuecomment-4295005905
+
+---
+
+Let's address all the concerns, fix what needs fixing, comment and resolve everything in the PR. /superpowers:subagent-driven-development
+
+---
+
+I see some ci/cd failures
+
+---
+
+Now I see two failed tests in the ci/cd: ________ TestComputeWeightedLoss.test_missing_loss_weights_no_keyerror _________
+[gw1] linux -- Python 3.12.3 /home/runner/work/rune/rune/.venv/bin/python
+
+self = <libs.model-training.tests.test_diff_loss.TestComputeWeightedLoss object at 0x7ff3161470e0>
+
+    def test_missing_loss_weights_no_keyerror(self) -> None:
+        """When batch has no loss_weights, compute_loss does not raise."""
+        import torch
+        from model_training.diff_loss import DiffAwareSFTTrainer
+    
+        class _StubTrainer(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                pass
+    
+        trainer = _StubTrainer()
+    
+        logits_tensor = torch.randn(1, 4, 8)
+        labels_tensor = torch.tensor([[IGNORE_INDEX, 1, 2, IGNORE_INDEX]])
+    
+        class _FakeOutputs:
+            logits = logits_tensor
+            loss = torch.tensor(1.23)
+    
+        def _fake_model(**kwargs):  # type: ignore[return]
+            return _FakeOutputs()
+    
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "labels": labels_tensor,
+            # no "loss_weights" key
+        }
+    
+        # Should not raise; falls back to outputs.loss.
+>       loss = trainer.compute_loss(_fake_model, inputs, return_outputs=False)  # type: ignore[arg-type]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+libs/model-training/tests/test_diff_loss.py:488: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+libs/model-training/src/model_training/diff_loss.py:545: in compute_loss
+    return super().compute_loss(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <libs.model-training.tests.test_diff_loss.TestComputeWeightedLoss.test_missing_loss_weights_no_keyerror.<locals>._StubTrainer object at 0x7ff29939c2c0>
+model = <function TestComputeWeightedLoss.test_missing_loss_weights_no_keyerror.<locals>._fake_model at 0x7ff29907fc40>
+inputs = {'input_ids': tensor([[1, 2, 3, 4]]), 'labels': tensor([[-100,    1,    2, -100]])}
+return_outputs = False, num_items_in_batch = None
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+>       mode = "train" if self.model.training else "eval"
+                          ^^^^^^^^^^
+E       AttributeError: '_StubTrainer' object has no attribute 'model'
+
+.venv/lib/python3.12/site-packages/trl/trainer/sft_trainer.py:1251: AttributeError
+_ TestBuildDiffAwareSftTrainerIntegration.test_factory_returns_diff_aware_trainer _
+[gw1] linux -- Python 3.12.3 /home/runner/work/rune/rune/.venv/bin/python
+
+self = <libs.model-training.tests.test_diff_loss.TestBuildDiffAwareSftTrainerIntegration object at 0x7ff31613f8f0>
+
+    @pytest.mark.slow
+    def test_factory_returns_diff_aware_trainer(self) -> None:
+        """build_diff_aware_sft_trainer returns a DiffAwareSFTTrainer instance."""
+        pytest.importorskip("trl", reason="trl not installed")
+    
+        from unittest.mock import MagicMock
+    
+        from model_training.diff_loss import (
+            DiffAwareSFTTrainer,
+            build_diff_aware_sft_trainer,
+        )
+    
+        model = MagicMock()
+        args = MagicMock()
+        dataset = MagicMock()
+        tokenizer = MagicMock()
+        tokenizer.pad_token_id = 0
+        tokenizer.eos_token_id = 1
+    
+>       trainer = build_diff_aware_sft_trainer(
+            model,
+            args,
+            dataset,
+            processing_class=tokenizer,
+        )
+
+libs/model-training/tests/test_diff_loss.py:639: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+model = <MagicMock id='140679929513504'>
+args = <MagicMock id='140679929513264'>
+train_dataset = <MagicMock id='140679929523440'>
+
+    def build_diff_aware_sft_trainer(
+        model: Any,
+        args: Any,
+        train_dataset: Any,
+        *,
+        peft_config: Any | None = None,
+        processing_class: Any | None = None,
+        changed_weight: float = 1.0,
+        unchanged_weight: float = 0.3,
+        tokenizer: Any | None = None,
+    ) -> Any:
+        """Build an SFTTrainer that uses diff-aware loss weighting.
+    
+        Constructs a :class:`DiffWeightedDataCollator` wrapping the default TRL
+        completion-only collator, then instantiates :class:`DiffAwareSFTTrainer`
+        with it.
+    
+        The ``tokenizer`` kwarg enables the hunk (line-level diff) path in the
+        collator.  When ``None`` (default), the collator falls back to the legacy
+        set-based path.  Task 5 threads the tokenizer through
+        ``trainer.py::_construct_sft_trainer``; until then, callers may pass it
+        explicitly here.
+    
+        All GPU imports are deferred to this function body (INFRA-05).
+    
+        Args:
+            model: The language model (or PEFT-wrapped model).
+            args: ``trl.SFTConfig`` training arguments.
+            train_dataset: HuggingFace dataset with SFT examples.
+            peft_config: Optional PEFT config for fresh LoRA init.
+            processing_class: Tokenizer / processor for the SFTTrainer.
+            changed_weight: Weight for changed / inserted tokens.
+            unchanged_weight: Weight for unchanged (context) tokens.
+            tokenizer: Optional tokenizer passed to :class:`DiffWeightedDataCollator`
+                to enable the hunk path.  Falls back to ``processing_class`` if
+                ``tokenizer`` is ``None`` and ``processing_class`` is provided.
+    
+        Returns:
+            A configured :class:`DiffAwareSFTTrainer` instance.
+        """
+>       from trl import DataCollatorForCompletionOnlyLM  # type: ignore[attr-defined]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ImportError: cannot import name 'DataCollatorForCompletionOnlyLM' from 'trl' (/home/runner/work/rune/rune/.venv/lib/python3.12/site-packages/trl/__init__.py)
+
+libs/model-training/src/model_training/diff_loss.py:611: ImportError
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Coverage XML written to file coverage.xml
+=========================== short test summary info ============================
+FAILED libs/model-training/tests/test_diff_loss.py::TestComputeWeightedLoss::test_missing_loss_weights_no_keyerror - AttributeError: '_StubTrainer' object has no attribute 'model'
+FAILED libs/model-training/tests/test_diff_loss.py::TestBuildDiffAwareSftTrainerIntegration::test_factory_returns_diff_aware_trainer - ImportError: cannot import name 'DataCollatorForCompletionOnlyLM' from 'trl' (/home/runner/work/rune/rune/.venv/lib/python3.12/site-packages/trl/__init__.py)
+============ 2 failed, 785 passed, 2 skipped, 10 xfailed in 48.10s =============
