@@ -277,9 +277,8 @@ def test_attach_assistant_masks_preserves_diff_side_channels(monkeypatch) -> Non
     test_trajectory.py. This test asserts ONLY the column-preservation
     contract of _attach_assistant_masks.
     """
-    from datasets import Dataset
-
     import model_training.trajectory as trajectory_mod
+    from datasets import Dataset
     from model_training.trainer import _attach_assistant_masks
 
     # Stub compute_assistant_masks so we don't depend on tokenizer markers.
@@ -380,3 +379,17 @@ def test_setup_lora_adapter_rejects_pre_wrapped_base() -> None:
             override_lora_alpha=None,
             override_lora_dropout=None,
         )
+
+
+def test_bnb_config_enables_fp32_cpu_offload() -> None:
+    """BitsAndBytesConfig in train_qlora must enable fp32 CPU offload so that
+    accelerate's auto device-mapping can spill to CPU instead of erroring at
+    load time when VRAM is tight (RCA-4 (b))."""
+    import importlib
+
+    trainer_mod = importlib.import_module("model_training.trainer")
+    fn = getattr(trainer_mod, "_build_bnb_config", None)
+    assert fn is not None, "_build_bnb_config helper not yet defined"
+
+    cfg = fn()
+    assert getattr(cfg, "llm_int8_enable_fp32_cpu_offload", False) is True

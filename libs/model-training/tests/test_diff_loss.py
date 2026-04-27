@@ -664,7 +664,6 @@ class TestBuildDiffAwareSftTrainerIntegration:
 def test_compute_weighted_loss_warns_on_all_masked_batch(caplog) -> None:
     """All-masked batches must emit a WARNING (was DEBUG, RCA-5 visibility gap)."""
     import torch
-
     from model_training.diff_loss import IGNORE_INDEX, _compute_weighted_loss
 
     # Tiny logits (B=1, S=2, V=3); labels all -100 -> denom == 0.

@@ -121,6 +121,27 @@ def _release_trial_state(
         pass
 
 
+def _build_bnb_config() -> Any:
+    """Construct the NF4 BitsAndBytesConfig used by every QLoRA load.
+
+    ``llm_int8_enable_fp32_cpu_offload=True`` lets ``accelerate`` spill
+    transformer layers to CPU when VRAM is exhausted, instead of bnb erroring
+    at load time with an opaque message (RCA-4 (b)). This is graceful
+    degradation, not a perf default — CPU-offloaded forward is much slower,
+    but a slow trial is recoverable; a load-time crash is not.
+    """
+    import torch  # noqa: PLC0415
+    from transformers import BitsAndBytesConfig  # noqa: PLC0415
+
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+    )
+
+
 def _get_or_load_base(
     model_id: str,
     *,
@@ -148,6 +169,20 @@ def _get_or_load_base(
         model_kwargs["attn_implementation"] = attn_impl
     model = auto_model_cls.from_pretrained(model_id, **model_kwargs)
     tokenizer = auto_tokenizer_cls.from_pretrained(model_id)
+
+    # Surface silent CPU offload — accelerate's "auto" device map will spill
+    # transformer layers to CPU when VRAM is tight, with
+    # llm_int8_enable_fp32_cpu_offload=True making this silent. CPU-offloaded
+    # forward runs at ~1/100x throughput (review feedback on RCA-4 (b)).
+    device_map = getattr(model, "hf_device_map", None) or {}
+    cpu_layers = [k for k, v in device_map.items() if str(v) == "cpu"]
+    if cpu_layers:
+        logger.warning(
+            "Loaded %s with %d CPU-resident layers (accelerate fp32 offload). "
+            "Forward will be 30-100x slower than full-GPU. Reduce model size "
+            "or free VRAM before retry.",
+            model_id, len(cpu_layers),
+        )
 
     if _persist_base_enabled():
         _BASE_MODEL_CACHE[model_id] = (model, tokenizer)
@@ -863,9 +898,9 @@ def train_qlora(
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     # Deferred GPU imports — all in function body for CPU-only importability
-    import torch
+    import torch  # noqa: F401 — needed for _build_bnb_config's bfloat16 dtype
     from datasets import Dataset
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import SFTConfig, SFTTrainer
 
     # Resolve defaults from model registry and explicit overrides
@@ -902,13 +937,10 @@ def train_qlora(
         diff_aware_loss=diff_aware_loss,
     )
 
-    # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss)
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
+    # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss).
+    # _build_bnb_config also enables llm_int8_enable_fp32_cpu_offload so
+    # accelerate degrades gracefully when VRAM is tight (RCA-4 (b)).
+    bnb_config = _build_bnb_config()
 
     # Load model and tokenizer (or reuse the cached base when
     # RUNE_PERSIST_BASE_MODEL=1; see _get_or_load_base).
@@ -1022,8 +1054,28 @@ def train_qlora(
     ):
         trainer.train()
 
-        # Save adapter weights only (PEFT-aware: safetensors + adapter_config.json)
-        trainer.save_model(output_dir)
+        # Save adapter weights ONCE with save_embedding_layers=False so PEFT
+        # skips its hub-probe (which returns None under HF_HUB_OFFLINE=1 and
+        # emits the cosmetic "Could not find a config file" warning — RCA-1).
+        # Our LoRA never resizes embeddings, so the assumption is correct.
+        # We bypass trainer.save_model (which would call save_pretrained with
+        # default kwargs) and call save_pretrained directly to avoid the
+        # double-write race the reviewer flagged.
+        try:
+            from peft import PeftModel  # noqa: PLC0415
+
+            inner = getattr(trainer, "model", None)
+            if isinstance(inner, PeftModel):
+                inner.save_pretrained(output_dir, save_embedding_layers=False)
+            else:
+                # Non-PEFT path (shouldn't fire in QLoRA but stays correct).
+                trainer.save_model(output_dir)
+        except Exception:  # noqa: BLE001 — fall back to default save path
+            logger.exception(
+                "PeftModel.save_pretrained failed; falling back to "
+                "trainer.save_model (Qwen config warning may resurface)"
+            )
+            trainer.save_model(output_dir)
 
         if mlflow_enabled:
             mlflow_log_output_artifacts(output_dir)
