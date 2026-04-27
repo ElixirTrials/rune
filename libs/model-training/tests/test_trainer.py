@@ -321,3 +321,39 @@ def test_attach_assistant_masks_preserves_diff_side_channels(monkeypatch) -> Non
     assert row["post_code"] == "return 42", "post_code value corrupted"
     # The non-preserved 'messages' column should be removed.
     assert "messages" not in cols, "non-preserved column leaked through"
+
+
+def test_release_trial_state_strips_peft_config_residue() -> None:
+    """After _release_trial_state, the cached base model must not retain a
+    `peft_config` attribute (regression: RCA-3 — discarded unload() return
+    leaves residue that triggers double-wrap on the next trial).
+    """
+    from model_training.trainer import _release_trial_state
+
+    class _Base:
+        def __init__(self) -> None:
+            # Instance attribute mirrors real PEFT (BaseTuner.__init__ does
+            # self.peft_config = {...}); class-level attrs are not removable
+            # via delattr on the instance.
+            self.peft_config = {"default": object()}  # simulates PEFT residue
+
+    class _Wrapper:
+        def __init__(self, base: object) -> None:
+            self._base = base
+
+        def unload(self) -> object:
+            # Real PEFT unload() returns the base; we mirror that contract.
+            return self._base
+
+    class _FakeTrainer:
+        def __init__(self, model: object) -> None:
+            self.model = model
+
+    base = _Base()
+    wrapper = _Wrapper(base)
+    trainer = _FakeTrainer(wrapper)
+
+    _release_trial_state(trainer, wrapper, dataset=None, persist_base=True)
+
+    assert not hasattr(base, "peft_config"), \
+        "peft_config residue not cleared — next trial will double-wrap"

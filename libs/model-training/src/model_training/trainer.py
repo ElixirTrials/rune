@@ -87,7 +87,22 @@ def _release_trial_state(
         peft_wrapper = getattr(trainer, "model", None) or model
         if hasattr(peft_wrapper, "unload"):
             try:
-                peft_wrapper.unload()
+                # PEFT's unload() returns the restored base. Capture it so we
+                # can strip the lingering `peft_config` attribute, which
+                # `BaseTuner.__init__` stamps onto the inner model
+                # (tuners_utils.py:301) and never removes — triggering the
+                # "Already found a peft_config" warning on the next wrap and
+                # causing adapter stacking + VRAM doubling (RCA-2 Cause 1,
+                # RCA-3).
+                restored = peft_wrapper.unload()
+                inner = restored if restored is not None else getattr(
+                    peft_wrapper, "model", None
+                )
+                if inner is not None and hasattr(inner, "peft_config"):
+                    try:
+                        delattr(inner, "peft_config")
+                    except AttributeError:
+                        pass
             except Exception:  # noqa: BLE001 — never break training cleanup
                 logger.exception(
                     "PEFT unload() failed; cache may be in a wrapped state"
