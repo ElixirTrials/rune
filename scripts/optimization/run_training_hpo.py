@@ -262,26 +262,43 @@ def _suggest_trial_params(trial: Any) -> dict[str, Any]:
 
 
 def _subsample_dataset(src: Path, n: int, dest: Path) -> int:
-    """Write the first ``n`` lines of ``src`` into ``dest`` as JSONL.
+    """Write up to ``n`` records from ``src`` into ``dest`` as JSONL.
 
-    Kept simple — deterministic head-sample, not random. Random sampling
-    could be added later, but for HPO proxy runs a stable subsample
-    makes trials directly comparable.
+    Deterministic and task-aware: does a first-pass round-robin over
+    ``task_id`` (preferring ``metadata.source_task_id``) so that small
+    subsamples span multiple tasks — required by the no-leakage held-out
+    split in ``_stratify_heldout_split``. Record order within each task
+    is preserved. Input order determines task visitation order, so the
+    sample is still stable across trials.
     """
+    import json as _json  # noqa: PLC0415
+    from collections import OrderedDict  # noqa: PLC0415
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    written = 0
-    with (
-        src.open("r", encoding="utf-8") as fin,
-        dest.open("w", encoding="utf-8") as fout,
-    ):
+    buckets: OrderedDict[str, list[str]] = OrderedDict()
+    with src.open("r", encoding="utf-8") as fin:
         for line in fin:
             line = line.strip()
             if not line:
                 continue
-            fout.write(line + "\n")
-            written += 1
-            if written >= n:
-                break
+            try:
+                rec = _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+            meta = rec.get("metadata") or {}
+            tid = str(meta.get("source_task_id") or rec.get("task_id") or "")
+            buckets.setdefault(tid, []).append(line)
+
+    written = 0
+    with dest.open("w", encoding="utf-8") as fout:
+        while written < n and any(buckets.values()):
+            for tid in list(buckets.keys()):
+                if not buckets[tid]:
+                    continue
+                fout.write(buckets[tid].pop(0) + "\n")
+                written += 1
+                if written >= n:
+                    break
     return written
 
 
@@ -473,18 +490,24 @@ def _evaluate_adapter_on_heldout(
         BitsAndBytesConfig,
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model_id)
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
     )
-    base_model = AutoModelForCausalLM.from_pretrained(
+    # Reuse the trainer's cached NF4 base when RUNE_PERSIST_BASE_MODEL=1 is
+    # set by the HPO runner — avoids a second from_pretrained that doubles
+    # VRAM during eval. Use the trainer's _get_or_load_base so the cache is
+    # shared across train+eval within a study.
+    from model_training.trainer import _get_or_load_base  # noqa: PLC0415
+
+    base_model, tokenizer = _get_or_load_base(
         base_model_id,
-        quantization_config=bnb_config,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
+        bnb_config=bnb_config,
+        attn_impl=None,
+        auto_model_cls=AutoModelForCausalLM,
+        auto_tokenizer_cls=AutoTokenizer,
     )
     adapter_model = PeftModel.from_pretrained(base_model, adapter_path)
     adapter_model.eval()
@@ -562,6 +585,21 @@ def _evaluate_adapter_on_heldout(
         base_loss, _, _, _ = _forward_hunk_metrics(adapter_model, disable=True)
         if base_loss > 0.0 and math.isfinite(base_loss):
             adapter_improvement = 1.0 - (hunk_loss / base_loss)
+
+    # Detach the trial's adapter from the (possibly cached) base so the next
+    # trial's PeftModel.from_pretrained / get_peft_model sees a clean base.
+    # PeftModel.unload() removes the LoRA layers and returns the base ref;
+    # the original base is mutated in place, so we don't need to update the
+    # cache map. If the cache is hot, this restores it for the next trial.
+    try:
+        adapter_model.unload()
+    except Exception:  # noqa: BLE001 — never break HPO on cleanup
+        logger.exception("Heldout eval: PeftModel.unload() failed")
+    del adapter_model
+    import gc as _gc  # noqa: PLC0415
+
+    _gc.collect()
+    torch.cuda.empty_cache()
 
     return {
         "hunk_loss": float(hunk_loss),
@@ -672,47 +710,66 @@ def _run_single_trial(
     # don't collide with the default ~/.rune/adapters layout.
     os.environ["RUNE_ADAPTER_DIR"] = str(trial_dir / "adapter_root")
 
+    import mlflow  # noqa: PLC0415
     from model_training.trainer import train_and_register  # noqa: PLC0415
 
-    try:
-        train_and_register(**kwargs)
-    except Exception as exc:  # noqa: BLE001 — one bad trial mustn't sink the study
-        logger.exception("Trial %d crashed: %s", trial.number, exc)
-        return 0.0
-
-    adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
-
-    # Resolve base model ID the same way train_and_register does.
-    base_model_id = kwargs.get("base_model_id") or os.environ.get(
-        "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
+    # Open an HPO-owned MLflow run BEFORE training so the hpo.* tags are
+    # attached even if training crashes (e.g. CUDA OOM). The trainer's
+    # TRL MLflowCallback attaches to the active run, so its params and
+    # training metrics land inside this same run. Using the context
+    # manager ensures the run is terminated on exception.
+    #
+    # Pin the tracking URI BEFORE set_experiment so MLflow doesn't fall
+    # back to its default filesystem backend (which emits a v2.x deprecation
+    # warning and would orphan our run when the trainer later resets the URI
+    # to sqlite). Precedence mirrors training_common.setup_mlflow.
+    mlflow.set_tracking_uri(
+        kwargs.get("mlflow_tracking_uri")
+        or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    )
+    mlflow.set_experiment(kwargs.get("mlflow_experiment") or run_args.experiment_name)
+    mlflow.start_run(
+        run_name=f"{run_args.adapter_id_prefix}-t{trial.number:03d}",
     )
     try:
+        mlflow.set_tags(
+            {
+                "hpo.study_name": run_args.adapter_id_prefix,
+                "hpo.trial_number": str(trial.number),
+                "hpo.dataset": run_args.dataset,
+                "hpo.warm_start": run_args.warm_start,
+                "hpo.diff_aware_loss": str(sampled["diff_aware_loss"]),
+                "hpo.heldout_strategy": run_args.heldout_strategy,
+                "hpo.heldout_fraction": str(run_args.heldout_fraction),
+                "hpo.subsample_size": str(n),
+                "hpo.train_pairs": str(len(train_pairs)),
+                "hpo.heldout_pairs": str(len(heldout_pairs)),
+                "hpo.adapter_id": adapter_id,
+            }
+        )
+
+        train_and_register(**kwargs)
+
+        adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
+        # Resolve base model ID the same way train_and_register does.
+        base_model_id = kwargs.get("base_model_id") or os.environ.get(
+            "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
+        )
         eval_metrics = _evaluate_adapter_on_heldout(
             adapter_output_dir,
             heldout_pairs,
             base_model_id=base_model_id,
             compute_adapter_delta=run_args.compute_adapter_delta,
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Trial %d heldout eval crashed: %s", trial.number, exc)
-        eval_metrics = {
-            "hunk_loss": float("inf"),
-            "hunk_accuracy": 0.0,
-            "adapter_improvement": 0.0,
-            "hunk_entropy": 0.0,
-        }
-
-    # Log diagnostic metrics to MLflow when available (silent no-op otherwise).
-    try:
-        import mlflow  # noqa: PLC0415
-
-        if mlflow.active_run() is not None:
-            mlflow.log_metrics(
-                {f"eval/{k}": v for k, v in eval_metrics.items()},
-                step=trial.number,
-            )
-    except ImportError:
-        pass
+        mlflow.log_metrics(
+            {f"eval/{k}": v for k, v in eval_metrics.items()},
+            step=trial.number,
+        )
+    except BaseException:
+        mlflow.end_run(status="FAILED")
+        raise
+    else:
+        mlflow.end_run(status="FINISHED")
 
     fitness = _compute_fitness(
         eval_metrics["hunk_loss"],
@@ -862,7 +919,27 @@ def main(argv: list[str] | None = None) -> int:
             prior_losses=prior_losses,
         )
 
-    study.optimize(_objective, n_trials=n_trials, show_progress_bar=False)
+    # Tell Optuna that a per-trial exception is a *failed trial*, not a
+    # study-halting bug and not a zero-fitness completion. Failed trials
+    # are excluded from ``study.best_trial`` — preventing a crashed run
+    # from being reported as "best".
+    study.optimize(
+        _objective,
+        n_trials=n_trials,
+        show_progress_bar=False,
+        catch=(Exception,),
+    )
+
+    completed = [t for t in study.trials if t.state.name == "COMPLETE"]
+    failed = [t for t in study.trials if t.state.name == "FAIL"]
+    if not completed:
+        msg = (
+            f"HPO study '{study.study_name}' produced no successful trials "
+            f"({len(failed)} failed, {len(study.trials)} total). Refusing to "
+            "emit a 'best trial' summary."
+        )
+        logger.error(msg)
+        raise SystemExit(msg)
 
     # Retention pruning.
     _prune_retained_adapters(study, run_args)
@@ -879,9 +956,75 @@ def main(argv: list[str] | None = None) -> int:
         "best_trial": best.number,
         "best_fitness": best.value,
         "best_params": best.params,
+        "n_trials_completed": len(completed),
+        "n_trials_failed": len(failed),
+        "n_trials_total": len(study.trials),
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
+
+    # Emit a study-level MLflow summary run so the UI shows one canonical
+    # artifact per study alongside the per-trial runs. Placed after the
+    # trials finish so it doesn't collide with any trial's active run.
+    _log_study_summary_to_mlflow(
+        experiment_name=f"{args.experiment_name}-studies",
+        summary=summary,
+        args=args,
+        run_args=run_args,
+        fitness_cfg=fitness_cfg,
+    )
     return 0
+
+
+def _log_study_summary_to_mlflow(
+    *,
+    experiment_name: str,
+    summary: dict[str, Any],
+    args: argparse.Namespace,
+    run_args: HPORunArgs,
+    fitness_cfg: FitnessConfig,
+) -> None:
+    """Log a study-level parent run aggregating best-trial stats."""
+    import mlflow  # noqa: PLC0415
+
+    mlflow.set_tracking_uri(
+        os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    )
+    mlflow.set_experiment(experiment_name)
+    with mlflow.start_run(run_name=f"study-{args.study_name}"):
+        mlflow.set_tags(
+            {
+                "hpo.study_name": args.study_name,
+                "hpo.dataset": run_args.dataset,
+                "hpo.warm_start": run_args.warm_start,
+                "hpo.model_config_name": run_args.model_config_name,
+                "hpo.db": args.db,
+                "hpo.output_root": str(run_args.output_root),
+                "hpo.kind": "training-hpo-study-summary",
+            }
+        )
+        mlflow.log_params(
+            {
+                "n_trials_requested": args.n_trials if not args.smoke else 2,
+                "subsample": run_args.subsample,
+                "heldout_fraction": run_args.heldout_fraction,
+                "heldout_strategy": run_args.heldout_strategy,
+                "keep_top_k": run_args.keep_top_k,
+                "startup_trials": args.startup_trials,
+                "hunk_loss_weight": fitness_cfg.hunk_loss_weight,
+                "hunk_accuracy_weight": fitness_cfg.hunk_accuracy_weight,
+                "adapter_improvement_weight": fitness_cfg.adapter_improvement_weight,
+                **{f"best.{k}": v for k, v in summary["best_params"].items()},
+            }
+        )
+        mlflow.log_metrics(
+            {
+                "best_fitness": summary["best_fitness"],
+                "n_trials_completed": summary["n_trials_completed"],
+                "n_trials_failed": summary["n_trials_failed"],
+                "n_trials_total": summary["n_trials_total"],
+                "best_trial_number": summary["best_trial"],
+            }
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

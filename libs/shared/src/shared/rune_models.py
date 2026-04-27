@@ -161,7 +161,7 @@ class SwarmConfig(BaseModel):
     max_iterations: int = 5
     evolution_interval: int = 7200
     sandbox_backend: str = "subprocess"
-    base_model_id: str = "Qwen/Qwen2.5-Coder-7B"
+    base_model_id: str = "Qwen/Qwen3.5-9B"
     device: str = "cpu"
     hypernetwork_checkpoint: str | None = None
     run_id: str | None = None

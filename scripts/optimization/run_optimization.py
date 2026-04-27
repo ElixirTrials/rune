@@ -24,7 +24,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 os.environ.setdefault("INFERENCE_PROVIDER", "transformers")
 os.environ.setdefault("TRANSFORMERS_MODEL_NAME", "google/gemma-2-2b-it")
@@ -172,7 +172,8 @@ def _generate_with_adapter(
             )
 
         new_tokens = outputs[0][input_len:]
-        text = _tokenizer.decode(new_tokens, skip_special_tokens=True)
+        # decode() returns str | list[str]; 1D tensor → always str.
+        text = cast(str, _tokenizer.decode(new_tokens, skip_special_tokens=True))
 
         del model
         gc.collect()
@@ -240,6 +241,8 @@ def make_objective(
 ) -> Any:
     """Create an Optuna objective that samples tasks per trial."""
 
+    import mlflow  # noqa: PLC0415
+
     def objective(trial: optuna.Trial) -> float:
         scaling = trial.suggest_float("scaling", 0.02, 0.20)
         prompt_style = trial.suggest_categorical("prompt_style", PROMPT_STYLES)
@@ -271,7 +274,31 @@ def make_objective(
             [t.name for t in trial_tasks],
         )
 
-        try:
+        # One MLflow run per trial; Optuna's catch=(Exception,) at the
+        # study level marks any raised exception as a FAILED trial so the
+        # study-level best-trial selection excludes failures — no silent
+        # zero-score fallbacks.
+        with mlflow.start_run(run_name=f"trial-{trial.number:03d}"):
+            mlflow.set_tags(
+                {
+                    "hpo.kind": "pipeline-hpo-trial",
+                    "hpo.trial_number": str(trial.number),
+                    "hpo.tasks_evaluated": ",".join(t.name for t in trial_tasks),
+                }
+            )
+            mlflow.log_params(
+                {
+                    "scaling": scaling,
+                    "prompt_style": prompt_style,
+                    "trajectory_style": trajectory_style,
+                    "max_length": max_length,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "repetition_penalty": repetition_penalty,
+                    "use_bias": use_bias,
+                    "tasks_per_trial": n,
+                }
+            )
             score = evaluate_trial(
                 tasks=trial_tasks,
                 scaling=scaling,
@@ -283,9 +310,7 @@ def make_objective(
                 repetition_penalty=repetition_penalty,
                 use_bias=use_bias,
             )
-        except Exception as e:
-            logger.exception("Trial %d failed: %s", trial.number, e)
-            score = 0.0
+            mlflow.log_metric("fitness", score)
 
         logger.info("Trial %d: avg_score=%.2f", trial.number, score)
         return score
@@ -335,6 +360,12 @@ def main() -> None:
         default=15,
         help="Random trials before TPE kicks in",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default="rune-pipeline-hpo",
+        help="MLflow experiment name for per-trial runs",
+    )
     args = parser.parse_args()
 
     # Load model
@@ -344,6 +375,12 @@ def main() -> None:
     task_names = args.tasks.split(",") if args.tasks else None
     all_tasks = get_tasks(task_names)
     logger.info("Task pool: %s", [t.name for t in all_tasks])
+
+    # Point MLflow at the requested experiment; per-trial runs are opened
+    # inside the objective function.
+    import mlflow  # noqa: PLC0415
+
+    mlflow.set_experiment(args.experiment_name)
 
     # Create study
     study = optuna.create_study(
@@ -367,7 +404,25 @@ def main() -> None:
     )
     t0 = time.time()
 
-    study.optimize(objective, n_trials=args.n_trials, show_progress_bar=True)
+    # catch=(Exception,) so per-trial failures are marked FAILED in Optuna
+    # (excluded from best_trial) instead of being silently scored 0.0.
+    study.optimize(
+        objective,
+        n_trials=args.n_trials,
+        show_progress_bar=True,
+        catch=(Exception,),
+    )
+
+    completed = [t for t in study.trials if t.state.name == "COMPLETE"]
+    failed = [t for t in study.trials if t.state.name == "FAIL"]
+    if not completed:
+        msg = (
+            f"Pipeline HPO study '{study.study_name}' produced no successful "
+            f"trials ({len(failed)} failed, {len(study.trials)} total). "
+            "Refusing to save a 'best config'."
+        )
+        logger.error(msg)
+        raise SystemExit(msg)
 
     elapsed = time.time() - t0
     logger.info("Optimization complete in %.0fs", elapsed)
@@ -391,9 +446,41 @@ def main() -> None:
     config_path = config.save()
     logger.info("Optimal config saved to %s", config_path)
 
+    # Study-level summary run in its own experiment so it lives alongside
+    # (but doesn't nest under) the per-trial runs.
+    mlflow.set_experiment(f"{args.experiment_name}-studies")
+    with mlflow.start_run(run_name=f"study-{args.study_name}"):
+        mlflow.set_tags(
+            {
+                "hpo.kind": "pipeline-hpo-study-summary",
+                "hpo.study_name": args.study_name,
+                "hpo.db": args.db,
+                "hpo.config_path": str(config_path),
+            }
+        )
+        mlflow.log_params(
+            {
+                "n_trials_requested": args.n_trials,
+                "tasks_per_trial": args.tasks_per_trial,
+                "startup_trials": args.startup_trials,
+                "task_pool": ",".join(t.name for t in all_tasks),
+                **{f"best.{k}": v for k, v in best.items()},
+            }
+        )
+        mlflow.log_metrics(
+            {
+                "best_fitness": study.best_value,
+                "best_trial_number": study.best_trial.number,
+                "n_trials_completed": len(completed),
+                "n_trials_failed": len(failed),
+                "n_trials_total": len(study.trials),
+                "elapsed_seconds": elapsed,
+            }
+        )
+
     # Print top 10 trials
     print("\n=== TOP 10 TRIALS ===")
-    top_trials = sorted(study.trials, key=lambda t: t.value or 0, reverse=True)[:10]
+    top_trials = sorted(completed, key=lambda t: t.value or 0, reverse=True)[:10]
     for t in top_trials:
         print(
             f"  #{t.number:3d} score={t.value:.2f} "

@@ -32,7 +32,7 @@ class TransformersProvider(InferenceProvider):
         torch_dtype: Model dtype ('auto', 'float16', 'bfloat16').
 
     Example:
-        >>> provider = TransformersProvider(model_name="Qwen/Qwen2.5-Coder-0.5B")
+        >>> provider = TransformersProvider(model_name="Qwen/Qwen3.5-9B")
         >>> result = await provider.generate("def hello", model="ignored")
     """
 

@@ -585,12 +585,12 @@ class TestAllMaskedBatch:
         # All-zero weights → denom == 0 after masking.
         loss_weights = torch.zeros(1, 4)
 
-        with caplog.at_level(logging.WARNING, logger="model_training.diff_loss"):
+        with caplog.at_level(logging.DEBUG, logger="model_training.diff_loss"):
             loss = _compute_weighted_loss(logits, labels, loss_weights)
 
         assert math.isfinite(loss.item()), "loss must be finite (not NaN/inf)"
         assert any("all-masked batch" in rec.message for rec in caplog.records), (
-            "expected all-masked batch warning"
+            "expected all-masked batch debug log"
         )
 
     def test_all_labels_ignored_logs_warning_and_returns_finite(
@@ -607,12 +607,12 @@ class TestAllMaskedBatch:
         labels = torch.full((1, 4), IGNORE_INDEX, dtype=torch.long)
         loss_weights = torch.ones(1, 4)
 
-        with caplog.at_level(logging.WARNING, logger="model_training.diff_loss"):
+        with caplog.at_level(logging.DEBUG, logger="model_training.diff_loss"):
             loss = _compute_weighted_loss(logits, labels, loss_weights)
 
         assert math.isfinite(loss.item()), "loss must be finite (not NaN/inf)"
         assert any("all-masked batch" in rec.message for rec in caplog.records), (
-            "expected all-masked batch warning"
+            "expected all-masked batch debug log"
         )
 
 

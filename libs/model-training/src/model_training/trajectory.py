@@ -121,3 +121,108 @@ def format_for_sft(trajectory: dict[str, Any]) -> list[dict[str, str]]:
         {"role": "user", "content": task_description},
         {"role": "assistant", "content": generated_code},
     ]
+
+
+def compute_assistant_masks(
+    tokenizer: Any, messages: list[dict[str, str]]
+) -> dict[str, list[int]]:
+    r"""Tokenize a chat conversation and emit a 0/1 mask over assistant tokens.
+
+    Used when the tokenizer's chat template lacks ``{% generation %}`` markers
+    (Qwen3.5-9B as of TRL 1.3.0), so TRL's ``return_assistant_tokens_mask=True``
+    path raises ``ValueError`` from ``get_training_chat_template``. We bypass
+    that path by pre-tokenizing here and providing ``input_ids`` +
+    ``assistant_masks`` directly to SFTTrainer; ``_prepare_dataset`` short-
+    circuits all preprocessing when ``input_ids`` is already present
+    (sft_trainer.py:1067) and ``DataCollatorForLanguageModeling.torch_call``
+    consumes ``assistant_masks`` from the batch (sft_trainer.py:179-180).
+
+    Approach (Qwen-family marker scan): tokenize once and walk the token
+    stream looking for ``<|im_start|>{assistant_role_token}`` boundaries
+    that close at ``<|im_end|>``. Marks the whole assistant turn —
+    role+wrapper+content+thinking-blocks, since training the model to
+    reproduce its own thinking is desirable. This avoids the prefix-of-
+    full invariant failure that bites stateful templates: Qwen3.5 injects
+    ``<think>`` markers only on the *trailing* assistant turn, so
+    incremental prefix tokenization breaks. Marker scan reads only the
+    final, ground-truth tokenization and is therefore stable.
+
+    Args:
+        tokenizer: A HuggingFace tokenizer that uses ``<|im_start|>`` /
+            ``<|im_end|>`` role markers (Qwen and ChatML-family).
+        messages: A list of ``{"role", "content"}`` dicts.
+
+    Returns:
+        ``{"input_ids": [...], "assistant_masks": [...]}`` with both lists
+        the same length. ``assistant_masks`` has at least one ``1`` when
+        any message has ``role == "assistant"``.
+
+    Raises:
+        ValueError: If the tokenizer doesn't expose ``<|im_start|>`` /
+            ``<|im_end|>`` token IDs — the marker-scan algorithm depends
+            on them.
+    """
+    # ``return_dict=False`` is critical: with ``return_dict=True`` (the
+    # default in newer transformers) the call returns a BatchEncoding whose
+    # ``list(...)`` yields the *keys* (``["input_ids", "attention_mask"]``),
+    # not the token IDs — which silently corrupts the dataset.
+    full_ids: list[int] = list(
+        tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=False,
+            return_dict=False,
+        )
+    )
+    mask: list[int] = [0] * len(full_ids)
+
+    im_start_id = tokenizer.convert_tokens_to_ids("<|im_start|>")
+    im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+    # ``convert_tokens_to_ids`` returns the unk-id for unknown markers on
+    # most tokenizers; treat any non-distinct or None result as "missing".
+    unk_id = getattr(tokenizer, "unk_token_id", None)
+    if (
+        im_start_id is None
+        or im_end_id is None
+        or im_start_id == unk_id
+        or im_end_id == unk_id
+    ):
+        raise ValueError(
+            "compute_assistant_masks: tokenizer lacks <|im_start|> / "
+            "<|im_end|> markers; the marker-scan path requires a Qwen- or "
+            "ChatML-family tokenizer."
+        )
+
+    # The role token sequence that follows <|im_start|>. For Qwen3.5,
+    # tokenizer.encode("assistant") → [74455] (single-token role). We
+    # encode at runtime so non-Qwen ChatML tokenizers with multi-token
+    # role names still work.
+    assistant_role_ids: list[int] = list(
+        tokenizer.encode("assistant", add_special_tokens=False)
+    )
+    if not assistant_role_ids:
+        return {"input_ids": full_ids, "assistant_masks": mask}
+
+    n = len(full_ids)
+    role_len = len(assistant_role_ids)
+    i = 0
+    while i < n:
+        if full_ids[i] != im_start_id:
+            i += 1
+            continue
+        # Match <|im_start|> + assistant role tokens.
+        head_end = i + 1 + role_len
+        if head_end > n or full_ids[i + 1 : head_end] != assistant_role_ids:
+            i += 1
+            continue
+        # Walk to the closing <|im_end|>; if missing (truncated tail),
+        # extend to end-of-sequence.
+        j = head_end
+        while j < n and full_ids[j] != im_end_id:
+            j += 1
+        end = j if j < n else n - 1
+        for k in range(i, end + 1):
+            mask[k] = 1
+        i = end + 1
+
+    return {"input_ids": full_ids, "assistant_masks": mask}

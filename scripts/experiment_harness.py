@@ -14,7 +14,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 os.environ.setdefault("INFERENCE_PROVIDER", "transformers")
 os.environ.setdefault("TRANSFORMERS_MODEL_NAME", "google/gemma-2-2b-it")
@@ -74,7 +74,7 @@ def setup() -> None:
     dtype = resolve_model_dtype(param_count=param_count, device=DEVICE)
     print(f"Inference dtype: {dtype}")
 
-    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=dtype)
+    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=dtype)
     _model.to(DEVICE)  # type: ignore[arg-type]
     _model.eval()
     print("Model loaded.\n")
@@ -133,7 +133,9 @@ def generate_text(
     input_len = inputs["input_ids"].shape[1]
 
     with torch.no_grad():
-        outputs = model.generate(
+        # PEFT-wrapped model has a generate() method but its self type
+        # confuses mypy via _BaseModelWithGenerate; cast to Any.
+        outputs = cast(Any, model).generate(
             **inputs,
             max_new_tokens=max_tokens,
             do_sample=temperature > 0,
@@ -143,7 +145,8 @@ def generate_text(
         )
 
     new_tokens = outputs[0][input_len:]
-    text = _tokenizer.decode(new_tokens, skip_special_tokens=True)
+    # decode() returns str | list[str]; we always pass a 1D tensor → str.
+    text = cast(str, _tokenizer.decode(new_tokens, skip_special_tokens=True))
 
     if adapter_path:
         del model

@@ -33,7 +33,6 @@ _WARM_START_ALIASES: dict[str, str | None] = {
 _BASE_MODEL_ALIASES: dict[str, str] = {
     "qwen3.5-9b": "Qwen/Qwen3.5-9B",
     "qwen3-coder-next": "Qwen/Qwen3-Coder-Next",
-    "qwen2.5-coder-7b": "Qwen/Qwen2.5-Coder-7B",
 }
 
 
@@ -102,7 +101,7 @@ def _resolve_base_model(raw: str) -> str:
     """Resolve a base-model alias or pass through a full HF repo id.
 
     Args:
-        raw: Raw CLI value, e.g. ``"qwen3.5-9b"`` or ``"Qwen/Qwen2.5-Coder-7B"``.
+        raw: Raw CLI value, e.g. ``"qwen3.5-9b"`` or ``"Qwen/Qwen3.5-9B"``.
 
     Returns:
         Resolved HF repo id.

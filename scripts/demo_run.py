@@ -1,10 +1,10 @@
 """Demo: run a simple coding problem through the Rune agent loop.
 
-Uses Ollama with qwen2.5-coder:1.5b to solve a coding task,
+Uses Ollama with Qwen/Qwen3.5-9B to solve a coding task,
 exercising the full generate → execute → reflect → retry loop.
 
 Usage:
-    INFERENCE_PROVIDER=ollama RUNE_MODEL=qwen2.5-coder:1.5b uv run scripts/demo_run.py
+    INFERENCE_PROVIDER=ollama RUNE_MODEL=Qwen/Qwen3.5-9B uv run scripts/demo_run.py
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Configure before imports
 os.environ.setdefault("INFERENCE_PROVIDER", "ollama")
-os.environ.setdefault("RUNE_MODEL", "qwen2.5-coder:1.5b")
+os.environ.setdefault("RUNE_MODEL", "Qwen/Qwen3.5-9B")
 os.environ.setdefault("RUNE_EXEC_TIMEOUT", "30")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

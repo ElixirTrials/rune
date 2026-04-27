@@ -32,7 +32,7 @@ class AdapterRecord(SQLModel, table=True):
     Example:
         >>> record = AdapterRecord(
         ...     id="adapter-001", version=1, task_type="bug-fix",
-        ...     base_model_id="Qwen/Qwen2.5-Coder-7B", rank=16,
+        ...     base_model_id="Qwen/Qwen3.5-9B", rank=16,
         ...     created_at="2026-01-01T00:00:00Z",
         ...     file_path="/adapters/adapter-001.safetensors",
         ...     file_hash="abc123", file_size_bytes=1024,
@@ -58,7 +58,7 @@ class AdapterRecord(SQLModel, table=True):
     pass_rate: float | None = Field(default=None)
     fitness_score: float | None = Field(default=None)
     source: str
-    session_id: str
+    session_id: str | None = Field(default=None)
     is_archived: bool = Field(default=False)
     parent_ids: str | None = Field(default=None)
     generation: int = Field(default=0)

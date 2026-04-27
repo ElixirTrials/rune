@@ -1,4 +1,4 @@
-model: "Qwen/Qwen2.5-Coder-7B-Instruct"
+model: "Qwen/Qwen3.5-9B"
 
 # Parallelism settings — adjust for your hardware:
 #   - Single GPU (default): pipeline_parallel_size: 1, tensor_parallel_size: 1

@@ -24,7 +24,7 @@ class GenerationResult:
     Example:
         >>> result = GenerationResult(
         ...     text="def hello(): pass",
-        ...     model="Qwen/Qwen2.5-Coder-7B",
+        ...     model="Qwen/Qwen3.5-9B",
         ...     adapter_id=None,
         ...     token_count=10,
         ...     finish_reason="stop",
@@ -82,7 +82,7 @@ class InferenceProvider(ABC):
             A GenerationResult containing the generated text and metadata.
 
         Example:
-            >>> result = await provider.generate("def hello", model="Qwen2.5-Coder-7B")
+            >>> result = await provider.generate("def hello", model="Qwen3.5-9B")
             >>> print(result.text)
         """
         ...

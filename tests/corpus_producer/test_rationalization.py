@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from corpus_producer.models import PhaseArtifact
 from corpus_producer.pipeline_runner import PipelineRunResult
 from corpus_producer.rationalization import (
@@ -25,7 +27,9 @@ def _art(phase: str = "decompose", rationalized: bool = False) -> PhaseArtifact:
     return a
 
 
-def _make_runner(success: bool, artifacts: list[PhaseArtifact]) -> object:
+def _make_runner(
+    success: bool, artifacts: list[PhaseArtifact]
+) -> Callable[..., PipelineRunResult]:
     """Return a callable that mimics PipelineRunnerProtocol."""
 
     def runner(
@@ -57,13 +61,13 @@ def _filter_none_pass(
     return []
 
 
-def test_build_hint_prompt_includes_hints():
+def test_build_hint_prompt_includes_hints() -> None:
     result = _build_hint_prompt("Sort a list.", ["test_sort: PASS"])
     assert "test_sort: PASS" in result
     assert "Sort a list." in result
 
 
-def test_rationalize_marks_artifacts_rationalized():
+def test_rationalize_marks_artifacts_rationalized() -> None:
     failing = [("humaneval", "HE/1", "prompt")]
     hints = {"HE/1": ["test_a: FAIL"]}
     runner = _make_runner(True, [_art()])
@@ -78,7 +82,7 @@ def test_rationalize_marks_artifacts_rationalized():
     assert all(a.rationalized is True for a in new)
 
 
-def test_rationalize_stops_when_bin_full():
+def test_rationalize_stops_when_bin_full() -> None:
     # existing_artifacts already at MIN - 1; one rationalization should fill it
     existing = [_art() for _ in range(MIN_EXAMPLES_PER_BIN - 1)]
     failing = [("humaneval", f"HE/{i}", "p") for i in range(10)]
@@ -111,7 +115,7 @@ def test_rationalize_stops_when_bin_full():
     assert len(calls) == 1
 
 
-def test_rationalize_skips_problem_with_no_hints():
+def test_rationalize_skips_problem_with_no_hints() -> None:
     failing = [("humaneval", "HE/no_hint", "prompt")]
     hints: dict[str, list[str]] = {}
 
@@ -137,7 +141,7 @@ def test_rationalize_skips_problem_with_no_hints():
     assert new == []
 
 
-def test_rationalize_returns_empty_when_filter_rejects():
+def test_rationalize_returns_empty_when_filter_rejects() -> None:
     failing = [("humaneval", "HE/1", "p")]
     hints = {"HE/1": ["test: FAIL"]}
     runner = _make_runner(True, [_art()])

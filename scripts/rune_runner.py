@@ -55,7 +55,7 @@ from shared.template_loader import render_trajectory  # noqa: E402
 logger = logging.getLogger(__name__)
 
 # Base model ID for adapter config
-DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-1.5B"
+DEFAULT_BASE_MODEL = "Qwen/Qwen3.5-9B"
 ADAPTER_BASE_DIR = Path.home() / ".rune" / "adapters"
 
 # ---------------------------------------------------------------------------

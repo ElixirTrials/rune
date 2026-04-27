@@ -18,7 +18,7 @@ For the services that use GPUs, see [Monorepo Mapping](monorepo-mapping.md). For
 | `--tensor-parallel-size` | 1 | Not recommended for consumer GPUs — see below |
 | `--enable-lora` | true | Required for dynamic adapter loading via S-LoRA unified paging |
 | `--quantization` | awq or gptq (serving) | 4-bit quantized serving for VRAM headroom |
-| Base model | Qwen2.5-Coder-7B-Instruct | 7B parameter SLM; fits in consumer GPUs with quantization |
+| Base model | Qwen/Qwen3.5-9B | 9B parameter SLM; fits in consumer GPUs with 4-bit quantization |
 
 All parallelism settings are configurable via inference provider configuration (`libs/inference/`) or environment variables. (The standalone `services/inference layer/` service referenced in earlier revisions has been replaced by the provider-agnostic inference layer — `TransformersProvider`, `LlamaCppProvider`, `OllamaProvider`, `VLLMProvider`.) The default is single-GPU operation.
 

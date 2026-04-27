@@ -10,7 +10,7 @@ _yaml_val() {
     python -c "import yaml; cfg=yaml.safe_load(open('config.yaml')); print(cfg.get('$1', '$2'))" 2>/dev/null || echo "$2"
 }
 
-MODEL="${MODEL:-$(_yaml_val model "Qwen/Qwen2.5-Coder-7B-Instruct")}"
+MODEL="${MODEL:-$(_yaml_val model "Qwen/Qwen3.5-9B")}"
 PIPELINE_PARALLEL_SIZE="${PIPELINE_PARALLEL_SIZE:-$(_yaml_val pipeline_parallel_size 1)}"
 TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-$(_yaml_val tensor_parallel_size 1)}"
 QUANTIZATION="${QUANTIZATION:-$(_yaml_val quantization awq)}"

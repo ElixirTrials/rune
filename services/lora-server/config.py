@@ -50,7 +50,7 @@ class LoraServerConfig:
         1
     """
 
-    model: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    model: str = "Qwen/Qwen3.5-9B"
     pipeline_parallel_size: int = 1
     tensor_parallel_size: int = 1
     enable_lora: bool = True
@@ -81,7 +81,7 @@ class LoraServerConfig:
         Example:
             >>> config = LoraServerConfig.from_yaml("config.yml")
             >>> config.model
-            'Qwen/Qwen2.5-Coder-7B-Instruct'
+            'Qwen/Qwen3.5-9B'
         """
         raw: dict[str, Any] = yaml.safe_load(Path(path).read_text()) or {}
         valid_fields = {f.name for f in fields(cls)}

@@ -116,12 +116,14 @@ def test_build_hypernet_config_qwen35_with_probe_cache(
     # Use tmp_path for probe cache
     monkeypatch.setattr(probe_module, "PROBE_CACHE_DIR", tmp_path)  # type: ignore[arg-type]
 
-    # Populate a fake probe cache for qwen3.5-9b
+    # Populate a fake probe cache for qwen3.5-9b.
+    # Dimensions reflect the registry entry for Qwen3.5-9B (32 layers,
+    # hidden_size=4096). v_proj out projects to a smaller dim under GQA.
     probe_data = {
-        "attention_layer_indices": list(range(40)),
+        "attention_layer_indices": list(range(32)),
         "feature_sizes": {
-            "q_proj": {"in": 3584, "out": 3584},
-            "v_proj": {"in": 3584, "out": 512},
+            "q_proj": {"in": 4096, "out": 4096},
+            "v_proj": {"in": 4096, "out": 512},
         },
         "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
     }
@@ -130,8 +132,8 @@ def test_build_hypernet_config_qwen35_with_probe_cache(
     from model_training.d2l_config import build_hypernet_config
 
     hc = build_hypernet_config("qwen3.5-9b")
-    assert list(hc.layer_indices) == list(range(40))
-    assert hc.base_hidden_size == 3584
+    assert list(hc.layer_indices) == list(range(32))
+    assert hc.base_hidden_size == 4096
 
 
 def test_build_hypernet_config_unknown_model_raises() -> None:

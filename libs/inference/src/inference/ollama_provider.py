@@ -33,7 +33,7 @@ class OllamaProvider(InferenceProvider):
 
     Example:
         >>> provider = OllamaProvider(base_url="http://localhost:11434/v1")
-        >>> result = await provider.generate("def hello", model="qwen2.5-coder:7b")
+        >>> result = await provider.generate("def hello", model="qwen3.5:9b")
     """
 
     def __init__(self, base_url: str | None = None) -> None:
@@ -68,7 +68,7 @@ class OllamaProvider(InferenceProvider):
 
         Args:
             prompt: The user-facing input prompt.
-            model: The Ollama model identifier (e.g. "qwen2.5-coder:7b").
+            model: The Ollama model identifier (e.g. "qwen3.5:9b").
             adapter_id: Ignored. If provided, a warning is logged.
             max_tokens: Maximum number of tokens to generate.
             system_prompt: Optional system-level instruction.
@@ -80,7 +80,7 @@ class OllamaProvider(InferenceProvider):
             GenerationResult with adapter_id=None (Ollama has no adapter concept).
 
         Example:
-            >>> result = await provider.generate("def fib", model="qwen2.5-coder:7b")
+            >>> result = await provider.generate("def fib", model="qwen3.5:9b")
             >>> print(result.text)
         """
         if adapter_id is not None:
