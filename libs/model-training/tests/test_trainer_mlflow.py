@@ -104,18 +104,18 @@ def test_train_and_register_accepts_mlflow_kwargs() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fix 2 (qodo item 13): assistant_only_loss in MLflow run_params
+# assistant_masking_strategy in MLflow run_params
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "diff_aware_loss,expected_assistant_only",
-    [(False, True), (True, False)],
+    "diff_aware_loss,expected_strategy",
+    [(False, "assistant_masks"), (True, "diff_weighted")],
 )
-def test_run_params_assistant_only_loss(
-    diff_aware_loss: bool, expected_assistant_only: bool
+def test_run_params_assistant_masking_strategy(
+    diff_aware_loss: bool, expected_strategy: str
 ) -> None:
-    """assistant_only_loss is the inverse of diff_aware_loss in run params."""
+    """assistant_masking_strategy reflects which masking path is in effect."""
     from model_training.trainer import _build_run_params
 
     params = _build_run_params(
@@ -139,8 +139,47 @@ def test_run_params_assistant_only_loss(
         diff_unchanged_weight=0.3,
         override_lora_alpha=None,
         override_lora_dropout=None,
-        warmup_ratio=None,
         neftune_noise_alpha=None,
     )
-    assert params["assistant_only_loss"] is expected_assistant_only
+    assert params["assistant_masking_strategy"] == expected_strategy
     assert params["diff_aware_loss"] is diff_aware_loss
+    # warmup_ratio and assistant_only_loss are no longer logged here — TRL
+    # owns those fields via SFTConfig + MLflowCallback. Logging them with our
+    # values triggered async_logging_queue overwrite errors.
+    assert "warmup_ratio" not in params
+    assert "assistant_only_loss" not in params
+    # None values are skipped defensively.
+    assert "override_lora_alpha" not in params
+    assert "override_lora_dropout" not in params
+    assert "requested_neftune_noise_alpha" not in params
+
+
+def test_run_params_includes_requested_neftune_when_set() -> None:
+    """When neftune is set, it surfaces under requested_* to avoid TRL collision."""
+    from model_training.trainer import _build_run_params
+
+    params = _build_run_params(
+        model_id="test-model",
+        warm_start=None,
+        resolved_rank=64,
+        resolved_alpha=128,
+        resolved_epochs=3,
+        learning_rate=2e-4,
+        resolved_grad_accum=16,
+        resolved_lr_sched="constant",
+        attn_impl=None,
+        dataset_size=10,
+        diff_aware_loss=False,
+        task_type="code-gen",
+        adapter_id="test-adapter",
+        session_id=None,
+        dataset_path=None,
+        encoding_mode="multi_turn",
+        diff_changed_weight=1.0,
+        diff_unchanged_weight=0.3,
+        override_lora_alpha=None,
+        override_lora_dropout=None,
+        neftune_noise_alpha=5.0,
+    )
+    assert params["requested_neftune_noise_alpha"] == 5.0
+    assert "neftune_noise_alpha" not in params

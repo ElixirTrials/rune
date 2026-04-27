@@ -477,12 +477,13 @@ def _compute_weighted_loss(
     weighted = per_token_loss * shift_weights * label_mask
     denom = (shift_weights * label_mask).sum()
 
-    # Guard: all-masked batch (no labeled/weighted tokens).  This indicates a
-    # data-pipeline bug — warn loudly rather than returning a silent near-zero.
+    # Guard: all-masked batch (no labeled/weighted tokens).  Clamping at
+    # 1e-8 prevents NaN; the condition fires on degenerate pad-only batches
+    # which are correct behavior to skip, so this is DEBUG, not WARNING.
     if denom.item() < 1e-8:
-        logger.warning(
+        logger.debug(
             "DiffAwareSFTTrainer: all-masked batch (denom=%.3e); "
-            "weighted loss will be clamped. Check loss_weights / label masking.",
+            "weighted loss clamped to 1e-8.",
             denom.item(),
         )
     weighted_loss = weighted.sum() / denom.clamp(min=1e-8)

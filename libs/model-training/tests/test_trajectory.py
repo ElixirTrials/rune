@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from model_training.trajectory import format_for_sft, load_trajectory, record_trajectory
+from model_training.trajectory import (
+    compute_assistant_masks,
+    format_for_sft,
+    load_trajectory,
+    record_trajectory,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -180,3 +185,156 @@ def test_format_for_sft_no_successful_step_returns_empty() -> None:
     trajectory = _make_trajectory("success", failing_steps)
     result = format_for_sft(trajectory)
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# compute_assistant_masks
+# ---------------------------------------------------------------------------
+
+
+class _FakeTokenizer:
+    """Stand-in tokenizer using simple per-message integer ranges.
+
+    apply_chat_template assigns each message a deterministic block of token
+    ids — enough to validate the prefix-tokenization → mask logic without
+    pulling a real chat template.
+    """
+
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tokenize: bool,
+        add_generation_prompt: bool,
+        return_dict: bool = True,
+    ) -> list[int]:
+        # Each message contributes 4 + len(content) tokens (header+content+end).
+        ids: list[int] = []
+        next_id = 1
+        for msg in messages:
+            block = 4 + len(msg["content"])
+            ids.extend(range(next_id, next_id + block))
+            next_id += block
+        return ids
+
+
+def test_compute_assistant_masks_marks_only_assistant_tokens() -> None:
+    """Assistant turn tokens are 1, system/user turns are 0."""
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi"},
+    ]
+    result = compute_assistant_masks(tok, messages)
+
+    assert "input_ids" in result
+    assert "assistant_masks" in result
+    assert len(result["input_ids"]) == len(result["assistant_masks"])
+    assert 1 in result["assistant_masks"]
+    # System (4+3=7) + user (4+5=9) tokens must all be 0.
+    assert all(m == 0 for m in result["assistant_masks"][:16])
+    # Assistant (4+2=6) tokens must all be 1.
+    assert all(m == 1 for m in result["assistant_masks"][16:22])
+
+
+def test_compute_assistant_masks_no_assistant_yields_all_zero() -> None:
+    """Conversation with no assistant role → mask is all zeros."""
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "ask"},
+    ]
+    result = compute_assistant_masks(tok, messages)
+    assert 1 not in result["assistant_masks"]
+    assert sum(result["assistant_masks"]) == 0
+
+
+def test_compute_assistant_masks_multi_turn_marks_each_assistant_turn() -> None:
+    """Both assistant turns in a multi-turn conversation are masked."""
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "u1"},
+        {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "u2"},
+        {"role": "assistant", "content": "a2"},
+    ]
+    result = compute_assistant_masks(tok, messages)
+    # Two assistant blocks of (4+2)=6 tokens each → at least 12 ones.
+    assert sum(result["assistant_masks"]) == 12
+
+
+def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> None:
+    """Regression: verify input_ids is list[int], not BatchEncoding keys.
+
+    HuggingFace tokenizers' ``apply_chat_template(tokenize=True)`` defaults
+    to ``return_dict=True``, which returns a ``BatchEncoding`` whose
+    ``list(...)`` yields the *keys* (``["input_ids", "attention_mask"]``)
+    rather than the token IDs. Without ``return_dict=False``, our helper
+    silently produced a string-typed dataset that crashed TRL's collator
+    with ``ValueError: too many dimensions 'str'``.
+    """
+
+    class BatchEncodingLikeTokenizer:
+        """Mimics newer transformers' default return_dict=True behavior."""
+
+        def apply_chat_template(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tokenize: bool,
+            add_generation_prompt: bool,
+            return_dict: bool = True,
+        ) -> Any:
+            ids = list(range(1, 1 + 4 * len(messages)))
+            if return_dict:
+                # Mimic BatchEncoding: list(obj) returns the dict keys.
+                class _BE:
+                    def __init__(self, ids: list[int]) -> None:
+                        self._ids = ids
+
+                    def __iter__(self) -> Any:
+                        return iter(["input_ids", "attention_mask"])
+
+                    def __len__(self) -> int:
+                        return 2
+
+                return _BE(ids)
+            return ids
+
+    result = compute_assistant_masks(
+        BatchEncodingLikeTokenizer(),
+        [
+            {"role": "user", "content": "u"},
+            {"role": "assistant", "content": "a"},
+        ],
+    )
+    assert all(isinstance(t, int) for t in result["input_ids"]), (
+        f"expected list[int], got {[type(t).__name__ for t in result['input_ids']]}"
+    )
+
+
+def test_compute_assistant_masks_raises_on_prefix_invariant_failure() -> None:
+    """If prefix tokenization isn't a prefix of full, raise ValueError."""
+
+    class BadTokenizer:
+        def apply_chat_template(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tokenize: bool,
+            add_generation_prompt: bool,
+            return_dict: bool = True,
+        ) -> list[int]:
+            # Return non-prefixing ids depending on call (full vs prefix).
+            return [99] if len(messages) == 1 else [1, 2, 3, 4]
+
+    with pytest.raises(ValueError, match="prefix-of-full invariant"):
+        compute_assistant_masks(
+            BadTokenizer(),
+            [
+                {"role": "user", "content": "x"},
+                {"role": "assistant", "content": "y"},
+            ],
+        )

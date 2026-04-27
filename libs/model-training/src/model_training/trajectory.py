@@ -121,3 +121,84 @@ def format_for_sft(trajectory: dict[str, Any]) -> list[dict[str, str]]:
         {"role": "user", "content": task_description},
         {"role": "assistant", "content": generated_code},
     ]
+
+
+def compute_assistant_masks(
+    tokenizer: Any, messages: list[dict[str, str]]
+) -> dict[str, list[int]]:
+    r"""Tokenize a chat conversation and emit a 0/1 mask over assistant tokens.
+
+    Used when the tokenizer's chat template lacks ``{% generation %}`` markers
+    (Qwen3.5-9B as of TRL 1.3.0), so TRL's ``return_assistant_tokens_mask=True``
+    path raises ``ValueError`` from ``get_training_chat_template``. We bypass
+    that path by pre-tokenizing here and providing ``input_ids`` +
+    ``assistant_masks`` directly to SFTTrainer; ``_prepare_dataset`` short-
+    circuits all preprocessing when ``input_ids`` is already present
+    (sft_trainer.py:1067) and ``DataCollatorForLanguageModeling.torch_call``
+    consumes ``assistant_masks`` from the batch (sft_trainer.py:179-180).
+
+    Approach: render prefixes ``messages[:i+1]`` with ``add_generation_prompt
+    =False`` and diff token counts to find each turn's boundary. The mask is
+    1 on the entire assistant turn (including ``<|im_start|>assistant\\n``
+    and ``<|im_end|>`` wrappers) — TRL's reference path with
+    ``{% generation %}`` markers wraps only the content, so this is a small
+    over-mask of ~5 trivially-predictable wrapper tokens per assistant turn.
+
+    Args:
+        tokenizer: A HuggingFace tokenizer with a chat_template.
+        messages: A list of ``{"role", "content"}`` dicts.
+
+    Returns:
+        ``{"input_ids": [...], "assistant_masks": [...]}`` with both lists
+        the same length. ``assistant_masks`` has at least one ``1`` when
+        any message has ``role == "assistant"``.
+
+    Raises:
+        ValueError: If the prefix-of-full token-id invariant fails (would
+            indicate template-side state that we cannot reliably mask).
+    """
+    # ``return_dict=False`` is critical: with ``return_dict=True`` (the
+    # default in newer transformers) the call returns a BatchEncoding whose
+    # ``list(...)`` yields the *keys* (``["input_ids", "attention_mask"]``),
+    # not the token IDs — which silently corrupts the dataset.
+    full_ids: list[int] = list(
+        tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=False,
+            return_dict=False,
+        )
+    )
+    mask: list[int] = [0] * len(full_ids)
+
+    # Some chat templates (e.g. Qwen3.5) refuse to render conversations
+    # without at least one user message. We can't tokenize a system-only
+    # prefix in that case; skip until the first user message and rely on
+    # the default-zero mask for those leading system tokens (correct, since
+    # role=system → mask=0 by definition).
+    first_user_idx = next(
+        (i for i, m in enumerate(messages) if m.get("role") == "user"), None
+    )
+    if first_user_idx is None:
+        return {"input_ids": full_ids, "assistant_masks": mask}
+
+    cursor = 0
+    for i in range(first_user_idx, len(messages)):
+        prefix_ids: list[int] = list(
+            tokenizer.apply_chat_template(
+                messages[: i + 1],
+                tokenize=True,
+                add_generation_prompt=False,
+                return_dict=False,
+            )
+        )
+        if full_ids[: len(prefix_ids)] != prefix_ids:
+            raise ValueError(
+                "compute_assistant_masks: prefix-of-full invariant violated "
+                f"at message {i}; cannot reliably compute assistant_masks."
+            )
+        if messages[i].get("role") == "assistant":
+            for j in range(cursor, len(prefix_ids)):
+                mask[j] = 1
+        cursor = len(prefix_ids)
+    return {"input_ids": full_ids, "assistant_masks": mask}
