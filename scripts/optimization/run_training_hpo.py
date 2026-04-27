@@ -439,6 +439,28 @@ def _stratify_heldout_split(
     return train, heldout
 
 
+def _tokenize_for_eval(tokenizer: Any, text: str) -> dict[str, Any]:
+    """Tokenize a single eval pair with truncation.
+
+    The eval forward pass uses eager attention (no flash-attn for Qwen3.5),
+    whose softmax matrix is O(L²) at fp32 — at L=4096 a single sample
+    consumes ~64 MB of attention plus activations. Mined GitHub pairs can
+    easily exceed 8 k tokens; uncapped tokenization is the proximate kill
+    shot in RCA-2 Cause 2 (848 MiB allocation observed at OOM with 545 MiB
+    free). Override via ``RUNE_EVAL_MAX_LENGTH`` env var if your training
+    distribution skews longer and you have VRAM headroom — the cap is
+    policy, not arithmetic.
+    """
+    max_length = int(os.environ.get("RUNE_EVAL_MAX_LENGTH", "2048"))
+    return tokenizer(
+        text,
+        truncation=True,
+        max_length=max_length,
+        return_offsets_mapping=True,
+        return_tensors="pt",
+    )
+
+
 def _evaluate_adapter_on_heldout(
     adapter_path: str,
     pairs: list[dict[str, Any]],
@@ -537,10 +559,25 @@ def _evaluate_adapter_on_heldout(
                     continue
                 shifted = [(s + post_start, e + post_start) for s, e in hunks]
 
-                enc = tokenizer(teach, return_offsets_mapping=True, return_tensors="pt")
+                enc = _tokenize_for_eval(tokenizer, teach)
+                # When tokenization truncated, the post-string offset
+                # boundary may end mid-hunk. Scan offsets backwards to find
+                # the last real (non-zero) offset — fast tokenizers append
+                # special tokens (EOS / pad) with offset (0, 0), so taking
+                # the literal last offset would silently drop near-end
+                # hunks on non-truncated sequences.
+                offsets_list = enc["offset_mapping"][0].tolist()
+                byte_cap = len(teach)
+                for off in reversed(offsets_list):
+                    if int(off[1]) > 0:
+                        byte_cap = int(off[1])
+                        break
+                shifted = [(s, min(e, byte_cap)) for s, e in shifted if s < byte_cap]
+                if not shifted:
+                    continue
                 input_ids = enc["input_ids"].to(model.device)
                 attention_mask = enc["attention_mask"].to(model.device)
-                offsets = enc["offset_mapping"][0].tolist()
+                offsets = offsets_list
 
                 logits = model(
                     input_ids=input_ids, attention_mask=attention_mask

@@ -367,3 +367,27 @@ def test_evaluate_adapter_on_heldout_empty_returns_zeros() -> None:
         "adapter_improvement": 0.0,
         "hunk_entropy": 0.0,
     }
+
+
+def test_tokenize_for_eval_passes_max_length_and_truncation() -> None:
+    """_tokenize_for_eval must forward truncation=True and max_length=2048 so
+    long mined pairs do not OOM the heldout forward (RCA-2 Cause 2).
+    """
+    import importlib
+
+    captured: dict[str, object] = {}
+
+    class _FakeTok:
+        def __call__(self, text: str, **kwargs: object) -> dict[str, object]:
+            captured.update(kwargs)
+            return {"input_ids": [[1]], "attention_mask": [[1]],
+                    "offset_mapping": [[(0, 0)]]}
+
+    hpo = importlib.import_module("run_training_hpo")
+    fn = getattr(hpo, "_tokenize_for_eval", None)
+    assert fn is not None, "_tokenize_for_eval helper missing"
+    fn(_FakeTok(), "hello")
+    assert captured.get("truncation") is True
+    assert captured.get("max_length") == 2048
+    assert captured.get("return_offsets_mapping") is True
+    assert captured.get("return_tensors") == "pt"
