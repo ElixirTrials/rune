@@ -168,3 +168,38 @@ Heldout evaluator uses 4-bit NF4 `BitsAndBytesConfig` + `device_map="auto"` + `t
 ## GPU Import Pattern
 
 All GPU imports (torch, safetensors, transformers, peft) are deferred inside function/method bodies per INFRA-05 pattern. Every module in this package is importable in CPU-only CI environments.
+
+## Persistence (MLflow + AdapterRegistry)
+
+The HPO trainer writes runs to MLflow and adapter records to SQLite. Both
+are replicated to S3 by a Litestream sidecar so a pod termination doesn't
+lose state.
+
+**Prereq before any HPO/training run:**
+
+```bash
+docker compose -f infra/docker-compose.yml up -d mlflow litestream
+```
+
+This boots the MLflow server (sqlite-backed at `/data/mlflow/mlflow.db`,
+artifacts at `s3://elixirtrials-949678234935-eu-west-2-artifacts/mlflow/artifacts/`)
+plus a Litestream container that ships both `mlflow.db` and the host's
+`~/.rune/rune.db` to S3 every second.
+
+**MLflow tracking URI default:** `http://localhost:5000`. Override with
+`MLFLOW_TRACKING_URI=…` to talk to a different server (CI, remote pod).
+The legacy `sqlite:///./mlflow.db` fallback was removed — sqlite backends
+are not safe for concurrent writers and don't survive pod termination.
+
+**Adapter registry DB default:** `sqlite:///${HOME}/.rune/rune.db`.
+Override with `RUNE_DATABASE_URL=…`.
+
+**Single-writer caveat:** Litestream replicates SQLite WAL frames; this
+is safe even when several processes write the same DB (the trainer plus
+the api/lora-server containers share `~/.rune/rune.db` via bind mount).
+What is *not* safe is running two Litestream containers against the same
+S3 prefix. The compose file enforces a single replicator.
+
+**Cleanup:** `docker compose down` does not delete S3 data. Use
+`docker volume rm` to drop the local `mlflow_data` volume; S3 replicas
+remain available for subsequent restores.
