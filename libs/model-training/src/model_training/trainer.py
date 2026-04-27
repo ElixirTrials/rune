@@ -422,7 +422,12 @@ def _setup_lora_adapter(
     return model, lora_config
 
 
-def _attach_assistant_masks(dataset: Any, tokenizer: Any) -> Any:
+def _attach_assistant_masks(
+    dataset: Any,
+    tokenizer: Any,
+    *,
+    preserve_columns: list[str] | None = None,
+) -> Any:
     """Pre-tokenize ``messages`` rows and attach ``assistant_masks``.
 
     Bypasses TRL's ``get_training_chat_template`` pre-flight check on
@@ -433,15 +438,23 @@ def _attach_assistant_masks(dataset: Any, tokenizer: Any) -> Any:
     ``DataCollatorForLanguageModeling`` consumes ``assistant_masks`` from
     the batch at sft_trainer.py:179-180.
 
+    The diff-aware path passes ``preserve_columns=["pre_code", "post_code"]``
+    so :class:`~model_training.diff_loss.DiffWeightedDataCollator` still has
+    its hunk-weighting side-channels after pre-tokenization. Without this
+    preservation the diff path silently loses its weights AND its labels
+    (RCA-5 H2).
+
     Extracted from ``train_qlora`` to keep that function under the C901
     complexity threshold.
     """
     from model_training.trajectory import compute_assistant_masks  # noqa: PLC0415
 
+    keep = set(preserve_columns or [])
     original_columns = list(dataset.column_names)
+    columns_to_remove = [c for c in original_columns if c not in keep]
     return dataset.map(
         lambda ex: compute_assistant_masks(tokenizer, ex["messages"]),
-        remove_columns=original_columns,
+        remove_columns=columns_to_remove,
         desc="Pre-tokenizing with assistant_masks",
     )
 
@@ -874,7 +887,17 @@ def train_qlora(
         auto_tokenizer_cls=AutoTokenizer,
     )
 
-    if not diff_aware_loss:
+    if diff_aware_loss:
+        # The diff path needs assistant_masks (for label masking via the
+        # inner DataCollatorForLanguageModeling) AND pre_code/post_code
+        # (for DiffWeightedDataCollator.hunk_path). Preserve the latter
+        # so we do not regress to RCA-5 H2 (zero gradient) or to identity
+        # weights (loss collapses to mean CE on assistant tokens only,
+        # ignoring hunks — still functional but defeats the purpose).
+        dataset = _attach_assistant_masks(
+            dataset, tokenizer, preserve_columns=["pre_code", "post_code"]
+        )
+    else:
         dataset = _attach_assistant_masks(dataset, tokenizer)
 
     model, lora_config = _setup_lora_adapter(

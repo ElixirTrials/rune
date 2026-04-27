@@ -262,3 +262,62 @@ def test_train_and_register_creates_adapter_dir(
 # def test_train_qlora_warm_start_loads_deltacoder(tmp_path, monkeypatch):
 #     """DeltaCoder adapter loads via PeftModel.from_pretrained on real GPU."""
 #     ...
+
+
+def test_attach_assistant_masks_preserves_diff_side_channels(monkeypatch) -> None:
+    """The diff-aware path needs both assistant_masks (for completion-only
+    masking inside DataCollatorForLanguageModeling) AND pre_code/post_code
+    side-channel columns (for DiffWeightedDataCollator.hunk_path). Stripping
+    pre_code/post_code is the reason trainer.py originally skipped this call,
+    which collapsed gradient signal (RCA-5 H2). Fix: preserve_columns must
+    keep listed columns intact while still attaching assistant_masks.
+
+    We mock compute_assistant_masks directly to avoid coupling this test to
+    Qwen-marker tokenization quirks — that pipeline is exercised by
+    test_trajectory.py. This test asserts ONLY the column-preservation
+    contract of _attach_assistant_masks.
+    """
+    from datasets import Dataset
+
+    import model_training.trajectory as trajectory_mod
+    from model_training.trainer import _attach_assistant_masks
+
+    # Stub compute_assistant_masks so we don't depend on tokenizer markers.
+    # It must return a dict with input_ids and assistant_masks keys; the
+    # dataset.map call will replace each row's payload with this dict.
+    monkeypatch.setattr(
+        trajectory_mod,
+        "compute_assistant_masks",
+        lambda tok, messages: {
+            "input_ids": [10, 20, 30, 40],
+            "assistant_masks": [0, 0, 1, 1],
+        },
+    )
+
+    ds = Dataset.from_list([
+        {
+            "messages": [
+                {"role": "user", "content": "fix the bug"},
+                {"role": "assistant", "content": "return 42"},
+            ],
+            "pre_code": "return 0",
+            "post_code": "return 42",
+        }
+    ])
+
+    class _DummyTok:  # placeholder — never called because we stubbed above
+        pass
+
+    out = _attach_assistant_masks(
+        ds, _DummyTok(), preserve_columns=["pre_code", "post_code"]
+    )
+    cols = set(out.column_names)
+    assert "input_ids" in cols, "missing input_ids"
+    assert "assistant_masks" in cols, "missing assistant_masks"
+    assert "pre_code" in cols, "pre_code dropped — diff path will lose hunk weights"
+    assert "post_code" in cols, "post_code dropped — diff path will lose hunk weights"
+    row = out[0]
+    assert row["pre_code"] == "return 0", "pre_code value corrupted"
+    assert row["post_code"] == "return 42", "post_code value corrupted"
+    # The non-preserved 'messages' column should be removed.
+    assert "messages" not in cols, "non-preserved column leaked through"
