@@ -357,3 +357,26 @@ def test_release_trial_state_strips_peft_config_residue() -> None:
 
     assert not hasattr(base, "peft_config"), \
         "peft_config residue not cleared — next trial will double-wrap"
+
+
+def test_setup_lora_adapter_rejects_pre_wrapped_base() -> None:
+    """If the cached base still has a peft_config residue (e.g. previous
+    trial didn't clean up), _setup_lora_adapter must raise rather than
+    silently double-wrap (RCA-3 defence-in-depth).
+    """
+    from model_training.trainer import _setup_lora_adapter
+
+    class _DirtyBase:
+        def __init__(self) -> None:
+            self.peft_config = {"default": object()}
+
+    with pytest.raises(RuntimeError, match="peft_config residue"):
+        _setup_lora_adapter(
+            model=_DirtyBase(),
+            warm_start=None,
+            model_config_name=None,
+            resolved_rank=8,
+            resolved_alpha=16,
+            override_lora_alpha=None,
+            override_lora_dropout=None,
+        )

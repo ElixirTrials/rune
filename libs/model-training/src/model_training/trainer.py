@@ -400,6 +400,14 @@ def _setup_lora_adapter(
     """
     from model_training.peft_utils import build_qlora_config  # noqa: PLC0415
 
+    if hasattr(model, "peft_config"):
+        raise RuntimeError(
+            "Base model entered _setup_lora_adapter with peft_config residue. "
+            "Either a previous trial's _release_trial_state did not strip it "
+            "(RCA-3) or this base was loaded from a wrapped cache. Refusing "
+            "to double-wrap; clear peft_config or reload the base."
+        )
+
     if warm_start:
         from peft import PeftModel  # noqa: PLC0415
 
