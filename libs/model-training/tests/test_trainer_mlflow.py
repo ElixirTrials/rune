@@ -183,3 +183,40 @@ def test_run_params_includes_requested_neftune_when_set() -> None:
     )
     assert params["requested_neftune_noise_alpha"] == 5.0
     assert "neftune_noise_alpha" not in params
+
+
+def test_build_run_params_includes_total_steps_and_dataset_size() -> None:
+    """RCA-5 H3 visibility: schedule.total_steps and dataset.size_post_clustering
+    must surface in MLflow params so step-starved trials are detectable."""
+    from model_training.trainer import _build_run_params
+
+    params = _build_run_params(
+        model_id="x", warm_start=None, resolved_rank=8, resolved_alpha=16,
+        resolved_epochs=1, learning_rate=1e-4, resolved_grad_accum=4,
+        resolved_lr_sched="constant", attn_impl=None, dataset_size=128,
+        diff_aware_loss=True, task_type="t", adapter_id="a",
+        session_id=None, dataset_path=None, encoding_mode="multi_turn",
+        diff_changed_weight=1.0, diff_unchanged_weight=0.3,
+        override_lora_alpha=None, override_lora_dropout=None,
+        neftune_noise_alpha=None, total_steps=32,
+    )
+    assert params["dataset.size_post_clustering"] == 128
+    assert params["schedule.total_steps"] == 32
+
+
+def test_build_run_params_default_total_steps_is_none_for_existing_callers() -> None:
+    """Existing callers that don't pass total_steps must still succeed."""
+    from model_training.trainer import _build_run_params
+
+    params = _build_run_params(
+        model_id="x", warm_start=None, resolved_rank=8, resolved_alpha=16,
+        resolved_epochs=1, learning_rate=1e-4, resolved_grad_accum=4,
+        resolved_lr_sched="constant", attn_impl=None, dataset_size=128,
+        diff_aware_loss=True, task_type="t", adapter_id="a",
+        session_id=None, dataset_path=None, encoding_mode="multi_turn",
+        diff_changed_weight=1.0, diff_unchanged_weight=0.3,
+        override_lora_alpha=None, override_lora_dropout=None,
+        neftune_noise_alpha=None,
+    )
+    assert params["schedule.total_steps"] is None
+    assert params["dataset.size_post_clustering"] == 128

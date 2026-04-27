@@ -659,3 +659,26 @@ class TestBuildDiffAwareSftTrainerIntegration:
         assert isinstance(trainer, _RecordingTrainer)
         assert "data_collator" in recorded_kwargs
         assert isinstance(recorded_kwargs["data_collator"], DiffWeightedDataCollator)
+
+
+def test_compute_weighted_loss_warns_on_all_masked_batch(caplog) -> None:
+    """All-masked batches must emit a WARNING (was DEBUG, RCA-5 visibility gap)."""
+    import torch
+
+    from model_training.diff_loss import IGNORE_INDEX, _compute_weighted_loss
+
+    # Tiny logits (B=1, S=2, V=3); labels all -100 -> denom == 0.
+    logits = torch.zeros(1, 2, 3)
+    labels = torch.tensor([[IGNORE_INDEX, IGNORE_INDEX]])
+    weights = torch.ones(1, 2)
+
+    # Capture from the package root so we are robust to module-name changes
+    # (logger = logging.getLogger(__name__) at diff_loss.py:23 propagates up).
+    with caplog.at_level(logging.WARNING):
+        _compute_weighted_loss(logits, labels, weights)
+
+    assert any(
+        "all-masked batch" in r.getMessage().lower()
+        and r.levelno >= logging.WARNING
+        for r in caplog.records
+    ), "all-masked-batch warning not emitted at WARNING level"

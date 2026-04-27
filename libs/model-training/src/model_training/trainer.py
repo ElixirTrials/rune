@@ -11,6 +11,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import logging
+import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -685,6 +686,7 @@ def _build_run_params(
     override_lora_alpha: int | None,
     override_lora_dropout: float | None,
     neftune_noise_alpha: float | None,
+    total_steps: int | None = None,
 ) -> dict[str, object]:
     """Build the MLflow run-params dict from resolved training parameters.
 
@@ -698,6 +700,9 @@ def _build_run_params(
 
     None values are skipped defensively to avoid ``log_param('foo', None)``
     locking ``''`` and colliding with later ``log_param('foo', 5.0)``.
+    ``dataset.size_post_clustering`` and ``schedule.total_steps`` are always
+    included (even when None) so operators can detect step-starved trials
+    (RCA-5 H3) from the MLflow params panel.
     """
     raw: dict[str, object | None] = {
         "model_id": model_id,
@@ -725,7 +730,12 @@ def _build_run_params(
         "override_lora_dropout": override_lora_dropout,
         "requested_neftune_noise_alpha": neftune_noise_alpha,
     }
-    return {k: v for k, v in raw.items() if v is not None}
+    result: dict[str, object] = {k: v for k, v in raw.items() if v is not None}
+    # Always include these observability keys (even when None) so operators
+    # can detect step-starved trials without inspecting training curves.
+    result["dataset.size_post_clustering"] = dataset_size
+    result["schedule.total_steps"] = total_steps
+    return result
 
 
 def train_qlora(
@@ -972,6 +982,15 @@ def train_qlora(
     # Log training-run metadata (params streamed as per-step metrics by TRL's
     # MLflow reporter via training_args.report_to="mlflow"). When disabled,
     # contextlib.nullcontext is a zero-cost placeholder.
+    # Mirrors the schedule math in _build_sft_config. Kept inline rather than
+    # refactoring _build_sft_config to return a tuple (that would silently
+    # break train_qlora if the call site forgot to unpack — CPU-only tests
+    # don't exercise that call path).
+    _ds_size = len(dataset)
+    _steps_per_epoch = max(1, math.ceil(_ds_size / max(1, resolved_grad_accum)))
+    _total_steps_for_log: int | None = (
+        max(1, resolved_epochs * _steps_per_epoch) if _ds_size > 0 else None
+    )
     run_params = _build_run_params(
         model_id=model_id,
         warm_start=warm_start,
@@ -994,6 +1013,7 @@ def train_qlora(
         override_lora_alpha=override_lora_alpha,
         override_lora_dropout=override_lora_dropout,
         neftune_noise_alpha=neftune_noise_alpha,
+        total_steps=_total_steps_for_log,
     )
     with mlflow_run(
         enabled=mlflow_enabled,
