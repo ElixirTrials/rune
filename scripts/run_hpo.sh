@@ -52,6 +52,23 @@ nvidia-smi -L | grep -q "GPU 0" \
     || { echo "no NVIDIA GPU visible" >&2; exit 1; }
 [[ -f "$DATASET" ]] || { echo "dataset not found: $DATASET" >&2; exit 1; }
 
+# ── persistence: route MLflow + AdapterRegistry through the docker stack ───
+# HPO runs on the host but writes go to the in-pod MLflow server (which
+# Litestream backs up to S3) and to the bind-mounted rune.db that Litestream
+# also watches. If the user opted out via env, respect their override.
+export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://localhost:5000}"
+export RUNE_DATABASE_URL="${RUNE_DATABASE_URL:-sqlite:///${HOME}/.rune/rune.db}"
+
+# Pre-flight only when the URI looks HTTP — sqlite:// fallbacks (used by
+# users who explicitly want local-only) skip the curl check.
+if [[ "$MLFLOW_TRACKING_URI" =~ ^https?:// ]]; then
+    if ! curl -fsS --max-time 2 "${MLFLOW_TRACKING_URI%/}/health" >/dev/null; then
+        echo "MLflow server not reachable at $MLFLOW_TRACKING_URI" >&2
+        echo "Start the stack first:  docker compose -f infra/docker-compose.yml up -d mlflow litestream" >&2
+        exit 1
+    fi
+fi
+
 # AdapterRegistry uses ~/.rune/rune.db by default; SQLAlchemy won't create the
 # parent dir, so do it here.
 mkdir -p "${HOME}/.rune"
@@ -78,7 +95,7 @@ echo "Trials:         $N_TRIALS  (subsample=$SUBSAMPLE per trial)"
 echo "Keep top-k:     $KEEP_TOP_K"
 echo "Experiment:     $EXPERIMENT"
 echo "Output root:    $OUTPUT_ROOT"
-echo "MLflow URI:     ${MLFLOW_TRACKING_URI:-sqlite:///./mlflow.db}"
+echo "MLflow URI:     ${MLFLOW_TRACKING_URI}"
 echo "Log:            $LOG"
 echo "Persist base:   ${RUNE_PERSIST_BASE_MODEL} (HF_HUB_OFFLINE=${HF_HUB_OFFLINE})"
 echo
