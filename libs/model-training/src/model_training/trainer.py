@@ -8,8 +8,10 @@ Module-level imports: stdlib only.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import logging
+import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +24,226 @@ from model_training.training_common import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _KnownWarningFilter(logging.Filter):
+    """Drop log records whose message contains any of the configured needles."""
+
+    def __init__(self, needles: tuple[str, ...]) -> None:
+        super().__init__()
+        self._needles = needles
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+        try:
+            msg = record.getMessage()
+        except Exception:  # noqa: BLE001 — formatting failure should not crash log path
+            return True
+        return not any(n in msg for n in self._needles)
+
+
+_WARNINGS_SILENCED = False
+
+
+# ---------------------------------------------------------------------------
+# Persistent base-model cache (HPO speed-up)
+# ---------------------------------------------------------------------------
+#
+# Optuna's study.optimize runs trials in-process; without a cache each trial's
+# train_and_register calls AutoModelForCausalLM.from_pretrained from scratch
+# (~2.5 min cold; ~30-60 s warm via OS page cache). Persisting the NF4 base
+# model + tokenizer across trials skips that cost entirely. The HPO wrapper
+# enables this via RUNE_PERSIST_BASE_MODEL=1.
+#
+# Cached entry shape: model_id -> (base_model, tokenizer). The base model is
+# the *unwrapped* AutoModelForCausalLM — PEFT wrapping happens per-trial and
+# is undone via PeftModel.unload() at the end of each trial.
+
+_BASE_MODEL_CACHE: dict[str, tuple[Any, Any]] = {}
+
+
+def _persist_base_enabled() -> bool:
+    """Whether to share the NF4 base model across trials in this process."""
+    return os.environ.get("RUNE_PERSIST_BASE_MODEL") == "1"
+
+
+def _release_trial_state(
+    trainer: Any, model: Any, dataset: Any, *, persist_base: bool
+) -> None:
+    """Free trial-scoped state at the end of train_qlora.
+
+    When ``persist_base`` is True, the cached base model is preserved — only
+    the trainer, optimizer state, dataset, and any PEFT wrapper around the
+    base are released. When False, everything is released for full teardown.
+
+    PEFT wraps the base in place (``get_peft_model`` / ``PeftModel.from_pretrained``
+    mutate the base's module tree). To restore the cache to a usable state
+    for the next trial we call ``unload()`` which removes the LoRA layers
+    and restores the original ``AutoModelForCausalLM`` modules. SFTTrainer
+    holds the PeftModel reference at ``trainer.model`` (the outer ``model``
+    var may still point to the unwrapped base when ``peft_config`` is passed
+    rather than the warm-start path), so we unload via ``trainer.model``
+    when available and fall back to ``model``.
+    """
+    if persist_base:
+        peft_wrapper = getattr(trainer, "model", None) or model
+        if hasattr(peft_wrapper, "unload"):
+            try:
+                # PEFT's unload() returns the restored base. Capture it so we
+                # can strip the lingering `peft_config` attribute, which
+                # `BaseTuner.__init__` stamps onto the inner model
+                # (tuners_utils.py:301) and never removes — triggering the
+                # "Already found a peft_config" warning on the next wrap and
+                # causing adapter stacking + VRAM doubling (RCA-2 Cause 1,
+                # RCA-3).
+                restored = peft_wrapper.unload()
+                inner = (
+                    restored
+                    if restored is not None
+                    else getattr(peft_wrapper, "model", None)
+                )
+                if inner is not None and hasattr(inner, "peft_config"):
+                    try:
+                        delattr(inner, "peft_config")
+                    except AttributeError:
+                        pass
+            except Exception:  # noqa: BLE001 — never break training cleanup
+                logger.exception(
+                    "PEFT unload() failed; cache may be in a wrapped state"
+                )
+    del trainer, dataset
+    if not persist_base:
+        del model
+        _BASE_MODEL_CACHE.clear()
+    gc.collect()
+    try:
+        import torch  # noqa: PLC0415
+
+        torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001 — torch may be absent in CPU-only paths
+        pass
+
+
+def _build_bnb_config() -> Any:
+    """Construct the NF4 BitsAndBytesConfig used by every QLoRA load.
+
+    ``llm_int8_enable_fp32_cpu_offload=True`` lets ``accelerate`` spill
+    transformer layers to CPU when VRAM is exhausted, instead of bnb erroring
+    at load time with an opaque message (RCA-4 (b)). This is graceful
+    degradation, not a perf default — CPU-offloaded forward is much slower,
+    but a slow trial is recoverable; a load-time crash is not.
+    """
+    import torch  # noqa: PLC0415
+    from transformers import BitsAndBytesConfig  # noqa: PLC0415
+
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+    )
+
+
+def _get_or_load_base(
+    model_id: str,
+    *,
+    bnb_config: Any,
+    attn_impl: str | None,
+    auto_model_cls: Any,
+    auto_tokenizer_cls: Any,
+) -> tuple[Any, Any]:
+    """Return cached (base_model, tokenizer) or load fresh.
+
+    When ``RUNE_PERSIST_BASE_MODEL=1`` is set, the loaded model+tokenizer are
+    cached at module level keyed by ``model_id``. The cache is bound to the
+    Python process; cleared on process exit or by ``_release_trial_state``
+    when persistence is off.
+    """
+    if _persist_base_enabled() and model_id in _BASE_MODEL_CACHE:
+        logger.info("Reusing cached NF4 base model for %s", model_id)
+        return _BASE_MODEL_CACHE[model_id]
+
+    model_kwargs: dict[str, Any] = {
+        "quantization_config": bnb_config,
+        "device_map": "auto",
+    }
+    if attn_impl:
+        model_kwargs["attn_implementation"] = attn_impl
+    model = auto_model_cls.from_pretrained(model_id, **model_kwargs)
+    tokenizer = auto_tokenizer_cls.from_pretrained(model_id)
+
+    # Surface silent CPU offload — accelerate's "auto" device map will spill
+    # transformer layers to CPU when VRAM is tight, with
+    # llm_int8_enable_fp32_cpu_offload=True making this silent. CPU-offloaded
+    # forward runs at ~1/100x throughput (review feedback on RCA-4 (b)).
+    device_map = getattr(model, "hf_device_map", None) or {}
+    cpu_layers = [k for k, v in device_map.items() if str(v) == "cpu"]
+    if cpu_layers:
+        logger.warning(
+            "Loaded %s with %d CPU-resident layers (accelerate fp32 offload). "
+            "Forward will be 30-100x slower than full-GPU. Reduce model size "
+            "or free VRAM before retry.",
+            model_id,
+            len(cpu_layers),
+        )
+
+    if _persist_base_enabled():
+        _BASE_MODEL_CACHE[model_id] = (model, tokenizer)
+    return model, tokenizer
+
+
+def _silence_known_warnings() -> None:
+    """Filter out cosmetic third-party warnings that clutter training logs.
+
+    Idempotent: subsequent calls are no-ops. Each filter is narrowly scoped
+    to the upstream logger that emits it so we don't accidentally hide
+    unrelated warnings of the same level.
+
+    Filtered:
+    - ``transformers.models.qwen3_5*`` "fast path is not available" — fires
+      because Qwen3.5's gated-delta-rule layers fall back to torch when
+      ``flash-linear-attention`` and ``causal-conv1d`` are not installed.
+      Functional fallback; perf only.
+    - ``transformers.trainer_utils`` "new PAD/BOS/EOS tokens that differ
+      from the model config" — informational, fires on every Trainer init.
+    - ``bitsandbytes`` ``_check_is_size will be removed`` ``FutureWarning``
+      — internal API deprecation in bitsandbytes 0.49.x.
+    """
+    global _WARNINGS_SILENCED
+    if _WARNINGS_SILENCED:
+        return
+
+    # Filter A — fast-path warning from Qwen3.5 modeling code (fired by
+    # transformers.models.qwen3_5.modeling_qwen3_5; also cover MoE / Next
+    # variants for safety).
+    fla_filter = _KnownWarningFilter(("fast path is not available",))
+    for name in (
+        "transformers.models.qwen3_5.modeling_qwen3_5",
+        "transformers.models.qwen3_5_moe.modeling_qwen3_5_moe",
+        "transformers.models.qwen3_next.modeling_qwen3_next",
+    ):
+        logging.getLogger(name).addFilter(fla_filter)
+
+    # Filter B — PAD/BOS/EOS reconciliation message from
+    # transformers.trainer_utils._setup_special_tokens.
+    pad_filter = _KnownWarningFilter(
+        ("new PAD/BOS/EOS tokens that differ from the model config",)
+    )
+    logging.getLogger("transformers.trainer_utils").addFilter(pad_filter)
+    # Some transformers versions emit it from the trainer logger directly.
+    logging.getLogger("transformers").addFilter(pad_filter)
+
+    # Filter C — bitsandbytes _check_is_size FutureWarning. Module-level
+    # warnings.warn — use the warnings module rather than a logging filter.
+    import warnings  # noqa: PLC0415
+
+    warnings.filterwarnings(
+        "ignore",
+        message=r"_check_is_size will be removed.*",
+        category=FutureWarning,
+    )
+
+    _WARNINGS_SILENCED = True
 
 
 class _ResolvedParams(TypedDict):
@@ -195,6 +417,110 @@ def _validate_data_source(
         )
 
 
+def _setup_lora_adapter(
+    *,
+    model: Any,
+    warm_start: str | None,
+    model_config_name: str | None,
+    resolved_rank: int,
+    resolved_alpha: int,
+    override_lora_alpha: int | None,
+    override_lora_dropout: float | None,
+) -> tuple[Any, Any]:
+    """Apply warm-start adapter or build a fresh LoRA config.
+
+    Returns ``(model, lora_config)`` — when warm-starting, ``lora_config`` is
+    None because the adapter is already attached to ``model``; otherwise
+    ``model`` is unchanged and ``lora_config`` carries the fresh QLoRA
+    config that SFTTrainer will apply.
+
+    Extracted from ``train_qlora`` to keep that function under the C901
+    complexity threshold.
+    """
+    from model_training.peft_utils import build_qlora_config  # noqa: PLC0415
+
+    if hasattr(model, "peft_config"):
+        raise RuntimeError(
+            "Base model entered _setup_lora_adapter with peft_config residue. "
+            "Either a previous trial's _release_trial_state did not strip it "
+            "(RCA-3) or this base was loaded from a wrapped cache. Refusing "
+            "to double-wrap; clear peft_config or reload the base."
+        )
+
+    if warm_start:
+        from peft import PeftModel  # noqa: PLC0415
+
+        model = PeftModel.from_pretrained(model, str(warm_start))
+        # Enable gradient on all adapter parameters for continued training.
+        for name, param in model.named_parameters():
+            if "lora_" in name:
+                param.requires_grad_(True)
+        # Post-load overrides. The saved adapter's rank and target_modules
+        # are locked by the safetensor shapes, but alpha and dropout are
+        # runtime quantities and can be retuned by HPO without discarding
+        # the warm-start.
+        adapter_name = getattr(model, "active_adapter", None) or "default"
+        if override_lora_alpha is not None:
+            _override_lora_alpha(model, adapter_name, override_lora_alpha)
+        if override_lora_dropout is not None:
+            _override_lora_dropout(model, adapter_name, override_lora_dropout)
+        return model, None
+
+    # Fresh LoRA initialization — try probe cache for target modules.
+    target_modules = ["q_proj", "v_proj"]
+    if model_config_name:
+        from model_training.d2l_probe import load_probe_cache  # noqa: PLC0415
+
+        cache = load_probe_cache(model_config_name)
+        if cache and "target_modules" in cache:
+            target_modules = cache["target_modules"]
+
+    lora_config = build_qlora_config(
+        rank=resolved_rank,
+        alpha=resolved_alpha,
+        target_modules=target_modules,
+        dropout=0.1,
+    )
+    return model, lora_config
+
+
+def _attach_assistant_masks(
+    dataset: Any,
+    tokenizer: Any,
+    *,
+    preserve_columns: list[str] | None = None,
+) -> Any:
+    """Pre-tokenize ``messages`` rows and attach ``assistant_masks``.
+
+    Bypasses TRL's ``get_training_chat_template`` pre-flight check on
+    Qwen3.5 (whose bundled template has no ``{% generation %}`` markers and
+    is unpatchable in TRL 1.3.0). With ``input_ids`` present in
+    ``column_names``, ``_prepare_dataset`` short-circuits all SFTTrainer
+    preprocessing (sft_trainer.py:1067), and
+    ``DataCollatorForLanguageModeling`` consumes ``assistant_masks`` from
+    the batch at sft_trainer.py:179-180.
+
+    The diff-aware path passes ``preserve_columns=["pre_code", "post_code"]``
+    so :class:`~model_training.diff_loss.DiffWeightedDataCollator` still has
+    its hunk-weighting side-channels after pre-tokenization. Without this
+    preservation the diff path silently loses its weights AND its labels
+    (RCA-5 H2).
+
+    Extracted from ``train_qlora`` to keep that function under the C901
+    complexity threshold.
+    """
+    from model_training.trajectory import compute_assistant_masks  # noqa: PLC0415
+
+    keep = set(preserve_columns or [])
+    original_columns = list(dataset.column_names)
+    columns_to_remove = [c for c in original_columns if c not in keep]
+    return dataset.map(
+        lambda ex: compute_assistant_masks(tokenizer, ex["messages"]),
+        remove_columns=columns_to_remove,
+        desc="Pre-tokenizing with assistant_masks",
+    )
+
+
 def _build_training_dataset(
     *,
     dataset_cls: Any,
@@ -315,6 +641,8 @@ def _build_sft_config(
     report_to: str,
     diff_aware_loss: bool,
     neftune_noise_alpha: float | None,
+    max_length: int | None = None,
+    dataset_size: int | None = None,
 ) -> Any:
     """Construct an SFTConfig with optional NEFTune support.
 
@@ -322,11 +650,13 @@ def _build_sft_config(
     ``neftune_noise_alpha`` is only passed when not None so SFTConfig's own
     default (feature disabled) applies when the caller omits it.
     """
+    import math  # noqa: PLC0415
+
+    effective_warmup_ratio = warmup_ratio if warmup_ratio is not None else 0.03
     kwargs: dict[str, Any] = {
         "output_dir": output_dir,
         "num_train_epochs": resolved_epochs,
         "learning_rate": learning_rate,
-        "warmup_ratio": warmup_ratio if warmup_ratio is not None else 0.03,
         "lr_scheduler_type": resolved_lr_sched,
         "bf16": True,
         "per_device_train_batch_size": 1,
@@ -335,8 +665,33 @@ def _build_sft_config(
         "logging_steps": 1,
         "report_to": report_to,
         "eval_strategy": "no",
-        "assistant_only_loss": not diff_aware_loss,
+        # assistant_only_loss=True triggers TRL's get_training_chat_template
+        # pre-flight (sft_trainer.py:925), which requires {% generation %}
+        # markers in the chat template. Qwen3.5's bundled template lacks them
+        # and TRL 1.3.0 has no patcher for it, so we keep this False and
+        # provide pre-computed assistant_masks ourselves on the non-diff
+        # branch (see trajectory.compute_assistant_masks). The diff-aware
+        # branch ignores assistant_masks because DiffWeightedDataCollator
+        # owns masking via its own per-token weighting.
+        "assistant_only_loss": False,
+        # PEFT + reentrant checkpointing silently zeros LoRA grads on some
+        # transformers versions; non-reentrant is the supported path.
+        "gradient_checkpointing": True,
+        "gradient_checkpointing_kwargs": {"use_reentrant": False},
+        # Paged 8-bit AdamW spills optimizer state to host RAM under pressure;
+        # required to fit Qwen3.5-9B QLoRA + adapter grads on a 22 GB L4.
+        "optim": "paged_adamw_8bit",
     }
+    # transformers v5.2 removes warmup_ratio in favour of warmup_steps; convert
+    # here using the resolved schedule so SFTConfig stops emitting the warning.
+    if dataset_size is not None and dataset_size > 0:
+        steps_per_epoch = max(1, math.ceil(dataset_size / max(1, resolved_grad_accum)))
+        total_steps = max(1, resolved_epochs * steps_per_epoch)
+        kwargs["warmup_steps"] = max(0, int(total_steps * effective_warmup_ratio))
+    else:
+        kwargs["warmup_ratio"] = effective_warmup_ratio
+    if max_length is not None:
+        kwargs["max_length"] = max_length
     if neftune_noise_alpha is not None:
         kwargs["neftune_noise_alpha"] = neftune_noise_alpha
     if diff_aware_loss:
@@ -368,16 +723,26 @@ def _build_run_params(
     diff_unchanged_weight: float,
     override_lora_alpha: int | None,
     override_lora_dropout: float | None,
-    warmup_ratio: float | None,
     neftune_noise_alpha: float | None,
+    total_steps: int | None = None,
 ) -> dict[str, object]:
     """Build the MLflow run-params dict from resolved training parameters.
 
-    ``assistant_only_loss`` mirrors the SFTConfig value: True when
-    diff_aware_loss is off (SFTConfig handles masking), False when it is on
-    (custom collator subsumes masking so the SFTConfig flag is disabled).
+    Fields that mirror SFTConfig members (``warmup_ratio``, ``warmup_steps``,
+    ``assistant_only_loss``, ``neftune_noise_alpha``) are NOT logged here —
+    TRL's MLflowCallback logs them from the resolved SFTConfig at training
+    start. Logging the same key with our requested value ahead of TRL's
+    actual value triggers an `async_logging_queue` `Changing param values is
+    not allowed` error in MLflow. ``requested_neftune_noise_alpha`` preserves
+    the user-requested value under a non-colliding key.
+
+    None values are skipped defensively to avoid ``log_param('foo', None)``
+    locking ``''`` and colliding with later ``log_param('foo', 5.0)``.
+    ``dataset.size_post_clustering`` and ``schedule.total_steps`` are always
+    included (even when None) so operators can detect step-starved trials
+    (RCA-5 H3) from the MLflow params panel.
     """
-    return {
+    raw: dict[str, object | None] = {
         "model_id": model_id,
         "warm_start": warm_start or "",
         "rank": resolved_rank,
@@ -388,7 +753,9 @@ def _build_run_params(
         "lr_scheduler_type": resolved_lr_sched,
         "attn_implementation": attn_impl or "",
         "dataset_size": dataset_size,
-        "assistant_only_loss": not diff_aware_loss,
+        "assistant_masking_strategy": (
+            "diff_weighted" if diff_aware_loss else "assistant_masks"
+        ),
         "task_type": task_type,
         "adapter_id": adapter_id,
         "session_id": session_id or "",
@@ -397,17 +764,16 @@ def _build_run_params(
         "diff_aware_loss": diff_aware_loss,
         "diff_changed_weight": diff_changed_weight if diff_aware_loss else "",
         "diff_unchanged_weight": diff_unchanged_weight if diff_aware_loss else "",
-        "override_lora_alpha": (
-            override_lora_alpha if override_lora_alpha is not None else ""
-        ),
-        "override_lora_dropout": (
-            override_lora_dropout if override_lora_dropout is not None else ""
-        ),
-        "warmup_ratio": warmup_ratio if warmup_ratio is not None else 0.03,
-        "neftune_noise_alpha": (
-            neftune_noise_alpha if neftune_noise_alpha is not None else ""
-        ),
+        "override_lora_alpha": override_lora_alpha,
+        "override_lora_dropout": override_lora_dropout,
+        "requested_neftune_noise_alpha": neftune_noise_alpha,
     }
+    result: dict[str, object] = {k: v for k, v in raw.items() if v is not None}
+    # Always include these observability keys (even when None) so operators
+    # can detect step-starved trials without inspecting training curves.
+    result["dataset.size_post_clustering"] = dataset_size
+    result["schedule.total_steps"] = total_steps
+    return result
 
 
 def train_qlora(
@@ -436,6 +802,7 @@ def train_qlora(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
+    max_length: int = 2048,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -474,7 +841,8 @@ def train_qlora(
         mlflow_experiment: MLflow experiment name. Set RUNE_DISABLE_MLFLOW=1
             in the env to disable MLflow tracking entirely.
         mlflow_tracking_uri: Optional MLflow tracking URI override. Falls back
-            to the MLFLOW_TRACKING_URI env var, then to "./mlruns".
+            to the MLFLOW_TRACKING_URI env var, then to
+            ``"sqlite:///./mlflow.db"``.
         dataset_path: Path to a JSONL file of mined pair records (as produced
             by ``scripts/mine_github.py --batch``). Mutually exclusive with
             session_id; when set, the training dataset is built by
@@ -509,6 +877,10 @@ def train_qlora(
             When set, passed to ``SFTConfig(neftune_noise_alpha=...)``.
             When ``None`` (default), the kwarg is omitted so SFTConfig's
             own default (feature disabled) applies.
+        max_length: SFT tokenizer truncation length. Caps activation
+            memory; both the cross-entropy logits tensor and (with
+            ``attn_implementation="eager"``) the materialised attention
+            matrix scale with this value. Defaults to ``2048``.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -520,13 +892,19 @@ def train_qlora(
     # Validate mutually-exclusive data sources up front (no GPU imports yet).
     _validate_data_source(session_id, dataset_path, encoding_mode)
 
-    # Deferred GPU imports — all in function body for CPU-only importability
-    import torch
-    from datasets import Dataset
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from trl import SFTConfig, SFTTrainer
+    # Cosmetic third-party warnings that don't affect correctness.
+    _silence_known_warnings()
 
-    from model_training.peft_utils import build_qlora_config
+    # Reduce CUDA fragmentation overhead on the L4 (22 GB) — set BEFORE the
+    # first torch import so the allocator picks it up. Only sets the var when
+    # the user hasn't already configured PYTORCH_CUDA_ALLOC_CONF themselves.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+    # Deferred GPU imports — all in function body for CPU-only importability
+    import torch  # noqa: F401 — needed for _build_bnb_config's bfloat16 dtype
+    from datasets import Dataset
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from trl import SFTConfig, SFTTrainer
 
     # Resolve defaults from model registry and explicit overrides
     params = _resolve_training_params(
@@ -550,7 +928,7 @@ def train_qlora(
     # Resolve model ID — read env var inside function body for monkeypatch testability
     resolved_model_id = params["base_model_id"]
     model_id: str = resolved_model_id or os.environ.get(
-        "RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct"
+        "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
     )  # type: ignore[assignment]
 
     # Build dataset from either a mined-pairs JSONL or a recorded trajectory.
@@ -562,61 +940,43 @@ def train_qlora(
         diff_aware_loss=diff_aware_loss,
     )
 
-    # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss)
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
+    # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss).
+    # _build_bnb_config also enables llm_int8_enable_fp32_cpu_offload so
+    # accelerate degrades gracefully when VRAM is tight (RCA-4 (b)).
+    bnb_config = _build_bnb_config()
+
+    # Load model and tokenizer (or reuse the cached base when
+    # RUNE_PERSIST_BASE_MODEL=1; see _get_or_load_base).
+    model, tokenizer = _get_or_load_base(
+        model_id,
+        bnb_config=bnb_config,
+        attn_impl=attn_impl,
+        auto_model_cls=AutoModelForCausalLM,
+        auto_tokenizer_cls=AutoTokenizer,
     )
 
-    # Load model and tokenizer
-    model_kwargs: dict[str, object] = {
-        "quantization_config": bnb_config,
-        "device_map": "auto",
-    }
-    if attn_impl:
-        model_kwargs["attn_implementation"] = attn_impl
-
-    model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-
-    # Warm-start: load pre-trained adapter and enable gradient on LoRA params
-    lora_config = None
-    if warm_start:
-        from peft import PeftModel
-
-        model = PeftModel.from_pretrained(model, str(warm_start))  # type: ignore[assignment]
-        # Enable gradient on all adapter parameters for continued training
-        for name, param in model.named_parameters():
-            if "lora_" in name:
-                param.requires_grad_(True)
-
-        # Post-load overrides. The saved adapter's rank and target_modules
-        # are locked by the safetensor shapes, but alpha and dropout are
-        # runtime quantities and can be retuned by HPO without discarding
-        # the warm-start.
-        adapter_name = getattr(model, "active_adapter", None) or "default"
-        if override_lora_alpha is not None:
-            _override_lora_alpha(model, adapter_name, override_lora_alpha)
-        if override_lora_dropout is not None:
-            _override_lora_dropout(model, adapter_name, override_lora_dropout)
-    else:
-        # Fresh LoRA initialization — try probe cache for target modules
-        target_modules = ["q_proj", "v_proj"]
-        if model_config_name:
-            from model_training.d2l_probe import load_probe_cache
-
-            cache = load_probe_cache(model_config_name)
-            if cache and "target_modules" in cache:
-                target_modules = cache["target_modules"]
-
-        lora_config = build_qlora_config(
-            rank=resolved_rank,
-            alpha=resolved_alpha,
-            target_modules=target_modules,
-            dropout=0.1,
+    if diff_aware_loss:
+        # The diff path needs assistant_masks (for label masking via the
+        # inner DataCollatorForLanguageModeling) AND pre_code/post_code
+        # (for DiffWeightedDataCollator.hunk_path). Preserve the latter
+        # so we do not regress to RCA-5 H2 (zero gradient) or to identity
+        # weights (loss collapses to mean CE on assistant tokens only,
+        # ignoring hunks — still functional but defeats the purpose).
+        dataset = _attach_assistant_masks(
+            dataset, tokenizer, preserve_columns=["pre_code", "post_code"]
         )
+    else:
+        dataset = _attach_assistant_masks(dataset, tokenizer)
+
+    model, lora_config = _setup_lora_adapter(
+        model=model,
+        warm_start=warm_start,
+        model_config_name=model_config_name,
+        resolved_rank=resolved_rank,
+        resolved_alpha=resolved_alpha,
+        override_lora_alpha=override_lora_alpha,
+        override_lora_dropout=override_lora_dropout,
+    )
 
     # Configure MLflow (silent no-op when disabled via env or mlflow missing)
     mlflow_enabled = setup_mlflow(
@@ -638,6 +998,8 @@ def train_qlora(
         report_to=report_to,
         diff_aware_loss=diff_aware_loss,
         neftune_noise_alpha=neftune_noise_alpha,
+        max_length=max_length,
+        dataset_size=len(dataset),
     )
 
     trainer = _construct_sft_trainer(
@@ -655,6 +1017,15 @@ def train_qlora(
     # Log training-run metadata (params streamed as per-step metrics by TRL's
     # MLflow reporter via training_args.report_to="mlflow"). When disabled,
     # contextlib.nullcontext is a zero-cost placeholder.
+    # Mirrors the schedule math in _build_sft_config. Kept inline rather than
+    # refactoring _build_sft_config to return a tuple (that would silently
+    # break train_qlora if the call site forgot to unpack — CPU-only tests
+    # don't exercise that call path).
+    _ds_size = len(dataset)
+    _steps_per_epoch = max(1, math.ceil(_ds_size / max(1, resolved_grad_accum)))
+    _total_steps_for_log: int | None = (
+        max(1, resolved_epochs * _steps_per_epoch) if _ds_size > 0 else None
+    )
     run_params = _build_run_params(
         model_id=model_id,
         warm_start=warm_start,
@@ -676,8 +1047,8 @@ def train_qlora(
         diff_unchanged_weight=diff_unchanged_weight,
         override_lora_alpha=override_lora_alpha,
         override_lora_dropout=override_lora_dropout,
-        warmup_ratio=warmup_ratio,
         neftune_noise_alpha=neftune_noise_alpha,
+        total_steps=_total_steps_for_log,
     )
     with mlflow_run(
         enabled=mlflow_enabled,
@@ -686,11 +1057,39 @@ def train_qlora(
     ):
         trainer.train()
 
-        # Save adapter weights only (PEFT-aware: safetensors + adapter_config.json)
-        trainer.save_model(output_dir)
+        # Save adapter weights ONCE with save_embedding_layers=False so PEFT
+        # skips its hub-probe (which returns None under HF_HUB_OFFLINE=1 and
+        # emits the cosmetic "Could not find a config file" warning — RCA-1).
+        # Our LoRA never resizes embeddings, so the assumption is correct.
+        # We bypass trainer.save_model (which would call save_pretrained with
+        # default kwargs) and call save_pretrained directly to avoid the
+        # double-write race the reviewer flagged.
+        try:
+            from peft import PeftModel  # noqa: PLC0415
+
+            inner = getattr(trainer, "model", None)
+            if isinstance(inner, PeftModel):
+                inner.save_pretrained(output_dir, save_embedding_layers=False)
+            else:
+                # Non-PEFT path (shouldn't fire in QLoRA but stays correct).
+                trainer.save_model(output_dir)
+        except Exception:  # noqa: BLE001 — fall back to default save path
+            logger.exception(
+                "PeftModel.save_pretrained failed; falling back to "
+                "trainer.save_model (Qwen config warning may resurface)"
+            )
+            trainer.save_model(output_dir)
 
         if mlflow_enabled:
             mlflow_log_output_artifacts(output_dir)
+
+    # Release VRAM before any subsequent allocation in the caller (e.g. the
+    # HPO heldout-eval at run_training_hpo.py:_evaluate_adapter_on_heldout
+    # will load adapter weights and run forward passes; without this drop
+    # the trainer's optimizer + dataset cache co-resides with the eval
+    # state and pushes the L4 close to OOM). Persistent-base mode keeps the
+    # cached base model resident — only the trial-scoped objects are freed.
+    _release_trial_state(trainer, model, dataset, persist_base=_persist_base_enabled())
 
     return output_dir
 
@@ -721,6 +1120,7 @@ def train_and_register(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
+    max_length: int = 2048,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -762,6 +1162,8 @@ def train_and_register(
             Defaults to ``0.03`` when ``None``.
         neftune_noise_alpha: NEFTune noise alpha forwarded to ``train_qlora``.
             When ``None`` (default), NEFTune is disabled.
+        max_length: SFT tokenizer truncation length forwarded to
+            ``train_qlora``. Defaults to ``2048``.
 
     Returns:
         adapter_id of the registered adapter.
@@ -789,7 +1191,7 @@ def train_and_register(
 
         model_id = ModelRegistry.default().get(model_config_name).model_id
     if model_id is None:
-        model_id = os.environ.get("RUNE_BASE_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct")
+        model_id = os.environ.get("RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B")
 
     # Resolve training params to get the actual rank used for training
     resolved = _resolve_training_params(
@@ -829,6 +1231,7 @@ def train_and_register(
         override_lora_dropout=override_lora_dropout,
         warmup_ratio=warmup_ratio,
         neftune_noise_alpha=neftune_noise_alpha,
+        max_length=max_length,
     )
 
     # Compute file hash and size from the saved safetensors file

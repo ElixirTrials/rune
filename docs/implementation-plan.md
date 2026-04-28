@@ -116,7 +116,8 @@ The distinction between Phase 0 and an installation guide is intentional. Phase 
 
 - [x] CUDA-capable GPU(s) recognized (`nvidia-smi` shows devices; `torch.cuda.device_count() >= 1`)
 - [x] PyTorch forward pass and backward pass complete without error on the target GPU(s)
-- [x] vLLM serves Qwen2.5-Coder-7B-Instruct with configured parallelism settings without crash
+- [ ] vLLM serves Qwen/Qwen3.5-9B with configured parallelism settings without crash <!-- TODO(benchmarks-pending): serving validation for Qwen3.5-9B is not yet complete -->
+
 - [x] vLLM serves a known-good LoRA adapter and produces correct output (regression test confirming the serving configuration is functional)
 - [x] PEFT + bitsandbytes QLoRA fine-tune runs 1 training step without error (confirming quantization toolchain is functional)
 
@@ -159,7 +160,8 @@ Rune's kill-switch gate is the operational expression of hypothesis-first orderi
 
 ### Kill-Switch
 
-> **Primary metric:** Pass@1 improvement of ≥ 5% on held-out HumanEval tasks (20-30 task subset) compared to Qwen2.5-Coder-7B-Instruct baseline with no adapter.
+> **Primary metric:** Pass@1 improvement of ≥ 5% on held-out HumanEval tasks (20-30 task subset) compared to Qwen/Qwen3.5-9B baseline with no adapter. <!-- TODO(benchmarks-pending): baseline Pass@1 on Qwen3.5-9B is not yet measured; fill in once the bfloat16 baseline run completes -->
+
 >
 > **If the gate passes:** The hypothesis has empirical support — not proof, but support. Proceed to Phase 2. The architectural decisions made in Phases 2 through 4 are now worth acting on.
 >
@@ -194,7 +196,8 @@ These are tracked via MLflow and inform the written assessment, but do not gate 
 
 **Dataset:** 50-100 real coding trajectory pairs from HumanEval or SWE-bench-lite. Each trajectory consists of: task description, attempt sequence (code + error messages + corrections), final passing code. Trajectories sourced from existing evaluation runs or synthetically generated via a prompted base model.
 
-**Baseline:** Qwen2.5-Coder-7B-Instruct with no adapter — raw model Pass@1 on the held-out task subset (5 samples per task, bfloat16 serving).
+**Baseline:** Qwen/Qwen3.5-9B with no adapter — raw model Pass@1 on the held-out task subset (5 samples per task, bfloat16 serving). <!-- TODO(benchmarks-pending): numeric baseline to be filled in once the bfloat16 baseline run completes -->
+
 
 **Evaluation method:** Pass@1 on 20-30 held-out HumanEval tasks. Five samples per task. Tasks held out from the training trajectory corpus to test generalization, not memorization.
 

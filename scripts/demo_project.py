@@ -22,7 +22,7 @@ from bootstrap import setup_path
 setup_path()  # noqa: E402
 
 os.environ.setdefault("INFERENCE_PROVIDER", "ollama")
-os.environ.setdefault("RUNE_MODEL", "qwen2.5-coder:1.5b")
+os.environ.setdefault("RUNE_MODEL", "Qwen/Qwen3.5-9B")
 os.environ.setdefault("RUNE_EXEC_TIMEOUT", "30")
 
 logging.basicConfig(

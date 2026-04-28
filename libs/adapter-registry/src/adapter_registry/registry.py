@@ -84,7 +84,7 @@ class AdapterRegistry:
             >>> engine = create_engine("sqlite:///adapters.db")
             >>> registry = AdapterRegistry(engine=engine)
             >>> record = AdapterRecord(id="abc-1", version=1, task_type="bug-fix",
-            ...     base_model_id="qwen2.5-coder-7b", rank=16,
+            ...     base_model_id="Qwen/Qwen3.5-9B", rank=16,
             ...     created_at="2026-01-01T00:00:00Z",
             ...     file_path="/adapters/abc-1.safetensors",
             ...     file_hash="sha256hash", file_size_bytes=4096,

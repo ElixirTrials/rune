@@ -477,12 +477,16 @@ def _compute_weighted_loss(
     weighted = per_token_loss * shift_weights * label_mask
     denom = (shift_weights * label_mask).sum()
 
-    # Guard: all-masked batch (no labeled/weighted tokens).  This indicates a
-    # data-pipeline bug — warn loudly rather than returning a silent near-zero.
+    # Guard: all-masked batch (no labeled/weighted tokens).  Clamping at
+    # 1e-8 prevents NaN; after Task 1's masking fix this can only fire on a
+    # genuinely degenerate batch — operators must see it (RCA-5 visibility).
     if denom.item() < 1e-8:
+        # Visible at WARNING because after Task 1's masking fix, this can
+        # only fire on a genuinely degenerate batch — operators must see it.
         logger.warning(
             "DiffAwareSFTTrainer: all-masked batch (denom=%.3e); "
-            "weighted loss will be clamped. Check loss_weights / label masking.",
+            "weighted loss clamped to 1e-8. If this fires every step, "
+            "training has zero gradient signal (RCA-5 H2 regression).",
             denom.item(),
         )
     weighted_loss = weighted.sum() / denom.clamp(min=1e-8)
@@ -626,9 +630,17 @@ def build_diff_aware_sft_trainer(
             "pad_token_id or eos_token_id set."
         )
 
+    # Forward args.max_length / args.truncation_mode so the diff-aware path
+    # respects the SFTConfig sequence cap. The standard SFTTrainer path threads
+    # these into the collator at sft_trainer.py:893; bypassing that path (as we
+    # do here) without forwarding the cap means every sequence reaches the GPU
+    # uncapped — at Qwen3.5-9B vocab=152k, the cross-entropy logits tensor
+    # alone OOMs an L4 at seq_len ~8k.
     inner_collator = DataCollatorForLanguageModeling(
         pad_token_id=pad_token_id,
         completion_only_loss=True,
+        max_length=getattr(args, "max_length", None),
+        truncation_mode=getattr(args, "truncation_mode", "keep_start"),
     )
     collator = DiffWeightedDataCollator(
         inner_collator,

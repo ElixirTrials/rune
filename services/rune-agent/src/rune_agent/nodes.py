@@ -47,7 +47,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are a Python code generator. Output only code, no explanation."
 )
 DEFAULT_TIMEOUT = 30
-DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen3.5-9B"
 
 
 def _build_prompt(state: RuneState) -> str:

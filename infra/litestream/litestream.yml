@@ -1,0 +1,22 @@
+# Litestream replica config for Rune persistence.
+# Watches the bind-mounted mlflow.db (single MLflow server is the sole writer)
+# and the bind-mounted rune.db (HPO trainer + api/lora-server share this file).
+# 1-second sync interval keeps RPO near real-time; retention 168h keeps a week
+# of WAL history for point-in-time restores.
+dbs:
+  - path: /data/mlflow/mlflow.db
+    replicas:
+      - type: s3
+        bucket: elixirtrials-949678234935-eu-west-2-artifacts
+        path: mlflow/db
+        region: eu-west-2
+        sync-interval: 1s
+        retention: 168h
+  - path: /data/rune/rune.db
+    replicas:
+      - type: s3
+        bucket: elixirtrials-949678234935-eu-west-2-artifacts
+        path: rune-registry/db
+        region: eu-west-2
+        sync-interval: 1s
+        retention: 168h

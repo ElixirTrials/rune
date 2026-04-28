@@ -68,7 +68,7 @@ The schema is defined as a SQLModel class (`AdapterRecord`). Fields with `(index
 | `id` | TEXT PRIMARY KEY | UUID string |
 | `version` | INTEGER NOT NULL | Lineage tracking |
 | `task_type` | TEXT NOT NULL | e.g. 'bug-fix' (indexed) |
-| `base_model_id` | TEXT NOT NULL | e.g. 'Qwen/Qwen2.5-Coder-7B' |
+| `base_model_id` | TEXT NOT NULL | e.g. 'Qwen/Qwen3.5-9B' |
 | `rank` | INTEGER NOT NULL | LoRA rank |
 | `created_at` | TEXT NOT NULL | ISO 8601 |
 | `file_path` | TEXT NOT NULL | Path to .safetensors |
@@ -141,7 +141,7 @@ This separation means the adapter registry can power dashboards, CLI tools, and 
 
 ## Storage Budget
 
-At LoRA rank 64 targeting all attention layers of Qwen2.5-Coder-7B, a single adapter is approximately 50-200 MB depending on target modules. At the upper bound:
+At LoRA rank 64 targeting all attention layers of Qwen/Qwen3.5-9B, a single adapter is approximately 50-200 MB depending on target modules. <!-- TODO(benchmarks-pending): measure actual adapter sizes on Qwen3.5-9B and refine the range --> At the upper bound:
 
 | Adapters | Storage |
 |----------|---------|

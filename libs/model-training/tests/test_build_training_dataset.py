@@ -269,4 +269,8 @@ def test_build_sft_config_keeps_default_remove_unused_when_diff_aware_false() ->
         neftune_noise_alpha=None,
     )
     assert "remove_unused_columns" not in cfg.kwargs
-    assert cfg.kwargs["assistant_only_loss"] is True
+    # assistant_only_loss is False unconditionally — TRL's
+    # get_training_chat_template pre-flight (which the True branch triggers)
+    # cannot patch Qwen3.5's chat template. We provide assistant_masks
+    # via trajectory.compute_assistant_masks instead.
+    assert cfg.kwargs["assistant_only_loss"] is False

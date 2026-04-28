@@ -15,7 +15,7 @@ Usage:
 
     model = DocToLoraHypernetwork(input_dim=DEFAULT_VOCAB_SIZE)
     weights = model(token_ids)
-    save_hypernetwork_adapter(weights, "/tmp/adapter", "Qwen/Qwen2.5-Coder-7B")
+    save_hypernetwork_adapter(weights, "/tmp/adapter", "Qwen/Qwen3.5-9B")
 """
 
 from __future__ import annotations

@@ -46,7 +46,7 @@ class TestVLLMProviderGenerate:
         provider = VLLMProvider()
         mock_response = _make_openai_response(
             text="def hello(): pass",
-            model="Qwen2.5-Coder-7B",
+            model="Qwen3.5-9B",
             token_count=12,
             finish_reason="stop",
         )
@@ -58,7 +58,7 @@ class TestVLLMProviderGenerate:
         ):
             result = await provider.generate(
                 prompt="write a hello function",
-                model="Qwen2.5-Coder-7B",
+                model="Qwen3.5-9B",
             )
 
         assert isinstance(result, GenerationResult)
@@ -83,7 +83,7 @@ class TestVLLMProviderGenerate:
         ):
             await provider.generate(
                 prompt="hello",
-                model="Qwen2.5-Coder-7B",
+                model="Qwen3.5-9B",
                 adapter_id="adapter-001",
             )
 
@@ -92,7 +92,7 @@ class TestVLLMProviderGenerate:
     async def test_generate_without_adapter_passes_model_as_is(self) -> None:
         """Test 4: generate() without adapter_id passes model parameter as-is."""
         provider = VLLMProvider()
-        mock_response = _make_openai_response(text="out", model="Qwen2.5-Coder-7B")
+        mock_response = _make_openai_response(text="out", model="Qwen3.5-9B")
         captured_calls: list[dict[str, Any]] = []
 
         async def capturing_create(**kwargs: Any) -> Any:
@@ -102,9 +102,9 @@ class TestVLLMProviderGenerate:
         with patch.object(
             provider._client.chat.completions, "create", side_effect=capturing_create
         ):
-            await provider.generate(prompt="hello", model="Qwen2.5-Coder-7B")
+            await provider.generate(prompt="hello", model="Qwen3.5-9B")
 
-        assert captured_calls[0]["model"] == "Qwen2.5-Coder-7B"
+        assert captured_calls[0]["model"] == "Qwen3.5-9B"
 
 
 class TestVLLMProviderAdapterLifecycle:

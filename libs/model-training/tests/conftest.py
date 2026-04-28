@@ -4,6 +4,19 @@ Shared factories are provided by the root conftest.py
 and available here automatically via pytest fixture discovery.
 """
 
+# Pre-import the HuggingFace ``datasets`` package at conftest collection time
+# so each xdist worker has it fully resolved before the first test runs.
+# Without this, parallel workers can race during ``from datasets import Dataset``
+# inside a test body and surface a spurious ``ImportError: cannot import name
+# 'Dataset' from 'datasets' (unknown location)`` — a known interaction between
+# datasets' lazy submodule loader and xdist's process-spawn timing.
+try:  # pragma: no cover - import warm-up only
+    import datasets as _datasets  # noqa: F401
+
+    _ = _datasets.Dataset  # force attribute resolution
+except Exception:  # noqa: BLE001 — datasets may legitimately be missing
+    pass
+
 from typing import Any, Callable
 
 import pytest
@@ -19,7 +32,7 @@ def make_adapter_record() -> Callable[..., AdapterRecord]:
             "id": "test-adapter-001",
             "version": 1,
             "task_type": "bug-fix",
-            "base_model_id": "Qwen/Qwen2.5-Coder-7B",
+            "base_model_id": "Qwen/Qwen3.5-9B",
             "rank": 16,
             "created_at": "2026-01-01T00:00:00Z",
             "file_path": "/adapters/test-adapter-001.safetensors",

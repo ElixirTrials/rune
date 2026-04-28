@@ -32,13 +32,21 @@ dependencies = [
     "llama-cpp-python>=0.3.0",
     "safetensors>=0.7.0",
     "peft>=0.15",
-    "transformers>=4.57,<4.58",
+    "transformers>=5.5,<6",
     "huggingface-hub>=0.20.0",
     "ctx-to-lora>=0.0.1",
     "einops>=0.8.2",
     "jaxtyping>=0.3.9",
     "datasets>=4.6.1",
     "torch>=2.11.0,<2.12",
+    "optuna>=4.8.0",
+    "model-training",
+    "shared",
+    "adapter-registry",
+    "inference",
+    "evaluation",
+    "events-py",
+    "corpus-producer",
 ]
 
 [project.optional-dependencies]
@@ -70,6 +78,13 @@ dev = [
 ctx-to-lora = { git = "https://github.com/SakanaAI/doc-to-lora.git" }
 flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl" }
 flash-attn-3 = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn_3-3.0.0+cu130torch2.11gite2743ab-cp39-abi3-linux_x86_64.whl" }
+model-training = { workspace = true }
+shared = { workspace = true }
+adapter-registry = { workspace = true }
+inference = { workspace = true }
+evaluation = { workspace = true }
+events-py = { workspace = true }
+corpus-producer = { workspace = true }
 
 [[tool.uv.dependency-metadata]]
 name = "ctx-to-lora"

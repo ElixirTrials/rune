@@ -112,3 +112,38 @@ def test_module_is_cpu_importable() -> None:
     # Confirm torch was not imported as a side-effect of the module import.
     if not had_torch:
         assert "torch" not in sys.modules
+
+
+def test_setup_mlflow_default_uri_is_local_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When neither arg nor env override the URI, default is the in-pod server."""
+    monkeypatch.delenv("RUNE_DISABLE_MLFLOW", raising=False)
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+
+    captured: dict[str, str] = {}
+
+    class _FakeMlflow:
+        @staticmethod
+        def active_run() -> None:
+            return None
+
+        @staticmethod
+        def set_tracking_uri(uri: str) -> None:
+            captured["uri"] = uri
+
+        @staticmethod
+        def set_experiment(name: str) -> None:
+            captured["experiment"] = name
+
+        @staticmethod
+        def get_tracking_uri() -> str:
+            return captured.get("uri", "")
+
+    monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
+
+    from model_training.training_common import setup_mlflow
+
+    assert setup_mlflow("exp-x", None) is True
+    assert captured["uri"] == "http://localhost:5000"
+    assert captured["experiment"] == "exp-x"

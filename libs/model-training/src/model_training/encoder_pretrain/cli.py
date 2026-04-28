@@ -129,7 +129,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mlflow-uri",
         dest="mlflow_tracking_uri",
         default=None,
-        help="Override MLFLOW_TRACKING_URI; defaults to ./mlruns.",
+        help="Override MLFLOW_TRACKING_URI; defaults to sqlite:///./mlflow.db.",
     )
 
     # --- Dry run ---

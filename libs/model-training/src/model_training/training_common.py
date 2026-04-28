@@ -24,7 +24,11 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
     in the environment, or when mlflow itself is not importable.
 
     Tracking URI precedence: explicit ``tracking_uri`` arg, then the
-    ``MLFLOW_TRACKING_URI`` env var, then ``./mlruns`` as a local-dev fallback.
+    ``MLFLOW_TRACKING_URI`` env var, then ``http://localhost:5000`` (the
+    in-pod MLflow server started by ``infra/docker-compose.yml``). The
+    sqlite/filesystem backends were dropped from the default path because
+    they cannot be replicated to S3 by Litestream when multiple processes
+    open the file concurrently.
 
     Args:
         experiment_name: MLflow experiment name to activate.
@@ -39,7 +43,23 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
         import mlflow  # noqa: PLC0415
     except ImportError:
         return False
-    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "./mlruns")
+
+    # If a parent harness (e.g. the HPO wrapper at run_training_hpo.py:701)
+    # already started a run, respect the URI it was started against.
+    # Re-setting the tracking URI here would orphan that run because MLflow
+    # binds run-ids to a backend at start time — the run would still be
+    # 'active' in the client but the backend lookup would fail with
+    # 'Run with id=... not found'.
+    active = mlflow.active_run()
+    if active is not None:
+        logger.info(
+            "MLflow already active under run_id=%s uri=%s; reusing",
+            active.info.run_id,
+            mlflow.get_tracking_uri(),
+        )
+        return True
+
+    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(uri)
     mlflow.set_experiment(experiment_name)
     logger.info("MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name)
@@ -101,6 +121,12 @@ def mlflow_run(
     When enabled, logs ``params`` at entry and ensures ``mlflow.end_run()`` on
     exit even if training raises. When disabled, the body runs unchanged.
 
+    If an MLflow run is already active in the current thread (e.g. the HPO
+    harness opened one to attach study-level tags), attach params to it
+    instead of starting a new run — MLflow permits only one top-level run
+    per thread, and forcing a nested run here would hide trainer metrics
+    inside an extra layer the caller didn't ask for.
+
     Args:
         enabled: Whether MLflow tracking is active for this run.
         run_name: Display name for the MLflow run.
@@ -110,6 +136,13 @@ def mlflow_run(
         yield
         return
     import mlflow  # noqa: PLC0415
+
+    # Respect an already-active run: the caller owns it and is responsible
+    # for closing it. We just decorate it with params.
+    if mlflow.active_run() is not None:
+        mlflow_log_params(params)
+        yield
+        return
 
     mlflow.start_run(run_name=run_name)
     try:

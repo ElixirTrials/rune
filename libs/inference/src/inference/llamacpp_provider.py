@@ -37,7 +37,7 @@ class LlamaCppProvider(InferenceProvider):
         n_gpu_layers: Layers to offload to GPU (-1 = all). Default: -1.
 
     Example:
-        >>> provider = LlamaCppProvider(model_path="/models/qwen2.5-coder-1.5b.gguf")
+        >>> provider = LlamaCppProvider(model_path="/models/qwen3.5-9b.gguf")
         >>> result = await provider.generate("def hello", model="ignored")
     """
 

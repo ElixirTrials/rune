@@ -39,13 +39,13 @@ class TestGenerationResult:
         """Test 3: GenerationResult can be constructed with all fields."""
         result = GenerationResult(
             text="def hello(): pass",
-            model="Qwen/Qwen2.5-Coder-7B",
+            model="Qwen/Qwen3.5-9B",
             adapter_id="adapter-001",
             token_count=10,
             finish_reason="stop",
         )
         assert result.text == "def hello(): pass"
-        assert result.model == "Qwen/Qwen2.5-Coder-7B"
+        assert result.model == "Qwen/Qwen3.5-9B"
         assert result.adapter_id == "adapter-001"
         assert result.token_count == 10
         assert result.finish_reason == "stop"
