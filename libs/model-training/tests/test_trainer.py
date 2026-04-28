@@ -279,7 +279,7 @@ def test_attach_assistant_masks_preserves_diff_side_channels(monkeypatch) -> Non
     """
     import importlib
 
-    import model_training.trajectory as trajectory_mod
+    from model_training import trajectory as trajectory_mod
     from model_training.trainer import _attach_assistant_masks
 
     Dataset = importlib.import_module("datasets").Dataset  # noqa: N806
@@ -433,7 +433,7 @@ def test_two_trial_hpo_simulation_no_residue_and_no_all_masked_batch(
     # Dataset" ImportError) are isolated to this function.
     import importlib
 
-    import model_training.trajectory as trajectory_mod
+    from model_training import trajectory as trajectory_mod
     from model_training.trainer import (
         _attach_assistant_masks,
         _release_trial_state,
@@ -502,6 +502,11 @@ def test_two_trial_hpo_simulation_no_residue_and_no_all_masked_batch(
                 override_lora_alpha=None,
                 override_lora_dropout=None,
             )
+        except NotImplementedError:
+            # Expected — the guard passed and we hit our patched-out PEFT.
+            # Must be caught BEFORE RuntimeError because NotImplementedError
+            # is a subclass of RuntimeError (CodeQL: unreachable-except).
+            pass
         except RuntimeError as e:
             if "peft_config residue" in str(e):
                 raise AssertionError(
@@ -509,9 +514,6 @@ def test_two_trial_hpo_simulation_no_residue_and_no_all_masked_batch(
                     "stripped peft_config — the residue check is over-eager"
                 ) from e
             raise
-        except NotImplementedError:
-            # Expected — the guard passed and we hit our patched-out PEFT.
-            pass
     except ImportError:
         pytest.skip("peft not importable; CPU-only env without GPU stack")
 
