@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>GPU Strategy - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">GPU Strategy</a>
+</li>
+                                    
+<li>
+    <a href="../../swarm-architecture/" class="dropdown-item">Swarm Architecture</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../article/" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../../article/abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../../article/background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../../article/methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../../article/results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../../article/discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../../article/references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../adapter-storage/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../../swarm-architecture/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#gpu-strategy" class="nav-link">GPU Strategy</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#overview" class="nav-link">Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#recommended-configuration" class="nav-link">Recommended Configuration</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#pipeline-parallelism-multi-gpu-option" class="nav-link">Pipeline Parallelism (multi-GPU option)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#why-tensor-parallelism-is-not-recommended-for-consumer-gpus" class="nav-link">Why Tensor Parallelism Is Not Recommended for Consumer GPUs</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#vram-budget" class="nav-link">VRAM Budget</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#corpus-producer-sharding" class="nav-link">Corpus-Producer Sharding</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#sharding-flags" class="nav-link">Sharding Flags</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#multi-gpu-example" class="nav-link">Multi-GPU Example</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#corpus-parallelism-vs-lease-based-time-sharing" class="nav-link">Corpus Parallelism vs Lease-Based Time-Sharing</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#round-2-training-vram-profile" class="nav-link">Round-2 Training VRAM Profile</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#gpu-lease-mechanism" class="nav-link">GPU Lease Mechanism</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#lease-protocol" class="nav-link">Lease Protocol</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#lease-states" class="nav-link">Lease States</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#design-decisions" class="nav-link">Design Decisions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="gpu-strategy">GPU Strategy<a class="headerlink" href="#gpu-strategy" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>Rune is designed to run on any local machine with a CUDA-capable GPU. A single GPU is fully supported. If you have multiple GPUs, Rune supports pipeline parallelism to improve serving throughput and to allow concurrent training and inference workloads.</p>
+<p>This document explains the recommended GPU configuration, why pipeline parallelism is preferred over tensor parallelism for consumer hardware, and the GPU lease mechanism that coordinates training and serving.</p>
+<p>For the services that use GPUs, see <a href="../monorepo-mapping/">Monorepo Mapping</a>. For the adapter format served by the GPU layer, see <a href="../adapter-storage/">Adapter Storage</a>.</p>
+<hr />
+<h2 id="recommended-configuration">Recommended Configuration<a class="headerlink" href="#recommended-configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--pipeline-parallel-size</code></td>
+<td>1 (single GPU)</td>
+<td>Configurable; set to N for N-GPU pipeline parallelism</td>
+</tr>
+<tr>
+<td><code>--tensor-parallel-size</code></td>
+<td>1</td>
+<td>Not recommended for consumer GPUs — see below</td>
+</tr>
+<tr>
+<td><code>--enable-lora</code></td>
+<td>true</td>
+<td>Required for dynamic adapter loading via S-LoRA unified paging</td>
+</tr>
+<tr>
+<td><code>--quantization</code></td>
+<td>awq or gptq (serving)</td>
+<td>4-bit quantized serving for VRAM headroom</td>
+</tr>
+<tr>
+<td>Base model</td>
+<td>Qwen/Qwen3.5-9B</td>
+<td>9B parameter SLM; fits in consumer GPUs with 4-bit quantization</td>
+</tr>
+</tbody>
+</table>
+<p>All parallelism settings are configurable via inference provider configuration (<code>libs/inference/</code>) or environment variables. (The standalone <code>services/inference layer/</code> service referenced in earlier revisions has been replaced by the provider-agnostic inference layer — <code>TransformersProvider</code>, <code>LlamaCppProvider</code>, <code>OllamaProvider</code>, <code>VLLMProvider</code>.) The default is single-GPU operation.</p>
+<h3 id="pipeline-parallelism-multi-gpu-option">Pipeline Parallelism (multi-GPU option)<a class="headerlink" href="#pipeline-parallelism-multi-gpu-option" title="Permanent link">&para;</a></h3>
+<p>Pipeline parallelism splits the transformer layers across GPUs. The primary GPU holds the first set of layers; subsequent GPUs hold the remaining layers. During a forward pass, activations are passed once at each layer boundary — a single point-to-point transfer per GPU boundary, not per layer.</p>
+<pre class="mermaid"><code>flowchart LR
+    Input([Token Input]) --&gt; GPU0
+    GPU0["Primary GPU: Layers 0 to N/2"] --&gt; Transfer
+    Transfer["Activation Transfer via PCIe"] --&gt; GPU1
+    GPU1["Secondary GPU: Layers N/2+1 to N"] --&gt; Output([Token Output])</code></pre>
+<p>The PCIe bandwidth (~32 GB/s bidirectional) is sufficient for this pattern because the transfer happens once per forward pass at each layer boundary. Activation tensors at a layer boundary for a 7B model are small relative to the bus bandwidth.</p>
+<hr />
+<h2 id="why-tensor-parallelism-is-not-recommended-for-consumer-gpus">Why Tensor Parallelism Is Not Recommended for Consumer GPUs<a class="headerlink" href="#why-tensor-parallelism-is-not-recommended-for-consumer-gpus" title="Permanent link">&para;</a></h2>
+<p>Tensor parallelism (TP) shards individual weight matrices across GPUs and requires all-reduce synchronization at every transformer layer. For GPUs with high-bandwidth interconnects like NVLink (~112 GB/s per direction), this is fast. For GPUs connected via PCIe (~32 GB/s bidirectional), the all-reduce at every layer becomes a significant bottleneck:</p>
+<table>
+<thead>
+<tr>
+<th>Interconnect</th>
+<th>Bandwidth</th>
+<th>All-Reduce Overhead per Layer</th>
+<th>Viable for TP?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NVLink (A100/H100/RTX 3090 Ti+)</td>
+<td>~112 GB/s per direction</td>
+<td>Negligible</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>PCIe Gen4 (most consumer GPUs)</td>
+<td>~32 GB/s bidirectional</td>
+<td>Significant</td>
+<td>Not recommended</td>
+</tr>
+</tbody>
+</table>
+<p>Pipeline parallelism avoids this bottleneck by transferring activations once at layer boundaries instead of synchronizing at every layer.</p>
+<p>Additionally, vLLM issue <a href="https://github.com/vllm-project/vllm/issues/21471">#21471</a> documents a confirmed bug where tensor parallelism combined with LoRA adapter serving produces corrupted outputs on consumer GPUs without NVLink. The corruption manifests as silently wrong generated text — not crashes or errors — making it particularly dangerous. Pipeline parallelism is the confirmed working configuration.</p>
+<p>If you have NVLink-equipped GPUs, tensor parallelism may be viable. Be aware of vLLM #21471 and test for output correctness when enabling TP with LoRA.</p>
+<hr />
+<h2 id="vram-budget">VRAM Budget<a class="headerlink" href="#vram-budget" title="Permanent link">&para;</a></h2>
+<p>A 7B model in NF4 quantization requires approximately 4 GB total, leaving substantial headroom for KV cache and LoRA adapter weights. S-LoRA unified paging manages adapter weights alongside KV cache in a shared GPU memory pool, enabling concurrent serving of multiple adapters without per-adapter VRAM reservation.</p>
+<p><strong>Approximate serving requirements for a 7B model (single GPU):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Approximate VRAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base model (NF4 4-bit)</td>
+<td>~4 GB</td>
+</tr>
+<tr>
+<td>KV cache</td>
+<td>~4-10 GB</td>
+</tr>
+<tr>
+<td>LoRA adapter weights (S-LoRA paging)</td>
+<td>~1-4 GB</td>
+</tr>
+<tr>
+<td>vLLM overhead</td>
+<td>~1-2 GB</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>~10-20 GB</strong></td>
+</tr>
+</tbody>
+</table>
+<p>With pipeline parallelism across multiple GPUs, these costs are split across the participating GPUs.</p>
+<p><strong>Approximate training requirements (single GPU):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Approximate VRAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base model (NF4 frozen)</td>
+<td>~4 GB</td>
+</tr>
+<tr>
+<td>LoRA adapter weights (bf16)</td>
+<td>~0.1-0.4 GB</td>
+</tr>
+<tr>
+<td>Optimizer states (AdamW)</td>
+<td>~0.2-0.8 GB</td>
+</tr>
+<tr>
+<td>Activations + gradients</td>
+<td>~8-12 GB</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>~12-17 GB</strong></td>
+</tr>
+</tbody>
+</table>
+<p>QLoRA is recommended for training: the base model is frozen in NF4 4-bit, and gradients flow through the quantized weights into bf16 LoRA adapter matrices. Without QLoRA, a 7B model in bf16 (~14 GB) leaves insufficient headroom for optimizer states and activations on most consumer GPUs.</p>
+<hr />
+<h2 id="corpus-producer-sharding">Corpus-Producer Sharding<a class="headerlink" href="#corpus-producer-sharding" title="Permanent link">&para;</a></h2>
+<p>For the round-2 distillation pipeline, the 25-bin oracle corpus is produced by running the full 5-phase Rune pipeline across a large problem set (see <a href="../../appendices/build-order/">Build Order</a>). This workload is <strong>embarrassingly parallel</strong> across problems, so <code>scripts/phase_corpus_producer.py</code> supports direct multi-GPU scale-out via sharding rather than time-sharing.</p>
+<h3 id="sharding-flags">Sharding Flags<a class="headerlink" href="#sharding-flags" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>--shard IDX/TOTAL</code> — round-robin slice of problems for this shard (e.g. <code>--shard 0/4</code> takes problems 0, 4, 8, …; <code>--shard 1/4</code> takes 1, 5, 9, …).</li>
+<li><code>--cuda-visible-devices DEVICES</code> — sets <code>CUDA_VISIBLE_DEVICES</code> in each subprocess pipeline run, pinning the shard to one GPU.</li>
+</ul>
+<p>The progress DB (<code>libs/corpus-producer/src/corpus_producer/progress_db.py</code>) is shared across shards with file locking, so restarts resume cleanly and shards never duplicate work.</p>
+<h3 id="multi-gpu-example">Multi-GPU Example<a class="headerlink" href="#multi-gpu-example" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span>i<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span>uv<span class="w"> </span>run<span class="w"> </span>scripts/phase_corpus_producer.py<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--shard<span class="w"> </span><span class="nv">$i</span>/4<span class="w"> </span>--cuda-visible-devices<span class="w"> </span><span class="nv">$i</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--out-dir<span class="w"> </span>data/phase_corpus<span class="w"> </span><span class="p">&amp;</span>
+<span class="k">done</span>
+<span class="nb">wait</span>
+</code></pre></div>
+<h3 id="corpus-parallelism-vs-lease-based-time-sharing">Corpus Parallelism vs Lease-Based Time-Sharing<a class="headerlink" href="#corpus-parallelism-vs-lease-based-time-sharing" title="Permanent link">&para;</a></h3>
+<p>These two patterns are <strong>not interchangeable</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Parallelism type</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Corpus-producer sharding (<code>--shard</code>)</td>
+<td>Data parallelism across independent problems; one GPU per shard for the full run</td>
+<td>Oracle corpus generation (batch workload; no serving concurrency)</td>
+</tr>
+<tr>
+<td>GPU lease mechanism (below)</td>
+<td>Time-sharing between serving and training workloads on the same GPU(s)</td>
+<td>Continuous operation with both inference serving and ad-hoc training jobs</td>
+</tr>
+</tbody>
+</table>
+<p>Corpus-producer sharding runs each GPU to completion on its own slice; the lease mechanism hands off a single GPU between workloads over time.</p>
+<h3 id="round-2-training-vram-profile">Round-2 Training VRAM Profile<a class="headerlink" href="#round-2-training-vram-profile" title="Permanent link">&para;</a></h3>
+<p>Round-2 oracle-teacher distillation (<code>scripts/train_round2.py</code>) runs <strong>two forward passes per training step</strong> — one through the base model with the oracle adapter applied (teacher), and one through the student hypernetwork. Peak VRAM is correspondingly higher than standard QLoRA training. Plan the GPU configuration accordingly:</p>
+<ul>
+<li>The <code>OracleAdapterCache</code> is LRU-bounded (default <code>max_loaded_oracles=4</code>) to keep concurrently resident oracle tensor dicts below a known ceiling.</li>
+<li>Teacher/student passes share the base model weights; only the applied LoRA delta differs per pass, so the base model is allocated once.</li>
+</ul>
+<h2 id="gpu-lease-mechanism">GPU Lease Mechanism<a class="headerlink" href="#gpu-lease-mechanism" title="Permanent link">&para;</a></h2>
+<p>When using multiple GPUs, the inference layer normally occupies all configured GPUs for inference. When training-svc needs GPU time for fine-tuning or hypernetwork training, a lease mechanism coordinates the handoff.</p>
+<h3 id="lease-protocol">Lease Protocol<a class="headerlink" href="#lease-protocol" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart TD
+    Idle([inference layer serving on available GPUs]) --&gt; Request
+    Request[training-svc requests GPU lease] --&gt; Drain
+    Drain[inference layer drains in-flight requests] --&gt; Reconfigure
+    Reconfigure[inference layer reconfigures to primary GPU only] --&gt; Grant
+    Grant[Secondary GPU lease granted to training-svc] --&gt; Train
+    Train[training-svc runs on leased GPU] --&gt; Complete
+    Complete[training-svc releases lease] --&gt; Restore
+    Restore[inference layer restores full multi-GPU config] --&gt; Idle</code></pre>
+<h3 id="lease-states">Lease States<a class="headerlink" href="#lease-states" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Primary GPU</th>
+<th>Secondary GPU(s)</th>
+<th>Serving</th>
+<th>Training</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normal</td>
+<td>inference layer (first pipeline stage)</td>
+<td>inference layer (remaining stages)</td>
+<td>Full pipeline parallelism</td>
+<td>Unavailable</td>
+</tr>
+<tr>
+<td>Training lease</td>
+<td>inference layer (single GPU, reduced capacity)</td>
+<td>training-svc</td>
+<td>Degraded (single GPU)</td>
+<td>Active</td>
+</tr>
+<tr>
+<td>Transitioning</td>
+<td>Draining requests</td>
+<td>Awaiting release</td>
+<td>Paused briefly</td>
+<td>Pending</td>
+</tr>
+</tbody>
+</table>
+<h3 id="design-decisions">Design Decisions<a class="headerlink" href="#design-decisions" title="Permanent link">&para;</a></h3>
+<p><strong>Why not dedicate one GPU per workload permanently?</strong> A permanently split configuration leaves each workload with less VRAM headroom. Time-sharing via the lease mechanism gives each workload full access during its active period.</p>
+<p><strong>Why does the inference layer yield, not training-svc queue indefinitely?</strong> Inference is latency-sensitive but interruptible between requests. Training jobs run for minutes to hours. The lease mechanism prioritizes training throughput (no VRAM competition) while keeping inference available in degraded mode on the remaining GPU.</p>
+<p><strong>Lease coordination is implemented via a shared state file</strong> at <code>~/.rune/gpu_lease.json</code>, protected by file locking. The inference layer polls this file between request batches. The state file contains: <code>holder</code> (service name or null), <code>granted_at</code> (timestamp), <code>gpu_id</code> (which GPU is leased), and <code>expires_at</code> (maximum lease duration, default 2 hours).</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="../../assets/mermaid-loader.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

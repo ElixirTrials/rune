@@ -1,0 +1,275 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/adapters": {
+      "get": {
+        "tags": [
+          "adapters"
+        ],
+        "summary": "List Adapters",
+        "description": "List all stored adapters.\n\nReturns:\n    JSONResponse with list of adapter records.\n\nRaises:\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/adapters\")\n    >>> response.status_code\n    200\n    >>> isinstance(response.json(), list)\n    True\n    >>> 'adapter_id' in response.json()[0]\n    True",
+        "operationId": "list_adapters_adapters_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "adapters"
+        ],
+        "summary": "Create Adapter",
+        "description": "Store a new adapter.\n\nReturns:\n    JSONResponse with the created adapter record.\n\nRaises:\n    HTTPException: 422 if request body is invalid.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> body = {\"adapter_id\": \"new-adapter-001\", \"task_type\": \"bug-fix\"}\n    >>> response = client.post(\"/adapters\", json=body)\n    >>> response.status_code\n    201\n    >>> 'adapter_id' in response.json()\n    True",
+        "operationId": "create_adapter_adapters_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/adapters/{adapter_id}": {
+      "get": {
+        "tags": [
+          "adapters"
+        ],
+        "summary": "Get Adapter",
+        "description": "Get adapter by ID.\n\nArgs:\n    adapter_id: Unique identifier for the adapter.\n\nReturns:\n    JSONResponse with a single adapter record dict.\n\nRaises:\n    HTTPException: 404 if adapter not found.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/adapters/test-adapter-123\")\n    >>> response.status_code\n    200\n    >>> 'adapter_id' in response.json()\n    True",
+        "operationId": "get_adapter_adapters__adapter_id__get",
+        "parameters": [
+          {
+            "name": "adapter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Adapter Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List Sessions",
+        "description": "List coding sessions.\n\nReturns:\n    JSONResponse with list of coding session records.\n\nRaises:\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/sessions\")\n    >>> response.status_code\n    200\n    >>> isinstance(response.json(), list)\n    True\n    >>> 'session_id' in response.json()[0]\n    True",
+        "operationId": "list_sessions_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Create Session",
+        "description": "Create a new coding session.\n\nReturns:\n    JSONResponse with the created coding session record.\n\nRaises:\n    HTTPException: 422 if request body is invalid.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> body = {\"session_id\": \"new-session-001\", \"task_type\": \"bug-fix\"}\n    >>> response = client.post(\"/sessions\", json=body)\n    >>> response.status_code\n    201\n    >>> 'session_id' in response.json()\n    True",
+        "operationId": "create_session_sessions_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get Session",
+        "description": "Get coding session by ID.\n\nArgs:\n    session_id: Unique identifier for the coding session.\n\nReturns:\n    JSONResponse with a single coding session record dict.\n\nRaises:\n    HTTPException: 404 if session not found.\n    HTTPException: 501 while not yet implemented.\n\nExample:\n    >>> response = client.get(\"/sessions/test-session-456\")\n    >>> response.status_code\n    200\n    >>> 'session_id' in response.json()\n    True",
+        "operationId": "get_session_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Liveness probe - is the service running?",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Readiness Check",
+        "description": "Readiness probe - can the service handle requests?",
+        "operationId": "readiness_check_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "Returns a welcome message for the API.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

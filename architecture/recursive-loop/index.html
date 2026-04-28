@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Recursive Loop - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../multi-gpu-strategy/" class="dropdown-item">GPU Strategy</a>
+</li>
+                                    
+<li>
+    <a href="../../swarm-architecture/" class="dropdown-item">Swarm Architecture</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../article/" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../../article/abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../../article/background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../../article/methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../../article/results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../../article/discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../../article/references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../../implementation-plan/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../monorepo-mapping/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#5-phase-coding-pipeline" class="nav-link">5-Phase Coding Pipeline</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#overview" class="nav-link">Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#pipeline-architecture" class="nav-link">Pipeline Architecture</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#phase-details" class="nav-link">Phase Details</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#phase-1-decompose-single-agent" class="nav-link">Phase 1: DECOMPOSE (single agent)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#phase-2-plan-parallel-swarm" class="nav-link">Phase 2: PLAN (parallel swarm)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#phase-3-code-parallel-swarm-retries" class="nav-link">Phase 3: CODE (parallel swarm + retries)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#phase-4-integrate-single-agent" class="nav-link">Phase 4: INTEGRATE (single agent)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#phase-5-diagnoserepair-conditional" class="nav-link">Phase 5: DIAGNOSE/REPAIR (conditional)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#per-phase-iteration" class="nav-link">Per-Phase Iteration</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#template-system" class="nav-link">Template System</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#sandbox" class="nav-link">Sandbox</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#trajectory-schema" class="nav-link">Trajectory Schema</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#integration-points" class="nav-link">Integration Points</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#hypernetwork-training-round-1-and-round-2-distillation" class="nav-link">Hypernetwork Training: Round-1 and Round-2 Distillation</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#phase-to-bin-mapping" class="nav-link">Phase-to-Bin Mapping</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#round-1-training-against-the-base-model" class="nav-link">Round-1: Training Against the Base Model</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#round-2-oracle-teacher-distillation" class="nav-link">Round-2: Oracle-Teacher Distillation</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="5-phase-coding-pipeline">5-Phase Coding Pipeline<a class="headerlink" href="#5-phase-coding-pipeline" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>Rune's execution model is a 5-phase sequential pipeline: decompose, plan, code, integrate, and diagnose/repair. Phases 2 and 3 run as parallel swarms; phases 1 and 4 run single-agent; phase 5 activates conditionally when code fails. Within each phase, a generate-execute-reflect loop iterates until tests pass or max attempts are reached. Each phase is driven by a Jinja2 template, optionally enhanced by a hypernetwork-generated LoRA adapter.</p>
+<p>For swarm orchestration details, see <a href="../../swarm-architecture/">Swarm Architecture</a>. For adapter storage, see <a href="../adapter-storage/">Adapter Storage</a>.</p>
+<hr />
+<h2 id="pipeline-architecture">Pipeline Architecture<a class="headerlink" href="#pipeline-architecture" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    Task([Task]) --&gt; P1[Phase 1: DECOMPOSE\nsingle agent]
+    P1 --&gt; P2[Phase 2: PLAN\nparallel swarm]
+    P2 --&gt; P3[Phase 3: CODE\nparallel swarm + retries]
+    P3 --&gt; P4[Phase 4: INTEGRATE\nsingle agent]
+    P4 --&gt; P5{Phase 5: DIAGNOSE/REPAIR\nconditional}
+    P5 --&gt;|failure| P5
+    P5 --&gt;|success| Done([Integrated Code\n+ Adapters])</code></pre>
+<hr />
+<h2 id="phase-details">Phase Details<a class="headerlink" href="#phase-details" title="Permanent link">&para;</a></h2>
+<h3 id="phase-1-decompose-single-agent">Phase 1: DECOMPOSE (single agent)<a class="headerlink" href="#phase-1-decompose-single-agent" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Template</strong></td>
+<td><code>decompose.j2</code> (trajectory), <code>prompt_decompose.j2</code> (prompt)</td>
+</tr>
+<tr>
+<td><strong>Input</strong></td>
+<td>Project specification</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>List of subtasks</td>
+</tr>
+<tr>
+<td><strong>Adapter</strong></td>
+<td><code>decompose_adapter</code> (if available)</td>
+</tr>
+</tbody>
+</table>
+<p>Breaks a project specification into discrete subtasks. Runs once with the base model (+ optional adapter).</p>
+<h3 id="phase-2-plan-parallel-swarm">Phase 2: PLAN (parallel swarm)<a class="headerlink" href="#phase-2-plan-parallel-swarm" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Template</strong></td>
+<td><code>plan.j2</code> (trajectory), <code>prompt_plan.j2</code> (prompt)</td>
+</tr>
+<tr>
+<td><strong>Input</strong></td>
+<td>Project spec + one subtask per agent</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Architecture plan per subtask</td>
+</tr>
+<tr>
+<td><strong>Adapter</strong></td>
+<td><code>plan_adapter</code> (if available)</td>
+</tr>
+</tbody>
+</table>
+<p>Each subtask is assigned to a swarm agent. All agents run in parallel. Each produces an architecture plan for its subtask.</p>
+<h3 id="phase-3-code-parallel-swarm-retries">Phase 3: CODE (parallel swarm + retries)<a class="headerlink" href="#phase-3-code-parallel-swarm-retries" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Template</strong></td>
+<td><code>code.j2</code> (first attempt), <code>code_retry.j2</code> (retries)</td>
+</tr>
+<tr>
+<td><strong>Input</strong></td>
+<td>Subtask + plan + prior code skeleton</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Working code per subtask</td>
+</tr>
+<tr>
+<td><strong>Adapter</strong></td>
+<td><code>code_adapter</code> (if available), refreshed via H() between iterations</td>
+</tr>
+</tbody>
+</table>
+<p>The retry template (<code>code_retry.j2</code>) includes error summaries and attempt history. Between iterations, the hypernetwork H() can generate a fresh adapter from the accumulated trajectory. This is the primary phase where the recursive loop operates.</p>
+<h3 id="phase-4-integrate-single-agent">Phase 4: INTEGRATE (single agent)<a class="headerlink" href="#phase-4-integrate-single-agent" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Template</strong></td>
+<td><code>integrate.j2</code> (trajectory), <code>prompt_integrate.j2</code> (prompt)</td>
+</tr>
+<tr>
+<td><strong>Input</strong></td>
+<td>Project spec + all code outputs from Phase 3</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Final integrated codebase</td>
+</tr>
+<tr>
+<td><strong>Adapter</strong></td>
+<td><code>integrate_adapter</code> (if available)</td>
+</tr>
+</tbody>
+</table>
+<p>Merges all subtask code outputs into a coherent final codebase.</p>
+<h3 id="phase-5-diagnoserepair-conditional">Phase 5: DIAGNOSE/REPAIR (conditional)<a class="headerlink" href="#phase-5-diagnoserepair-conditional" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Template</strong></td>
+<td><code>diagnose.j2</code> (trajectory), <code>prompt_diagnose.j2</code> (prompt), <code>code_repair.j2</code> (trajectory), <code>prompt_code_repair.j2</code> (prompt)</td>
+</tr>
+<tr>
+<td><strong>Input</strong></td>
+<td>Failed code + error output from Phase 3 or Phase 4</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Fixed code per subtask</td>
+</tr>
+<tr>
+<td><strong>Adapter</strong></td>
+<td>Domain adapter stays loaded; error context flows through prompt</td>
+</tr>
+</tbody>
+</table>
+<p>Activates when code fails during the retry loop. Uses a two-step pattern to avoid prompt-adapter tension where domain context and error details compete for model attention:</p>
+<ol>
+<li><strong>Diagnose:</strong> The error is placed in the prompt and the original code in the adapter trajectory. The model produces a concise fix instruction describing what went wrong and how to fix it.</li>
+<li><strong>Repair:</strong> The model's own diagnosis becomes the <code>fix_guidance</code> in the prompt, while domain context stays in the adapter. The model produces fixed code guided by its own analysis.</li>
+</ol>
+<p>This separation keeps each inference call focused: diagnose concentrates on understanding the failure, repair concentrates on applying the fix with full domain context.</p>
+<hr />
+<h2 id="per-phase-iteration">Per-Phase Iteration<a class="headerlink" href="#per-phase-iteration" title="Permanent link">&para;</a></h2>
+<p>Each phase runs up to N iterations (configurable per phase via environment variables):</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RUNE_MAX_PHASE_ITERATIONS</code></td>
+<td>Global default for all phases</td>
+</tr>
+<tr>
+<td><code>RUNE_MAX_ITERATIONS_DECOMPOSE</code></td>
+<td>Phase 1 override</td>
+</tr>
+<tr>
+<td><code>RUNE_MAX_ITERATIONS_PLAN</code></td>
+<td>Phase 2 override</td>
+</tr>
+<tr>
+<td><code>RUNE_MAX_ITERATIONS_CODE</code></td>
+<td>Phase 3 override</td>
+</tr>
+<tr>
+<td><code>RUNE_MAX_ITERATIONS_INTEGRATE</code></td>
+<td>Phase 4 override</td>
+</tr>
+<tr>
+<td><code>RUNE_MAX_ITERATIONS_REPAIR</code></td>
+<td>Phase 5 override (covers diagnose + repair + re-integrate steps)</td>
+</tr>
+</tbody>
+</table>
+<p>CLI flag <code>--max-phase-iterations</code> overrides the global env var. Hardcoded fallback is 5.</p>
+<p>Within each iteration:
+1. Render the Jinja2 trajectory template with current state
+2. Optionally generate/refresh adapter via hypernetwork H()
+3. Run inference (base model + adapter) to produce output
+4. Execute output in sandbox, evaluate results
+5. Score fitness; if passing or max iterations reached, stop</p>
+<hr />
+<h2 id="template-system">Template System<a class="headerlink" href="#template-system" title="Permanent link">&para;</a></h2>
+<p>All phase instructions flow through 18 Jinja2 templates in <code>libs/shared/src/shared/templates/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Template</th>
+<th>Phase</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>decompose.j2</code></td>
+<td>1</td>
+<td>Trajectory context for decomposition</td>
+</tr>
+<tr>
+<td><code>prompt_decompose.j2</code></td>
+<td>1</td>
+<td>Model prompt for decomposition</td>
+</tr>
+<tr>
+<td><code>prompt_decompose_concise.j2</code></td>
+<td>1</td>
+<td>Concise model prompt variant for decomposition</td>
+</tr>
+<tr>
+<td><code>plan.j2</code></td>
+<td>2</td>
+<td>Trajectory context for planning</td>
+</tr>
+<tr>
+<td><code>prompt_plan.j2</code></td>
+<td>2</td>
+<td>Model prompt for planning</td>
+</tr>
+<tr>
+<td><code>code.j2</code></td>
+<td>3</td>
+<td>Trajectory context for first code attempt</td>
+</tr>
+<tr>
+<td><code>code_continue.j2</code></td>
+<td>3</td>
+<td>Trajectory context for continuation</td>
+</tr>
+<tr>
+<td><code>code_retry.j2</code></td>
+<td>3</td>
+<td>Trajectory context for retry (includes errors, history)</td>
+</tr>
+<tr>
+<td><code>prompt_code.j2</code></td>
+<td>3</td>
+<td>Model prompt for code generation</td>
+</tr>
+<tr>
+<td><code>prompt_code_continue.j2</code></td>
+<td>3</td>
+<td>Model prompt for code continuation</td>
+</tr>
+<tr>
+<td><code>prompt_code_retry.j2</code></td>
+<td>3</td>
+<td>Model prompt for code retry</td>
+</tr>
+<tr>
+<td><code>integrate.j2</code></td>
+<td>4</td>
+<td>Trajectory context for integration</td>
+</tr>
+<tr>
+<td><code>prompt_integrate.j2</code></td>
+<td>4</td>
+<td>Model prompt for integration</td>
+</tr>
+<tr>
+<td><code>prompt_integrate_retry.j2</code></td>
+<td>4</td>
+<td>Model prompt for integration retry</td>
+</tr>
+<tr>
+<td><code>diagnose.j2</code></td>
+<td>5</td>
+<td>Trajectory context for failure diagnosis</td>
+</tr>
+<tr>
+<td><code>prompt_diagnose.j2</code></td>
+<td>5</td>
+<td>Model prompt for diagnosis (error in prompt, code in adapter)</td>
+</tr>
+<tr>
+<td><code>code_repair.j2</code></td>
+<td>5</td>
+<td>Trajectory context for targeted repair</td>
+</tr>
+<tr>
+<td><code>prompt_code_repair.j2</code></td>
+<td>5</td>
+<td>Model prompt for repair (diagnosis becomes fix_guidance)</td>
+</tr>
+</tbody>
+</table>
+<p>Templates are rendered via <code>shared.template_loader.render_trajectory()</code> and <code>render_prompt()</code>.</p>
+<hr />
+<h2 id="sandbox">Sandbox<a class="headerlink" href="#sandbox" title="Permanent link">&para;</a></h2>
+<p>Code execution uses <code>shared.sandbox.SubprocessBackend</code> — a subprocess-based sandbox with configurable timeout. The sandbox runs agent-generated code in isolation and captures stdout, stderr, and exit code.</p>
+<hr />
+<h2 id="trajectory-schema">Trajectory Schema<a class="headerlink" href="#trajectory-schema" title="Permanent link">&para;</a></h2>
+<p>The trajectory flowing through the pipeline maps to <code>CodingSession</code> from <code>shared.rune_models</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>session_id</code></td>
+<td>str</td>
+<td>Unique session identifier</td>
+</tr>
+<tr>
+<td><code>task_description</code></td>
+<td>str</td>
+<td>Human-readable task description</td>
+</tr>
+<tr>
+<td><code>task_type</code></td>
+<td>str</td>
+<td>Task category (e.g. 'bug-fix', 'feature-impl')</td>
+</tr>
+<tr>
+<td><code>adapter_refs</code></td>
+<td>list[AdapterRef]</td>
+<td>Adapters loaded during this session</td>
+</tr>
+<tr>
+<td><code>attempt_count</code></td>
+<td>int</td>
+<td>Number of generate-execute-reflect cycles</td>
+</tr>
+<tr>
+<td><code>outcome</code></td>
+<td>str or None</td>
+<td>'success', 'exhausted', or None if in progress</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="integration-points">Integration Points<a class="headerlink" href="#integration-points" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Adapter Registry</strong> (<a href="../adapter-storage/">Adapter Storage</a>): Queried at phase start for adapter selection; written to after adapter generation</li>
+<li><strong>Inference Providers</strong> (<code>libs/inference</code>): TransformersProvider, LlamaCppProvider, OllamaProvider, or VLLMProvider — selected via factory</li>
+<li><strong>Sandbox</strong> (<code>shared.sandbox.SubprocessBackend</code>): Executes generated code</li>
+<li><strong>Hypernetwork</strong> (<code>model_training.hypernetwork.DocToLoraHypernetwork</code>): Generates adapters from trajectories</li>
+<li><strong>Swarm</strong> (<code>scripts/swarm.py</code>): Orchestrates parallel execution of Phases 2 and 3</li>
+</ul>
+<hr />
+<h2 id="hypernetwork-training-round-1-and-round-2-distillation">Hypernetwork Training: Round-1 and Round-2 Distillation<a class="headerlink" href="#hypernetwork-training-round-1-and-round-2-distillation" title="Permanent link">&para;</a></h2>
+<p>The Sakana HyperLoRA hypernetwork (H) is trained in up to two rounds. The 5-phase pipeline above is the direct source of training signal: execution trajectories from decompose, plan, code, integrate, and diagnose phases are collected by <code>libs/corpus-producer</code> and binned by phase and benchmark into the oracle corpus used for training.</p>
+<h3 id="phase-to-bin-mapping">Phase-to-Bin Mapping<a class="headerlink" href="#phase-to-bin-mapping" title="Permanent link">&para;</a></h3>
+<p>Each of the 5 pipeline phases produces a distinct class of trajectory. <code>corpus_producer/trainer_bridge.py</code> bins these trajectories into 25 oracle bins: one bin per (phase, benchmark) pair for the 4 non-diagnose phases across 6 benchmarks, plus one pooled bin for diagnose trajectories across all benchmarks.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Benchmarks</th>
+<th>Bins produced</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>decompose</td>
+<td>humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench</td>
+<td>6</td>
+</tr>
+<tr>
+<td>plan</td>
+<td>humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench</td>
+<td>6</td>
+</tr>
+<tr>
+<td>code</td>
+<td>humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench</td>
+<td>6</td>
+</tr>
+<tr>
+<td>integrate</td>
+<td>humaneval, mbpp, apps, bigcodebench, ds_1000, livecodebench</td>
+<td>6</td>
+</tr>
+<tr>
+<td>diagnose</td>
+<td>(pooled across all benchmarks)</td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td></td>
+<td><strong>25</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The oracle adapter for each bin is registered as <code>oracle_&lt;bin_key&gt;</code> where <code>bin_key</code> is <code>&lt;phase&gt;_&lt;benchmark&gt;</code> (e.g. <code>oracle_code_humaneval</code>) or <code>diagnose_pooled</code>.</p>
+<h3 id="round-1-training-against-the-base-model">Round-1: Training Against the Base Model<a class="headerlink" href="#round-1-training-against-the-base-model" title="Permanent link">&para;</a></h3>
+<p>Round-1 is the existing training path. The hypernetwork is trained using the base model (Qwen/Qwen3.5-9B) as the sole reference. No oracle adapters are required. The result is a hypernetwork that can generate task-specific LoRA adapters from trajectory documents alone.</p>
+<p>Entry point: <code>scripts/train.sh</code> (wraps <code>libs/model-training/src/model_training/trainer_cli.py</code>).</p>
+<h3 id="round-2-oracle-teacher-distillation">Round-2: Oracle-Teacher Distillation<a class="headerlink" href="#round-2-oracle-teacher-distillation" title="Permanent link">&para;</a></h3>
+<p>Round-2 retrains the hypernetwork using the 25 per-bin oracle adapters as teacher signals rather than the bare base model. The objective is KL divergence + cross-entropy loss between the student forward pass (base model + hypernetwork-generated adapter) and the teacher forward pass (base model + oracle adapter). The result is a hypernetwork whose generated adapters are steered toward oracle-quality task specialisation.</p>
+<p>Source modules:</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>libs/model-training/src/model_training/round2_config.py</code></td>
+<td><code>Round2TrainConfig</code> (Pydantic, inherits <code>D2LTrainConfig</code>)</td>
+</tr>
+<tr>
+<td><code>libs/model-training/src/model_training/oracle_cache.py</code></td>
+<td><code>OracleAdapterCache</code>, oracle lookup, coverage audit, <code>_load_oracle_as_lora_dict</code></td>
+</tr>
+<tr>
+<td><code>libs/model-training/src/model_training/round2_train.py</code></td>
+<td>Training loop, functional-LoRA application, KL+CE loss, adapter registration</td>
+</tr>
+<tr>
+<td><code>libs/model-training/src/model_training/round2_gate.py</code></td>
+<td><code>evaluate_round2_gate</code> — strict success gate</td>
+</tr>
+<tr>
+<td><code>scripts/train_round2.py</code></td>
+<td>Training CLI (exposes every <code>Round2TrainConfig</code> field)</td>
+</tr>
+<tr>
+<td><code>scripts/evaluate_round2.py</code></td>
+<td>Success-gate CLI; exits <code>0</code> on PASS, <code>1</code> on FAIL</td>
+</tr>
+</tbody>
+</table>
+<h4 id="round2trainconfig">Round2TrainConfig<a class="headerlink" href="#round2trainconfig" title="Permanent link">&para;</a></h4>
+<p><code>Round2TrainConfig</code> inherits all fields from <code>D2LTrainConfig</code> and adds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>oracle_registry_url: str</code></td>
+<td><em>(required)</em></td>
+<td>SQLAlchemy URL for the <code>AdapterRegistry</code> holding the 25 oracle records</td>
+</tr>
+<tr>
+<td><code>max_loaded_oracles: int</code></td>
+<td><code>4</code></td>
+<td>LRU cap for <code>OracleAdapterCache</code></td>
+</tr>
+<tr>
+<td><code>min_oracle_coverage: float</code></td>
+<td><code>0.8</code></td>
+<td>Minimum fraction of training records whose bin has a registered oracle; below this → abort at startup</td>
+</tr>
+<tr>
+<td><code>oracle_fallback: Literal["base_model", "skip"]</code></td>
+<td><code>"skip"</code></td>
+<td>Behaviour when a record's bin has no registered oracle</td>
+</tr>
+<tr>
+<td><code>checkpoint_dir: str</code></td>
+<td><code>"./checkpoints/round2"</code></td>
+<td>Overrides parent so round-2 does not clobber round-1 checkpoints</td>
+</tr>
+<tr>
+<td><code>experiment_name: str</code></td>
+<td><code>"d2l-qwen3-round2"</code></td>
+<td>Overrides parent for MLflow separation</td>
+</tr>
+</tbody>
+</table>
+<h4 id="functional-lora-teacher-mechanism">Functional-LoRA Teacher Mechanism<a class="headerlink" href="#functional-lora-teacher-mechanism" title="Permanent link">&para;</a></h4>
+<p>The oracle adapter is applied to the base model via the <code>apply_functional_lora</code> context manager — the same mechanism used for the student pass. The base model is <strong>never structurally mutated</strong>: no <code>PeftModel</code> wrappers are attached and no <code>LoraLayer</code> replacements are made. This eliminates PEFT hook-leakage risk between teacher and student forward passes.</p>
+<p>Both teacher and student use the identical code path:</p>
+<div class="highlight"><pre><span></span><code>with apply_functional_lora(base_model, oracle_lora_dict):
+    teacher_logits = base_model(input_ids, ...)
+
+with apply_functional_lora(base_model, student_lora_dict):
+    student_logits = base_model(input_ids, ...)
+</code></pre></div>
+<h4 id="oracleadaptercache">OracleAdapterCache<a class="headerlink" href="#oracleadaptercache" title="Permanent link">&para;</a></h4>
+<p><code>OracleAdapterCache</code> holds oracle adapters as <code>LoraDict</code> tensor dicts rather than <code>PeftModel</code> wrappers:</p>
+<div class="highlight"><pre><span></span><code>LoraDict = {module: {&quot;A&quot;: Tensor[L, r, in], &quot;B&quot;: Tensor[L, r, out]}}
+</code></pre></div>
+<p><code>_load_oracle_as_lora_dict</code> parses a PEFT safetensors checkpoint using the regex:</p>
+<div class="highlight"><pre><span></span><code>(?:base_model\.model\.)?model\.layers\.&lt;L&gt;\..*?\.&lt;module&gt;_proj\.lora_&lt;A|B&gt;\.weight
+</code></pre></div>
+<p>and stacks per-layer tensors across <code>hc.layer_indices</code>. The cache is LRU-bounded at <code>max_loaded_oracles=4</code> (default).</p>
+<h4 id="oracle-and-round-2-adapter-id-schemes">Oracle and Round-2 Adapter ID Schemes<a class="headerlink" href="#oracle-and-round-2-adapter-id-schemes" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Oracle adapters:</strong> <code>oracle_&lt;bin_key&gt;</code> — set upstream by <code>libs/corpus-producer/src/corpus_producer/trainer_bridge.py</code>.</li>
+<li><strong>Round-2 adapters:</strong> <code>round2_&lt;uuid[:8]&gt;</code> — registered by <code>round2_train.register_round2_adapter</code> with <code>task_type="round2_hypernet"</code>, <code>generation=2</code>, and <code>parent_ids=json.dumps(sorted(oracle_ids))</code> for lineage tracking.</li>
+</ul>
+<h4 id="startup-guards">Startup Guards<a class="headerlink" href="#startup-guards" title="Permanent link">&para;</a></h4>
+<p>Two guards fire before any model is loaded:</p>
+<ol>
+<li>
+<p><strong>Coverage gate:</strong> if the fraction of training records with a registered oracle bin falls below <code>min_oracle_coverage</code> (default <code>0.8</code>), training aborts with <code>RuntimeError</code>. <code>dry_run=True</code> surfaces this gate without running training, so operators can diagnose coverage gaps cheaply.</p>
+</li>
+<li>
+<p><strong>Per-step skip sentinel:</strong> <code>_training_step_round2</code> returns <code>(None, {})</code> when a record's bin has no oracle and <code>oracle_fallback == "skip"</code>. The outer training loop calls <code>continue</code> on that sentinel — <code>steps_completed</code> only advances on successful optimizer steps. Under <code>oracle_fallback="base_model"</code> (ablation mode), the bare base model is used as the teacher instead.</p>
+</li>
+</ol>
+<h4 id="strict-success-gate">Strict Success Gate<a class="headerlink" href="#strict-success-gate" title="Permanent link">&para;</a></h4>
+<p><code>round2_gate.evaluate_round2_gate(scores) -&gt; report</code> applies the following bar after training completes:</p>
+<ul>
+<li><strong>Pass condition:</strong> ≥ 4 of 6 benchmarks improved by ≥ 2.0% Pass@1 <strong>AND</strong> no single benchmark regresses by more than 1.0%.</li>
+<li><strong>Required benchmarks:</strong> <code>humaneval</code>, <code>mbpp</code>, <code>apps</code>, <code>bigcodebench</code>, <code>ds_1000</code>, <code>livecodebench</code>.</li>
+<li><strong>Verdict JSON keys:</strong> <code>passed</code>, <code>deltas</code>, <code>improved_count</code>, <code>max_regression</code>, <code>reasons</code>, <code>round2_adapter_id</code>, <code>scores</code>.</li>
+</ul>
+<p><code>scripts/evaluate_round2.py</code> runs all 6 benchmarks, applies the gate, writes the verdict JSON, and exits <code>0</code> on PASS or <code>1</code> on FAIL so CI can gate promotion.</p>
+<h4 id="end-to-end-flow">End-to-End Flow<a class="headerlink" href="#end-to-end-flow" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><span class="c1"># 1. Produce 25-bin oracle corpus (multi-GPU via gap-8 sharding)</span>
+<span class="k">for</span><span class="w"> </span>i<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">3</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span>uv<span class="w"> </span>run<span class="w"> </span>scripts/phase_corpus_producer.py<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--shard<span class="w"> </span><span class="nv">$i</span>/4<span class="w"> </span>--cuda-visible-devices<span class="w"> </span><span class="nv">$i</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>--out-dir<span class="w"> </span>data/phase_corpus<span class="w"> </span><span class="p">&amp;</span>
+<span class="k">done</span>
+<span class="nb">wait</span>
+
+<span class="c1"># 2. Train round-1 hypernet + capture baseline benchmark report</span>
+uv<span class="w"> </span>run<span class="w"> </span>scripts/train.sh
+<span class="c1"># ... run 6 benchmarks → round1_scores.json</span>
+
+<span class="c1"># 3. Train round-2 hypernet with oracle teachers</span>
+uv<span class="w"> </span>run<span class="w"> </span>scripts/train_round2.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--sakana-checkpoint-path<span class="w"> </span>/path/to/sakana.bin<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--oracle-registry-url<span class="w"> </span>sqlite:///~/.rune/adapters.db<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--dataset-path<span class="w"> </span>data/phase_corpus/all_bins_concat.jsonl<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--num-steps<span class="w"> </span><span class="m">1000</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kill-switch-enabled
+
+<span class="c1"># 4. Apply the strict gate</span>
+uv<span class="w"> </span>run<span class="w"> </span>scripts/evaluate_round2.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--round2-adapter-id<span class="w"> </span>round2_&lt;hex8&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--base-model<span class="w"> </span>Qwen/Qwen3.5-9B<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--oracle-registry-url<span class="w"> </span>sqlite:///~/.rune/adapters.db<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--baseline-report<span class="w"> </span>round1_scores.json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-report<span class="w"> </span>round2_verdict.json
+<span class="c1"># Exit 0 → gate passed; exit 1 → regression or insufficient improvement</span>
+</code></pre></div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="../../assets/mermaid-loader.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

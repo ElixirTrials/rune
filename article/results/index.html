@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Results - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../architecture/recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/multi-gpu-strategy/" class="dropdown-item">GPU Strategy</a>
+</li>
+                                    
+<li>
+    <a href="../../swarm-architecture/" class="dropdown-item">Swarm Architecture</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Results</a>
+</li>
+                                    
+<li>
+    <a href="../discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../methods/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../discussion/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="2"><a href="#results" class="nav-link">Results</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#phase-1-kill-switch-experimental-design" class="nav-link">Phase 1 Kill-Switch Experimental Design</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#round-2-strict-gate-phase-4-success-criterion" class="nav-link">Round-2 Strict Gate (Phase 4 Success Criterion)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#adapter-diversity-metrics" class="nav-link">Adapter Diversity Metrics</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#pbb-inspired-evaluation-criterion-proposed-secondary-criterion" class="nav-link">PBB-Inspired Evaluation Criterion (Proposed Secondary Criterion)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#phase-4-ablation-structure-planned" class="nav-link">Phase 4 Ablation Structure (Planned)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h2 id="results">Results<a class="headerlink" href="#results" title="Permanent link">&para;</a></h2>
+<div class="admonition warning">
+<p class="admonition-title">Research Status: Pre-Validation</p>
+<p>The evaluation infrastructure is built and tested (776+ tests passing,
+benchmark framework implemented), but no GPU training runs or adapter
+evaluations have been conducted. This section presents the planned
+experimental design for Phase 1 hypothesis validation. All tables, figures,
+and metrics below describe proposed measurements, not observed results.</p>
+</div>
+<hr />
+<h3 id="phase-1-kill-switch-experimental-design">Phase 1 Kill-Switch Experimental Design<a class="headerlink" href="#phase-1-kill-switch-experimental-design" title="Permanent link">&para;</a></h3>
+<p>Phase 1 is a minimal hypothesis test that gates all subsequent infrastructure investment. The kill-switch structure is binary: only if the primary metric exceeds the specified threshold (H<span class="arithmatex">\(_1\)</span> confirmed) does development proceed to Phase 2. If the null hypothesis holds (H<span class="arithmatex">\(_0\)</span> not rejected), infrastructure development terminates and the team reassesses. No partial credit is awarded — the kill-switch is a go/no-go decision, not a gradient.</p>
+<h4 id="evaluation-benchmark">Evaluation Benchmark<a class="headerlink" href="#evaluation-benchmark" title="Permanent link">&para;</a></h4>
+<p>Rune's benchmark evaluation framework (described in <a href="../methods/#benchmark-evaluation-framework">Methods</a>) provides six benchmark suites — HumanEval, MBPP, APPS, BigCodeBench, DS-1000, and LiveCodeBench — organized into three execution tiers (smoke ~5 min, mini ~30 min, full ~2 hr). The Phase 1 kill-switch evaluation uses this framework as follows:</p>
+<p>The <strong>primary</strong> evaluation benchmark is HumanEval+ (EvalPlus), an extended version of HumanEval (Chen et al., 2021) with additional test cases that reduce false positives from undertested solutions. Phase 1 uses a held-out subset of 20--30 tasks, not the full benchmark, because Phase 1 is a minimal hypothesis test — statistical power over a small, well-controlled subset is sufficient to detect the <strong>specified</strong> threshold effect. The smoke tier enables rapid iteration during hyperparameter tuning; the full tier provides definitive measurements for the kill-switch decision.</p>
+<p>Each task is evaluated with k=5 samples. Tasks in the held-out subset are excluded from the training trajectory corpus so that the evaluation measures generalization to unseen problems, not memorization of training data. The subset is selected to be diverse in task type (string manipulation, arithmetic, data structures, algorithms) to avoid biasing the evaluation toward a narrow skill distribution.</p>
+<p>The development evaluation target is Gemma 2 2B (google/gemma-2-2b-it), which fits within consumer GPU memory constraints and enables rapid iteration. The Sakana Doc-to-LoRA checkpoint includes a "gemma_demo" variant compatible with this model. Production-scale evaluation will target Qwen/Qwen3.5-9B on the full benchmark suite including MBPP, APPS, BigCodeBench, DS-1000, and LiveCodeBench. <!-- TODO(benchmarks-pending): production-scale benchmarks on Qwen3.5-9B have not yet been run --></p>
+<p><strong>SWE-Bench-Lite:</strong> <code>benchmarks/swe_bench.py::score()</code> is now fully implemented with an env-gated clone/apply/pytest pipeline (previously raised <code>NotImplementedError</code>). This unblocks SWE-Bench-Lite as an additional evaluation surface for future phases.</p>
+<p><strong>Isolation note:</strong> Phase 1 baseline runs in bfloat16 — NOT QLoRA.<sup id="fnref:dettmers2023qlora"><a class="footnote-ref" href="#fn:dettmers2023qlora">7</a></sup> This isolation is deliberate: the Phase 1 experiment tests the trajectory-to-adapter hypothesis (does a Doc-to-LoRA hypernetwork<sup id="fnref:charakorn2026doc2lora"><a class="footnote-ref" href="#fn:charakorn2026doc2lora">2</a></sup> trained on coding trajectories produce useful adapters?) independently of the quantization variable (does NF4 quantization degrade adapter quality?). QLoRA is introduced in Phase 2 after the bfloat16 baseline passes. Confounding these two variables in a single experiment would make a negative result uninterpretable.</p>
+<h4 id="kill-switch-hypothesis">Kill-Switch Hypothesis<a class="headerlink" href="#kill-switch-hypothesis" title="Permanent link">&para;</a></h4>
+<p>Pass@1 for a single task is the probability that the first generated sample passes all tests. Averaged over <span class="arithmatex">\(N\)</span> tasks with <span class="arithmatex">\(k=5\)</span> samples each:</p>
+<div class="arithmatex">\[
+\text{Pass@1} = \frac{1}{N} \sum_{i=1}^{N} \mathbb{1}[\text{task}_i \text{ passes on at least 1 of } k \text{ samples}]
+\]</div>
+<p>The formal hypothesis pair for the Phase 1 kill-switch gate:</p>
+<ul>
+<li><strong>H<span class="arithmatex">\(_0\)</span> (null):</strong> A Doc-to-LoRA hypernetwork trained on coding trajectories produces adapters that do not improve Pass@1 over the baseline (improvement &lt; 5%).</li>
+<li><strong>H<span class="arithmatex">\(_1\)</span> (alternative):</strong> Trajectory-conditioned adapters improve Pass@1 by <span class="arithmatex">\(\geq\)</span> 5% on the 20--30 task HumanEval+ subset compared to the base model (Gemma 2 2B for development evaluation, Qwen/Qwen3.5-9B for production evaluation) with no adapter.</li>
+</ul>
+<p>H<span class="arithmatex">\(_1\)</span> passing is necessary but not sufficient to proceed to Phase 2. H<span class="arithmatex">\(_0\)</span> acceptance terminates infrastructure development and triggers reassessment. The kill-switch is a research gate, not a quality bar — it tests whether the core hypothesis has empirical support, not whether the system is production-ready.</p>
+<p><strong>Expected range</strong> (from implementation plan): 5--15% improvement signals a real effect. Greater than 15% should be treated skeptically and checked for data leakage — the held-out subset may have leaked into the training trajectory corpus, or the evaluation may be measuring memorization rather than generalization.</p>
+<h4 id="training-dataset">Training Dataset<a class="headerlink" href="#training-dataset" title="Permanent link">&para;</a></h4>
+<p>The <strong>specified</strong> training dataset protocol for Phase 1:</p>
+<ul>
+<li><strong>Size:</strong> 50--100 real coding trajectory pairs</li>
+<li><strong>Source:</strong> HumanEval or SWE-bench-lite, generated via the recursive agent loop or prompted from the base model</li>
+<li><strong>Structure per trajectory:</strong> task description + attempt sequence (code + error messages + corrections) + final passing code</li>
+<li><strong>Diversity requirement:</strong> diverse in task type, failure mode, and correction pattern — not variations on the same task, which would induce mode collapse in the hypernetwork (see <a href="../../appendices/risk-matrix/">Risk Matrix</a>)</li>
+</ul>
+<h4 id="baseline-comparison-table">Baseline Comparison Table<a class="headerlink" href="#baseline-comparison-table" title="Permanent link">&para;</a></h4>
+<p><em>Table 1 (Planned Experiments): Phase 1 Kill-Switch Baseline Conditions</em></p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Description</th>
+<th>Claim Tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vanilla model (bfloat16)</td>
+<td>Gemma 2 2B (dev) / Qwen/Qwen3.5-9B (prod), no adapter, bfloat16</td>
+<td>Planned baseline <!-- TODO(benchmarks-pending): Pass@1 number to be filled in --></td>
+</tr>
+<tr>
+<td>RAG baseline</td>
+<td>Retrieved trajectory snippets in context (no weight update)</td>
+<td>Planned baseline</td>
+</tr>
+<tr>
+<td>Directly fine-tuned LoRA</td>
+<td>Standard PEFT fine-tuning on same trajectory data (no hypernetwork)</td>
+<td>Planned baseline</td>
+</tr>
+<tr>
+<td>Hypernetwork-generated adapter</td>
+<td>Rune Phase 1 (Doc-to-LoRA on coding trajectories, gemma_demo checkpoint)</td>
+<td><strong>Kill-switch condition</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The four baselines isolate distinct variables. The <strong>vanilla model</strong> establishes the zero-adaptation reference — raw model capability on the held-out tasks without any trajectory signal. The <strong>RAG baseline</strong> tests whether in-context retrieval of trajectory snippets alone achieves the threshold, without modifying the model's weights — if RAG suffices, the hypernetwork adds no value over retrieval. The <strong>directly fine-tuned LoRA</strong> tests whether standard gradient-based adaptation on the same trajectory data matches or exceeds the hypernetwork — if direct fine-tuning achieves equivalent quality, the hypernetwork's value is inference-time speed, not adapter quality. Only the <strong>hypernetwork-generated adapter</strong> tests the full Rune hypothesis: that a single forward pass through a trajectory-conditioned hypernetwork produces adapters competitive with gradient-based methods.</p>
+<p><strong>Note:</strong> Configuration details for the RAG baseline (chunk size, retrieval model, top-k) are unspecified in the current implementation plan and will be determined during Phase 1 setup.</p>
+<h4 id="mlflow-tracking-schema">MLflow Tracking Schema<a class="headerlink" href="#mlflow-tracking-schema" title="Permanent link">&para;</a></h4>
+<p>The <strong>specified</strong> tracking schema records all kill-switch evaluation runs, with adapter weights managed via the S-LoRA unified paging pattern<sup id="fnref:sheng2023slora"><a class="footnote-ref" href="#fn:sheng2023slora">6</a></sup> during serving:</p>
+<div class="highlight"><pre><span></span><code>run_id | phase | adapter_id | pass_at_1 | training_loss | adapter_cosine_diversity | delta_w_norm | hunk_loss | hunk_accuracy | adapter_improvement | hunk_entropy
+</code></pre></div>
+<p>The four diff-restricted fitness fields (<code>hunk_loss</code>, <code>hunk_accuracy</code>, <code>adapter_improvement</code>, <code>hunk_entropy</code>) are logged by the HPO overhaul in <code>scripts/optimization/run_training_hpo.py</code> and reflect per-hunk token-level training signal quality, independent of benchmark-level Pass@1.</p>
+<p>The gate decision is recorded as an MLflow run note: <code>"Gate PASSED"</code> or <code>"Gate FAILED — reassessing"</code>.</p>
+<hr />
+<h3 id="round-2-strict-gate-phase-4-success-criterion">Round-2 Strict Gate (Phase 4 Success Criterion)<a class="headerlink" href="#round-2-strict-gate-phase-4-success-criterion" title="Permanent link">&para;</a></h3>
+<p>Beyond the Phase 1 kill-switch (which tests single-benchmark improvement over baseline), Phase 4 introduces a <strong>strict multi-benchmark gate</strong> for the round-2 hypernetwork distillation loop. This gate is implemented by <code>round2_gate.evaluate_round2_gate</code> and enforced at the CLI level by <code>scripts/evaluate_round2.py</code>.</p>
+<h4 id="gate-criterion">Gate Criterion<a class="headerlink" href="#gate-criterion" title="Permanent link">&para;</a></h4>
+<p>The round-2 gate passes if and only if <strong>both</strong> conditions hold simultaneously:</p>
+<ol>
+<li><strong>Improvement bar:</strong> ≥ 4 of the 6 required benchmarks show ≥ 2.0% Pass@1 improvement over the round-1 baseline.</li>
+<li><strong>Regression guard:</strong> No single benchmark regresses by more than 1.0% Pass@1.</li>
+</ol>
+<p><strong>Required benchmarks:</strong> <code>humaneval</code>, <code>mbpp</code>, <code>apps</code>, <code>bigcodebench</code>, <code>ds_1000</code>, <code>livecodebench</code>.</p>
+<p>This is a stricter criterion than the Phase 1 kill-switch (which tests a single benchmark with a 5% threshold). The multi-benchmark structure guards against adapters that improve on one benchmark by degrading performance on others — a failure mode that single-benchmark gates cannot detect.</p>
+<h4 id="verdict-json">Verdict JSON<a class="headerlink" href="#verdict-json" title="Permanent link">&para;</a></h4>
+<p><code>scripts/evaluate_round2.py</code> writes a structured verdict document with the following keys:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>passed</code></td>
+<td><code>bool</code></td>
+<td><code>true</code> if both gate conditions are satisfied</td>
+</tr>
+<tr>
+<td><code>deltas</code></td>
+<td><code>dict[str, float]</code></td>
+<td>Per-benchmark Pass@1 delta (round-2 minus round-1 baseline)</td>
+</tr>
+<tr>
+<td><code>improved_count</code></td>
+<td><code>int</code></td>
+<td>Number of benchmarks meeting the ≥ 2.0% improvement bar</td>
+</tr>
+<tr>
+<td><code>max_regression</code></td>
+<td><code>float</code></td>
+<td>Worst (most negative) delta across all required benchmarks</td>
+</tr>
+<tr>
+<td><code>reasons</code></td>
+<td><code>list[str]</code></td>
+<td>Human-readable strings explaining each failing condition</td>
+</tr>
+<tr>
+<td><code>round2_adapter_id</code></td>
+<td><code>str</code></td>
+<td>Adapter ID in <code>round2_&lt;uuid[:8]&gt;</code> format</td>
+</tr>
+<tr>
+<td><code>scores</code></td>
+<td><code>dict[str, float]</code></td>
+<td>Raw Pass@1 scores for the round-2 adapter on each benchmark</td>
+</tr>
+</tbody>
+</table>
+<h4 id="ci-integration">CI Integration<a class="headerlink" href="#ci-integration" title="Permanent link">&para;</a></h4>
+<p><code>scripts/evaluate_round2.py</code> exits <code>0</code> on PASS and <code>1</code> on FAIL, making it directly composable with CI pipelines. A non-zero exit prevents round-2 adapter promotion and triggers reassessment. This parallels the Phase 1 kill-switch mechanism but operates at post-training evaluation time rather than mid-training.</p>
+<hr />
+<h3 id="adapter-diversity-metrics">Adapter Diversity Metrics<a class="headerlink" href="#adapter-diversity-metrics" title="Permanent link">&para;</a></h3>
+<p>These metrics do not gate the kill-switch decision but are tracked via MLflow as diagnostic signals. They inform the post-experiment written assessment of whether the hypernetwork is learning meaningful structure rather than collapsing to a degenerate solution.</p>
+<h4 id="frobenius-norm-of-adapter-weights">Frobenius Norm of Adapter Weights<a class="headerlink" href="#frobenius-norm-of-adapter-weights" title="Permanent link">&para;</a></h4>
+<p>The Frobenius norm of the adapter weight update <span class="arithmatex">\(\Delta W = BA\)</span> for each generated adapter:</p>
+<div class="arithmatex">\[
+\|\Delta W\|_F = \sqrt{\sum_{i,j} (B A)_{ij}^2}
+\]</div>
+<p>A meaningfully nonzero <span class="arithmatex">\(\|\Delta W\|_F\)</span> confirms the adapter is affecting the base model's behavior. If <span class="arithmatex">\(\|\Delta W\|_F \approx 0\)</span>, the hypernetwork is generating near-zero updates — the adapter is effectively absent and the base model's behavior is unchanged regardless of whether an adapter is loaded. The <span class="arithmatex">\(\Delta W = BA\)</span> decomposition is the LoRA reparameterization established in <a href="../background/">Background</a> and formally defined in <a href="../methods/">Methods</a>.<sup id="fnref:hu2021lora"><a class="footnote-ref" href="#fn:hu2021lora">3</a></sup></p>
+<p><strong>Note:</strong> <span class="arithmatex">\(\|\Delta W\|_F\)</span> is reported per transformer layer targeted (Q, K, V, O projections and MLP up/down projections), giving a 6--8 dimensional profile rather than a single scalar. This per-layer profile provides richer diagnostic information: a hypernetwork that produces nonzero updates for attention layers but near-zero updates for MLP layers (or vice versa) reveals something about which model components the trajectory signal is reaching.</p>
+<h4 id="inter-adapter-cosine-diversity">Inter-Adapter Cosine Diversity<a class="headerlink" href="#inter-adapter-cosine-diversity" title="Permanent link">&para;</a></h4>
+<p>For a batch of hypernetwork-generated adapters <span class="arithmatex">\(\{\Delta W_i\}_{i=1}^{N}\)</span>, the inter-adapter cosine similarity is computed on flattened weight vectors:</p>
+<div class="arithmatex">\[
+\text{sim}(\Delta W_i, \Delta W_j) = \frac{\text{vec}(\Delta W_i) \cdot \text{vec}(\Delta W_j)}{\|\text{vec}(\Delta W_i)\|_2 \, \|\text{vec}(\Delta W_j)\|_2}
+\]</div>
+<p>Mean pairwise cosine similarity across the batch is the diversity metric.</p>
+<ul>
+<li><strong>Diversity criterion:</strong> mean pairwise cosine similarity &lt; 0.9 (equivalently, adapter cosine diversity &gt; 0.1)</li>
+<li><strong>Interpretation:</strong> If adapters cluster (diversity collapses toward 0), the hypernetwork is approaching the degenerate "mean adapter" solution — a known mode collapse failure mode documented in the <a href="../../appendices/risk-matrix/">risk matrix</a>. Healthy diversity indicates the hypernetwork is producing trajectory-specific adapters rather than converging to a single set of weights regardless of input.</li>
+</ul>
+<h4 id="planned-metrics-table">Planned Metrics Table<a class="headerlink" href="#planned-metrics-table" title="Permanent link">&para;</a></h4>
+<p><em>Table 2 (Planned Experiments): Phase 1 Kill-Switch Evaluation Metrics</em></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Symbol</th>
+<th>Threshold</th>
+<th>Gate Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pass@1 improvement</td>
+<td>--</td>
+<td><span class="arithmatex">\(\geq\)</span> 5% over baseline</td>
+<td><strong>Kill-switch (primary gate)</strong></td>
+</tr>
+<tr>
+<td>Adapter <span class="arithmatex">\(\|\Delta W\|_F\)</span> norm</td>
+<td><span class="arithmatex">\(\|\Delta W\|_F\)</span></td>
+<td>Meaningfully nonzero</td>
+<td>Diagnostic (not a gate)</td>
+</tr>
+<tr>
+<td>Inter-adapter cosine diversity</td>
+<td><span class="arithmatex">\(1 - \bar{\text{sim}}\)</span></td>
+<td>&gt; 0.1</td>
+<td>Diagnostic (not a gate)</td>
+</tr>
+<tr>
+<td>Training loss convergence</td>
+<td><span class="arithmatex">\(\mathcal{L}_{\text{train}}\)</span></td>
+<td>Converges, no early plateau</td>
+<td>Diagnostic (not a gate)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="pbb-inspired-evaluation-criterion-proposed-secondary-criterion">PBB-Inspired Evaluation Criterion (Proposed Secondary Criterion)<a class="headerlink" href="#pbb-inspired-evaluation-criterion-proposed-secondary-criterion" title="Permanent link">&para;</a></h3>
+<p>This subsection describes a <strong>proposed</strong> secondary evaluation criterion inspired by Programming by Backprop (PBB). It is not part of the kill-switch gate — it is an additional lens for evaluating whether trajectory-conditioned adapters achieve a stronger form of procedural encoding beyond code generation.</p>
+<p>PBB (Cook et al., 2025) demonstrates that an LLM trained on source code without input-output examples can still evaluate those programs on new inputs — weight-based procedural encoding enables inference-time program execution.<sup id="fnref:cook2025pbb"><a class="footnote-ref" href="#fn:cook2025pbb">1</a></sup> A secondary evaluation criterion for Phase 1 tests whether Rune's trajectory-conditioned adapters achieve the PBB property: procedural knowledge encoded in adapter weights, not merely pattern-matched from context.</p>
+<p><strong>The PBB test question:</strong> Can a generated adapter enable the model to evaluate a program on held-out inputs without those inputs appearing in the context window?</p>
+<p><strong>Test procedure (four steps):</strong></p>
+<ol>
+<li>Generate an adapter from a trajectory that includes a specific algorithmic implementation (e.g., a sorting function, a string manipulation, a recursive algorithm)</li>
+<li>Load the adapter into the base model</li>
+<li>Query the model with a natural language request asking it to evaluate the function on held-out inputs — inputs not present in the training trajectory and not provided in context</li>
+<li>Compare: base model (no adapter) vs adapter-loaded model on the same held-out evaluation queries</li>
+</ol>
+<p><strong>Why this matters:</strong> Pass@1 measures whether the model can write passing code. The PBB criterion measures whether the model has internalized the algorithm itself — a stronger form of procedural encoding. An adapter that enables the model to evaluate a function on novel inputs demonstrates that the trajectory signal has been encoded as procedural knowledge in the model's weights, not merely as a statistical pattern that improves code generation likelihood.</p>
+<p><strong>Grounding statement:</strong> PBB validated this criterion on instruction-following tasks with natural language programs; Rune <strong>proposes</strong> extending it to code execution trajectory-conditioned adapters. The criterion is <strong>proposed</strong> — it has not been validated for the trajectory modality. PBB also found that in-context instruction execution remains more reliable than weight-based procedural knowledge for the tasks they tested, which means this criterion may reveal a gap between what trajectory-conditioned adapters can encode and what they can reliably execute.</p>
+<p>This criterion is labeled <strong>Planned Experiments (PBB-Inspired)</strong> and is contingent on Phase 1 infrastructure being in place.</p>
+<hr />
+<h3 id="phase-4-ablation-structure-planned">Phase 4 Ablation Structure (Planned)<a class="headerlink" href="#phase-4-ablation-structure-planned" title="Permanent link">&para;</a></h3>
+<p>The following <strong>proposed</strong> experiments are contingent on Phase 1 passing. They are presented here to give the experimental design forward scope — they are not prerequisites for the kill-switch gate. If Phase 1 fails (H<span class="arithmatex">\(_0\)</span> not rejected), these experiments are not conducted.</p>
+<h4 id="ablation-targets">Ablation Targets<a class="headerlink" href="#ablation-targets" title="Permanent link">&para;</a></h4>
+<p>The ablation targets derive from <strong>specified</strong> architecture choices in <a href="../methods/">Methods</a> that have been designed with explicit alternatives:</p>
+<ul>
+<li><strong>Encoder architecture:</strong> Perceiver-based cross-attention (Methods default) vs mean pooling vs hierarchical attention vs recurrent summarization. The Perceiver-based encoder is labeled as an ablation target in Methods — alternative encoders may achieve comparable or superior trajectory compression with different computational trade-offs.</li>
+<li><strong>Fitness weight <span class="arithmatex">\(\alpha\)</span>:</strong> Default 0.7 (specified in the evolution operator fitness function <span class="arithmatex">\(\phi(a) = \alpha \cdot \text{pass\_rate}(a) + (1 - \alpha) \cdot \text{generalization}(a)\)</span> in <a href="../methods/">Methods</a>); ablation range TBD. The <span class="arithmatex">\(\alpha\)</span> parameter controls specialization vs generalization trade-off — values closer to 1.0 favor task-specific adapters, values closer to 0.5 favor cross-task utility.</li>
+<li><strong>Multi-adapter composition:</strong> Additive accumulation <span class="arithmatex">\(\Delta W_{\text{composite}} = \Delta W_{\text{project}} + \Delta W_{\text{domain}} + \Delta W_{\text{task}}\)</span> (proposed in Methods) vs single-adapter selection (specified default). The composition question is whether combining adapters from different hierarchy levels produces coherent behavior or introduces the interference documented by Zhang et al.<sup id="fnref:zhang2025orthogonality"><a class="footnote-ref" href="#fn:zhang2025orthogonality">4</a></sup> and Zou.<sup id="fnref:zou2026merging"><a class="footnote-ref" href="#fn:zou2026merging">5</a></sup></li>
+<li><strong>Merge operation:</strong> Empirical test of whether merged adapters achieve higher fitness than individual components.<sup id="fnref:prabhakar2024lorasoups"><a class="footnote-ref" href="#fn:prabhakar2024lorasoups">8</a></sup> The merge operation is an ablation target in the Evolution Operator — it will only be retained if empirical evaluation confirms behavioral coherence.</li>
+<li><strong>Diff-aware loss vs uniform loss:</strong> <code>DiffAwareSFTTrainer</code> (hunk-weighted token loss via <code>DiffWeightedDataCollator</code>) vs baseline <code>SFTTrainer</code> (uniform token weighting). The diff-aware trainer assigns <code>changed_weight</code> to hunk tokens and <code>unchanged_weight</code> to context tokens when <code>pre_code</code>/<code>post_code</code> side-channels are present; without side-channels it falls back to identity weights (no-op on the objective). This ablation measures whether concentrating loss on changed lines improves adapter quality relative to uniform supervision.</li>
+<li><strong>Oracle fallback modes:</strong> <code>oracle_fallback="skip"</code> (default, drops records whose bin has no registered oracle — preserves the invariant that the hypernetwork learns only from oracle signal) vs <code>oracle_fallback="base_model"</code> (ablation, substitutes the bare base model as teacher for uncovered bins). The <code>"skip"</code> default is the conservative choice; <code>"base_model"</code> trades oracle purity for higher data utilization and may be appropriate when oracle coverage is below <code>min_oracle_coverage=0.8</code>.</li>
+<li><strong>Round-2 vs round-1 Pass@1 delta:</strong> Direct comparison of round-2 adapter scores against round-1 baseline across all six benchmarks (<code>humaneval</code>, <code>mbpp</code>, <code>apps</code>, <code>bigcodebench</code>, <code>ds_1000</code>, <code>livecodebench</code>). The round-2 strict gate (≥ 4/6 benchmarks improved ≥ 2.0% Pass@1, no regression &gt; 1.0%) formalizes the threshold, but the full per-benchmark delta table is retained as an ablation artifact for understanding where oracle-teacher distillation provides the most and least benefit.</li>
+</ul>
+<h4 id="phase-4-experiment-parameters">Phase 4 Experiment Parameters<a class="headerlink" href="#phase-4-experiment-parameters" title="Permanent link">&para;</a></h4>
+<p><strong>Planned Experiments (Phase 4, contingent on Phase 1 pass):</strong></p>
+<ul>
+<li><strong>Dataset:</strong> Held-out adapter subset from Phase 3 corpus (10--20% withheld from hypernetwork training set)</li>
+<li><strong>Baseline:</strong> Random adapter (Gaussian weight initialization, same rank) as reconstruction loss reference</li>
+<li><strong>Metrics:</strong> Reconstruction loss (MSE between hypernetwork-generated and held-out fine-tuned weights); cosine diversity across batch; Pass@1 comparison on held-out HumanEval tasks</li>
+<li><strong>Expected range:</strong> Reconstruction loss below random baseline confirms the hypernetwork is learning the adapter manifold. Cosine diversity &gt; 0.1 confirms diversity is preserved. Pass@1 50--80% of fine-tuned adapter quality is the <strong>expected</strong> range for a first-pass hypernetwork; parity (<span class="arithmatex">\(\pm\)</span>5%) would be a strong result.</li>
+</ul>
+<hr />
+<div class="footnote">
+<hr />
+<ol>
+<li id="fn:cook2025pbb">
+<p>Cook, J., et al. (2025). Programming by Backprop: An Instruction is Worth 100 Examples When Finetuning LLMs. <em>arXiv:2506.18777</em>. <a href="../references/#cook2025pbb">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:cook2025pbb" title="Jump back to footnote 1 in the text">&#8617;</a></p>
+</li>
+<li id="fn:charakorn2026doc2lora">
+<p>Charakorn, R., et al. (2026). Doc-to-LoRA: Hypernetwork Adaptation from Documents. <em>arXiv:2602.15902</em>. <a href="../references/#charakorn2026doc2lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:charakorn2026doc2lora" title="Jump back to footnote 2 in the text">&#8617;</a></p>
+</li>
+<li id="fn:hu2021lora">
+<p>Hu, E. J., et al. (2021). LoRA: Low-Rank Adaptation of Large Language Models. <em>arXiv:2106.09685</em>. <a href="../references/#hu2021lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:hu2021lora" title="Jump back to footnote 3 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zhang2025orthogonality">
+<p>Zhang, Y., et al. (2025). Inter-LoRA Orthogonality and Composition Interference. <a href="../references/#zhang2025orthogonality">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zhang2025orthogonality" title="Jump back to footnote 4 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zou2026merging">
+<p>Zou, H., et al. (2026). Latent Trace Reactivation in Merged LoRA Adapters. <a href="../references/#zou2026merging">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zou2026merging" title="Jump back to footnote 5 in the text">&#8617;</a></p>
+</li>
+<li id="fn:sheng2023slora">
+<p>Sheng, Y., et al. (2023). S-LoRA: Serving Thousands of Concurrent LoRA Adapters. <em>arXiv:2311.03285</em>. <a href="../references/#sheng2023slora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:sheng2023slora" title="Jump back to footnote 6 in the text">&#8617;</a></p>
+</li>
+<li id="fn:dettmers2023qlora">
+<p>Dettmers, T., et al. (2023). QLoRA: Efficient Finetuning of Quantized LLMs. <em>arXiv:2305.14314</em>. <a href="../references/#dettmers2023qlora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:dettmers2023qlora" title="Jump back to footnote 7 in the text">&#8617;</a></p>
+</li>
+<li id="fn:prabhakar2024lorasoups">
+<p>Prabhakar, A., et al. (2024). LoRA Soups: Merging LoRAs for Practical Skill Composition Tasks. <a href="../references/#prabhakar2024lorasoups">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:prabhakar2024lorasoups" title="Jump back to footnote 8 in the text">&#8617;</a></p>
+</li>
+</ol>
+</div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="../../assets/mermaid-loader.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

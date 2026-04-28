@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Adapter Storage - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../multi-gpu-strategy/" class="dropdown-item">GPU Strategy</a>
+</li>
+                                    
+<li>
+    <a href="../../swarm-architecture/" class="dropdown-item">Swarm Architecture</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../article/" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../../article/abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../../article/background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../../article/methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../../article/results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="../../article/discussion/" class="dropdown-item">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../../article/references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../monorepo-mapping/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../multi-gpu-strategy/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#adapter-storage-strategy" class="nav-link">Adapter Storage Strategy</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#overview" class="nav-link">Overview</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#filesystem-path-convention" class="nav-link">Filesystem Path Convention</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#path-components" class="nav-link">Path Components</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#adapter-id-naming-conventions" class="nav-link">Adapter ID Naming Conventions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#file-contents" class="nav-link">File Contents</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#sqlite-schema" class="nav-link">SQLite Schema</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#adapterrecord-table-adapter_records" class="nav-link">AdapterRecord (table: adapter_records)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#write-once-enforcement-policy" class="nav-link">Write-Once Enforcement Policy</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#storage-api-level" class="nav-link">Storage API Level</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#lifecycle-operations" class="nav-link">Lifecycle Operations</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#new-versions-not-overwrites" class="nav-link">New Versions, Not Overwrites</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#round-2-lineage" class="nav-link">Round-2 Lineage</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#querying-without-gpu" class="nav-link">Querying Without GPU</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#storage-budget" class="nav-link">Storage Budget</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="adapter-storage-strategy">Adapter Storage Strategy<a class="headerlink" href="#adapter-storage-strategy" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>Every LoRA adapter produced by Rune — whether by direct fine-tuning or hypernetwork inference — is stored as a versioned <code>.safetensors</code> file on the local filesystem with metadata in SQLite. This document specifies the filesystem path convention, the SQLite schema, and the write-once enforcement policy that prevents catastrophic forgetting.</p>
+<p>For the component that implements this storage, see <a href="../monorepo-mapping/">Monorepo Mapping</a> (<code>libs/adapter-registry</code>). For how adapters are produced, see <a href="../recursive-loop/">Recursive Loop</a>.</p>
+<hr />
+<h2 id="filesystem-path-convention">Filesystem Path Convention<a class="headerlink" href="#filesystem-path-convention" title="Permanent link">&para;</a></h2>
+<p>Adapters are stored under a configurable root directory (default: <code>~/.rune/adapters/</code>). The structure is flat — each adapter gets a directory named by its ID.</p>
+<div class="highlight"><pre><span></span><code>~/.rune/adapters/
+  {adapter_id}/
+    adapter.safetensors
+    adapter_config.json
+</code></pre></div>
+<h3 id="path-components">Path Components<a class="headerlink" href="#path-components" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Format</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Task type</td>
+<td>Kebab-case task category</td>
+<td><code>bug-fix</code>, <code>feature-impl</code>, <code>refactor</code></td>
+</tr>
+<tr>
+<td>Adapter ID</td>
+<td>UUID v4 (or reserved pattern — see below)</td>
+<td><code>a1b2c3d4-e5f6-7890-abcd-ef1234567890</code></td>
+</tr>
+<tr>
+<td>Version</td>
+<td>Monotonically increasing integer</td>
+<td><code>v1</code>, <code>v2</code>, <code>v3</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="adapter-id-naming-conventions">Adapter ID Naming Conventions<a class="headerlink" href="#adapter-id-naming-conventions" title="Permanent link">&para;</a></h3>
+<p>Not every adapter ID is a raw UUID. Two reserved naming patterns carry semantic meaning encoded in the ID itself:</p>
+<table>
+<thead>
+<tr>
+<th>Adapter class</th>
+<th>ID pattern</th>
+<th>Set by</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard / round-1 hypernet output</td>
+<td><code>&lt;uuid&gt;</code> (v4)</td>
+<td>Training pipeline</td>
+<td>General-purpose adapters</td>
+</tr>
+<tr>
+<td>Oracle adapters</td>
+<td><code>oracle_&lt;bin_key&gt;</code></td>
+<td><code>libs/corpus-producer/src/corpus_producer/trainer_bridge.py::invoke_bin_training</code></td>
+<td>Per-bin teacher adapters for round-2 distillation</td>
+</tr>
+<tr>
+<td>Round-2 hypernet adapters</td>
+<td><code>round2_&lt;uuid[:8]&gt;</code></td>
+<td><code>libs/model-training/src/model_training/round2_train.py::register_round2_adapter</code></td>
+<td>Hypernetwork adapters produced by oracle-teacher distillation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Bin key structure.</strong> Oracle adapters are produced per corpus bin. There are 25 bins:</p>
+<ul>
+<li><code>&lt;phase&gt;_&lt;benchmark&gt;</code> for 4 pipeline phases (<code>decompose</code>, <code>plan</code>, <code>code</code>, <code>integrate</code>) × 6 benchmarks (<code>humaneval</code>, <code>mbpp</code>, <code>apps</code>, <code>bigcodebench</code>, <code>ds_1000</code>, <code>livecodebench</code>) = 24 bins.</li>
+<li><code>diagnose_pooled</code> for the 5th phase, pooled across all benchmarks = 1 bin.</li>
+</ul>
+<p>Example oracle IDs: <code>oracle_code_humaneval</code>, <code>oracle_plan_mbpp</code>, <code>oracle_diagnose_pooled</code>.</p>
+<h3 id="file-contents">File Contents<a class="headerlink" href="#file-contents" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Format</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>adapter.safetensors</code></td>
+<td>safetensors</td>
+<td>LoRA weight matrices (A and B) for all targeted layers</td>
+</tr>
+<tr>
+<td><code>adapter_config.json</code></td>
+<td>JSON</td>
+<td>PEFT configuration: rank, alpha, target modules, base model ID</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>adapter_config.json</code> follows the standard PEFT format, ensuring adapters are loadable by any PEFT-compatible tool without Rune-specific code.</p>
+<hr />
+<h2 id="sqlite-schema">SQLite Schema<a class="headerlink" href="#sqlite-schema" title="Permanent link">&para;</a></h2>
+<p>The adapter registry maintains a SQLite database at <code>~/.rune/adapter_registry.db</code>. This database is the source of truth for adapter metadata — the filesystem stores weights, SQLite stores everything else.</p>
+<h3 id="adapterrecord-table-adapter_records">AdapterRecord (table: adapter_records)<a class="headerlink" href="#adapterrecord-table-adapter_records" title="Permanent link">&para;</a></h3>
+<p>The schema is defined as a SQLModel class (<code>AdapterRecord</code>). Fields with <code>(indexed)</code> have <code>Field(index=True)</code> in the model definition.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>TEXT PRIMARY KEY</td>
+<td>UUID string</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>INTEGER NOT NULL</td>
+<td>Lineage tracking</td>
+</tr>
+<tr>
+<td><code>task_type</code></td>
+<td>TEXT NOT NULL</td>
+<td>e.g. 'bug-fix' (indexed)</td>
+</tr>
+<tr>
+<td><code>base_model_id</code></td>
+<td>TEXT NOT NULL</td>
+<td>e.g. 'Qwen/Qwen3.5-9B'</td>
+</tr>
+<tr>
+<td><code>rank</code></td>
+<td>INTEGER NOT NULL</td>
+<td>LoRA rank</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>TEXT NOT NULL</td>
+<td>ISO 8601</td>
+</tr>
+<tr>
+<td><code>file_path</code></td>
+<td>TEXT NOT NULL</td>
+<td>Path to .safetensors</td>
+</tr>
+<tr>
+<td><code>file_hash</code></td>
+<td>TEXT NOT NULL</td>
+<td>SHA-256</td>
+</tr>
+<tr>
+<td><code>file_size_bytes</code></td>
+<td>INTEGER NOT NULL</td>
+<td></td>
+</tr>
+<tr>
+<td><code>pass_rate</code></td>
+<td>REAL</td>
+<td>0.0-1.0, NULL if unevaluated</td>
+</tr>
+<tr>
+<td><code>fitness_score</code></td>
+<td>REAL</td>
+<td>Composite fitness, NULL if unevaluated</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>TEXT NOT NULL</td>
+<td>'distillation', 'evolution', 'manual'</td>
+</tr>
+<tr>
+<td><code>task_type</code> reserved values</td>
+<td>—</td>
+<td><code>round2_hypernet</code> is reserved for round-2 distillation adapters; <code>oracle_&lt;bin_key&gt;</code> patterns are set for per-bin oracle adapters</td>
+</tr>
+<tr>
+<td><code>session_id</code></td>
+<td>TEXT NOT NULL</td>
+<td>Session that produced this</td>
+</tr>
+<tr>
+<td><code>is_archived</code></td>
+<td>INTEGER DEFAULT 0</td>
+<td>Soft delete</td>
+</tr>
+<tr>
+<td><code>parent_ids</code></td>
+<td>TEXT</td>
+<td>JSON list of parent adapter IDs</td>
+</tr>
+<tr>
+<td><code>generation</code></td>
+<td>INTEGER DEFAULT 0</td>
+<td>Evolutionary generation</td>
+</tr>
+<tr>
+<td><code>training_task_hash</code></td>
+<td>TEXT</td>
+<td>Deduplication key (indexed)</td>
+</tr>
+<tr>
+<td><code>agent_id</code></td>
+<td>TEXT</td>
+<td>Swarm agent identifier</td>
+</tr>
+</tbody>
+</table>
+<p>Indexing is handled by SQLModel via <code>Field(index=True)</code> on the model class — no separate index creation is needed.</p>
+<hr />
+<h2 id="write-once-enforcement-policy">Write-Once Enforcement Policy<a class="headerlink" href="#write-once-enforcement-policy" title="Permanent link">&para;</a></h2>
+<p>Adapter immutability is a correctness requirement, not a convention. The write-once policy prevents catastrophic forgetting — an existing adapter must never be overwritten by a new one. This is enforced at two levels.</p>
+<h3 id="storage-api-level">Storage API Level<a class="headerlink" href="#storage-api-level" title="Permanent link">&para;</a></h3>
+<p>The <code>adapter_registry</code> library exposes a <code>store()</code> method that is the only code path for writing adapters. This method enforces:</p>
+<ol>
+<li><strong>ID uniqueness</strong>: If <code>id</code> already exists in SQLite, the write is rejected with <code>AdapterAlreadyExistsError</code>.</li>
+<li><strong>Path uniqueness</strong>: If <code>file_path</code> already exists on the filesystem, the write is rejected.</li>
+<li><strong>No update API</strong>: There is no overwrite or update-weights method. The API surface makes overwrites impossible by omission.</li>
+</ol>
+<h3 id="lifecycle-operations">Lifecycle Operations<a class="headerlink" href="#lifecycle-operations" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Allowed</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Create new adapter</td>
+<td>Yes</td>
+<td><code>store()</code> — new ID, new path</td>
+</tr>
+<tr>
+<td>Read adapter metadata</td>
+<td>Yes</td>
+<td><code>retrieve_by_id()</code>, <code>query_by_task_type()</code>, <code>query_best_for_task()</code>, <code>list_all()</code></td>
+</tr>
+<tr>
+<td>Read adapter weights</td>
+<td>Yes</td>
+<td>Load <code>.safetensors</code> from <code>file_path</code></td>
+</tr>
+<tr>
+<td>Overwrite existing adapter</td>
+<td>No</td>
+<td>Rejected by storage API with <code>AdapterAlreadyExistsError</code></td>
+</tr>
+<tr>
+<td>Delete adapter file</td>
+<td>No</td>
+<td>Not exposed in API</td>
+</tr>
+<tr>
+<td>Archive adapter (soft delete)</td>
+<td>Yes</td>
+<td><code>archive()</code> sets <code>is_archived = 1</code></td>
+</tr>
+<tr>
+<td>Update fitness score</td>
+<td>Yes</td>
+<td><code>update_fitness()</code> — metadata-only, weights unchanged</td>
+</tr>
+</tbody>
+</table>
+<p>Metadata fields (<code>pass_rate</code>, <code>fitness_score</code>, <code>is_archived</code>) are mutable because they describe the adapter's evaluation state, not its weights. The weight file and its hash are immutable after creation.</p>
+<h3 id="new-versions-not-overwrites">New Versions, Not Overwrites<a class="headerlink" href="#new-versions-not-overwrites" title="Permanent link">&para;</a></h3>
+<p>When the evolution operator produces a new adapter from one or more parents, it creates a new adapter entry with <code>parent_ids</code> (a JSON list) pointing to the sources. The original adapters remain unchanged. The version field tracks lineage — version 2 of an adapter is a successor to version 1, but version 1 still exists and is still queryable.</p>
+<h3 id="round-2-lineage">Round-2 Lineage<a class="headerlink" href="#round-2-lineage" title="Permanent link">&para;</a></h3>
+<p>Round-2 hypernetwork adapters follow a specific lineage pattern distinct from evolution merges:</p>
+<ul>
+<li><code>generation = 2</code> — distinguishes round-2 adapters from round-1 output.</li>
+<li><code>parent_ids = json.dumps(sorted(oracle_ids))</code> — the sorted list of teacher oracle adapter IDs used during training (up to 25, one per bin).</li>
+<li><code>task_type = "round2_hypernet"</code> — reserved value identifying the adapter class.</li>
+</ul>
+<p><code>get_lineage(id)</code> on a round-2 adapter walks the <code>parent_ids</code> chain back to the oracle set, giving a reproducible audit trail from the distilled hypernetwork output back to every teacher signal that shaped it. Because <code>parent_ids</code> is sorted, two round-2 adapters trained from the same oracle set have byte-identical <code>parent_ids</code> strings, which simplifies reproducibility checks.</p>
+<hr />
+<h2 id="querying-without-gpu">Querying Without GPU<a class="headerlink" href="#querying-without-gpu" title="Permanent link">&para;</a></h2>
+<p>A design requirement is that adapter metadata must be queryable without loading weights into GPU memory. The SQLite database stores all metadata needed for adapter selection, fitness ranking, and lifecycle management. The only operation that requires GPU memory is loading <code>adapter.safetensors</code> into the inference provider for inference.</p>
+<p>This separation means the adapter registry can power dashboards, CLI tools, and batch evaluation scripts on CPU-only machines while the GPU machines handle serving and training.</p>
+<hr />
+<h2 id="storage-budget">Storage Budget<a class="headerlink" href="#storage-budget" title="Permanent link">&para;</a></h2>
+<p>At LoRA rank 64 targeting all attention layers of Qwen/Qwen3.5-9B, a single adapter is approximately 50-200 MB depending on target modules. <!-- TODO(benchmarks-pending): measure actual adapter sizes on Qwen3.5-9B and refine the range --> At the upper bound:</p>
+<table>
+<thead>
+<tr>
+<th>Adapters</th>
+<th>Storage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>100</td>
+<td>~20 GB</td>
+</tr>
+<tr>
+<td>500</td>
+<td>~100 GB</td>
+</tr>
+<tr>
+<td>1000</td>
+<td>~200 GB</td>
+</tr>
+</tbody>
+</table>
+<p>This is well within local SSD capacity. The SQLite database remains small (&lt; 10 MB) even at 1000 adapters — metadata is text and numbers, not weights.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="../../assets/mermaid-loader.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

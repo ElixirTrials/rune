@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        <meta name="author" content="Noah">
+        
+        <link rel="shortcut icon" href="../../img/favicon.ico">
+        <title>Discussion - Rune Documentation</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <link href="../../assets/_mkdocstrings.css" rel="stylesheet">
+        <link href="../../assets/custom.css" rel="stylesheet">
+        <link href="../../assets/academic.css" rel="stylesheet">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../..">Rune Documentation</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href="../.." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../implementation-plan/" class="nav-link">Implementation Plan</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Architecture</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../architecture/recursive-loop/" class="dropdown-item">Recursive Loop</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/monorepo-mapping/" class="dropdown-item">Monorepo Mapping</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/adapter-storage/" class="dropdown-item">Adapter Storage</a>
+</li>
+                                    
+<li>
+    <a href="../../architecture/multi-gpu-strategy/" class="dropdown-item">GPU Strategy</a>
+</li>
+                                    
+<li>
+    <a href="../../swarm-architecture/" class="dropdown-item">Swarm Architecture</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Appendices</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../appendices/risk-matrix/" class="dropdown-item">Risk Matrix</a>
+</li>
+                                    
+<li>
+    <a href="../../appendices/build-order/" class="dropdown-item">Build Order</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Scientific Article</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Overview</a>
+</li>
+                                    
+<li>
+    <a href="../abstract/" class="dropdown-item">Abstract</a>
+</li>
+                                    
+<li>
+    <a href="../background/" class="dropdown-item">Background</a>
+</li>
+                                    
+<li>
+    <a href="../methods/" class="dropdown-item">Methods</a>
+</li>
+                                    
+<li>
+    <a href="../results/" class="dropdown-item">Results</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Discussion</a>
+</li>
+                                    
+<li>
+    <a href="../references/" class="dropdown-item">References</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Components</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../components-overview/" class="dropdown-item">Overview</a>
+</li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">adapter-registry</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../adapter-registry/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">api-service</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../api-service/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evaluation</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evaluation/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">events-py</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../events-py/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">evolution-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../evolution-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">inference</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../inference/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">model-training</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../model-training/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">rune-agent</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../rune-agent/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">shared</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../shared/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                    
+  <li class="dropdown-submenu">
+    <a href="#" class="dropdown-item">training-svc</a>
+    <ul class="dropdown-menu">
+            
+<li>
+    <a href="../../training-svc/api/" class="dropdown-item">API Reference</a>
+</li>
+    </ul>
+  </li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../results/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../references/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="2"><a href="#discussion" class="nav-link">Discussion</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="3"><a href="#expected-contributions" class="nav-link">Expected Contributions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#limitations" class="nav-link">Limitations</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#open-research-questions" class="nav-link">Open Research Questions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#future-work" class="nav-link">Future Work</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="3"><a href="#broader-implications" class="nav-link">Broader Implications</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h2 id="discussion">Discussion<a class="headerlink" href="#discussion" title="Permanent link">&para;</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Research Status</p>
+<p>Rune's infrastructure is built and tested (five-phase pipeline, benchmark
+evaluation framework, adapter registry, model registry with DeltaCoder
+warm-start, 776+ tests passing). GPU training runs and adapter evaluations
+have not been conducted. All claims in this section are qualified as
+<strong>expected</strong> (grounded in prior work) or <strong>proposed</strong> (requiring empirical
+validation). No empirical claims are made.</p>
+</div>
+<hr />
+<h3 id="expected-contributions">Expected Contributions<a class="headerlink" href="#expected-contributions" title="Permanent link">&para;</a></h3>
+<p><strong>1. Trajectory modality extension (proposed).</strong> Rune proposes extending the hypernetwork-to-LoRA mechanism from document QA (Doc-to-LoRA)<sup id="fnref:charakorn2026doc2lora"><a class="footnote-ref" href="#fn:charakorn2026doc2lora">5</a></sup> to code execution trajectories — a structurally distinct input modality with temporal ordering, procedural abstraction, and self-correcting structure. This is the central novel contribution claim. The extension is <strong>proposed</strong> and requires Phase 1 empirical validation to confirm. No prior work has applied hypernetwork-based adapter generation to code execution traces; the trajectory modality argument established in <a href="../background/">Background</a> provides the theoretical grounding, but the empirical question — whether trajectory-conditioned adapters produce useful weight updates — is open.</p>
+<p><strong>2. Parametric episodic memory for coding agents (expected).</strong> If the trajectory modality extension holds, Rune provides a composable weight-space memory alternative to context-window-based memory for long-running coding agents, directly addressing the limitation Pink et al. identify as the missing capability for long-term LLM agents.<sup id="fnref:pink2025episodic"><a class="footnote-ref" href="#fn:pink2025episodic">1</a></sup> Each adapter is an episode — a persistent, retrievable, composable unit of procedural knowledge stored in weight space rather than token space. The connection to the episodic memory position is <strong>expected</strong> — it depends on Phase 1 passing.</p>
+<p><strong>3. Fitness-driven adapter lifecycle (specified).</strong> The Evolution Operator's empirical fitness testing before adapter promotion, contrasted with LoRA Soups' assumption-based composition.<sup id="fnref:prabhakar2024lorasoups"><a class="footnote-ref" href="#fn:prabhakar2024lorasoups">8</a></sup> This is <strong>specified</strong> in the architecture regardless of Phase 1 outcome — it is implemented in evolution-svc (see <a href="../methods/#evolution-operator">Methods</a>). The four lifecycle operations (consolidate, update, forget, merge) and the fitness criterion <span class="arithmatex">\(\phi(a) = \alpha \cdot \text{pass\_rate}(a) + (1 - \alpha) \cdot \text{generalization}(a)\)</span> are architectural commitments. Whether the fitness criterion selects meaningfully better adapters is <strong>proposed</strong> — it requires Phase 2+ empirical validation.</p>
+<p><strong>4. PBB criterion validation for trajectory adapters (proposed).</strong> If Rune's adapters satisfy the PBB program evaluation criterion (see <a href="../results/#pbb-inspired-evaluation-criterion-proposed-secondary-criterion">Results</a>), this extends Cook et al.'s finding from instruction-following to trajectory-conditioned weight-based procedural encoding.<sup id="fnref:cook2025pbb"><a class="footnote-ref" href="#fn:cook2025pbb">2</a></sup> The PBB criterion tests whether an adapter enables the model to evaluate a program on held-out inputs without those inputs in context — a stronger form of procedural encoding than Pass@1 improvement alone. This is <strong>proposed</strong> — a stronger test than Pass@1 improvement alone, contingent on Phase 1 infrastructure.</p>
+<p><strong>5. Round-2 oracle-teacher distillation via functional-LoRA teachers (specified; empirical results TBD).</strong> PR #28 introduces a second hypernetwork training loop in which the Sakana HyperLoRA hypernetwork is distilled against 25 per-bin oracle adapters (4 phases × 6 benchmarks + <code>diagnose_pooled</code>) as teacher signals, using a combined KL + CE loss. The key architectural invariant is the functional-LoRA teacher mechanism: oracles are applied to the base model via an <code>apply_functional_lora</code> context manager that never structurally mutates the base model — no <code>PeftModel</code> wrappers and no <code>LoraLayer</code> replacements are introduced. This eliminates PEFT hook-leakage risk between teacher and student forward passes within the same training step, a non-trivial correctness property when two oracle passes execute over shared model state. A strict success gate (<code>round2_gate.evaluate_round2_gate</code>) requires ≥ 4 of 6 benchmarks to improve by ≥ 2.0% Pass@1 with no regression exceeding 1.0% on any single benchmark; the gate drives the <code>scripts/evaluate_round2.py</code> CLI, which exits 0 on PASS and 1 on FAIL for CI integration. This contribution is <strong>specified</strong> in full — the modules <code>round2_train.py</code>, <code>oracle_cache.py</code>, <code>round2_config.py</code>, <code>round2_gate.py</code>, and their associated CLIs are implemented and test-covered — but the empirical question of whether round-2 distillation yields measurable Pass@1 improvement over round-1 remains open pending GPU operator runs.</p>
+<hr />
+<h3 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h3>
+<h4 id="pre-validation-status">Pre-Validation Status<a class="headerlink" href="#pre-validation-status" title="Permanent link">&para;</a></h4>
+<p>As of this writing, the system infrastructure is substantially implemented: the five-phase pipeline (decompose, plan, code, integrate, diagnose/repair), adapter registry, model registry with DeltaCoder warm-start, benchmark evaluation framework (HumanEval+, MBPP+, BigCodeBench with smoke/mini/full tiers), GitHub mining pipeline, and swarm orchestration are all built and tested with 776+ tests passing. The round-2 distillation infrastructure introduced in PR #28 is also fully implemented and test-covered: the round-2 training CLI (<code>scripts/train_round2.py</code>), oracle adapter cache (<code>libs/model-training/src/model_training/oracle_cache.py::OracleAdapterCache</code>), strict success gate (<code>round2_gate.evaluate_round2_gate</code>; <code>scripts/evaluate_round2.py</code>), oracle validator (<code>scripts/validate_oracles.py</code>), S3 manifest upload (<code>libs/corpus-producer/src/corpus_producer/s3_uploader.py</code>), GPU-distributed corpus generation (<code>scripts/phase_corpus_producer.py</code> with <code>--shard</code> and <code>--cuda-visible-devices</code> flags), and SWE-Bench-Lite <code>score()</code> (previously <code>NotImplementedError</code>, now implemented with an env-gated clone/apply/pytest pipeline) are all in place. However, no GPU training runs have been executed, no adapters have been generated from real trajectories, and no Pass@1 measurements have been taken. This article presents a research proposal with substantial infrastructure validation, not a completed study.</p>
+<p>Phase 0 environment validation (vLLM + QLoRA compatibility) has not been confirmed. The kill-switch gate outcome is unknown. Every <strong>expected</strong> claim in this article depends on Phase 1 passing. The experimental design in <a href="../results/">Results</a> describes planned measurements using the implemented benchmark framework; the Discussion interprets those planned measurements in terms of their implications — but neither the measurements nor the implications have been empirically grounded.</p>
+<h4 id="adapter-interference-risk">Adapter Interference Risk<a class="headerlink" href="#adapter-interference-risk" title="Permanent link">&para;</a></h4>
+<p>Zhang et al. show that orthogonality between adapter subspaces does not guarantee semantic disentanglement — interference can occur even in mathematically orthogonal subspaces.<sup id="fnref:zhang2025orthogonality"><a class="footnote-ref" href="#fn:zhang2025orthogonality">3</a></sup> Zou demonstrates that additive composition can reactivate latent reasoning traces from individual adapters.<sup id="fnref:zou2026merging"><a class="footnote-ref" href="#fn:zou2026merging">4</a></sup> These findings establish that multi-adapter composition carries inherent risk that cannot be eliminated through geometric constraints alone.</p>
+<p>Rune's default single-adapter retrieval mode mitigates this for the common case. Multi-adapter composition — the ablation target for Phase 5+ — remains unvalidated. The Evolution Operator's fitness-driven selection is designed to detect interference empirically rather than prevent it theoretically (see <a href="../methods/#evolution-operator">Methods</a>), but this detection mechanism has not been tested. If interference degrades composed adapter quality below single-adapter baselines, the multi-adapter composition mode will be disabled in favor of single-adapter selection — the fallback is architecturally clean because single-adapter selection is the specified default.</p>
+<h4 id="hypernetwork-mode-collapse">Hypernetwork Mode Collapse<a class="headerlink" href="#hypernetwork-mode-collapse" title="Permanent link">&para;</a></h4>
+<p>The hypernetwork may learn the degenerate solution — producing a near-identical "mean adapter" regardless of input trajectory. Diversity regularization in the training loss is the primary mitigation, but the correct regularization weight is unknown before training. The diversity threshold (cosine similarity &lt; 0.9) documented in the <a href="../results/#inter-adapter-cosine-diversity">Results</a> section is a heuristic, not a theoretically grounded bound.</p>
+<p>If mode collapse occurs in Phase 1, the kill-switch gate will fail — but the specific failure mode (loss converges, Pass@1 does not improve, adapters cluster in PCA) will provide diagnostic information about whether targeted regularization can recover. The warning signs documented in the <a href="../../appendices/risk-matrix/">risk matrix</a> — adapter clustering, cosine similarity approaching 1.0, training loss convergence without Pass@1 improvement — are tracked via MLflow to detect collapse early before the full training budget is exhausted.</p>
+<h4 id="cold-start-corpus-size">Cold-Start Corpus Size<a class="headerlink" href="#cold-start-corpus-size" title="Permanent link">&para;</a></h4>
+<p>The hypernetwork training (Phase 4) requires a corpus of pre-trained adapters from Phase 3. The minimum corpus size for useful hypernetwork training is unknown. The implementation plan sets a target of 50--100 diverse task-adapter pairs, but this is a heuristic estimate. Corpus diversity — over task types, failure modes, and correction patterns — matters more than raw count, but the minimum diversity level is also unknown.</p>
+<p>The cold-start problem is two-layered: first, enough trajectories to train Phase 3 direct LoRA adapters; second, enough Phase 3 adapters to train the Phase 4 hypernetwork. If early-phase trajectory collection produces insufficiently diverse corpora, both training stages will be degraded. The Phase 3 direct LoRA bootstrapping path (see <a href="../methods/#adapter-distillation-pipeline">Methods</a>) is designed to accumulate the initial adapter corpus without requiring the hypernetwork, but the accumulation rate — how many useful adapters per unit of compute time — is an empirical unknown.</p>
+<hr />
+<h3 id="open-research-questions">Open Research Questions<a class="headerlink" href="#open-research-questions" title="Permanent link">&para;</a></h3>
+<h4 id="procedural-encoding-in-weight-space">Procedural Encoding in Weight Space<a class="headerlink" href="#procedural-encoding-in-weight-space" title="Permanent link">&para;</a></h4>
+<p>Can code execution trajectories be encoded into LoRA weight deltas such that the base model can execute the encoded procedure on novel inputs without those inputs in context? This is the PBB criterion applied to trajectories.<sup id="fnref2:cook2025pbb"><a class="footnote-ref" href="#fn:cook2025pbb">2</a></sup> Background establishes PBB's finding that instructions can substitute for up to 100 examples; the question is whether trajectory-conditioned adapters close the gap between encoding efficiency and reliable weight-based execution.</p>
+<p>The question has two levels: (a) does Pass@1 improve — the kill-switch; and (b) does the PBB program evaluation criterion hold — a stronger test. A system could pass (a) by improving solution generation without achieving (b). Level (a) tests whether the trajectory signal reaches the weights at all; level (b) tests whether the encoded knowledge is procedurally executable rather than merely a statistical bias toward correct-looking code.</p>
+<h4 id="recursive-refinement-value">Recursive Refinement Value<a class="headerlink" href="#recursive-refinement-value" title="Permanent link">&para;</a></h4>
+<p>The generate-execute-reflect loop produces trajectories of variable depth (1 to <code>max_attempts</code> attempts). Does recursive refinement — multiple attempts with error feedback — produce substantially better adapters than single-attempt trajectories? If a successful first-attempt trajectory and a successful 5-attempt trajectory produce similar adapters, the recursive loop adds trajectory collection cost without improving adapter quality. If multi-attempt trajectories produce better adapters (because they contain failure-recovery patterns), the recursive loop is essential to the architecture.</p>
+<p>This question is not addressed by the Phase 1 kill-switch, which tests whether any trajectory-conditioned adapter improves Pass@1. It requires a controlled ablation: single-attempt vs multi-attempt trajectories, matched on task, compared on resulting adapter quality. The ablation would need to control for task difficulty — multi-attempt trajectories may correlate with harder tasks, confounding the comparison.</p>
+<h4 id="composition-interference">Composition Interference<a class="headerlink" href="#composition-interference" title="Permanent link">&para;</a></h4>
+<p>At what point does multi-adapter composition (additive accumulation across hierarchy levels) degrade performance relative to single-adapter selection? Background documents the theoretical concern; Zhang et al.<sup id="fnref2:zhang2025orthogonality"><a class="footnote-ref" href="#fn:zhang2025orthogonality">3</a></sup> show orthogonality is insufficient; Zou<sup id="fnref2:zou2026merging"><a class="footnote-ref" href="#fn:zou2026merging">4</a></sup> shows latent trace reactivation. But no empirical measurement exists for Rune's specific adapter distribution.</p>
+<p>The question is not whether composition can interfere — it can — but at what combination depth and diversity level interference becomes the dominant effect. The Phase 5+ ablation target for multi-adapter composition (see <a href="../results/#phase-4-ablation-structure-planned">Results</a>) is designed to answer this question empirically. The three-level hierarchy (project, domain, task) defined in <a href="../methods/#memory-composition-strategy">Methods</a> creates a natural experimental structure: single-level adapters vs two-level composition vs full three-level composition, compared on the same held-out evaluation tasks.</p>
+<h4 id="cold-start-minimum">Cold-Start Minimum<a class="headerlink" href="#cold-start-minimum" title="Permanent link">&para;</a></h4>
+<p>What is the minimum corpus size — in terms of trajectory count and diversity — required to train a hypernetwork that generates useful adapters? The implementation plan uses 50--100 as a heuristic. The cold-start minimum determines the practical feasibility of the Phase 4 training approach and whether the Phase 3 accumulation rate is sufficient. If the minimum is substantially higher than 100, the bootstrapping phase becomes a bottleneck that delays the transition from direct LoRA fine-tuning to hypernetwork-based generation.</p>
+<p>PR #28 gap 6 resolved a previously blocking condition: <code>task_description</code> propagation through <code>_make_pair_record</code> in <code>libs/model-training/src/model_training/d2l_data.py</code> was absent, causing the Plan B encoder pretraining loop's <code>MIN_RETENTION_RATIO = 0.80</code> gate to observe 0% retention on well-formed trajectories. The fix threads <code>task_description</code> from the trajectory-level record through the closure into the returned pair dict; retention flips from 0% to ~100% on well-formed trajectories, and the gate is now cleared. This unblocks the Plan B encoder pretraining loop, but the broader cold-start question — how much retained corpus is sufficient for useful hypernetwork training — remains an empirical unknown.</p>
+<hr />
+<h3 id="future-work">Future Work<a class="headerlink" href="#future-work" title="Permanent link">&para;</a></h3>
+<h4 id="qdora-integration">QDoRA Integration<a class="headerlink" href="#qdora-integration" title="Permanent link">&para;</a></h4>
+<p>QDoRA (Quantized Decomposed LoRA) decomposes weight updates into magnitude and direction components, more closely mimicking full fine-tuning dynamics. It offers faster convergence on complex reasoning tasks and is compatible with 4-bit quantization. QDoRA is not in the current Rune architecture — it is listed as a future enhancement for the Evolution Operator.</p>
+<p>In the context of the Discussion, QDoRA integration would replace the QLoRA quantization baseline with a decomposed update scheme that potentially improves adapter quality during the Phase 3 direct LoRA bootstrapping stage. Whether QDoRA's convergence advantages transfer to short-horizon adapter training on coding trajectories is unknown and would require empirical comparison against the QLoRA baseline introduced in Phase 2.<sup id="fnref:dettmers2023qlora"><a class="footnote-ref" href="#fn:dettmers2023qlora">10</a></sup> The decomposition into magnitude and direction components is theoretically motivated — full fine-tuning updates both, while standard LoRA constrains updates to a low-rank subspace that may not preserve the magnitude-direction decomposition — but the practical benefit for trajectory-conditioned adapters is an open question.</p>
+<h4 id="cross-project-transfer">Cross-Project Transfer<a class="headerlink" href="#cross-project-transfer" title="Permanent link">&para;</a></h4>
+<p>The three-level adapter hierarchy (project, domain, task levels) is designed to support transfer: domain-level adapters should capture patterns that generalize across projects. Whether domain-level adapters trained on one project's trajectories produce meaningful improvement on a different project's tasks is an open empirical question.</p>
+<p>Cross-project transfer testing would require: (a) accumulating adapters from at least two distinct projects; (b) evaluating domain-level adapters trained on project A's trajectories on tasks from project B; (c) comparing against project-specific and vanilla baselines. The domain-level adapter design in <a href="../methods/#memory-composition-strategy">Methods</a> provides the architectural hook for this experiment, but the experiment itself is contingent on accumulating sufficient adapter diversity across multiple projects — a prerequisite that may take months of production use to satisfy.</p>
+<h4 id="online-adaptation">Online Adaptation<a class="headerlink" href="#online-adaptation" title="Permanent link">&para;</a></h4>
+<p>The current architecture assumes a batch training paradigm: collect trajectories, train adapters offline, update the registry. Online adaptation would mean the hypernetwork updates continuously as new trajectories arrive, without discrete training runs. This would require streaming training infrastructure and a mechanism to prevent catastrophic forgetting in the hypernetwork itself — not just in the base model — as new trajectories arrive.<sup id="fnref:hu2021lora"><a class="footnote-ref" href="#fn:hu2021lora">9</a></sup></p>
+<p>Online adaptation is explicitly out of scope for the current implementation plan but is a natural extension if Phase 4 hypernetwork training proves stable. The transition from batch to online training would also require changes to the adapter registry's write-once semantics — online updates would produce a continuous stream of adapter versions rather than discrete, immutable snapshots.</p>
+<hr />
+<h3 id="broader-implications">Broader Implications<a class="headerlink" href="#broader-implications" title="Permanent link">&para;</a></h3>
+<p>Pink et al. argue that episodic memory is the missing capability for long-term LLM agents.<sup id="fnref2:pink2025episodic"><a class="footnote-ref" href="#fn:pink2025episodic">1</a></sup> Rune's adapter-per-session design, operating within a five-phase pipeline (decompose, plan, code, integrate, diagnose/repair) with two-step error recovery, is one concrete instantiation of this position — each adapter is an episode, retrieved by task similarity, composable with other episodes. Whether this architecture achieves the episodic memory properties Pink et al. identify (persistence, selective retrieval, compositional combination) is <strong>proposed</strong> — it depends on Phase 1+ empirical validation.</p>
+<p>The trajectory modality argument extends PBB's procedural encoding insight:<sup id="fnref3:cook2025pbb"><a class="footnote-ref" href="#fn:cook2025pbb">2</a></sup> if instructions are efficient training signal, trajectories — which contain both the procedure and its execution context — may be the most information-dense substrate available for weight-based procedural encoding. This is distinct from the input modalities validated in related work: documents (Doc-to-LoRA<sup id="fnref2:charakorn2026doc2lora"><a class="footnote-ref" href="#fn:charakorn2026doc2lora">5</a></sup>), in-context examples (SHINE<sup id="fnref:liu2026shine"><a class="footnote-ref" href="#fn:liu2026shine">7</a></sup>), and text instructions (Text-to-LoRA<sup id="fnref:charakorn2025t2l"><a class="footnote-ref" href="#fn:charakorn2025t2l">6</a></sup>). Each of these modalities has been validated independently; Rune's contribution is <strong>proposed</strong> as the trajectory extension of the same mechanism.</p>
+<p>The kill-switch gate structure is itself a methodological point: explicitly conditioning infrastructure investment on hypothesis validation before building dependent components. If Phase 1 fails, the result is not a negative result about Rune's architecture — it is a null result about whether the trajectory modality extends the Doc-to-LoRA mechanism, which narrows the search space for future approaches.</p>
+<hr />
+<div class="footnote">
+<hr />
+<ol>
+<li id="fn:pink2025episodic">
+<p>Pink, O., et al. (2025). The Missing Piece: Episodic Memory for Long-Term LLM Agents. <a href="../references/#pink2025episodic">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:pink2025episodic" title="Jump back to footnote 1 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:pink2025episodic" title="Jump back to footnote 1 in the text">&#8617;</a></p>
+</li>
+<li id="fn:cook2025pbb">
+<p>Cook, J., et al. (2025). Programming by Backprop: An Instruction is Worth 100 Examples When Finetuning LLMs. <em>arXiv:2506.18777</em>. <a href="../references/#cook2025pbb">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:cook2025pbb" title="Jump back to footnote 2 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:cook2025pbb" title="Jump back to footnote 2 in the text">&#8617;</a><a class="footnote-backref" href="#fnref3:cook2025pbb" title="Jump back to footnote 2 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zhang2025orthogonality">
+<p>Zhang, Y., et al. (2025). Inter-LoRA Orthogonality and Composition Interference. <a href="../references/#zhang2025orthogonality">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zhang2025orthogonality" title="Jump back to footnote 3 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:zhang2025orthogonality" title="Jump back to footnote 3 in the text">&#8617;</a></p>
+</li>
+<li id="fn:zou2026merging">
+<p>Zou, H., et al. (2026). Latent Trace Reactivation in Merged LoRA Adapters. <a href="../references/#zou2026merging">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:zou2026merging" title="Jump back to footnote 4 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:zou2026merging" title="Jump back to footnote 4 in the text">&#8617;</a></p>
+</li>
+<li id="fn:charakorn2026doc2lora">
+<p>Charakorn, R., et al. (2026). Doc-to-LoRA: Hypernetwork Adaptation from Documents. <em>arXiv:2602.15902</em>. <a href="../references/#charakorn2026doc2lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:charakorn2026doc2lora" title="Jump back to footnote 5 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:charakorn2026doc2lora" title="Jump back to footnote 5 in the text">&#8617;</a></p>
+</li>
+<li id="fn:charakorn2025t2l">
+<p>Charakorn, R., et al. (2025). Text-to-LoRA: Instant Transformer Adaption. <a href="../references/#charakorn2025t2l">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:charakorn2025t2l" title="Jump back to footnote 6 in the text">&#8617;</a></p>
+</li>
+<li id="fn:liu2026shine">
+<p>Liu, Y., et al. (2026). SHINE: Scalable Hypernetwork-based In-context Learning. <a href="../references/#liu2026shine">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:liu2026shine" title="Jump back to footnote 7 in the text">&#8617;</a></p>
+</li>
+<li id="fn:prabhakar2024lorasoups">
+<p>Prabhakar, A., et al. (2024). LoRA Soups: Merging LoRAs for Practical Skill Composition Tasks. <a href="../references/#prabhakar2024lorasoups">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:prabhakar2024lorasoups" title="Jump back to footnote 8 in the text">&#8617;</a></p>
+</li>
+<li id="fn:hu2021lora">
+<p>Hu, E. J., et al. (2021). LoRA: Low-Rank Adaptation of Large Language Models. <em>arXiv:2106.09685</em>. <a href="../references/#hu2021lora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:hu2021lora" title="Jump back to footnote 9 in the text">&#8617;</a></p>
+</li>
+<li id="fn:dettmers2023qlora">
+<p>Dettmers, T., et al. (2023). QLoRA: Efficient Finetuning of Quantized LLMs. <em>arXiv:2305.14314</em>. <a href="../references/#dettmers2023qlora">Full entry</a>&#160;<a class="footnote-backref" href="#fnref:dettmers2023qlora" title="Jump back to footnote 10 in the text">&#8617;</a></p>
+</li>
+</ol>
+</div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+        <script src="../../assets/mermaid-loader.js"></script>
+        <script src="../../assets/mathjax-config.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <script src="../../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
