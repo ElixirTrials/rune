@@ -12,13 +12,13 @@
 #
 #  Usage:
 #    scripts/run_hpo.sh                                 # 30 trials, all repos
-#    scripts/run_hpo.sh --dataset data/pairs/fastapi_fastapi.jsonl
+#    scripts/run_hpo.sh --dataset data/github-pairs/fastapi_fastapi.jsonl
 #    scripts/run_hpo.sh --n-trials 10 --subsample 200   # quick study
 #    scripts/run_hpo.sh --smoke                         # 2 trials × 1 step
 # ────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-DATASET="data/pairs_all.jsonl"
+DATASET="data/github-pairs/_merged/pairs_all.jsonl"
 N_TRIALS=30
 SUBSAMPLE=500
 KEEP_TOP_K=3
@@ -50,6 +50,17 @@ command -v nvidia-smi >/dev/null \
     || { echo "nvidia-smi not found — HPO needs a GPU" >&2; exit 1; }
 nvidia-smi -L | grep -q "GPU 0" \
     || { echo "no NVIDIA GPU visible" >&2; exit 1; }
+
+# ── data sync (idempotent) ─────────────────────────────────────────────────
+# Mirror training data from the team S3 bucket into ./data. `aws s3 sync`
+# compares size and mtime, so reruns are no-ops when nothing changed.
+S3_DATA_URI="s3://elixirtrials-949678234935-eu-west-2-artifacts/training-data/"
+command -v aws >/dev/null \
+    || { echo "missing: aws CLI (needed to sync $S3_DATA_URI)" >&2; exit 127; }
+mkdir -p data
+echo "Syncing $S3_DATA_URI → data/"
+aws s3 sync "$S3_DATA_URI" data/
+
 [[ -f "$DATASET" ]] || { echo "dataset not found: $DATASET" >&2; exit 1; }
 
 # ── persistence: route MLflow + AdapterRegistry through the docker stack ───
