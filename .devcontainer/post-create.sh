@@ -50,6 +50,28 @@ if command -v aws &>/dev/null; then
     export RUNE_TRAINING_DATA
     echo "Training data path: $RUNE_TRAINING_DATA"
   fi
+
+  # Hydrate Claude Code credentials from Secrets Manager so the user does
+  # not need to re-run `claude auth login --sso` on every fresh devcontainer.
+  # The host devbox uploads ~/.claude/.credentials.json after a successful
+  # `make login` (see infra/shared/scripts/login.sh). We pull it here only
+  # if a local credentials file does not already exist (preserve any newer
+  # local login).
+  CLAUDE_CRED_FILE="$HOME/.claude/.credentials.json"
+  if [ ! -f "$CLAUDE_CRED_FILE" ]; then
+    CLAUDE_CRED_JSON="$(aws secretsmanager get-secret-value \
+      --secret-id "elixirtrials/dev/claude-credentials" \
+      --region eu-west-2 \
+      --query 'SecretString' --output text 2>/dev/null || true)"
+    if [ -n "$CLAUDE_CRED_JSON" ]; then
+      mkdir -p "$HOME/.claude"
+      printf '%s' "$CLAUDE_CRED_JSON" > "$CLAUDE_CRED_FILE"
+      chmod 600 "$CLAUDE_CRED_FILE"
+      echo "Claude Code credentials restored from Secrets Manager."
+    else
+      echo "Claude Code credentials not in Secrets Manager — first 'login' run on the host will populate them."
+    fi
+  fi
 fi
 
 # -----------------------------------------------------------------------------
