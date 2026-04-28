@@ -30,3 +30,7 @@ go with edits
 ---
 
 Triple check everything when you're done. Make sure you compare the current state to the branch . Don't make a mess of things. After check mypy, ruff linting and formating and pytest. See if you can come up with a clever test to see if our fixes worked in the absence of a gpu and then push everything and update the PR with a comment about what was added.
+
+---
+
+Go over the ci/cd and code reviewers comments. Make sure all linting, formatting, mypy and pytests pass
