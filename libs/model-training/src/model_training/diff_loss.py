@@ -678,9 +678,7 @@ def _compute_step_metrics(
         else:
             midpoint = (changed_weight + unchanged_weight) / 2.0
             changed_mask = label_mask & (shift_weights >= midpoint)
-            context_mask = (
-                label_mask & (shift_weights > 0) & (shift_weights < midpoint)
-            )
+            context_mask = label_mask & (shift_weights > 0) & (shift_weights < midpoint)
 
         n_changed = int(changed_mask.sum().item())
         n_context = int(context_mask.sum().item())
@@ -834,9 +832,7 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
             # Promote `all_masked_batch` mean (0/1 per call) to a clearer
             # name so dashboards show it as a fraction.
             if "train/all_masked_batch" in logs:
-                logs["train/all_masked_batch_frac"] = logs.pop(
-                    "train/all_masked_batch"
-                )
+                logs["train/all_masked_batch_frac"] = logs.pop("train/all_masked_batch")
             self._diff_metric_sums = {}
             self._diff_metric_count = 0
         return super().log(logs, start_time)
