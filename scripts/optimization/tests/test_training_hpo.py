@@ -856,3 +856,174 @@ def test_screening_callback_exposes_final_smoothed_metrics() -> None:
     assert cb.smoothed_loss == pytest.approx(1.0, abs=1e-6)
     assert cb.smoothed_accuracy == pytest.approx(0.9, abs=1e-6)
     assert cb.smoothed_entropy == pytest.approx(0.6, abs=1e-6)
+
+
+def _make_fake_mlflow_run(
+    *,
+    run_id: str,
+    status: str = "FINISHED",
+    pass1: float = 0.5,
+    base_pass1: float = 0.4,
+    train_entropy: list[tuple[int, float]] | None = None,
+    train_loss: list[tuple[int, float]] | None = None,
+    eval_hunk_loss: float = 1.0,
+    eval_hunk_acc: float = 0.6,
+) -> Any:
+    """Build a duck-typed MLflow Run-like object."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        info=SimpleNamespace(run_id=run_id, status=status),
+        data=SimpleNamespace(
+            metrics={
+                "humaneval_pass1": pass1,
+                "humaneval_pass1_base": base_pass1,
+                "eval/hunk_loss": eval_hunk_loss,
+                "eval/hunk_accuracy": eval_hunk_acc,
+            },
+            tags={},
+        ),
+        _train_entropy=train_entropy or [],
+        _train_loss=train_loss or [],
+    )
+
+
+def test_calibrate_returns_defaults_when_mlflow_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from run_training_hpo import (
+        ScreeningFitnessConfig,
+        _calibrate_thresholds_from_mlflow,
+    )
+
+    # Force the mlflow import to raise.
+    import builtins
+    real_import = builtins.__import__
+
+    def _raising_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "mlflow":
+            raise ModuleNotFoundError("mlflow not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _raising_import)
+
+    cfg = ScreeningFitnessConfig()
+    receipt = _calibrate_thresholds_from_mlflow(
+        experiment_name="rune-qlora-hpo",
+        n_runs=3, cfg=cfg, receipt_dir=tmp_path,
+    )
+    assert receipt["entropy_floor"] == pytest.approx(cfg.entropy_floor)
+    assert receipt["min_steps"] == cfg.min_steps_before_pruning
+    assert receipt["validation"] == "FALLBACK_NO_MLFLOW"
+
+
+def test_calibrate_returns_defaults_when_too_few_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fewer than n_runs successful matches => fall back to cfg defaults."""
+    from run_training_hpo import (
+        ScreeningFitnessConfig,
+        _calibrate_thresholds_from_mlflow,
+    )
+
+    fake_runs = [
+        _make_fake_mlflow_run(run_id="r1", train_entropy=[(0, 0.7), (100, 0.6)]),
+    ]
+
+    class _FakeClient:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def get_experiment_by_name(self, name: str) -> Any:
+            from types import SimpleNamespace
+            return SimpleNamespace(experiment_id="1")
+
+        def search_runs(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+            return fake_runs
+
+        def get_metric_history(self, run_id: str, key: str) -> list[Any]:
+            return []
+
+    import sys
+    fake_mlflow = type(sys)("mlflow")
+    fake_mlflow.tracking = type(sys)("mlflow.tracking")
+    fake_mlflow.tracking.MlflowClient = _FakeClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mlflow", fake_mlflow)
+    monkeypatch.setitem(sys.modules, "mlflow.tracking", fake_mlflow.tracking)
+
+    cfg = ScreeningFitnessConfig()
+    receipt = _calibrate_thresholds_from_mlflow(
+        experiment_name="rune-qlora-hpo",
+        n_runs=3, cfg=cfg, receipt_dir=tmp_path,
+    )
+    assert receipt["entropy_floor"] == pytest.approx(cfg.entropy_floor)
+    assert receipt["validation"] == "FALLBACK_INSUFFICIENT_RUNS"
+
+
+def test_calibrate_emits_receipt_and_lowers_floor_against_high_p5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Three runs with steady ~0.6 entropy => floor ≈ max(0.3, 0.6 - 0.05) = 0.55."""
+    from run_training_hpo import (
+        ScreeningFitnessConfig,
+        _calibrate_thresholds_from_mlflow,
+    )
+
+    # Three "healthy" runs all hovering around 0.6 nats post-warmup.
+    histories = {
+        "r1_train/entropy": [(s, 0.62) for s in range(0, 1000, 50)],
+        "r2_train/entropy": [(s, 0.61) for s in range(0, 1000, 50)],
+        "r3_train/entropy": [(s, 0.60) for s in range(0, 1000, 50)],
+        # Loss histories with clear drop after step 100.
+        "r1_train/loss": [(s, 3.5 - 0.001 * max(0, s - 50)) for s in range(0, 1000, 25)],
+        "r2_train/loss": [(s, 3.5 - 0.001 * max(0, s - 50)) for s in range(0, 1000, 25)],
+        "r3_train/loss": [(s, 3.5 - 0.001 * max(0, s - 50)) for s in range(0, 1000, 25)],
+    }
+    fake_runs = [
+        _make_fake_mlflow_run(run_id=f"r{i}", eval_hunk_loss=1.0 - 0.1 * i,
+                              eval_hunk_acc=0.6 + 0.05 * i)
+        for i in (1, 2, 3)
+    ]
+
+    class _MetricEntry:
+        def __init__(self, step: int, value: float) -> None:
+            self.step, self.value = step, value
+
+    class _FakeClient:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def get_experiment_by_name(self, name: str) -> Any:
+            from types import SimpleNamespace
+            return SimpleNamespace(experiment_id="1")
+
+        def search_runs(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+            return fake_runs
+
+        def get_metric_history(self, run_id: str, key: str) -> list[Any]:
+            data = histories.get(f"{run_id}_{key}", [])
+            return [_MetricEntry(s, v) for s, v in data]
+
+    import sys
+    fake_mlflow = type(sys)("mlflow")
+    fake_mlflow.tracking = type(sys)("mlflow.tracking")
+    fake_mlflow.tracking.MlflowClient = _FakeClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mlflow", fake_mlflow)
+    monkeypatch.setitem(sys.modules, "mlflow.tracking", fake_mlflow.tracking)
+
+    cfg = ScreeningFitnessConfig()
+    receipt = _calibrate_thresholds_from_mlflow(
+        experiment_name="rune-qlora-hpo",
+        n_runs=3, cfg=cfg, receipt_dir=tmp_path,
+    )
+    assert receipt["source_run_ids"] == ["r1", "r2", "r3"]
+    # p5 of ~0.60 across runs ≈ 0.60; floor = max(0.3, 0.60 - 0.05) = 0.55.
+    assert receipt["entropy_floor"] == pytest.approx(0.55, abs=0.05)
+    assert receipt["min_steps"] >= 150  # max(150, 1.5*s_star)
+    assert receipt["validation"] in {"PASS", "WARN_RHO_LOW"}
+
+    # Receipt JSON written
+    receipts = list(tmp_path.glob("*.json"))
+    assert len(receipts) == 1
+    payload = json.loads(receipts[0].read_text())
+    assert payload["source_run_ids"] == ["r1", "r2", "r3"]

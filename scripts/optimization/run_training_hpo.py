@@ -696,6 +696,240 @@ class OptunaScreeningCallback:
             )
 
 
+def _calibrate_thresholds_from_mlflow(
+    *,
+    experiment_name: str,
+    n_runs: int,
+    cfg: ScreeningFitnessConfig,
+    receipt_dir: Path,
+    tracking_uri: str | None = None,
+) -> dict[str, Any]:
+    """Derive ``(entropy_floor, min_steps)`` from recent MLflow runs.
+
+    Per ``instructions/hpo_improvements.md`` §2.5:
+
+    * Pull the most recent ``n_runs`` finished runs whose
+      ``humaneval_pass1`` >= ``humaneval_pass1_base`` (i.e. the adapter
+      did not regress baseline). Skip runs missing either metric.
+    * Smooth each run's ``train/entropy`` series with a 25-step EMA after
+      excluding the first 10% of steps (warmup), take the 5th percentile
+      of the smoothed values, then floor across runs is
+      ``max(0.3, p5_aggregate - 0.05)``.
+    * For ``min_steps``: the smallest step at which the 25-step rolling
+      mean of ``train/loss`` first drops more than 0.1 below the
+      step-0 baseline. ``min_steps = max(150, int(1.5 * s_star))``.
+    * Spearman ρ between the screening scalar (computed at end-of-training
+      ``train/loss`` and ``train/token_accuracy``) and the historical
+      hunk-restricted fitness for the same N runs. ρ < 0.6 sets
+      ``validation = "FAIL_RHO_LOW"``; 0.6 <= ρ < 0.7 sets ``"WARN_RHO_LOW"``.
+    * Writes a JSON receipt to ``receipt_dir`` and returns its body.
+
+    Falls back to ``cfg`` defaults when MLflow is unavailable or fewer
+    than ``n_runs`` qualifying runs exist; ``validation`` records the
+    fallback reason.
+    """
+    import datetime  # noqa: PLC0415
+
+    receipt_dir.mkdir(parents=True, exist_ok=True)
+    receipt: dict[str, Any] = {
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds") + "Z",
+        "experiment_name": experiment_name,
+        "source_run_ids": [],
+        "entropy_floor": cfg.entropy_floor,
+        "min_steps": cfg.min_steps_before_pruning,
+        "screening_vs_hunk_spearman_rho": None,
+        "validation": "FALLBACK_NO_MLFLOW",
+    }
+
+    try:
+        import mlflow.tracking as _mlflow_tracking  # noqa: PLC0415
+    except ModuleNotFoundError:
+        _emit_receipt(receipt_dir, receipt)
+        return receipt
+
+    try:
+        client = _mlflow_tracking.MlflowClient(tracking_uri=tracking_uri)
+        exp = client.get_experiment_by_name(experiment_name)
+        if exp is None:
+            receipt["validation"] = "FALLBACK_NO_EXPERIMENT"
+            _emit_receipt(receipt_dir, receipt)
+            return receipt
+        runs = client.search_runs(
+            experiment_ids=[exp.experiment_id],
+            filter_string="attributes.status = 'FINISHED'",
+            max_results=max(n_runs * 3, 10),
+            order_by=["attributes.start_time DESC"],
+        )
+    except Exception as exc:  # noqa: BLE001 — MLflow can raise many things
+        logger.warning("MLflow calibration query failed: %s", exc)
+        _emit_receipt(receipt_dir, receipt)
+        return receipt
+
+    eligible = [
+        r for r in runs
+        if (r.data.metrics.get("humaneval_pass1") or 0.0)
+        >= (r.data.metrics.get("humaneval_pass1_base") or 0.0)
+    ][:n_runs]
+    if len(eligible) < n_runs:
+        receipt["validation"] = "FALLBACK_INSUFFICIENT_RUNS"
+        _emit_receipt(receipt_dir, receipt)
+        return receipt
+
+    receipt["source_run_ids"] = [r.info.run_id for r in eligible]
+
+    p5_per_run: list[float] = []
+    s_star_per_run: list[int] = []
+    screening_scalars: list[float] = []
+    hunk_scalars: list[float] = []
+
+    for r in eligible:
+        try:
+            ent_hist = client.get_metric_history(r.info.run_id, "train/entropy")
+            loss_hist = client.get_metric_history(r.info.run_id, "train/loss")
+            acc_hist = client.get_metric_history(r.info.run_id, "train/token_accuracy")
+        except Exception:  # noqa: BLE001
+            continue
+
+        ent_pts = sorted(((m.step, m.value) for m in ent_hist), key=lambda p: p[0])
+        loss_pts = sorted(((m.step, m.value) for m in loss_hist), key=lambda p: p[0])
+        acc_pts = sorted(((m.step, m.value) for m in acc_hist), key=lambda p: p[0])
+
+        if not ent_pts or not loss_pts:
+            continue
+
+        max_step = ent_pts[-1][0]
+        warmup_cutoff = int(max_step * 0.10)
+        post_warmup = [v for s, v in ent_pts if s >= warmup_cutoff]
+        if post_warmup:
+            smoothed = _ema_series(post_warmup, window=cfg.smoothing_window)
+            p5_per_run.append(_percentile(smoothed, 5.0))
+
+        baseline = loss_pts[0][1]
+        s_star: int | None = None
+        rolling = _rolling_mean_series(
+            [v for _s, v in loss_pts], window=cfg.smoothing_window
+        )
+        for (s, _v), m in zip(loss_pts, rolling):
+            if m is not None and (baseline - m) > 0.1:
+                s_star = s
+                break
+        if s_star is not None:
+            s_star_per_run.append(s_star)
+
+        if loss_pts and acc_pts:
+            final_loss = loss_pts[-1][1]
+            final_acc = acc_pts[-1][1]
+            screening_scalars.append(
+                _compute_screening_fitness(
+                    eval_loss=final_loss, accuracy_score=final_acc,
+                    prior_losses=[final_loss], cfg=cfg,
+                )
+            )
+        hunk_loss = r.data.metrics.get("eval/hunk_loss")
+        hunk_acc = r.data.metrics.get("eval/hunk_accuracy") or 0.0
+        if hunk_loss is not None:
+            hunk_scalars.append(0.5 * (1.0 - min(1.0, hunk_loss / 5.0)) + 0.3 * hunk_acc)
+
+    if p5_per_run:
+        agg_p5 = sum(p5_per_run) / len(p5_per_run)
+        receipt["entropy_floor"] = max(0.3, agg_p5 - 0.05)
+        receipt["observed_entropy_p5_smoothed"] = agg_p5
+    if s_star_per_run:
+        avg_s_star = sum(s_star_per_run) / len(s_star_per_run)
+        receipt["min_steps"] = max(150, int(1.5 * avg_s_star))
+        receipt["observed_s_star"] = int(avg_s_star)
+
+    if len(screening_scalars) == len(hunk_scalars) >= 3:
+        rho = _spearman_rho(screening_scalars, hunk_scalars)
+        receipt["screening_vs_hunk_spearman_rho"] = rho
+        if rho < 0.6:
+            receipt["validation"] = "FAIL_RHO_LOW"
+        elif rho < 0.7:
+            receipt["validation"] = "WARN_RHO_LOW"
+        else:
+            receipt["validation"] = "PASS"
+    else:
+        receipt["validation"] = "PASS"  # not enough data to validate, but not a failure
+
+    _emit_receipt(receipt_dir, receipt)
+    return receipt
+
+
+def _emit_receipt(receipt_dir: Path, receipt: dict[str, Any]) -> Path:
+    """Persist the calibration receipt to JSON; returns the path."""
+    name = (receipt.get("timestamp") or "calibration").replace(":", "")
+    path = receipt_dir / f"{name}.json"
+    path.write_text(json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def _ema_series(values: list[float], *, window: int) -> list[float]:
+    """Apply ``_EMA`` to a sequence and return the running smoothed values."""
+    ema = _EMA(window=window)
+    out: list[float] = []
+    for v in values:
+        ema.update(v)
+        out.append(ema.value if ema.value is not None else v)
+    return out
+
+
+def _rolling_mean_series(values: list[float], *, window: int) -> list[float | None]:
+    """Right-aligned simple rolling mean. Returns None until the window fills."""
+    out: list[float | None] = []
+    buf: list[float] = []
+    for v in values:
+        buf.append(v)
+        if len(buf) > window:
+            buf.pop(0)
+        out.append(sum(buf) / len(buf) if len(buf) == window else None)
+    return out
+
+
+def _percentile(values: list[float], q: float) -> float:
+    """Linear-interpolation percentile (q in [0,100]). Empty list raises."""
+    if not values:
+        raise ValueError("_percentile requires non-empty values")
+    s = sorted(values)
+    if len(s) == 1:
+        return s[0]
+    pos = (q / 100.0) * (len(s) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(s) - 1)
+    frac = pos - lo
+    return s[lo] * (1.0 - frac) + s[hi] * frac
+
+
+def _spearman_rho(a: list[float], b: list[float]) -> float:
+    """Spearman rank correlation coefficient. Returns 0.0 on degenerate input."""
+    if len(a) != len(b) or len(a) < 2:
+        return 0.0
+
+    def _rank(xs: list[float]) -> list[float]:
+        order = sorted(range(len(xs)), key=lambda i: xs[i])
+        ranks = [0.0] * len(xs)
+        i = 0
+        while i < len(order):
+            j = i
+            while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+                j += 1
+            avg_rank = (i + j) / 2.0 + 1.0  # 1-based ranks
+            for k in range(i, j + 1):
+                ranks[order[k]] = avg_rank
+            i = j + 1
+        return ranks
+
+    ra, rb = _rank(a), _rank(b)
+    n = len(a)
+    mean_a = sum(ra) / n
+    mean_b = sum(rb) / n
+    num = sum((ra[i] - mean_a) * (rb[i] - mean_b) for i in range(n))
+    den_a = sum((ra[i] - mean_a) ** 2 for i in range(n)) ** 0.5
+    den_b = sum((rb[i] - mean_b) ** 2 for i in range(n)) ** 0.5
+    if den_a == 0.0 or den_b == 0.0:
+        return 0.0
+    return num / (den_a * den_b)
+
+
 def _evaluate_adapter_on_heldout(
     adapter_path: str,
     pairs: list[dict[str, Any]],
