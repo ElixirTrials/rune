@@ -1179,3 +1179,61 @@ def test_single_stage_path_calls_heldout_eval(
     _run_single_trial(_Trial(), run_args=run_args,
                       fitness_cfg=FitnessConfig(), prior_losses=[])
     assert eval_called["n"] == 1
+
+
+def test_print_only_stage_screen_emits_screening_section(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    rc = main([
+        "--dataset", str(tmp_path / "x.jsonl"),
+        "--output-root", str(tmp_path / "hpo"),
+        "--stage", "screen",
+        "--print-only",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stage"] == "screen"
+    assert "screening" in payload
+    assert payload["screening"]["loss_weight"] == pytest.approx(0.6)
+    assert payload["screening"]["accuracy_weight"] == pytest.approx(0.4)
+    assert payload["screening"]["epochs"] == 2
+    assert payload["screening"]["subsample"] == 500
+    assert payload["screening"]["min_screening_fitness"] == pytest.approx(0.3)
+
+
+def test_print_only_stage_refine_requires_study_name(
+    tmp_path: Path
+) -> None:
+    """--stage refine without --stage1-study-name must SystemExit cleanly."""
+    with pytest.raises(SystemExit) as excinfo:
+        main([
+            "--dataset", str(tmp_path / "x.jsonl"),
+            "--output-root", str(tmp_path / "hpo"),
+            "--stage", "refine",
+            "--print-only",
+        ])
+    msg = str(excinfo.value)
+    assert "stage1" in msg.lower() or "stage1-study-name" in msg.lower()
+
+
+def test_select_top_k_completed_trials() -> None:
+    """Pure-function helper that ranks completed trials by .value desc."""
+    from run_training_hpo import _select_top_k_completed_trials
+
+    class _T:
+        def __init__(self, num: int, value: float, state: str = "COMPLETE",
+                     params: dict[str, Any] | None = None) -> None:
+            self.number = num
+            self.value = value
+            self.state = type("S", (), {"name": state})()
+            self.params = params or {"lr": 1e-4}
+
+    trials = [_T(0, 0.5), _T(1, 0.8), _T(2, 0.2),
+              _T(3, 0.9, state="FAIL"), _T(4, 0.7)]
+    top = _select_top_k_completed_trials(trials, k=2)
+    assert [t.number for t in top] == [1, 4]
+
+
+def test_select_top_k_handles_no_completed_trials() -> None:
+    from run_training_hpo import _select_top_k_completed_trials
+    assert _select_top_k_completed_trials([], k=3) == []

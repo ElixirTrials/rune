@@ -1478,57 +1478,41 @@ def _prune_retained_adapters(
     return removed
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for training-hyperparameter HPO.
+def _select_top_k_completed_trials(trials: list[Any], *, k: int) -> list[Any]:
+    """Return the k completed trials with highest ``.value`` (descending)."""
+    completed = [
+        t for t in trials
+        if getattr(getattr(t, "state", None), "name", None) == "COMPLETE"
+        and t.value is not None
+    ]
+    return sorted(completed, key=lambda t: t.value, reverse=True)[:k]
 
-    Args:
-        argv: Argument list to parse. Defaults to ``sys.argv[1:]`` when
-            ``None``.
 
-    Returns:
-        Exit code: 0 on success.
-
-    Raises:
-        SystemExit: Raised by argparse on invalid arguments or ``--help``.
-    """
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-
-    output_root = Path(args.output_root).resolve()
-    output_root.mkdir(parents=True, exist_ok=True)
-
-    run_args = HPORunArgs(
-        dataset=str(Path(args.dataset).resolve()),
-        adapter_id_prefix=args.study_name,
-        model_config_name=args.model_config_name,
-        warm_start=args.warm_start,
-        subsample=args.subsample if not args.smoke else 4,
-        output_root=output_root,
-        experiment_name=args.experiment_name,
-        keep_top_k=args.keep_top_k,
-        heldout_fraction=args.heldout_fraction,
-        heldout_strategy=args.heldout_strategy,
-        compute_adapter_delta=args.adapter_improvement_eval,
-        seed=args.seed,
+def _replace_screen_cfg(
+    cfg: ScreeningFitnessConfig, *,
+    entropy_floor: float, min_steps: int, min_fitness: float,
+) -> ScreeningFitnessConfig:
+    """Frozen-dataclass replacement helper for screen_cfg."""
+    from dataclasses import replace  # noqa: PLC0415
+    return replace(
+        cfg, entropy_floor=entropy_floor,
+        min_steps_before_pruning=min_steps,
+        minimum_screening_fitness=min_fitness,
     )
-    fitness_cfg = FitnessConfig(
-        hunk_loss_weight=args.hunk_loss_weight,
-        hunk_accuracy_weight=args.hunk_accuracy_weight,
-        adapter_improvement_weight=args.adapter_improvement_weight,
-    )
-    if not args.adapter_improvement_eval:
-        fitness_cfg = _rebalanced_fitness_config(fitness_cfg)
+
+
+def _build_plan_dict(
+    *, args: argparse.Namespace, run_args: HPORunArgs,
+    fitness_cfg: FitnessConfig, screen_cfg: ScreeningFitnessConfig,
+) -> dict[str, Any]:
     n_trials = 2 if args.smoke else args.n_trials
-
-    plan = {
-        "study_name": args.study_name,
-        "db": args.db,
-        "n_trials": n_trials,
-        "dataset": run_args.dataset,
-        "subsample": run_args.subsample,
+    plan: dict[str, Any] = {
+        "study_name": args.study_name, "db": args.db, "n_trials": n_trials,
+        "dataset": run_args.dataset, "subsample": run_args.subsample,
         "model_config_name": run_args.model_config_name,
         "warm_start": run_args.warm_start,
         "output_root": str(run_args.output_root),
+        "stage": args.stage,
         "fitness_formula": (
             "w_L * (1 - norm(hunk_loss)) + w_A * hunk_accuracy "
             "+ w_D * max(0, adapter_improvement)"
@@ -1545,11 +1529,37 @@ def main(argv: list[str] | None = None) -> int:
         },
         "keep_top_k": run_args.keep_top_k,
     }
-    print(json.dumps(plan, indent=2, sort_keys=True))
+    if args.stage in {"screen", "auto", "refine"}:
+        plan["screening"] = {
+            "loss_weight": screen_cfg.loss_weight,
+            "accuracy_weight": screen_cfg.accuracy_weight,
+            "entropy_floor": screen_cfg.entropy_floor,
+            "min_steps_before_pruning": screen_cfg.min_steps_before_pruning,
+            "min_screening_fitness": screen_cfg.minimum_screening_fitness,
+            "smoothing_window": screen_cfg.smoothing_window,
+            "epochs": run_args.screen_epochs,
+            "subsample": run_args.subsample,
+            "top_k": args.screen_top_k,
+        }
+    return plan
 
-    if args.print_only:
-        return 0
 
+def _create_study(
+    *, study_name: str, db: str, sampler: Any, pruner: Any,
+) -> Any:
+    import optuna  # noqa: PLC0415
+    return optuna.create_study(
+        direction="maximize", study_name=study_name, storage=db,
+        load_if_exists=True, sampler=sampler, pruner=pruner,
+    )
+
+
+def _run_legacy_single_stage(
+    *, args: argparse.Namespace, run_args: HPORunArgs,
+    fitness_cfg: FitnessConfig,
+) -> int:
+    """The pre-existing single-stage flow; preserved verbatim modulo
+    extracted helpers so the existing tests keep passing."""
     import optuna  # noqa: PLC0415
 
     pruner = optuna.pruners.HyperbandPruner(
@@ -1558,59 +1568,168 @@ def main(argv: list[str] | None = None) -> int:
     sampler = optuna.samplers.TPESampler(
         n_startup_trials=args.startup_trials, seed=args.seed
     )
-    study = optuna.create_study(
-        direction="maximize",
-        study_name=args.study_name,
-        storage=args.db,
-        load_if_exists=True,
-        sampler=sampler,
-        pruner=pruner,
+    study = _create_study(
+        study_name=args.study_name, db=args.db, sampler=sampler, pruner=pruner,
     )
-
+    n_trials = 2 if args.smoke else args.n_trials
     prior_losses: list[float] = []
 
     def _objective(trial: optuna.Trial) -> float:
         return _run_single_trial(
-            trial,
-            run_args=run_args,
-            fitness_cfg=fitness_cfg,
+            trial, run_args=run_args, fitness_cfg=fitness_cfg,
             prior_losses=prior_losses,
         )
 
-    # Tell Optuna that a per-trial exception is a *failed trial*, not a
-    # study-halting bug and not a zero-fitness completion. Failed trials
-    # are excluded from ``study.best_trial`` — preventing a crashed run
-    # from being reported as "best".
-    study.optimize(
-        _objective,
-        n_trials=n_trials,
-        show_progress_bar=False,
-        catch=(Exception,),
-    )
+    study.optimize(_objective, n_trials=n_trials,
+                   show_progress_bar=False, catch=(Exception,))
+    return _emit_summary(study=study, args=args, run_args=run_args,
+                         fitness_cfg=fitness_cfg)
 
+
+def _run_screen_stage(
+    *, args: argparse.Namespace, run_args: HPORunArgs,
+    screen_cfg: ScreeningFitnessConfig,
+) -> int:
+    """Stage-1: trains every trial, no heldout eval, blended scalar."""
+    import optuna  # noqa: PLC0415
+
+    pruner = optuna.pruners.HyperbandPruner(
+        min_resource=2, max_resource=6, reduction_factor=3
+    )
+    sampler = optuna.samplers.TPESampler(
+        n_startup_trials=args.startup_trials, seed=args.seed
+    )
+    study = _create_study(
+        study_name=args.study_name, db=args.db, sampler=sampler, pruner=pruner,
+    )
+    study.set_user_attr("hpo.stage", "screen")
+    n_trials = 2 if args.smoke else args.n_trials
+    prior_losses: list[float] = []
+
+    def _objective(trial: optuna.Trial) -> float:
+        return _run_single_trial(
+            trial, run_args=run_args,
+            fitness_cfg=FitnessConfig(),  # unused on screen path
+            prior_losses=prior_losses,
+        )
+
+    study.optimize(_objective, n_trials=n_trials,
+                   show_progress_bar=False, catch=(Exception,))
+
+    completed = [t for t in study.trials if t.state.name == "COMPLETE"]
+    if len(completed) < 3:
+        raise SystemExit(
+            f"Stage 1 produced {len(completed)} completed trials (<3); "
+            "cannot seed Stage 2."
+        )
+    best = max(t.value for t in completed)
+    if best < screen_cfg.minimum_screening_fitness:
+        raise SystemExit(
+            f"Stage 1 best fitness {best:.3f} < threshold "
+            f"{screen_cfg.minimum_screening_fitness:.3f}. "
+            "No usable HP region — refusing to seed Stage 2."
+        )
+
+    top_k = _select_top_k_completed_trials(study.trials, k=args.screen_top_k)
+    logger.info("Stage 1 top-%d: %s",
+                args.screen_top_k, [(t.number, t.value) for t in top_k])
+
+    summary = {
+        "study_name": args.study_name, "stage": "screen",
+        "best_fitness": best,
+        "top_k": [{"number": t.number, "value": t.value, "params": t.params}
+                  for t in top_k],
+        "n_trials_completed": len(completed),
+    }
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
+
+
+def _run_refine_stage(
+    *, args: argparse.Namespace, run_args: HPORunArgs,
+    fitness_cfg: FitnessConfig,
+) -> int:
+    """Stage-2: load Stage-1 study, seed TPE warm prior, re-evaluate top-K."""
+    import optuna  # noqa: PLC0415
+
+    stage1 = optuna.load_study(study_name=args.stage1_study_name, storage=args.db)
+    completed = [t for t in stage1.trials if t.state.name == "COMPLETE"]
+    if not completed:
+        raise SystemExit(
+            f"Stage-1 study '{args.stage1_study_name}' has no completed "
+            "trials — cannot refine."
+        )
+
+    refine_name = f"{args.study_name}-refine"
+    pruner = optuna.pruners.HyperbandPruner(
+        min_resource=1, max_resource=3, reduction_factor=3
+    )
+    sampler = optuna.samplers.TPESampler(n_startup_trials=0, seed=args.seed)
+    refine = _create_study(
+        study_name=refine_name, db=args.db, sampler=sampler, pruner=pruner,
+    )
+    refine.set_user_attr("hpo.stage", "refine")
+    refine.set_user_attr("hpo.stage1_study_name", args.stage1_study_name)
+    refine.add_trials(stage1.trials)
+
+    top_k = _select_top_k_completed_trials(stage1.trials, k=args.screen_top_k)
+    for t in top_k:
+        try:
+            refine.enqueue_trial(t.params, skip_if_exists=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("enqueue_trial failed for trial %d: %s", t.number, exc)
+
+    refine_run_args = HPORunArgs(
+        dataset=run_args.dataset,
+        adapter_id_prefix=refine_name,
+        model_config_name=run_args.model_config_name,
+        warm_start=run_args.warm_start,
+        subsample=args.subsample,
+        output_root=run_args.output_root,
+        experiment_name=run_args.experiment_name,
+        keep_top_k=run_args.keep_top_k,
+        heldout_fraction=run_args.heldout_fraction,
+        heldout_strategy=run_args.heldout_strategy,
+        compute_adapter_delta=run_args.compute_adapter_delta,
+        seed=run_args.seed,
+        stage="single",
+        screen_cfg=None,
+        screen_epochs=run_args.screen_epochs,
+    )
+    n_trials = len(top_k) + 5
+    prior_losses: list[float] = []
+
+    def _objective(trial: optuna.Trial) -> float:
+        return _run_single_trial(
+            trial, run_args=refine_run_args, fitness_cfg=fitness_cfg,
+            prior_losses=prior_losses,
+        )
+
+    refine.optimize(_objective, n_trials=n_trials,
+                    show_progress_bar=False, catch=(Exception,))
+    return _emit_summary(study=refine, args=args, run_args=refine_run_args,
+                         fitness_cfg=fitness_cfg)
+
+
+def _emit_summary(
+    *, study: Any, args: argparse.Namespace, run_args: HPORunArgs,
+    fitness_cfg: FitnessConfig,
+) -> int:
+    """Shared summary + adapter retention path used by single and refine."""
     completed = [t for t in study.trials if t.state.name == "COMPLETE"]
     failed = [t for t in study.trials if t.state.name == "FAIL"]
     if not completed:
         msg = (
             f"HPO study '{study.study_name}' produced no successful trials "
-            f"({len(failed)} failed, {len(study.trials)} total). Refusing to "
-            "emit a 'best trial' summary."
+            f"({len(failed)} failed, {len(study.trials)} total)."
         )
         logger.error(msg)
         raise SystemExit(msg)
 
-    # Retention pruning.
     _prune_retained_adapters(study, run_args)
-
     best = study.best_trial
-    logger.info(
-        "HPO complete. Best trial=%d fitness=%.4f params=%s",
-        best.number,
-        best.value,
-        best.params,
-    )
     summary = {
-        "study_name": args.study_name,
+        "study_name": study.study_name,
         "best_trial": best.number,
         "best_fitness": best.value,
         "best_params": best.params,
@@ -1619,18 +1738,119 @@ def main(argv: list[str] | None = None) -> int:
         "n_trials_total": len(study.trials),
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
-
-    # Emit a study-level MLflow summary run so the UI shows one canonical
-    # artifact per study alongside the per-trial runs. Placed after the
-    # trials finish so it doesn't collide with any trial's active run.
     _log_study_summary_to_mlflow(
         experiment_name=f"{args.experiment_name}-studies",
-        summary=summary,
-        args=args,
-        run_args=run_args,
+        summary=summary, args=args, run_args=run_args,
         fitness_cfg=fitness_cfg,
     )
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint for training-hyperparameter HPO.
+
+    Dispatches on ``--stage``:
+      * ``single`` (default): legacy single-stage flow, byte-for-byte unchanged.
+      * ``screen``: Stage-1 — trains, no heldout eval, blended fitness on
+        smoothed train-time metrics, Hyperband + entropy guard.
+      * ``refine``: Stage-2 — loads Stage-1 study via ``--stage1-study-name``,
+        seeds a fresh TPE sampler with ``add_trials`` + ``enqueue_trial``,
+        runs the existing hunk-restricted fitness on the top-K survivors.
+      * ``auto``: Stage-1 followed by Stage-2 in one process; threads the
+        study name automatically.
+    """
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    output_root = Path(args.output_root).resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    fitness_cfg = FitnessConfig(
+        hunk_loss_weight=args.hunk_loss_weight,
+        hunk_accuracy_weight=args.hunk_accuracy_weight,
+        adapter_improvement_weight=args.adapter_improvement_weight,
+    )
+    if not args.adapter_improvement_eval:
+        fitness_cfg = _rebalanced_fitness_config(fitness_cfg)
+
+    screen_cfg = ScreeningFitnessConfig()
+    if args.calibrate_from_mlflow and args.stage in {"screen", "auto"}:
+        receipt_dir = Path.home() / ".rune" / "hpo_calibration"
+        receipt = _calibrate_thresholds_from_mlflow(
+            experiment_name=args.experiment_name,
+            n_runs=3, cfg=screen_cfg, receipt_dir=receipt_dir,
+        )
+        if receipt["validation"] == "FAIL_RHO_LOW" and not args.force_uncalibrated:
+            raise SystemExit(
+                f"Calibration: screening_vs_hunk Spearman rho="
+                f"{receipt.get('screening_vs_hunk_spearman_rho'):.2f} < 0.6. "
+                "Refusing to launch Stage-1 — pass --force-uncalibrated to override."
+            )
+        screen_cfg = _replace_screen_cfg(
+            screen_cfg,
+            entropy_floor=args.entropy_floor or receipt["entropy_floor"],
+            min_steps=args.screen_min_steps or receipt["min_steps"],
+            min_fitness=args.min_screening_fitness,
+        )
+    else:
+        screen_cfg = _replace_screen_cfg(
+            screen_cfg,
+            entropy_floor=args.entropy_floor or screen_cfg.entropy_floor,
+            min_steps=args.screen_min_steps or screen_cfg.min_steps_before_pruning,
+            min_fitness=args.min_screening_fitness,
+        )
+
+    stage = args.stage
+
+    if stage == "refine" and not args.stage1_study_name:
+        raise SystemExit(
+            "--stage refine requires --stage1-study-name to identify the "
+            "Stage-1 study to seed from."
+        )
+
+    run_args = HPORunArgs(
+        dataset=str(Path(args.dataset).resolve()),
+        adapter_id_prefix=args.study_name,
+        model_config_name=args.model_config_name,
+        warm_start=args.warm_start,
+        subsample=args.screen_subsample if stage in {"screen", "auto"}
+                   else (args.subsample if not args.smoke else 4),
+        output_root=output_root,
+        experiment_name=args.experiment_name,
+        keep_top_k=args.keep_top_k,
+        heldout_fraction=args.heldout_fraction,
+        heldout_strategy=args.heldout_strategy,
+        compute_adapter_delta=args.adapter_improvement_eval,
+        seed=args.seed,
+        stage=stage,
+        screen_cfg=screen_cfg if stage in {"screen", "auto"} else None,
+        screen_epochs=args.screen_epochs,
+    )
+
+    plan = _build_plan_dict(args=args, run_args=run_args,
+                            fitness_cfg=fitness_cfg, screen_cfg=screen_cfg)
+    print(json.dumps(plan, indent=2, sort_keys=True))
+    if args.print_only:
+        return 0
+
+    if stage == "single":
+        return _run_legacy_single_stage(args=args, run_args=run_args,
+                                        fitness_cfg=fitness_cfg)
+    if stage == "screen":
+        return _run_screen_stage(args=args, run_args=run_args,
+                                 screen_cfg=screen_cfg)
+    if stage == "refine":
+        return _run_refine_stage(args=args, run_args=run_args,
+                                 fitness_cfg=fitness_cfg)
+    if stage == "auto":
+        rc = _run_screen_stage(args=args, run_args=run_args,
+                               screen_cfg=screen_cfg)
+        if rc != 0:
+            return rc
+        args.stage1_study_name = args.study_name
+        return _run_refine_stage(args=args, run_args=run_args,
+                                 fitness_cfg=fitness_cfg)
+    raise SystemExit(f"Unknown --stage: {stage}")
 
 
 def _log_study_summary_to_mlflow(
