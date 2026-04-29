@@ -718,3 +718,141 @@ def test_ema_invalid_window_raises() -> None:
         _EMA(window=0)
     with pytest.raises(ValueError):
         _EMA(window=-1)
+
+
+class _StubTrial:
+    """Minimal optuna.Trial standin for callback tests."""
+
+    def __init__(self, *, should_prune: bool = False) -> None:
+        self.reports: list[tuple[float, int]] = []
+        self._should_prune = should_prune
+
+    def report(self, value: float, step: int) -> None:
+        self.reports.append((value, step))
+
+    def should_prune(self) -> bool:
+        return self._should_prune
+
+
+class _StubState:
+    """Minimal TrainerState standin."""
+
+    def __init__(self, global_step: int) -> None:
+        self.global_step = global_step
+
+
+def test_screening_callback_no_op_before_min_steps() -> None:
+    from run_training_hpo import (
+        OptunaScreeningCallback,
+        ScreeningFitnessConfig,
+    )
+
+    cfg = ScreeningFitnessConfig(min_steps_before_pruning=150)
+    trial = _StubTrial()
+    cb = OptunaScreeningCallback(trial=trial, cfg=cfg)
+
+    # 50 < 150: callback must NOT report or prune.
+    cb.on_evaluate(
+        args=None, state=_StubState(global_step=50), control=None,
+        metrics={"eval_loss": 1.0, "eval/token_accuracy": 0.8, "eval/entropy": 0.6},
+    )
+    assert trial.reports == []
+
+
+def test_screening_callback_reports_after_min_steps() -> None:
+    from run_training_hpo import (
+        OptunaScreeningCallback,
+        ScreeningFitnessConfig,
+    )
+
+    cfg = ScreeningFitnessConfig(min_steps_before_pruning=10, smoothing_window=2)
+    trial = _StubTrial()
+    cb = OptunaScreeningCallback(trial=trial, cfg=cfg)
+
+    cb.on_evaluate(
+        args=None, state=_StubState(global_step=20), control=None,
+        metrics={"eval_loss": 1.0, "eval/token_accuracy": 0.85, "eval/entropy": 0.6},
+    )
+    assert len(trial.reports) == 1
+    reported_value, reported_step = trial.reports[0]
+    assert reported_value == pytest.approx(0.85)  # accuracy_smoothed (single update)
+    assert reported_step == 20
+
+
+def test_screening_callback_prunes_on_entropy_floor_breach() -> None:
+    import optuna
+
+    from run_training_hpo import (
+        OptunaScreeningCallback,
+        ScreeningFitnessConfig,
+    )
+
+    cfg = ScreeningFitnessConfig(
+        entropy_floor=0.4, min_steps_before_pruning=10, smoothing_window=2
+    )
+    trial = _StubTrial()
+    cb = OptunaScreeningCallback(trial=trial, cfg=cfg)
+
+    with pytest.raises(optuna.TrialPruned):
+        cb.on_evaluate(
+            args=None, state=_StubState(global_step=20), control=None,
+            metrics={"eval_loss": 1.0, "eval/token_accuracy": 0.9, "eval/entropy": 0.2},
+        )
+
+
+def test_screening_callback_prunes_on_hyperband_signal() -> None:
+    import optuna
+
+    from run_training_hpo import (
+        OptunaScreeningCallback,
+        ScreeningFitnessConfig,
+    )
+
+    cfg = ScreeningFitnessConfig(min_steps_before_pruning=10, smoothing_window=2)
+    trial = _StubTrial(should_prune=True)
+    cb = OptunaScreeningCallback(trial=trial, cfg=cfg)
+
+    with pytest.raises(optuna.TrialPruned):
+        cb.on_evaluate(
+            args=None, state=_StubState(global_step=20), control=None,
+            metrics={"eval_loss": 1.0, "eval/token_accuracy": 0.85, "eval/entropy": 0.6},
+        )
+
+
+def test_screening_callback_handles_missing_metrics_dict() -> None:
+    from run_training_hpo import (
+        OptunaScreeningCallback,
+        ScreeningFitnessConfig,
+    )
+
+    cfg = ScreeningFitnessConfig()
+    trial = _StubTrial()
+    cb = OptunaScreeningCallback(trial=trial, cfg=cfg)
+
+    # Should be a no-op, not raise.
+    cb.on_evaluate(
+        args=None, state=_StubState(global_step=200), control=None, metrics=None,
+    )
+    assert trial.reports == []
+
+
+def test_screening_callback_exposes_final_smoothed_metrics() -> None:
+    """After several updates, the buffers should reflect the EMA values."""
+    from run_training_hpo import (
+        OptunaScreeningCallback,
+        ScreeningFitnessConfig,
+    )
+
+    cfg = ScreeningFitnessConfig(min_steps_before_pruning=0, smoothing_window=5)
+    trial = _StubTrial()
+    cb = OptunaScreeningCallback(trial=trial, cfg=cfg)
+
+    for step in (10, 20, 30, 40):
+        cb.on_evaluate(
+            args=None, state=_StubState(global_step=step), control=None,
+            metrics={"eval_loss": 1.0, "eval/token_accuracy": 0.9, "eval/entropy": 0.6},
+        )
+    assert cb.smoothed_loss is not None
+    assert cb.smoothed_loss == pytest.approx(1.0, abs=1e-6)
+    assert cb.smoothed_accuracy == pytest.approx(0.9, abs=1e-6)
+    assert cb.smoothed_entropy == pytest.approx(0.6, abs=1e-6)

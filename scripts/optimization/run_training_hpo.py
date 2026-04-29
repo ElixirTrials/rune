@@ -613,6 +613,89 @@ class _EMA:
         return self._value
 
 
+class OptunaScreeningCallback:
+    """Stage-1 ``TrainerCallback`` driving Hyperband and the entropy guard.
+
+    Hooks ``on_evaluate`` (HuggingFace Trainer evaluation event). At each
+    eval step:
+
+    1. Push ``eval_loss``, ``eval/token_accuracy``, ``eval/entropy`` into
+       per-trial EMA buffers (``smoothing_window`` from cfg).
+    2. If ``state.global_step < cfg.min_steps_before_pruning``, return
+       silently — the buffers are still warming up and noisy decisions
+       made now would falsely kill good trials.
+    3. If smoothed entropy is below ``cfg.entropy_floor``, raise
+       ``optuna.TrialPruned`` with a diagnostic message (entropy
+       collapse: GEM, CurioSFT).
+    4. Otherwise call ``trial.report(smoothed_accuracy, step)`` and
+       ``trial.should_prune()`` to drive Hyperband. Loss is reported
+       post-trial after global min-max normalisation across completed
+       trials, not here — Hyperband only needs *a* monotone signal,
+       and accuracy is the bounded-range one.
+
+    NOTE: We don't subclass ``transformers.TrainerCallback`` directly to
+    keep this module CPU-importable in CI (INFRA-05). The Trainer will
+    duck-type our class — ``on_evaluate`` is the only hook it calls.
+    """
+
+    def __init__(self, trial: Any, cfg: ScreeningFitnessConfig) -> None:
+        self.trial = trial
+        self.cfg = cfg
+        self._loss_ema = _EMA(cfg.smoothing_window)
+        self._acc_ema = _EMA(cfg.smoothing_window)
+        self._ent_ema = _EMA(cfg.smoothing_window)
+
+    @property
+    def smoothed_loss(self) -> float | None:
+        return self._loss_ema.value
+
+    @property
+    def smoothed_accuracy(self) -> float | None:
+        return self._acc_ema.value
+
+    @property
+    def smoothed_entropy(self) -> float | None:
+        return self._ent_ema.value
+
+    def on_evaluate(
+        self,
+        args: Any,
+        state: Any,
+        control: Any,
+        metrics: dict[str, float] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        import optuna  # noqa: PLC0415
+
+        if not metrics:
+            return
+
+        self._loss_ema.update(float(metrics.get("eval_loss", float("inf"))))
+        self._acc_ema.update(float(metrics.get("eval/token_accuracy", 0.0)))
+        if "eval/entropy" in metrics:
+            self._ent_ema.update(float(metrics["eval/entropy"]))
+
+        # Step floor: don't act until buffers have warmed up.
+        if state.global_step < self.cfg.min_steps_before_pruning:
+            return
+
+        ent = self._ent_ema.value
+        if ent is not None and ent < self.cfg.entropy_floor:
+            raise optuna.TrialPruned(
+                f"Entropy {ent:.3f} < floor {self.cfg.entropy_floor:.3f} "
+                f"(step={state.global_step})"
+            )
+
+        acc = self._acc_ema.value
+        if acc is None:
+            return
+        self.trial.report(acc, step=state.global_step)
+        if self.trial.should_prune():
+            raise optuna.TrialPruned(
+                f"Hyperband prune at step={state.global_step} acc_ema={acc:.3f}"
+            )
+
+
 def _evaluate_adapter_on_heldout(
     adapter_path: str,
     pairs: list[dict[str, Any]],
