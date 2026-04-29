@@ -819,20 +819,23 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
     ) -> None:
         """Flush accumulated per-step metrics into ``logs`` before parent emits.
 
-        Averages each accumulated sum across the micro-batches that
-        contributed since the last ``log()`` call, prefixes with
-        ``train/``, then calls ``super().log()`` so the metrics ride
-        through TRL's MLflow callback alongside the standard training
-        metrics.  Resets the accumulator after flushing.
+        Detects whether ``logs`` is an eval-context dict by the presence of
+        ``eval_loss`` (HuggingFace Trainer's canonical eval-loss key) and
+        prefixes the accumulated metrics as ``eval/<key>`` instead of
+        ``train/<key>``. This lets downstream callbacks like
+        ``OptunaScreeningCallback`` read smoothed per-step metrics from the
+        eval-side dict without requiring a separate forward pass.
         """
         if self._diff_metric_count > 0:
             count = self._diff_metric_count
+            prefix = "eval" if "eval_loss" in logs else "train"
             for key, total in self._diff_metric_sums.items():
-                logs[f"train/{key}"] = total / count
+                logs[f"{prefix}/{key}"] = total / count
             # Promote `all_masked_batch` mean (0/1 per call) to a clearer
             # name so dashboards show it as a fraction.
-            if "train/all_masked_batch" in logs:
-                logs["train/all_masked_batch_frac"] = logs.pop("train/all_masked_batch")
+            mean_key = f"{prefix}/all_masked_batch"
+            if mean_key in logs:
+                logs[f"{prefix}/all_masked_batch_frac"] = logs.pop(mean_key)
             self._diff_metric_sums = {}
             self._diff_metric_count = 0
         return super().log(logs, start_time)
