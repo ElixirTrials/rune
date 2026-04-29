@@ -53,6 +53,79 @@ def test_setup_returns_false_when_mlflow_missing(
     assert setup_mlflow("any-experiment", tracking_uri=None) is False
 
 
+def test_log_epoch_progress_emits_metric_at_global_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_log_epoch_progress`` logs ``train/epoch`` at the trainer's global_step.
+
+    Picking ``train/epoch`` as the X axis in MLflow's chart panel then
+    renders any step-indexed metric (loss, grad_norm, lr) on an
+    epoch axis at full per-step resolution.
+    """
+    import types  # noqa: PLC0415
+
+    calls: list[tuple[str, float, int]] = []
+
+    def _record(key: str, value: float, step: int | None = None) -> None:
+        # MLflow accepts step as kwarg-or-positional — fix the convention.
+        calls.append((key, float(value), int(step) if step is not None else -1))
+
+    fake = types.SimpleNamespace(log_metric=_record)
+    monkeypatch.setitem(sys.modules, "mlflow", fake)
+
+    from model_training.trainer import _log_epoch_progress
+
+    assert _log_epoch_progress(epoch=0.42, global_step=11) is True
+    assert calls == [("train/epoch", 0.42, 11)]
+
+
+def test_log_epoch_progress_skips_when_epoch_none() -> None:
+    """``epoch=None`` short-circuits without touching mlflow."""
+    from model_training.trainer import _log_epoch_progress
+
+    assert _log_epoch_progress(epoch=None, global_step=5) is False
+
+
+def test_log_epoch_progress_swallows_log_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A throwing ``mlflow.log_metric`` must not propagate; training survives."""
+    import types  # noqa: PLC0415
+
+    def _boom(*_: object, **__: object) -> None:
+        raise RuntimeError("transient backend error")
+
+    fake = types.SimpleNamespace(log_metric=_boom)
+    monkeypatch.setitem(sys.modules, "mlflow", fake)
+
+    from model_training.trainer import _log_epoch_progress
+
+    assert _log_epoch_progress(epoch=1.0, global_step=5) is False
+
+
+def test_log_epoch_progress_returns_false_when_mlflow_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No mlflow installed → no metric, no exception."""
+    real_import = (
+        __builtins__["__import__"]  # type: ignore[index]
+        if isinstance(__builtins__, dict)
+        else __builtins__.__import__  # type: ignore[attr-defined]
+    )
+
+    def fake_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "mlflow":
+            raise ImportError("mocked")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    monkeypatch.delitem(sys.modules, "mlflow", raising=False)
+
+    from model_training.trainer import _log_epoch_progress
+
+    assert _log_epoch_progress(epoch=0.5, global_step=3) is False
+
+
 def test_log_helpers_silent_noop_when_mlflow_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

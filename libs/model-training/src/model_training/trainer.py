@@ -521,6 +521,35 @@ def _attach_assistant_masks(
     )
 
 
+def _log_epoch_progress(epoch: float | None, global_step: int) -> bool:
+    """Log fractional epoch as a per-step metric for X-axis plotting in MLflow.
+
+    The trainer logs ``loss``/``grad_norm``/``learning_rate`` at every step
+    keyed by ``global_step``. Logging ``train/epoch`` at the same step lets
+    the MLflow chart picker re-render those curves on an epoch X axis at
+    full per-step resolution — complementary to the once-per-epoch
+    ``epoch/<key>`` snapshots emitted by ``_EpochMlflowCallback``
+    (which give 1 point per epoch, useful for tabular comparison but
+    too coarse for trend curves).
+
+    Returns ``True`` when the metric was emitted, ``False`` when the call
+    was skipped (``epoch=None``, mlflow not importable, or backend error).
+    Defensive — never raises, so a transient MLflow hiccup cannot crash
+    training.
+    """
+    if epoch is None:
+        return False
+    try:
+        import mlflow  # noqa: PLC0415
+    except ImportError:
+        return False
+    try:
+        mlflow.log_metric("train/epoch", float(epoch), step=int(global_step))
+        return True
+    except Exception:
+        return False
+
+
 def _build_training_dataset(
     *,
     dataset_cls: Any,
@@ -1078,6 +1107,17 @@ def train_qlora(  # noqa: C901
                         self._latest_logs[str(k)] = float(v)
                     except (TypeError, ValueError):
                         continue
+                # Emit fractional epoch as a per-step metric so MLflow can
+                # plot any step-indexed curve (loss, grad_norm, lr) on an
+                # epoch X axis. HF MLflowCallback's behavior with the
+                # `epoch` key is version-dependent; logging an explicit
+                # `train/epoch` key here is reliable.
+                epoch = logs.get("epoch")
+                if epoch is None:
+                    epoch = getattr(state, "epoch", None)
+                _log_epoch_progress(
+                    epoch=epoch, global_step=int(getattr(state, "global_step", 0))
+                )
 
             def _log_epoch(self, epoch_number: int) -> None:
                 if not self._latest_logs:
