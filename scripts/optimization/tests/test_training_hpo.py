@@ -526,3 +526,71 @@ def test_flush_gpu_helper_invokes_gc_collect(monkeypatch: pytest.MonkeyPatch) ->
 
     hpo._flush_gpu_between_phases()
     assert len(collect_calls) >= 2, "expected at least two gc.collect passes"
+
+
+def test_screening_fitness_config_defaults() -> None:
+    from run_training_hpo import ScreeningFitnessConfig
+
+    cfg = ScreeningFitnessConfig()
+    assert cfg.loss_weight == pytest.approx(0.6)
+    assert cfg.accuracy_weight == pytest.approx(0.4)
+    assert cfg.entropy_floor == pytest.approx(0.3)
+    assert cfg.minimum_screening_fitness == pytest.approx(0.3)
+    assert cfg.smoothing_window == 25
+    assert cfg.min_steps_before_pruning == 150
+    assert cfg.delta_normalize_accuracy is True
+
+
+def test_parser_stage_default_is_single() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(["--dataset", "/tmp/x.jsonl"])
+    assert args.stage == "single"
+
+
+def test_parser_stage_choices() -> None:
+    parser = _build_parser()
+    for stage in ("screen", "refine", "auto", "single"):
+        args = parser.parse_args(["--dataset", "/tmp/x.jsonl", "--stage", stage])
+        assert args.stage == stage
+
+
+def test_parser_screening_flag_defaults() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(["--dataset", "/tmp/x.jsonl"])
+    assert args.screen_loss_weight == pytest.approx(0.6)
+    assert args.screen_accuracy_weight == pytest.approx(0.4)
+    assert args.entropy_floor is None
+    assert args.screen_top_k == 5
+    assert args.stage1_study_name is None
+    assert args.screen_subsample == 500
+    assert args.screen_epochs == 2
+    assert args.screen_smoothing_window == 25
+    assert args.screen_min_steps is None
+    assert args.min_screening_fitness == pytest.approx(0.3)
+    assert args.calibrate_from_mlflow is False
+    assert args.force_uncalibrated is False
+
+
+def test_parser_invalid_stage_rejected() -> None:
+    parser = _build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--dataset", "/tmp/x.jsonl", "--stage", "garbage"])
+
+
+def test_print_only_with_stage_single_unchanged(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """--stage single must produce the same JSON plan as omitting --stage."""
+    rc_a = main(
+        ["--dataset", str(tmp_path / "x.jsonl"),
+         "--output-root", str(tmp_path / "hpo"), "--print-only"]
+    )
+    out_a = capsys.readouterr().out
+    rc_b = main(
+        ["--dataset", str(tmp_path / "x.jsonl"),
+         "--output-root", str(tmp_path / "hpo"), "--print-only",
+         "--stage", "single"]
+    )
+    out_b = capsys.readouterr().out
+    assert rc_a == 0 and rc_b == 0
+    assert json.loads(out_a) == json.loads(out_b)

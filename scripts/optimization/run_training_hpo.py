@@ -87,6 +87,32 @@ class FitnessConfig:
     adapter_improvement_weight: float = 0.2
 
 
+@dataclass(frozen=True)
+class ScreeningFitnessConfig:
+    """Stage-1 screening-fitness weights and pruning thresholds.
+
+    See ``instructions/hpo_improvements.md`` §1–2.5 for derivation.
+
+    The screening blend is::
+
+        screening_fitness = loss_weight * (1 - loss_norm)
+                          + accuracy_weight * accuracy_score
+
+    where both inputs are EMA-smoothed across ``smoothing_window`` evals.
+    Entropy is a hard floor (prune below ``entropy_floor`` nats), not a
+    weighted term. ``min_steps_before_pruning`` defers all pruning calls
+    until enough steps have accumulated for the EMA to stabilise.
+    """
+
+    loss_weight: float = 0.6
+    accuracy_weight: float = 0.4
+    entropy_floor: float = 0.3  # nats; calibrated per-run when possible
+    minimum_screening_fitness: float = 0.3
+    smoothing_window: int = 25
+    min_steps_before_pruning: int = 150
+    delta_normalize_accuracy: bool = True
+
+
 def _rebalanced_fitness_config(cfg: FitnessConfig) -> FitnessConfig:
     """Rebalance the weights when the adapter-improvement eval is disabled.
 
@@ -235,6 +261,77 @@ def _build_parser() -> argparse.ArgumentParser:
         "--print-only",
         action="store_true",
         help="Resolve args and print the study plan; do not run any trials.",
+    )
+    parser.add_argument(
+        "--stage",
+        choices=["screen", "refine", "auto", "single"],
+        default="single",
+        help=(
+            "HPO stage. 'single' (default) runs the legacy single-stage flow "
+            "with zero behaviour change. 'screen' runs cheap training-time "
+            "screening. 'refine' loads a Stage-1 study and re-evaluates the "
+            "top-K under the hunk-restricted fitness. 'auto' chains both."
+        ),
+    )
+    parser.add_argument(
+        "--screen-loss-weight", dest="screen_loss_weight",
+        type=float, default=0.6,
+        help="Stage-1 weight on (1 - loss_norm).",
+    )
+    parser.add_argument(
+        "--screen-accuracy-weight", dest="screen_accuracy_weight",
+        type=float, default=0.4,
+        help="Stage-1 weight on accuracy_score.",
+    )
+    parser.add_argument(
+        "--entropy-floor", dest="entropy_floor",
+        type=float, default=None,
+        help="Override the calibrated entropy floor (nats). None = use config default or calibrator.",
+    )
+    parser.add_argument(
+        "--screen-top-k", dest="screen_top_k",
+        type=int, default=5,
+        help="Stage-1 survivors passed to Stage-2.",
+    )
+    parser.add_argument(
+        "--stage1-study-name", dest="stage1_study_name",
+        type=str, default=None,
+        help="Stage-2 / 'refine' only: study-name to seed Stage-2 from.",
+    )
+    parser.add_argument(
+        "--screen-subsample", dest="screen_subsample",
+        type=int, default=500,
+        help="Per-trial subsample size for Stage-1 screening.",
+    )
+    parser.add_argument(
+        "--screen-epochs", dest="screen_epochs",
+        type=int, default=2,
+        help="Stage-1 epochs per trial. Raised from the implicit 1 to avoid step-starvation.",
+    )
+    parser.add_argument(
+        "--screen-smoothing-window", dest="screen_smoothing_window",
+        type=int, default=25,
+        help="EMA window (in eval-step units) for screening metrics.",
+    )
+    parser.add_argument(
+        "--screen-min-steps", dest="screen_min_steps",
+        type=int, default=None,
+        help="Override the calibrated min-steps-before-pruning. None = use config default or calibrator.",
+    )
+    parser.add_argument(
+        "--min-screening-fitness", dest="min_screening_fitness",
+        type=float, default=0.3,
+        help="Kill-switch: refuse to seed Stage-2 if best Stage-1 fitness is below this.",
+    )
+    parser.add_argument(
+        "--calibrate-from-mlflow", dest="calibrate_from_mlflow",
+        action="store_true",
+        help="Before Stage-1, derive entropy_floor and min_steps from recent MLflow runs.",
+    )
+    parser.add_argument(
+        "--force-uncalibrated", dest="force_uncalibrated",
+        action="store_true",
+        help="Allow Stage-1 to launch even when calibrator validation reports rho<0.6.",
     )
     return parser
 
