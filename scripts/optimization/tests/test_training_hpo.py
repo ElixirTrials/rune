@@ -1237,3 +1237,62 @@ def test_select_top_k_completed_trials() -> None:
 def test_select_top_k_handles_no_completed_trials() -> None:
     from run_training_hpo import _select_top_k_completed_trials
     assert _select_top_k_completed_trials([], k=3) == []
+
+
+def test_screen_stage_smoke_end_to_end(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """--stage screen runs 3 trials end-to-end with no GPU."""
+    monkeypatch.setenv("RUNE_ADAPTER_DIR", str(tmp_path / "adapters"))
+
+    src = tmp_path / "pairs.jsonl"
+    src.write_text("\n".join(
+        json.dumps({
+            "task_id": f"t{i}",
+            "metadata": {"source_task_id": f"t{i}", "step_index": 1},
+            "messages": [{"role": "user", "content": "x"}],
+        })
+        for i in range(20)
+    ) + "\n")
+
+    db = tmp_path / "optuna.db"
+
+    train_invocations: list[str] = []
+    def _fake_train(**kwargs: Any) -> None:
+        adapter_id = kwargs["adapter_id"]
+        train_invocations.append(adapter_id)
+        out_dir = Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "trainer_state.json").write_text(json.dumps({
+            "log_history": [{
+                "step": 200, "eval_loss": 1.5,
+                "eval/token_accuracy": 0.85, "eval/entropy": 0.6,
+            }]
+        }))
+
+    fake_module = type(sys)("model_training.trainer")
+    fake_module.train_and_register = _fake_train  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "model_training.trainer", fake_module)
+    fake_resolve = type(sys)("model_training.trainer_cli")
+    fake_resolve._resolve_warm_start = lambda x: x  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "model_training.trainer_cli", fake_resolve)
+
+    fake_mlflow = type(sys)("mlflow")
+    for fn in ("set_tracking_uri", "set_experiment", "start_run",
+               "set_tags", "log_metrics", "end_run"):
+        setattr(fake_mlflow, fn, lambda *_a, **_k: None)
+    monkeypatch.setitem(sys.modules, "mlflow", fake_mlflow)
+
+    rc = main([
+        "--dataset", str(src),
+        "--output-root", str(tmp_path / "hpo"),
+        "--db", f"sqlite:///{db}",
+        "--study-name", "smoke-screen",
+        "--stage", "screen",
+        "--n-trials", "3",
+        "--subsample", "8",
+        "--screen-subsample", "8",
+        "--screen-min-steps", "0",
+    ])
+    assert rc == 0
+    assert len(train_invocations) >= 3
