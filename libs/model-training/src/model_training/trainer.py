@@ -500,10 +500,10 @@ def _attach_assistant_masks(
     ``DataCollatorForLanguageModeling`` consumes ``assistant_masks`` from
     the batch at sft_trainer.py:179-180.
 
-    The diff-aware path passes ``preserve_columns=["pre_code", "post_code"]``
+    The diff-aware path passes ``preserve_columns=["pre_codes", "post_codes"]``
     so :class:`~model_training.diff_loss.DiffWeightedDataCollator` still has
-    its hunk-weighting side-channels after pre-tokenization. Without this
-    preservation the diff path silently loses its weights AND its labels
+    its per-turn hunk-weighting side-channels after pre-tokenization. Without
+    this preservation the diff path silently loses its weights AND its labels
     (RCA-5 H2).
 
     Extracted from ``train_qlora`` to keep that function under the C901
@@ -535,12 +535,13 @@ def _build_training_dataset(
     so this helper stays GPU-import-free at module level while still producing
     a real ``datasets.Dataset`` at call time.
 
-    When ``diff_aware_loss=True`` and ``dataset_path`` is set, ``pre_code`` and
-    ``post_code`` columns are attached alongside ``messages`` so the
-    :class:`~model_training.diff_loss.DiffWeightedDataCollator` hunk path can
-    compute line-level diff weights.  Trajectory-sourced datasets do not carry
-    pre/post context, so the collator will log-warn-once and fall back to the
-    legacy set-based path.
+    When ``diff_aware_loss=True`` and ``dataset_path`` is set, ``pre_codes``
+    and ``post_codes`` columns (one entry per assistant turn) are attached
+    alongside ``messages`` so the diff-aware collator
+    (:class:`~model_training.diff_loss.DiffWeightedDataCollator`) can align
+    hunks per-turn against the chat-templated sequence.
+    Trajectory-sourced datasets do not carry pre/post context, so the
+    collator will log-warn-once and fall back to identity weights.
     """
     from typing import Literal, cast  # noqa: PLC0415
 
@@ -566,8 +567,8 @@ def _build_training_dataset(
                 [
                     {
                         "messages": c,
-                        "pre_code": pp["pre_code"],
-                        "post_code": pp["post_code"],
+                        "pre_codes": pp["pre_codes"],
+                        "post_codes": pp["post_codes"],
                     }
                     for c, pp in zip(conversations, pre_post)
                 ]
@@ -957,13 +958,14 @@ def train_qlora(
 
     if diff_aware_loss:
         # The diff path needs assistant_masks (for label masking via the
-        # inner DataCollatorForLanguageModeling) AND pre_code/post_code
-        # (for DiffWeightedDataCollator.hunk_path). Preserve the latter
-        # so we do not regress to RCA-5 H2 (zero gradient) or to identity
-        # weights (loss collapses to mean CE on assistant tokens only,
-        # ignoring hunks — still functional but defeats the purpose).
+        # inner DataCollatorForLanguageModeling) AND pre_codes/post_codes
+        # per-turn lists (for DiffWeightedDataCollator's per-span alignment).
+        # Preserve the latter so we do not regress to RCA-5 H2 (zero gradient)
+        # or to identity weights (loss collapses to mean CE on assistant
+        # tokens only, ignoring hunks — still functional but defeats the
+        # purpose).
         dataset = _attach_assistant_masks(
-            dataset, tokenizer, preserve_columns=["pre_code", "post_code"]
+            dataset, tokenizer, preserve_columns=["pre_codes", "post_codes"]
         )
     else:
         dataset = _attach_assistant_masks(dataset, tokenizer)

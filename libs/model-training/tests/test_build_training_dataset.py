@@ -1,8 +1,10 @@
 """Tests for ``_build_training_dataset`` and ``_build_sft_config``.
 
-Focused on the diff-aware wiring added in Task 5:
+Focused on the diff-aware wiring:
 
-- ``pre_code`` / ``post_code`` columns attached iff ``diff_aware_loss=True``.
+- Per-turn ``pre_codes`` / ``post_codes`` list columns attached iff
+  ``diff_aware_loss=True`` (singular joined strings were the legacy schema
+  that broke per-turn alignment for multi-turn conversations).
 - ``SFTConfig.remove_unused_columns`` is flipped to ``False`` iff
   ``diff_aware_loss=True`` so TRL does not strip the side-channel columns.
 - The module is CPU-importable (INFRA-05).
@@ -81,7 +83,7 @@ def test_module_is_cpu_importable() -> None:
 
 
 def test_attaches_pre_post_columns_when_diff_aware(tmp_path: Path) -> None:
-    """diff_aware_loss=True → rows carry pre_code, post_code, messages."""
+    """diff_aware_loss=True → rows carry per-turn pre_codes/post_codes lists."""
     from model_training.trainer import _build_training_dataset
 
     pairs = [
@@ -109,15 +111,18 @@ def test_attaches_pre_post_columns_when_diff_aware(tmp_path: Path) -> None:
     assert isinstance(ds, _FakeDataset)
     assert len(ds) == 1
     row = ds.rows[0]
-    assert set(row.keys()) == {"messages", "pre_code", "post_code"}
+    assert set(row.keys()) == {"messages", "pre_codes", "post_codes"}
     assert isinstance(row["messages"], list)
-    assert isinstance(row["pre_code"], str)
-    assert isinstance(row["post_code"], str)
+    assert isinstance(row["pre_codes"], list)
+    assert isinstance(row["post_codes"], list)
+    # single-turn → length-1 lists.
+    assert len(row["pre_codes"]) == 1
+    assert len(row["post_codes"]) == 1
     # Initial-commit activation_text has no "## Current Code" marker, so
-    # pre_code is empty.
-    assert row["pre_code"] == ""
-    # post_code is the code body of the "## Implementation" section.
-    assert "def add" in row["post_code"]
+    # pre_codes[0] is empty.
+    assert row["pre_codes"][0] == ""
+    # post_codes[0] is the code body of the "## Implementation" section.
+    assert "def add" in row["post_codes"][0]
 
 
 def test_no_pre_post_columns_when_diff_aware_false(tmp_path: Path) -> None:
@@ -152,8 +157,8 @@ def test_no_pre_post_columns_when_diff_aware_false(tmp_path: Path) -> None:
     assert set(row.keys()) == {"messages"}
 
 
-def test_multi_turn_diff_aware_concatenates_pre_post(tmp_path: Path) -> None:
-    """Multi-turn diff-aware: pre/post are concatenated across turns."""
+def test_multi_turn_diff_aware_emits_per_turn_lists(tmp_path: Path) -> None:
+    """Multi-turn diff-aware: pre/post are emitted as per-turn lists."""
     from model_training.trainer import _build_training_dataset
 
     activation_step_1 = (
@@ -196,12 +201,16 @@ def test_multi_turn_diff_aware_concatenates_pre_post(tmp_path: Path) -> None:
 
     assert len(ds) == 1
     row = ds.rows[0]
-    # Turn 1 had no ## Current Code (initial-commit), so its pre is empty;
-    # turn 2's pre is the "def add(a, b): return a + b" body. Concatenated
-    # with "\n\n".
-    assert "def add(a, b):\n    return a + b" in row["pre_code"]
-    # Two revisions concatenated with "\n\n".
-    assert row["post_code"].count("def add") == 2
+    # Two turns → two entries per list (no joining — each turn aligned
+    # against its own pre/post in the diff-aware collator).
+    assert len(row["pre_codes"]) == 2
+    assert len(row["post_codes"]) == 2
+    # Turn 0 (initial commit): empty pre, post is the implementation body.
+    assert row["pre_codes"][0] == ""
+    assert "def add(a, b):\n    return a + b" in row["post_codes"][0]
+    # Turn 1: pre is the prior code, post is the float-aware revision.
+    assert "def add(a, b):\n    return a + b" in row["pre_codes"][1]
+    assert "float(a) + float(b)" in row["post_codes"][1]
 
 
 def test_raises_on_empty_pairs(tmp_path: Path) -> None:
