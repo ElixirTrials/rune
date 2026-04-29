@@ -656,3 +656,65 @@ def test_compute_screening_fitness_equal_priors_returns_half_norm() -> None:
     )
     # All priors equal -> loss_norm=0.5
     assert out == pytest.approx(0.5)
+
+
+def test_ema_initial_value_is_none() -> None:
+    from run_training_hpo import _EMA
+
+    ema = _EMA(window=5)
+    assert ema.value is None
+
+
+def test_ema_first_update_returns_input_value() -> None:
+    from run_training_hpo import _EMA
+
+    ema = _EMA(window=5)
+    ema.update(1.0)
+    assert ema.value == pytest.approx(1.0)
+
+
+def test_ema_converges_toward_steady_input() -> None:
+    from run_training_hpo import _EMA
+
+    ema = _EMA(window=5)
+    for _ in range(100):
+        ema.update(2.0)
+    assert ema.value == pytest.approx(2.0, abs=1e-6)
+
+
+def test_ema_window_controls_smoothing() -> None:
+    """Smaller window = faster adaptation."""
+    from run_training_hpo import _EMA
+
+    fast = _EMA(window=2)
+    slow = _EMA(window=20)
+    fast.update(0.0)
+    slow.update(0.0)
+    fast.update(10.0)
+    slow.update(10.0)
+    # Both bound to (0, 10); fast is closer to 10, slow closer to 0.
+    assert fast.value is not None and slow.value is not None
+    assert fast.value > slow.value
+
+
+def test_ema_ignores_non_finite_inputs() -> None:
+    """NaN / inf must not poison the running average."""
+    import math
+    from run_training_hpo import _EMA
+
+    ema = _EMA(window=5)
+    ema.update(1.0)
+    ema.update(float("inf"))
+    ema.update(float("nan"))
+    ema.update(1.0)
+    assert ema.value is not None and math.isfinite(ema.value)
+    assert ema.value == pytest.approx(1.0, abs=1e-6)
+
+
+def test_ema_invalid_window_raises() -> None:
+    from run_training_hpo import _EMA
+
+    with pytest.raises(ValueError):
+        _EMA(window=0)
+    with pytest.raises(ValueError):
+        _EMA(window=-1)

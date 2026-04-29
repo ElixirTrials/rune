@@ -580,6 +580,39 @@ def _flush_gpu_between_phases() -> None:
         pass
 
 
+class _EMA:
+    """Exponential moving average that ignores non-finite updates.
+
+    The smoothing factor is ``alpha = 2 / (window + 1)`` (the standard
+    pandas / financial EMA), so ``window`` is the half-life-ish span
+    rather than a literal sample count. Used by
+    :class:`OptunaScreeningCallback` to smooth per-eval metrics before
+    Hyperband pruning decisions — the in-flight 3-epoch run showed
+    per-step values are too noisy for direct pruning.
+    """
+
+    def __init__(self, window: int) -> None:
+        if window <= 0:
+            raise ValueError(f"_EMA window must be positive, got {window}")
+        self._alpha = 2.0 / (window + 1.0)
+        self._value: float | None = None
+
+    def update(self, x: float) -> None:
+        """Append one sample. Non-finite inputs are silently ignored."""
+        import math  # noqa: PLC0415
+        if not math.isfinite(x):
+            return
+        if self._value is None:
+            self._value = x
+        else:
+            self._value = self._alpha * x + (1.0 - self._alpha) * self._value
+
+    @property
+    def value(self) -> float | None:
+        """Current smoothed value, or ``None`` before the first update."""
+        return self._value
+
+
 def _evaluate_adapter_on_heldout(
     adapter_path: str,
     pairs: list[dict[str, Any]],
