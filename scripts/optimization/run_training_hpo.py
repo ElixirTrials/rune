@@ -151,6 +151,10 @@ class HPORunArgs:
     compute_adapter_delta: bool = True
     seed: int = 42
     extra_train_kwargs: dict[str, Any] = field(default_factory=dict)
+    # Stage-aware additions; default values preserve legacy behaviour.
+    stage: str = "single"
+    screen_cfg: ScreeningFitnessConfig | None = None
+    screen_epochs: int = 2
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1203,6 +1207,58 @@ def _compute_screening_fitness(
     return cfg.loss_weight * (1.0 - loss_norm) + cfg.accuracy_weight * accuracy_score
 
 
+def _read_screen_metrics_from_trainer_state(output_dir: str) -> dict[str, float]:
+    """Pull the final eval metrics from the SFTTrainer's trainer_state.json.
+
+    Returns ``eval_loss`` (always present, ``inf`` if missing),
+    ``eval/token_accuracy`` (defaults to 0.0), and ``eval/entropy``
+    (defaults to ``inf`` so callers downstream of the entropy guard
+    still see a sentinel that the floor logic handles).
+    """
+    state_file = Path(output_dir) / "trainer_state.json"
+    out: dict[str, float] = {
+        "eval_loss": float("inf"),
+        "eval/token_accuracy": 0.0,
+        "eval/entropy": float("inf"),
+    }
+    if not state_file.exists():
+        return out
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return out
+    history = state.get("log_history", [])
+    eval_entries = [e for e in history if "eval_loss" in e]
+    if not eval_entries:
+        return out
+    last = eval_entries[-1]
+    out["eval_loss"] = float(last.get("eval_loss", float("inf")))
+    out["eval/token_accuracy"] = float(last.get("eval/token_accuracy", 0.0))
+    if "eval/entropy" in last:
+        out["eval/entropy"] = float(last["eval/entropy"])
+    return out
+
+
+def _accuracy_score(
+    accuracy: float, *, prior_accuracies: list[float], delta_normalize: bool
+) -> float:
+    """Map raw token accuracy to a discriminative [0, 1] score.
+
+    When ``delta_normalize=True`` and ``len(prior_accuracies) >= 3``,
+    rescale to ``(accuracy - acc_floor) / (acc_ceiling - acc_floor)``
+    using the prior min/max — restores spread when all trials cluster
+    in a narrow band like [0.85, 0.92]. Falls back to raw accuracy
+    otherwise. Always clamped to ``[0, 1]``.
+    """
+    if delta_normalize and len(prior_accuracies) >= 3:
+        lo = min(prior_accuracies)
+        hi = max(prior_accuracies)
+        if hi - lo > 1e-6:
+            scaled = (accuracy - lo) / (hi - lo)
+            return max(0.0, min(1.0, scaled))
+    return max(0.0, min(1.0, accuracy))
+
+
 def _run_single_trial(
     trial: Any,
     *,
@@ -1210,7 +1266,17 @@ def _run_single_trial(
     fitness_cfg: FitnessConfig,
     prior_losses: list[float],
 ) -> float:
-    """Objective function body for one Optuna trial."""
+    """Objective function body for one Optuna trial.
+
+    When ``run_args.stage == "screen"``: trains for ``run_args.screen_epochs``
+    epochs, attaches an ``OptunaScreeningCallback`` to drive Hyperband,
+    skips ``_evaluate_adapter_on_heldout`` entirely, and computes the
+    screening fitness from the final eval metrics in ``trainer_state.json``.
+
+    All other stage values (``single``, ``refine``, ``auto``) take the
+    legacy hunk-restricted heldout path. ``single`` is the default and
+    preserves byte-for-byte the existing behaviour.
+    """
     sampled = _suggest_trial_params(trial)
     logger.info("Trial %d sampled params: %s", trial.number, sampled)
 
@@ -1248,11 +1314,19 @@ def _run_single_trial(
         adapter_id=adapter_id,
         trial_dataset_path=str(trial_dataset),
     )
+    # Stage-1 trains for more epochs; the rest of the kwargs flow is unchanged.
+    if run_args.stage == "screen":
+        kwargs["epochs"] = run_args.screen_epochs
+        screen_cfg = run_args.screen_cfg or ScreeningFitnessConfig()
+        callback = OptunaScreeningCallback(trial=trial, cfg=screen_cfg)
+        kwargs.setdefault("extra_trainer_callbacks", []).append(callback)
+
     logger.info(
-        "Trial %d adapter_id=%s warmup_ratio=%.3f",
+        "Trial %d adapter_id=%s warmup_ratio=%.3f stage=%s",
         trial.number,
         adapter_id,
         sampled["warmup_ratio"],
+        run_args.stage,
     )
 
     # Point the trainer at a per-trial adapter output dir so HPO artifacts
@@ -1294,6 +1368,7 @@ def _run_single_trial(
                 "hpo.train_pairs": str(len(train_pairs)),
                 "hpo.heldout_pairs": str(len(heldout_pairs)),
                 "hpo.adapter_id": adapter_id,
+                "hpo.stage": run_args.stage,
             }
         )
 
@@ -1306,44 +1381,72 @@ def _run_single_trial(
         _flush_gpu_between_phases()
 
         adapter_output_dir = str(Path(os.environ["RUNE_ADAPTER_DIR"]) / adapter_id)
-        # Resolve base model ID the same way train_and_register does.
-        base_model_id = kwargs.get("base_model_id") or os.environ.get(
-            "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
-        )
-        eval_metrics = _evaluate_adapter_on_heldout(
-            adapter_output_dir,
-            heldout_pairs,
-            base_model_id=base_model_id,
-            compute_adapter_delta=run_args.compute_adapter_delta,
-        )
-        mlflow.log_metrics(
-            {f"eval/{k}": v for k, v in eval_metrics.items()},
-            step=trial.number,
-        )
+
+        if run_args.stage == "screen":
+            screen_metrics = _read_screen_metrics_from_trainer_state(adapter_output_dir)
+            mlflow.log_metrics(
+                {f"screen/{k}": v for k, v in screen_metrics.items()},
+                step=trial.number,
+            )
+            screen_cfg = run_args.screen_cfg or ScreeningFitnessConfig()
+            acc_score = _accuracy_score(
+                screen_metrics["eval/token_accuracy"],
+                prior_accuracies=[],
+                delta_normalize=screen_cfg.delta_normalize_accuracy,
+            )
+            fitness = _compute_screening_fitness(
+                eval_loss=screen_metrics["eval_loss"],
+                accuracy_score=acc_score,
+                prior_losses=prior_losses,
+                cfg=screen_cfg,
+            )
+            logger.info(
+                "Trial %d (screen) eval_loss=%.4f acc=%.3f entropy=%.3f fitness=%.4f",
+                trial.number, screen_metrics["eval_loss"],
+                screen_metrics["eval/token_accuracy"],
+                screen_metrics.get("eval/entropy", float("nan")),
+                fitness,
+            )
+            prior_losses.append(screen_metrics["eval_loss"])
+        else:
+            # Resolve base model ID the same way train_and_register does.
+            base_model_id = kwargs.get("base_model_id") or os.environ.get(
+                "RUNE_BASE_MODEL", "Qwen/Qwen3.5-9B"
+            )
+            eval_metrics = _evaluate_adapter_on_heldout(
+                adapter_output_dir,
+                heldout_pairs,
+                base_model_id=base_model_id,
+                compute_adapter_delta=run_args.compute_adapter_delta,
+            )
+            mlflow.log_metrics(
+                {f"eval/{k}": v for k, v in eval_metrics.items()},
+                step=trial.number,
+            )
+            fitness = _compute_fitness(
+                eval_metrics["hunk_loss"],
+                eval_metrics["hunk_accuracy"],
+                eval_metrics["adapter_improvement"],
+                prior_losses=prior_losses,
+                cfg=fitness_cfg,
+            )
+            logger.info(
+                "Trial %d hunk_loss=%.4f hunk_acc=%.3f"
+                " adapter_imp=%.3f entropy=%.3f fitness=%.4f",
+                trial.number,
+                eval_metrics["hunk_loss"],
+                eval_metrics["hunk_accuracy"],
+                eval_metrics["adapter_improvement"],
+                eval_metrics["hunk_entropy"],
+                fitness,
+            )
+            prior_losses.append(eval_metrics["hunk_loss"])
     except BaseException:
         mlflow.end_run(status="FAILED")
         raise
     else:
         mlflow.end_run(status="FINISHED")
 
-    fitness = _compute_fitness(
-        eval_metrics["hunk_loss"],
-        eval_metrics["hunk_accuracy"],
-        eval_metrics["adapter_improvement"],
-        prior_losses=prior_losses,
-        cfg=fitness_cfg,
-    )
-    logger.info(
-        "Trial %d hunk_loss=%.4f hunk_acc=%.3f"
-        " adapter_imp=%.3f entropy=%.3f fitness=%.4f",
-        trial.number,
-        eval_metrics["hunk_loss"],
-        eval_metrics["hunk_accuracy"],
-        eval_metrics["adapter_improvement"],
-        eval_metrics["hunk_entropy"],
-        fitness,
-    )
-    prior_losses.append(eval_metrics["hunk_loss"])
     return fitness
 
 

@@ -8,6 +8,7 @@ adapter-improvement evaluator shape (GPU paths monkeypatched).
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -700,6 +701,7 @@ def test_ema_window_controls_smoothing() -> None:
 def test_ema_ignores_non_finite_inputs() -> None:
     """NaN / inf must not poison the running average."""
     import math
+
     from run_training_hpo import _EMA
 
     ema = _EMA(window=5)
@@ -781,7 +783,6 @@ def test_screening_callback_reports_after_min_steps() -> None:
 
 def test_screening_callback_prunes_on_entropy_floor_breach() -> None:
     import optuna
-
     from run_training_hpo import (
         OptunaScreeningCallback,
         ScreeningFitnessConfig,
@@ -802,7 +803,6 @@ def test_screening_callback_prunes_on_entropy_floor_breach() -> None:
 
 def test_screening_callback_prunes_on_hyperband_signal() -> None:
     import optuna
-
     from run_training_hpo import (
         OptunaScreeningCallback,
         ScreeningFitnessConfig,
@@ -891,13 +891,13 @@ def _make_fake_mlflow_run(
 def test_calibrate_returns_defaults_when_mlflow_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Force the mlflow import to raise.
+    import builtins
+
     from run_training_hpo import (
         ScreeningFitnessConfig,
         _calibrate_thresholds_from_mlflow,
     )
-
-    # Force the mlflow import to raise.
-    import builtins
     real_import = builtins.__import__
 
     def _raising_import(name: str, *args: Any, **kwargs: Any) -> Any:
@@ -1027,3 +1027,155 @@ def test_calibrate_emits_receipt_and_lowers_floor_against_high_p5(
     assert len(receipts) == 1
     payload = json.loads(receipts[0].read_text())
     assert payload["source_run_ids"] == ["r1", "r2", "r3"]
+
+
+def test_run_args_defaults_include_stage_single() -> None:
+    from run_training_hpo import HPORunArgs
+
+    args = HPORunArgs(
+        dataset="x.jsonl", adapter_id_prefix="p", model_config_name="m",
+        warm_start=None, subsample=10, output_root=Path("/tmp"),
+        experiment_name="e", keep_top_k=1,
+    )
+    assert args.stage == "single"
+
+
+def test_screening_trial_skips_heldout_eval(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """In screen-mode, _evaluate_adapter_on_heldout MUST NOT be called."""
+    import run_training_hpo as mod
+    from run_training_hpo import (
+        FitnessConfig,
+        HPORunArgs,
+        ScreeningFitnessConfig,
+        _run_single_trial,
+    )
+
+    src = tmp_path / "pairs.jsonl"
+    src.write_text(
+        "\n".join(
+            json.dumps({
+                "task_id": f"t{i}",
+                "metadata": {"source_task_id": f"t{i}", "step_index": i},
+                "messages": [{"role": "user", "content": "x"}],
+            })
+            for i in range(8)
+        ) + "\n"
+    )
+
+    eval_called = {"n": 0}
+    def _no_heldout_eval(*args: Any, **kwargs: Any) -> dict[str, float]:
+        eval_called["n"] += 1
+        return {"hunk_loss": 0.0, "hunk_accuracy": 0.0,
+                "adapter_improvement": 0.0, "hunk_entropy": 0.0}
+    monkeypatch.setattr(mod, "_evaluate_adapter_on_heldout", _no_heldout_eval)
+
+    fake_train_called = {"n": 0}
+    def _fake_train_and_register(**kwargs: Any) -> None:
+        fake_train_called["n"] += 1
+        out_dir = Path(os.environ["RUNE_ADAPTER_DIR"]) / kwargs["adapter_id"]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "trainer_state.json").write_text(json.dumps({
+            "log_history": [
+                {"step": 200, "eval_loss": 1.5,
+                 "eval/token_accuracy": 0.85, "eval/entropy": 0.6},
+            ]
+        }))
+
+    fake_module = type(sys)("model_training.trainer")
+    fake_module.train_and_register = _fake_train_and_register  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "model_training.trainer", fake_module)
+
+    fake_resolve = type(sys)("model_training.trainer_cli")
+    fake_resolve._resolve_warm_start = lambda x: x  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "model_training.trainer_cli", fake_resolve)
+
+    fake_mlflow = type(sys)("mlflow")
+    fake_mlflow.set_tracking_uri = lambda *_a, **_k: None  # type: ignore[attr-defined]
+    fake_mlflow.set_experiment = lambda *_a, **_k: None  # type: ignore[attr-defined]
+    fake_mlflow.start_run = lambda *_a, **_k: None  # type: ignore[attr-defined]
+    fake_mlflow.set_tags = lambda *_a, **_k: None  # type: ignore[attr-defined]
+    fake_mlflow.log_metrics = lambda *_a, **_k: None  # type: ignore[attr-defined]
+    fake_mlflow.end_run = lambda *_a, **_k: None  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mlflow", fake_mlflow)
+
+    os.environ["RUNE_ADAPTER_DIR"] = str(tmp_path / "adapters")
+
+    run_args = HPORunArgs(
+        dataset=str(src), adapter_id_prefix="p", model_config_name="m",
+        warm_start="deltacoder", subsample=8, output_root=tmp_path,
+        experiment_name="e", keep_top_k=1, stage="screen",
+        screen_cfg=ScreeningFitnessConfig(min_steps_before_pruning=0),
+    )
+
+    class _Trial:
+        number = 0
+        def report(self, *_a: Any, **_k: Any) -> None: pass
+        def should_prune(self) -> bool: return False
+        def suggest_float(self, _name: str, lo: float, hi: float, **_kw: Any) -> float:
+            return (lo + hi) / 2.0
+        def suggest_categorical(self, _name: str, choices: list[Any]) -> Any:
+            return choices[0]
+
+    fitness = _run_single_trial(
+        _Trial(), run_args=run_args,
+        fitness_cfg=FitnessConfig(), prior_losses=[],
+    )
+    assert fake_train_called["n"] == 1
+    assert eval_called["n"] == 0  # heldout eval skipped
+    assert 0.0 <= fitness <= 1.0
+
+
+def test_single_stage_path_calls_heldout_eval(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """In stage='single' (the existing default), heldout eval must run as before."""
+    import run_training_hpo as mod
+    from run_training_hpo import FitnessConfig, HPORunArgs, _run_single_trial
+
+    src = tmp_path / "pairs.jsonl"
+    src.write_text("\n".join(
+        json.dumps({"task_id": f"t{i}",
+                    "metadata": {"source_task_id": f"t{i}", "step_index": i},
+                    "messages": [{"role": "user", "content": "x"}]})
+        for i in range(8)
+    ) + "\n")
+
+    eval_called = {"n": 0}
+    def _stub_eval(*_args: Any, **_kwargs: Any) -> dict[str, float]:
+        eval_called["n"] += 1
+        return {"hunk_loss": 1.0, "hunk_accuracy": 0.5,
+                "adapter_improvement": 0.1, "hunk_entropy": 0.6}
+    monkeypatch.setattr(mod, "_evaluate_adapter_on_heldout", _stub_eval)
+
+    def _fake_train_and_register(**_kwargs: Any) -> None: pass
+    fake_module = type(sys)("model_training.trainer")
+    fake_module.train_and_register = _fake_train_and_register  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "model_training.trainer", fake_module)
+    fake_resolve = type(sys)("model_training.trainer_cli")
+    fake_resolve._resolve_warm_start = lambda x: x  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "model_training.trainer_cli", fake_resolve)
+
+    fake_mlflow = type(sys)("mlflow")
+    for fn in ("set_tracking_uri", "set_experiment", "start_run",
+               "set_tags", "log_metrics", "end_run"):
+        setattr(fake_mlflow, fn, lambda *_a, **_k: None)
+    monkeypatch.setitem(sys.modules, "mlflow", fake_mlflow)
+
+    os.environ["RUNE_ADAPTER_DIR"] = str(tmp_path / "adapters")
+
+    run_args = HPORunArgs(
+        dataset=str(src), adapter_id_prefix="p", model_config_name="m",
+        warm_start="deltacoder", subsample=8, output_root=tmp_path,
+        experiment_name="e", keep_top_k=1,  # stage defaults to "single"
+    )
+    class _Trial:
+        number = 0
+        def suggest_float(self, _n: str, lo: float, hi: float, **_kw: Any) -> float:
+            return (lo + hi) / 2
+        def suggest_categorical(self, _n: str, c: list[Any]) -> Any: return c[0]
+
+    _run_single_trial(_Trial(), run_args=run_args,
+                      fitness_cfg=FitnessConfig(), prior_losses=[])
+    assert eval_called["n"] == 1
