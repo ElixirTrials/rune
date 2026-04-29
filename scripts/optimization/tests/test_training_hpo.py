@@ -594,3 +594,65 @@ def test_print_only_with_stage_single_unchanged(
     out_b = capsys.readouterr().out
     assert rc_a == 0 and rc_b == 0
     assert json.loads(out_a) == json.loads(out_b)
+
+
+def test_compute_screening_fitness_default_norm_with_few_priors() -> None:
+    from run_training_hpo import ScreeningFitnessConfig, _compute_screening_fitness
+
+    cfg = ScreeningFitnessConfig()
+    # With <3 priors, loss_norm defaults to 0.5
+    out = _compute_screening_fitness(
+        eval_loss=2.0, accuracy_score=0.5, prior_losses=[1.0, 2.0], cfg=cfg
+    )
+    # 0.6 * (1 - 0.5) + 0.4 * 0.5 = 0.3 + 0.2 = 0.5
+    assert out == pytest.approx(0.5)
+
+
+def test_compute_screening_fitness_min_max_normalises_loss() -> None:
+    from run_training_hpo import ScreeningFitnessConfig, _compute_screening_fitness
+
+    cfg = ScreeningFitnessConfig()
+    # priors span [1.0, 3.0]; current 2.0 normalises to 0.5
+    out = _compute_screening_fitness(
+        eval_loss=2.0, accuracy_score=0.8,
+        prior_losses=[1.0, 2.5, 3.0], cfg=cfg,
+    )
+    # 0.6 * (1 - 0.5) + 0.4 * 0.8 = 0.3 + 0.32 = 0.62
+    assert out == pytest.approx(0.62)
+
+
+def test_compute_screening_fitness_inf_loss_floors_norm() -> None:
+    from run_training_hpo import ScreeningFitnessConfig, _compute_screening_fitness
+
+    cfg = ScreeningFitnessConfig()
+    out = _compute_screening_fitness(
+        eval_loss=float("inf"), accuracy_score=0.0,
+        prior_losses=[1.0, 2.0, 3.0], cfg=cfg,
+    )
+    # inf -> loss_norm=0.5 fallback, 0.6*(1-0.5) + 0.4*0 = 0.3
+    assert out == pytest.approx(0.3)
+
+
+def test_compute_screening_fitness_clamps_loss_norm_to_unit_interval() -> None:
+    from run_training_hpo import ScreeningFitnessConfig, _compute_screening_fitness
+
+    cfg = ScreeningFitnessConfig()
+    # Below the prior range — must clamp to 0.0, not extrapolate.
+    out = _compute_screening_fitness(
+        eval_loss=0.5, accuracy_score=0.5,
+        prior_losses=[1.0, 2.0, 3.0], cfg=cfg,
+    )
+    # 0.6 * (1 - 0.0) + 0.4 * 0.5 = 0.6 + 0.2 = 0.8
+    assert out == pytest.approx(0.8)
+
+
+def test_compute_screening_fitness_equal_priors_returns_half_norm() -> None:
+    from run_training_hpo import ScreeningFitnessConfig, _compute_screening_fitness
+
+    cfg = ScreeningFitnessConfig()
+    out = _compute_screening_fitness(
+        eval_loss=2.0, accuracy_score=0.5,
+        prior_losses=[2.0, 2.0, 2.0], cfg=cfg,
+    )
+    # All priors equal -> loss_norm=0.5
+    assert out == pytest.approx(0.5)

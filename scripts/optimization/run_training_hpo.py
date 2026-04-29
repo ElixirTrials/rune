@@ -823,6 +823,36 @@ def _compute_fitness(
     )
 
 
+def _compute_screening_fitness(
+    eval_loss: float,
+    accuracy_score: float,
+    *,
+    prior_losses: list[float],
+    cfg: ScreeningFitnessConfig,
+) -> float:
+    """Stage-1 fitness scalar from smoothed eval loss and accuracy.
+
+    Mirrors ``_compute_fitness``'s min-max normalisation pattern but with
+    only two terms (loss + accuracy). With fewer than 3 prior losses, or
+    when the current loss is non-finite, falls back to ``loss_norm = 0.5``
+    so early trials get a stable midpoint instead of dominating the blend.
+
+    ``accuracy_score`` is expected pre-clamped to ``[0, 1]`` by the caller
+    (raw or delta-normalised); we do not re-clamp here.
+    """
+    if len(prior_losses) < 3 or eval_loss == float("inf"):
+        loss_norm = 0.5
+    else:
+        lo = min(prior_losses)
+        hi = max(prior_losses)
+        if hi == lo:
+            loss_norm = 0.5
+        else:
+            loss_norm = (eval_loss - lo) / (hi - lo)
+            loss_norm = max(0.0, min(1.0, loss_norm))
+    return cfg.loss_weight * (1.0 - loss_norm) + cfg.accuracy_weight * accuracy_score
+
+
 def _run_single_trial(
     trial: Any,
     *,
