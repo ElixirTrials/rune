@@ -566,6 +566,144 @@ def _compute_weighted_loss(
 
 
 # ---------------------------------------------------------------------------
+# Per-step diagnostic metrics (no extra forward pass)
+# ---------------------------------------------------------------------------
+
+
+def _compute_step_metrics(
+    logits: Any,
+    labels: Any,
+    loss_weights: Any,
+    *,
+    changed_weight: float,
+    unchanged_weight: float,
+) -> dict[str, float]:
+    """Per-step training observability metrics from the existing forward pass.
+
+    Computed under ``torch.no_grad`` so autograd doesn't retain the
+    intermediate softmax / probability tensors.  Returns scalar Python
+    floats so the trainer can accumulate them across micro-batches before
+    emission via ``Trainer.log``.
+
+    Metrics (all train-side, prefixed ``train/`` by the trainer):
+
+    - ``effective_token_count``: ``(loss_weights * label_mask).sum()`` —
+      the loss denominator.  Drops to 0 when the all-masked-batch guard
+      fires; pair with ``all_masked_batch`` to detect the RCA-5 H2 path.
+    - ``all_masked_batch``: 1.0 when ``effective_token_count < 1e-8``,
+      else 0.0.  Averaged across the logging window this becomes the
+      fraction of zero-gradient micro-batches.
+    - ``token_accuracy``: top-1 ``argmax(logits) == label`` over labeled
+      tokens.
+    - ``entropy``: mean predictive entropy over labeled tokens.
+    - ``changed_loss`` / ``context_loss``: per-token CE split by the
+      diff weight class (changed = hunk tokens, context = non-hunk
+      assistant tokens).  When ``changed_weight == unchanged_weight``
+      (identity fallback), context is empty and everything counts as
+      changed.
+    - ``changed_token_acc`` / ``context_token_acc``: top-1 accuracy split
+      the same way.
+    - ``changed_entropy`` / ``context_entropy``: mean entropy split.
+    - ``changed_token_frac``: fraction of labeled tokens classed as
+      "changed" — drift here means dataset shuffling is non-uniform
+      across hunk-density.
+
+    Args:
+        logits: ``[batch, seq_len, vocab]`` float tensor (pre-shift).
+        labels: ``[batch, seq_len]`` long tensor with ``IGNORE_INDEX`` for
+            non-assistant positions.
+        loss_weights: ``[batch, seq_len]`` float tensor aligned with
+            ``labels``.
+        changed_weight: Per-token weight assigned to changed (hunk)
+            tokens by the diff collator.
+        unchanged_weight: Per-token weight for non-hunk assistant tokens.
+
+    Returns:
+        Dict of scalar Python floats; keys are unprefixed metric names.
+    """
+    import torch
+    import torch.nn.functional as F  # noqa: N812
+
+    with torch.no_grad():
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
+        shift_weights = loss_weights[:, 1:].contiguous().float()
+
+        label_mask = shift_labels != IGNORE_INDEX
+        n_labeled = int(label_mask.sum().item())
+
+        # Effective token count + all-masked-batch flag (the RCA-5 H2 watchdog).
+        eff_count = float((shift_weights * label_mask.float()).sum().item())
+        all_masked = 1.0 if eff_count < 1e-8 else 0.0
+
+        if n_labeled == 0:
+            # Degenerate batch — emit zeros for every other metric.
+            zero_keys = (
+                "token_accuracy",
+                "entropy",
+                "changed_loss",
+                "context_loss",
+                "changed_token_acc",
+                "context_token_acc",
+                "changed_entropy",
+                "context_entropy",
+                "changed_token_frac",
+            )
+            out: dict[str, float] = dict.fromkeys(zero_keys, 0.0)
+            out["effective_token_count"] = eff_count
+            out["all_masked_batch"] = all_masked
+            return out
+
+        per_token_ce = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=IGNORE_INDEX,
+            reduction="none",
+        ).view(shift_labels.shape)
+
+        log_probs = F.log_softmax(shift_logits, dim=-1)
+        entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
+
+        pred = shift_logits.argmax(dim=-1)
+        correct = (pred == shift_labels) & label_mask
+        correct_f = correct.float()
+
+        # Split changed vs context by the midpoint between the two diff
+        # weights.  When changed == unchanged (identity fallback), the
+        # midpoint test collapses both to "changed" — context is empty,
+        # which is the correct semantic since there's no diff signal.
+        if changed_weight == unchanged_weight:
+            changed_mask = label_mask
+            context_mask = torch.zeros_like(label_mask)
+        else:
+            midpoint = (changed_weight + unchanged_weight) / 2.0
+            changed_mask = label_mask & (shift_weights >= midpoint)
+            context_mask = label_mask & (shift_weights > 0) & (shift_weights < midpoint)
+
+        n_changed = int(changed_mask.sum().item())
+        n_context = int(context_mask.sum().item())
+
+        def _masked_mean(t: Any, mask: Any, n: int) -> float:
+            if n == 0:
+                return 0.0
+            return float((t * mask.float()).sum().item()) / n
+
+        return {
+            "effective_token_count": eff_count,
+            "all_masked_batch": all_masked,
+            "token_accuracy": float(correct_f.sum().item()) / n_labeled,
+            "entropy": _masked_mean(entropy, label_mask, n_labeled),
+            "changed_loss": _masked_mean(per_token_ce, changed_mask, n_changed),
+            "context_loss": _masked_mean(per_token_ce, context_mask, n_context),
+            "changed_token_acc": _masked_mean(correct_f, changed_mask, n_changed),
+            "context_token_acc": _masked_mean(correct_f, context_mask, n_context),
+            "changed_entropy": _masked_mean(entropy, changed_mask, n_changed),
+            "context_entropy": _masked_mean(entropy, context_mask, n_context),
+            "changed_token_frac": float(n_changed) / n_labeled,
+        }
+
+
+# ---------------------------------------------------------------------------
 # DiffAwareSFTTrainer
 # ---------------------------------------------------------------------------
 
@@ -586,7 +724,28 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
 
     When ``loss_weights`` is absent from the batch, falls back to standard
     SFTTrainer loss (no ``KeyError``).
+
+    Per-step diagnostic metrics — `changed_loss` / `context_loss`,
+    token_accuracy, entropy, effective_token_count, all_masked_batch_frac
+    — are accumulated across micro-batches in ``compute_loss`` and flushed
+    via ``log`` at the parent's ``logging_steps`` cadence.  See
+    :func:`_compute_step_metrics` for the per-batch derivation.  The
+    ``_diff_changed_weight`` / ``_diff_unchanged_weight`` instance
+    attributes are populated by :func:`build_diff_aware_sft_trainer`; they
+    default to the same values used by the collator so the changed/context
+    split remains consistent.
     """
+
+    # Defaults match build_diff_aware_sft_trainer's kwargs so a manually
+    # constructed instance still produces sensible metric splits.
+    _diff_changed_weight: float = 1.0
+    _diff_unchanged_weight: float = 0.3
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialise per-step metric accumulators alongside the parent state."""
+        super().__init__(*args, **kwargs)
+        self._diff_metric_sums: dict[str, float] = {}
+        self._diff_metric_count: int = 0
 
     def compute_loss(
         self,
@@ -595,7 +754,7 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
         return_outputs: bool = False,
         num_items_in_batch: Any = None,
     ) -> Any:
-        """Compute weighted cross-entropy loss.
+        """Compute weighted cross-entropy loss and accumulate step metrics.
 
         Pops ``loss_weights`` from ``inputs`` before the forward pass so the
         model never receives an unexpected keyword argument.  When
@@ -630,7 +789,53 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
         loss_weights = loss_weights.to(logits.device)
 
         loss = _compute_weighted_loss(logits, labels, loss_weights)
+
+        # Accumulate per-batch metrics for emission via log().  Wrapped in
+        # try/except because metrics are observability-only — a bug here
+        # must never kill a training run.
+        try:
+            metrics = _compute_step_metrics(
+                logits,
+                labels,
+                loss_weights,
+                changed_weight=self._diff_changed_weight,
+                unchanged_weight=self._diff_unchanged_weight,
+            )
+            for k, v in metrics.items():
+                self._diff_metric_sums[k] = self._diff_metric_sums.get(k, 0.0) + v
+            self._diff_metric_count += 1
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "DiffAwareSFTTrainer: step-metrics accumulation failed; "
+                "training continues without per-step diagnostics for this batch."
+            )
+
         return (loss, outputs) if return_outputs else loss
+
+    def log(
+        self,
+        logs: dict[str, float],
+        start_time: float | None = None,
+    ) -> None:
+        """Flush accumulated per-step metrics into ``logs`` before parent emits.
+
+        Averages each accumulated sum across the micro-batches that
+        contributed since the last ``log()`` call, prefixes with
+        ``train/``, then calls ``super().log()`` so the metrics ride
+        through TRL's MLflow callback alongside the standard training
+        metrics.  Resets the accumulator after flushing.
+        """
+        if self._diff_metric_count > 0:
+            count = self._diff_metric_count
+            for key, total in self._diff_metric_sums.items():
+                logs[f"train/{key}"] = total / count
+            # Promote `all_masked_batch` mean (0/1 per call) to a clearer
+            # name so dashboards show it as a fraction.
+            if "train/all_masked_batch" in logs:
+                logs["train/all_masked_batch_frac"] = logs.pop("train/all_masked_batch")
+            self._diff_metric_sums = {}
+            self._diff_metric_count = 0
+        return super().log(logs, start_time)
 
 
 # ---------------------------------------------------------------------------
@@ -721,7 +926,7 @@ def build_diff_aware_sft_trainer(
         tokenizer=resolved_tokenizer,
     )
 
-    return DiffAwareSFTTrainer(
+    trainer = DiffAwareSFTTrainer(
         model=model,
         args=args,
         train_dataset=train_dataset,
@@ -729,3 +934,8 @@ def build_diff_aware_sft_trainer(
         processing_class=processing_class,
         data_collator=collator,
     )
+    # Mirror the collator's weights onto the trainer so per-step metrics
+    # split changed vs context using the same midpoint the collator used.
+    trainer._diff_changed_weight = changed_weight
+    trainer._diff_unchanged_weight = unchanged_weight
+    return trainer

@@ -768,6 +768,221 @@ class TestBuildDiffAwareSftTrainerIntegration:
         assert isinstance(recorded_kwargs["data_collator"], DiffWeightedDataCollator)
 
 
+# ---------------------------------------------------------------------------
+# _compute_step_metrics — per-step training observability
+# ---------------------------------------------------------------------------
+
+
+class TestComputeStepMetrics:
+    def test_returns_zero_metrics_on_all_masked_batch(self) -> None:
+        """No labeled tokens → all secondary metrics are 0; flag fires."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        logits = torch.randn(1, 4, 8)
+        labels = torch.full((1, 4), IGNORE_INDEX, dtype=torch.long)
+        weights = torch.zeros(1, 4)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        assert m["effective_token_count"] == 0.0
+        assert m["all_masked_batch"] == 1.0
+        assert m["token_accuracy"] == 0.0
+        assert m["entropy"] == 0.0
+        assert m["changed_loss"] == 0.0
+        assert m["context_loss"] == 0.0
+
+    def test_token_accuracy_on_known_logits(self) -> None:
+        """Argmax-correct tokens contribute to accuracy; masked do not."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        # Vocab=3. Set up logits so argmax at each shifted position is
+        # deterministic, then label half correctly and half wrong.
+        logits = torch.zeros(1, 4, 3)
+        logits[0, 0, 1] = 5.0  # predicts label[1]=1 → correct
+        logits[0, 1, 0] = 5.0  # predicts label[2]=0; we set label[2]=2 → wrong
+        logits[0, 2, 2] = 5.0  # predicts label[3]=2 → correct
+        labels = torch.tensor([[IGNORE_INDEX, 1, 2, 2]])
+        weights = torch.ones(1, 4)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        # Three labeled positions after shift; two correct.
+        assert m["token_accuracy"] == pytest.approx(2.0 / 3.0)
+        assert m["all_masked_batch"] == 0.0
+
+    def test_changed_context_split_by_weight_midpoint(self) -> None:
+        """Changed/context per-token loss split by weight midpoint."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        logits = torch.randn(1, 4, 8)
+        labels = torch.tensor([[IGNORE_INDEX, 1, 2, 3]])
+        # weight 1.0 → changed (>= midpoint 0.65); 0.3 → context.
+        weights = torch.tensor([[0.0, 1.0, 0.3, 1.0]])
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        # 2 changed tokens, 1 context token, 3 labeled.
+        assert m["changed_token_frac"] == pytest.approx(2.0 / 3.0)
+        # Both losses should be > 0 (random logits, label != argmax in general).
+        assert m["changed_loss"] > 0.0
+        assert m["context_loss"] > 0.0
+
+    def test_identity_weights_collapse_context_to_zero(self) -> None:
+        """changed == unchanged → all labeled tokens count as changed."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        logits = torch.randn(1, 4, 8)
+        labels = torch.tensor([[IGNORE_INDEX, 1, 2, 3]])
+        weights = torch.ones(1, 4)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=1.0
+        )
+        assert m["changed_token_frac"] == 1.0
+        assert m["context_loss"] == 0.0
+        assert m["context_token_acc"] == 0.0
+        assert m["context_entropy"] == 0.0
+
+
+class TestDiffAwareTrainerStepMetrics:
+    """Verify metrics are accumulated in compute_loss and flushed via log()."""
+
+    def _stub_trainer(self) -> Any:
+        """Minimal DiffAwareSFTTrainer subclass that bypasses SFTTrainer init."""
+        from model_training.diff_loss import DiffAwareSFTTrainer
+
+        class _Stub(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                self._diff_metric_sums = {}
+                self._diff_metric_count = 0
+                self._diff_changed_weight = 1.0
+                self._diff_unchanged_weight = 0.3
+                self.logged: list[dict[str, float]] = []
+
+            def log(  # type: ignore[override]
+                self,
+                logs: dict[str, float],
+                start_time: float | None = None,
+            ) -> None:
+                # Replay the metric-flush logic without calling parent
+                # (which would need full Trainer state).
+                if self._diff_metric_count > 0:
+                    count = self._diff_metric_count
+                    for key, total in self._diff_metric_sums.items():
+                        logs[f"train/{key}"] = total / count
+                    if "train/all_masked_batch" in logs:
+                        logs["train/all_masked_batch_frac"] = logs.pop(
+                            "train/all_masked_batch"
+                        )
+                    self._diff_metric_sums = {}
+                    self._diff_metric_count = 0
+                self.logged.append(dict(logs))
+
+        return _Stub()
+
+    def test_compute_loss_accumulates_and_log_flushes(self) -> None:
+        """Two micro-batches → log() emits the mean of accumulated metrics."""
+        import torch
+
+        trainer = self._stub_trainer()
+
+        class _Out:
+            def __init__(self, logits: Any) -> None:
+                self.logits = logits
+
+        def _model(**kw: Any) -> Any:
+            return _Out(torch.randn(1, 4, 8))
+
+        for _ in range(2):
+            inputs = {
+                "input_ids": torch.tensor([[1, 2, 3, 4]]),
+                "labels": torch.tensor([[IGNORE_INDEX, 1, 2, 3]]),
+                "loss_weights": torch.tensor([[0.0, 1.0, 0.3, 1.0]]),
+            }
+            trainer.compute_loss(_model, inputs)
+
+        assert trainer._diff_metric_count == 2
+        assert "effective_token_count" in trainer._diff_metric_sums
+
+        trainer.log({"loss": 1.0})
+        # After log, accumulator is reset and emitted dict carries train/* keys.
+        assert trainer._diff_metric_count == 0
+        emitted = trainer.logged[-1]
+        assert "train/token_accuracy" in emitted
+        assert "train/changed_loss" in emitted
+        assert "train/context_loss" in emitted
+        assert "train/effective_token_count" in emitted
+        assert "train/all_masked_batch_frac" in emitted
+        assert emitted["train/all_masked_batch_frac"] == 0.0
+
+    def test_log_emits_all_masked_frac_when_every_batch_is_zero(self) -> None:
+        """When every micro-batch is all-masked, the frac is 1.0."""
+        import torch
+
+        trainer = self._stub_trainer()
+
+        class _Out:
+            def __init__(self, logits: Any) -> None:
+                self.logits = logits
+
+        def _model(**kw: Any) -> Any:
+            return _Out(torch.randn(1, 4, 8))
+
+        # Two all-masked batches.
+        for _ in range(2):
+            inputs = {
+                "input_ids": torch.tensor([[1, 2, 3, 4]]),
+                "labels": torch.full((1, 4), IGNORE_INDEX, dtype=torch.long),
+                "loss_weights": torch.zeros(1, 4),
+            }
+            trainer.compute_loss(_model, inputs)
+
+        trainer.log({"loss": 1.0})
+        emitted = trainer.logged[-1]
+        assert emitted["train/all_masked_batch_frac"] == 1.0
+
+    def test_compute_loss_metrics_failure_does_not_break_training(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bug in metrics computation must not kill the loss path."""
+        import torch
+        from model_training import diff_loss as dl_module
+
+        trainer = self._stub_trainer()
+
+        # Force the metrics helper to raise.
+        def _boom(*a: Any, **kw: Any) -> dict[str, float]:
+            raise RuntimeError("metrics helper exploded")
+
+        monkeypatch.setattr(dl_module, "_compute_step_metrics", _boom)
+
+        class _Out:
+            def __init__(self, logits: Any) -> None:
+                self.logits = logits
+
+        def _model(**kw: Any) -> Any:
+            return _Out(torch.randn(1, 4, 8))
+
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "labels": torch.tensor([[IGNORE_INDEX, 1, 2, 3]]),
+            "loss_weights": torch.ones(1, 4),
+        }
+
+        # Must not raise.
+        loss = trainer.compute_loss(_model, inputs)
+        assert loss is not None
+        # Accumulator stayed empty because the helper raised.
+        assert trainer._diff_metric_count == 0
+
+
 def test_compute_weighted_loss_warns_on_all_masked_batch(caplog) -> None:
     """All-masked batches must emit a WARNING (was DEBUG, RCA-5 visibility gap)."""
     import torch
