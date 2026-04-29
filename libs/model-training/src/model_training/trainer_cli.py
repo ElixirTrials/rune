@@ -144,6 +144,25 @@ def _build_parser() -> argparse.ArgumentParser:
             "the loss-step logits/attention scratch scales with seq_len."
         ),
     )
+    parser.add_argument(
+        "--subsample",
+        dest="subsample",
+        type=int,
+        default=None,
+        help=(
+            "Reduce the training dataset to N rows in-process via "
+            "shuffle(seed).select(range(N)). Use for short loss-curve runs; "
+            "preferred over writing a sidecar JSONL because the slice is "
+            "representative (not just the first N rows of a repo-sorted file)."
+        ),
+    )
+    parser.add_argument(
+        "--subsample-seed",
+        dest="subsample_seed",
+        type=int,
+        default=42,
+        help="Seed for --subsample shuffle. Stable so reruns reproduce the slice.",
+    )
 
     # --- Trajectory encoding ---
     parser.add_argument(
@@ -244,6 +263,8 @@ def _resolve_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "override_lora_dropout": args.override_lora_dropout,
         "neftune_noise_alpha": args.neftune_noise_alpha,
         "max_length": args.max_length,
+        "subsample": args.subsample,
+        "subsample_seed": args.subsample_seed,
     }
 
 

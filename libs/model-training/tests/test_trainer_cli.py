@@ -54,3 +54,15 @@ def test_dry_run_includes_neftune_noise_alpha() -> None:
 
     payload_none = _dry_run([])
     assert payload_none["neftune_noise_alpha"] is None
+
+
+def test_dry_run_includes_subsample_and_seed() -> None:
+    """--subsample / --subsample-seed surface in dry-run JSON; sane defaults."""
+    payload = _dry_run(["--subsample", "400", "--subsample-seed", "7"])
+    assert payload["subsample"] == 400
+    assert payload["subsample_seed"] == 7
+
+    payload_default = _dry_run([])
+    assert payload_default["subsample"] is None
+    # Seed default is stable so reruns reproduce the same slice.
+    assert payload_default["subsample_seed"] == 42

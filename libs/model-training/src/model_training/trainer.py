@@ -528,6 +528,8 @@ def _build_training_dataset(
     dataset_path: str | None,
     encoding_mode: str,
     diff_aware_loss: bool = False,
+    subsample: int | None = None,
+    subsample_seed: int = 42,
 ) -> Any:
     """Build an SFT ``Dataset`` from either a mined-pairs JSONL or a trajectory.
 
@@ -542,6 +544,13 @@ def _build_training_dataset(
     hunks per-turn against the chat-templated sequence.
     Trajectory-sourced datasets do not carry pre/post context, so the
     collator will log-warn-once and fall back to identity weights.
+
+    When ``subsample`` is a positive int and the built dataset has more
+    rows, the dataset is reduced via ``shuffle(seed=subsample_seed)
+    .select(range(subsample))`` — a representative random slice in-process,
+    deterministic across reruns. Use this for short loss-curve runs where
+    a sidecar JSONL would be wasteful and ``head -n`` would bias the slice
+    toward whatever sorts first in the input file.
     """
     from typing import Literal, cast  # noqa: PLC0415
 
@@ -554,6 +563,13 @@ def _build_training_dataset(
         load_trajectory,
     )
 
+    def _maybe_subsample(ds: Any) -> Any:
+        if subsample is None or subsample <= 0:
+            return ds
+        if len(ds) <= subsample:
+            return ds
+        return ds.shuffle(seed=subsample_seed).select(range(subsample))
+
     if dataset_path is not None:
         pairs = load_jsonl(dataset_path)
         mode = cast(Literal["multi_turn", "single_turn"], encoding_mode)
@@ -563,7 +579,7 @@ def _build_training_dataset(
                 f"dataset_path {dataset_path} produced no SFT conversations"
             )
         if diff_aware_loss:
-            return dataset_cls.from_list(
+            ds = dataset_cls.from_list(
                 [
                     {
                         "messages": c,
@@ -573,7 +589,9 @@ def _build_training_dataset(
                     for c, pp in zip(conversations, pre_post)
                 ]
             )
-        return dataset_cls.from_list([{"messages": c} for c in conversations])
+        else:
+            ds = dataset_cls.from_list([{"messages": c} for c in conversations])
+        return _maybe_subsample(ds)
 
     # session_id is not None at this point (validated above).
     trajectory = load_trajectory(str(session_id))
@@ -726,6 +744,8 @@ def _build_run_params(
     override_lora_dropout: float | None,
     neftune_noise_alpha: float | None,
     total_steps: int | None = None,
+    subsample: int | None = None,
+    subsample_seed: int | None = None,
 ) -> dict[str, object]:
     """Build the MLflow run-params dict from resolved training parameters.
 
@@ -768,6 +788,8 @@ def _build_run_params(
         "override_lora_alpha": override_lora_alpha,
         "override_lora_dropout": override_lora_dropout,
         "requested_neftune_noise_alpha": neftune_noise_alpha,
+        "subsample": subsample,
+        "subsample_seed": subsample_seed if subsample else None,
     }
     result: dict[str, object] = {k: v for k, v in raw.items() if v is not None}
     # Always include these observability keys (even when None) so operators
@@ -777,7 +799,7 @@ def _build_run_params(
     return result
 
 
-def train_qlora(
+def train_qlora(  # noqa: C901
     session_id: str | None,
     adapter_id: str,
     output_dir: str,
@@ -804,6 +826,8 @@ def train_qlora(
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
     max_length: int = 2048,
+    subsample: int | None = None,
+    subsample_seed: int = 42,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -882,6 +906,14 @@ def train_qlora(
             memory; both the cross-entropy logits tensor and (with
             ``attn_implementation="eager"``) the materialised attention
             matrix scale with this value. Defaults to ``2048``.
+        subsample: When set to a positive int and the built dataset has
+            more rows, reduce the dataset in-process via
+            ``shuffle(seed=subsample_seed).select(range(subsample))``.
+            Use this for short loss-curve runs where ``head -n`` would
+            bias the slice toward whatever sorts first in the input file.
+        subsample_seed: Seed for the ``shuffle`` step that precedes
+            ``select`` when ``subsample`` is active. Stable so reruns
+            reproduce the same slice. Defaults to ``42``.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -939,6 +971,8 @@ def train_qlora(
         dataset_path=dataset_path,
         encoding_mode=encoding_mode,
         diff_aware_loss=diff_aware_loss,
+        subsample=subsample,
+        subsample_seed=subsample_seed,
     )
 
     # NF4 quantization config (bfloat16 compute dtype prevents silent NaN loss).
@@ -1016,6 +1050,86 @@ def train_qlora(
         diff_unchanged_weight=diff_unchanged_weight,
     )
 
+    if mlflow_enabled:
+        # MLflowCallback logs metrics by global_step. For a clearer high-level view,
+        # also log a per-epoch series keyed by epoch number (step=1..N epochs) so
+        # the MLflow UI can plot metrics "by epoch".
+        from transformers import TrainerCallback  # noqa: PLC0415
+
+        class _EpochMlflowCallback(TrainerCallback):
+            """Log a second copy of key metrics with epoch-indexed steps."""
+
+            def __init__(self) -> None:
+                self._latest_logs: dict[str, float] = {}
+                self._last_epoch_logged: int | None = None
+
+            def on_log(  # type: ignore[override]
+                self,
+                args: object,
+                state: Any,
+                control: object,
+                logs=None,
+                **_: Any,
+            ) -> None:
+                if not logs:
+                    return
+                for k, v in logs.items():
+                    try:
+                        self._latest_logs[str(k)] = float(v)
+                    except (TypeError, ValueError):
+                        continue
+
+            def _log_epoch(self, epoch_number: int) -> None:
+                if not self._latest_logs:
+                    return
+                try:
+                    import mlflow  # noqa: PLC0415
+                except Exception:
+                    return
+
+                payload: dict[str, float] = {}
+                for key, value in self._latest_logs.items():
+                    # Mirror the trainer's keys under an epoch/ prefix so they
+                    # are easy to filter and compare in the MLflow UI.
+                    payload[f"epoch/{key}"] = value
+
+                # Step must be an int; use 1-indexed epoch count.
+                for k, v in payload.items():
+                    mlflow.log_metric(k, v, step=int(epoch_number))
+
+                self._last_epoch_logged = epoch_number
+
+            def on_epoch_end(  # type: ignore[override]
+                self,
+                args: object,
+                state: Any,
+                control: object,
+                **_: Any,
+            ) -> None:
+                if getattr(state, "epoch", None) is None:
+                    return
+                epoch_number = int(state.epoch)
+                # state.epoch is 0.xx during epoch 1; at epoch end it should be
+                # near an integer boundary. Log 1-indexed epoch numbers.
+                self._log_epoch(epoch_number + 1)
+
+            def on_train_end(  # type: ignore[override]
+                self,
+                args: object,
+                state: Any,
+                control: object,
+                **_: Any,
+            ) -> None:
+                # Ensure the final epoch is logged even if on_epoch_end didn't fire
+                # (e.g., early stop / max_steps edge cases).
+                if getattr(state, "epoch", None) is None:
+                    return
+                final_epoch = int(state.epoch) + 1
+                if self._last_epoch_logged != final_epoch:
+                    self._log_epoch(final_epoch)
+
+        trainer.add_callback(_EpochMlflowCallback())
+
     # Log training-run metadata (params streamed as per-step metrics by TRL's
     # MLflow reporter via training_args.report_to="mlflow"). When disabled,
     # contextlib.nullcontext is a zero-cost placeholder.
@@ -1051,6 +1165,8 @@ def train_qlora(
         override_lora_dropout=override_lora_dropout,
         neftune_noise_alpha=neftune_noise_alpha,
         total_steps=_total_steps_for_log,
+        subsample=subsample,
+        subsample_seed=subsample_seed,
     )
     with mlflow_run(
         enabled=mlflow_enabled,
@@ -1123,6 +1239,8 @@ def train_and_register(
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
     max_length: int = 2048,
+    subsample: int | None = None,
+    subsample_seed: int = 42,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -1166,6 +1284,11 @@ def train_and_register(
             When ``None`` (default), NEFTune is disabled.
         max_length: SFT tokenizer truncation length forwarded to
             ``train_qlora``. Defaults to ``2048``.
+        subsample: Forwarded to ``train_qlora``; reduces the dataset
+            to N rows in-process via shuffle+select. ``None`` keeps the
+            full dataset.
+        subsample_seed: Forwarded to ``train_qlora`` to seed the
+            subsample shuffle. Defaults to ``42``.
 
     Returns:
         adapter_id of the registered adapter.
@@ -1234,6 +1357,8 @@ def train_and_register(
         warmup_ratio=warmup_ratio,
         neftune_noise_alpha=neftune_noise_alpha,
         max_length=max_length,
+        subsample=subsample,
+        subsample_seed=subsample_seed,
     )
 
     # Compute file hash and size from the saved safetensors file

@@ -50,7 +50,9 @@ class _FakeDataset:
 
     Records the list passed to ``from_list`` so assertions can inspect
     column presence without importing ``datasets`` (keeps the test
-    CPU-importable).
+    CPU-importable). ``shuffle`` and ``select`` mirror the HF API
+    semantically (returning a new instance) so the trainer can do
+    ``ds.shuffle(seed=...).select(range(n))`` against the fake too.
     """
 
     def __init__(self, rows: list[dict[str, Any]]) -> None:
@@ -62,6 +64,18 @@ class _FakeDataset:
 
     def __len__(self) -> int:
         return len(self.rows)
+
+    def shuffle(self, seed: int | None = None) -> _FakeDataset:
+        import random  # noqa: PLC0415
+
+        rng = random.Random(seed)
+        permuted = list(self.rows)
+        rng.shuffle(permuted)
+        return type(self)(permuted)
+
+    def select(self, indices: Any) -> _FakeDataset:
+        idxs = list(indices)
+        return type(self)([self.rows[i] for i in idxs])
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +225,145 @@ def test_multi_turn_diff_aware_emits_per_turn_lists(tmp_path: Path) -> None:
     # Turn 1: pre is the prior code, post is the float-aware revision.
     assert "def add(a, b):\n    return a + b" in row["pre_codes"][1]
     assert "float(a) + float(b)" in row["post_codes"][1]
+
+
+# ---------------------------------------------------------------------------
+# Subsample wiring (in-process; no sidecar JSONL)
+# ---------------------------------------------------------------------------
+
+
+def _many_pairs(n: int) -> list[dict[str, Any]]:
+    """Generate ``n`` distinct pairs, one task per pair."""
+    return [
+        _pair(
+            task_id=f"t{i}",
+            source_task_id=f"t{i}",
+            step_index=0,
+            activation=f"## Task\nT{i}",
+            teacher=(
+                f"## Task\nT{i}\n\n## Implementation\n"
+                f"def f{i}():\n    return {i}\n"
+            ),
+        )
+        for i in range(n)
+    ]
+
+
+def test_subsample_truncates_to_requested_size(tmp_path: Path) -> None:
+    """``subsample=N`` on a JSONL with M>N rows produces exactly N rows."""
+    from model_training.trainer import _build_training_dataset
+
+    path = _write_pairs_jsonl(tmp_path, _many_pairs(10))
+
+    ds = _build_training_dataset(
+        dataset_cls=_FakeDataset,
+        session_id=None,
+        dataset_path=str(path),
+        encoding_mode="single_turn",
+        diff_aware_loss=False,
+        subsample=3,
+        subsample_seed=42,
+    )
+
+    assert len(ds) == 3
+
+
+def test_subsample_seed_is_deterministic(tmp_path: Path) -> None:
+    """Same ``subsample_seed`` yields the same row selection across runs."""
+    from model_training.trainer import _build_training_dataset
+
+    path = _write_pairs_jsonl(tmp_path, _many_pairs(10))
+
+    kwargs: dict[str, Any] = {
+        "dataset_cls": _FakeDataset,
+        "session_id": None,
+        "dataset_path": str(path),
+        "encoding_mode": "single_turn",
+        "diff_aware_loss": False,
+        "subsample": 4,
+        "subsample_seed": 42,
+    }
+    a = _build_training_dataset(**kwargs)
+    b = _build_training_dataset(**kwargs)
+
+    assert [r["messages"] for r in a.rows] == [r["messages"] for r in b.rows]
+
+
+def test_subsample_seed_changes_selection(tmp_path: Path) -> None:
+    """Different seeds produce different orderings (probabilistically certain
+    given 10!/(10-4)! ≈ 5040 permutations)."""
+    from model_training.trainer import _build_training_dataset
+
+    path = _write_pairs_jsonl(tmp_path, _many_pairs(10))
+
+    base: dict[str, Any] = {
+        "dataset_cls": _FakeDataset,
+        "session_id": None,
+        "dataset_path": str(path),
+        "encoding_mode": "single_turn",
+        "diff_aware_loss": False,
+        "subsample": 4,
+    }
+    a = _build_training_dataset(**base, subsample_seed=1)
+    b = _build_training_dataset(**base, subsample_seed=2)
+
+    assert [r["messages"] for r in a.rows] != [r["messages"] for r in b.rows]
+
+
+def test_subsample_larger_than_dataset_is_no_op(tmp_path: Path) -> None:
+    """``subsample`` >= len(dataset) returns the full dataset unmodified."""
+    from model_training.trainer import _build_training_dataset
+
+    path = _write_pairs_jsonl(tmp_path, _many_pairs(3))
+
+    ds = _build_training_dataset(
+        dataset_cls=_FakeDataset,
+        session_id=None,
+        dataset_path=str(path),
+        encoding_mode="single_turn",
+        diff_aware_loss=False,
+        subsample=100,
+        subsample_seed=42,
+    )
+
+    assert len(ds) == 3
+
+
+def test_subsample_none_preserves_full_dataset(tmp_path: Path) -> None:
+    """Default ``subsample=None`` is the no-op pre-existing behavior."""
+    from model_training.trainer import _build_training_dataset
+
+    path = _write_pairs_jsonl(tmp_path, _many_pairs(5))
+
+    ds = _build_training_dataset(
+        dataset_cls=_FakeDataset,
+        session_id=None,
+        dataset_path=str(path),
+        encoding_mode="single_turn",
+        diff_aware_loss=False,
+    )
+
+    assert len(ds) == 5
+
+
+def test_subsample_applies_with_diff_aware_columns(tmp_path: Path) -> None:
+    """Subsampling preserves pre/post columns when diff_aware_loss=True."""
+    from model_training.trainer import _build_training_dataset
+
+    path = _write_pairs_jsonl(tmp_path, _many_pairs(8))
+
+    ds = _build_training_dataset(
+        dataset_cls=_FakeDataset,
+        session_id=None,
+        dataset_path=str(path),
+        encoding_mode="single_turn",
+        diff_aware_loss=True,
+        subsample=2,
+        subsample_seed=42,
+    )
+
+    assert len(ds) == 2
+    assert set(ds.rows[0].keys()) == {"messages", "pre_codes", "post_codes"}
 
 
 def test_raises_on_empty_pairs(tmp_path: Path) -> None:
