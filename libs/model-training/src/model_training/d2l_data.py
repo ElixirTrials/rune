@@ -883,15 +883,17 @@ def _extract_post_revision(activation_text: str, teacher_text: str) -> str:
 
 def _pairs_to_single_turn(
     pairs: list[dict[str, Any]], system_prompt: str
-) -> tuple[list[list[dict[str, str]]], list[dict[str, str]]]:
+) -> tuple[list[list[dict[str, str]]], list[dict[str, list[str]]]]:
     """single_turn helper: one [system, user, assistant] per pair.
 
     Returns:
         Tuple of (conversations, pre_post_records) where each element of
-        pre_post_records is aligned 1:1 with the corresponding conversation.
+        pre_post_records carries per-turn ``pre_codes`` / ``post_codes`` lists
+        (length 1 for single-turn) so the downstream collator can align
+        hunks per assistant turn rather than against a joined blob.
     """
     conversations: list[list[dict[str, str]]] = []
-    pre_post_records: list[dict[str, str]] = []
+    pre_post_records: list[dict[str, list[str]]] = []
     for pair in pairs:
         user = pair.get("activation_text", "")
         teacher = pair.get("teacher_text", "")
@@ -907,8 +909,8 @@ def _pairs_to_single_turn(
         )
         pre_post_records.append(
             {
-                "pre_code": _extract_pre_revision(user),
-                "post_code": _extract_post_revision(user, teacher),
+                "pre_codes": [_extract_pre_revision(user)],
+                "post_codes": [_extract_post_revision(user, teacher)],
             }
         )
     return conversations, pre_post_records
@@ -938,7 +940,7 @@ def pairs_to_chat_messages(
     *,
     mode: Literal["multi_turn", "single_turn"] = "multi_turn",
     system_prompt: str = SYSTEM_PROMPT,
-) -> tuple[list[list[dict[str, str]]], list[dict[str, str]]]:
+) -> tuple[list[list[dict[str, str]]], list[dict[str, list[str]]]]:
     r"""Convert mined pair records into SFT chat conversations.
 
     ``multi_turn`` (preferred when pairs share a ``source_task_id``): emits
@@ -972,10 +974,12 @@ def pairs_to_chat_messages(
         ``datasets.Dataset.from_list([{"messages": m} for m in convs])`` and
         TRL's ``SFTTrainer`` with ``assistant_only_loss=True``.
 
-        ``pre_post_records`` is a list of ``{"pre_code": str, "post_code":
-        str}`` dicts aligned 1:1 with ``conversations``. For multi-turn
-        conversations the pre/post codes are the concatenation (joined by
-        ``"\\n\\n"``) of each individual turn's pre/post code.
+        ``pre_post_records`` is a list of ``{"pre_codes": list[str],
+        "post_codes": list[str]}`` dicts aligned 1:1 with ``conversations``.
+        Each list has one entry per assistant turn — preserved as a list (not
+        joined) so the diff-aware collator can align hunks against each
+        turn's own pre/post pair instead of a concatenated blob whose token
+        layout no longer matches the chat-templated sequence.
 
         Invalid or missing fields are handled gracefully: missing
         ``activation_text`` / ``teacher_text`` produce empty strings, and
@@ -994,7 +998,7 @@ def pairs_to_chat_messages(
     # multi_turn: cluster by source_task_id (or task_id), sort by step_index.
     groups, group_order = _group_pairs_by_task(pairs)
     conversations: list[list[dict[str, str]]] = []
-    pre_post_records: list[dict[str, str]] = []
+    pre_post_records: list[dict[str, list[str]]] = []
     for key in group_order:
         group = sorted(
             groups[key],
@@ -1018,8 +1022,8 @@ def pairs_to_chat_messages(
             conversations.append(messages)
             pre_post_records.append(
                 {
-                    "pre_code": "\n\n".join(turn_pre_codes),
-                    "post_code": "\n\n".join(turn_post_codes),
+                    "pre_codes": turn_pre_codes,
+                    "post_codes": turn_post_codes,
                 }
             )
     return conversations, pre_post_records

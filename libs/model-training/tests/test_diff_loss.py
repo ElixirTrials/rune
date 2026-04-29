@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -249,28 +249,34 @@ class TestDiffWeightedDataCollator:
         self,
         n: int = 1,
         include_pre_post: bool = True,
-        pre_code: str = "x = 1\n",
-        post_code: str = "x = 2\n",
+        pre_codes: list[str] | None = None,
+        post_codes: list[str] | None = None,
     ) -> list[dict]:
+        if pre_codes is None:
+            pre_codes = ["x = 1\n"]
+        if post_codes is None:
+            post_codes = ["x = 2\n"]
         feats = []
         for _ in range(n):
             f: dict = {"text": "hello"}
             if include_pre_post:
-                f["pre_code"] = pre_code
-                f["post_code"] = post_code
+                f["pre_codes"] = list(pre_codes)
+                f["post_codes"] = list(post_codes)
             feats.append(f)
         return feats
 
-    def test_collator_prefers_hunk_path_when_pre_post_present(self) -> None:
-        """When features have pre/post AND tokenizer is set, hunk path is used."""
-        import torch  # noqa: F401
+    def test_collator_uses_hunk_path_when_per_turn_lists_present(self) -> None:
+        """Per-turn lists + tokenizer → hunk path is used and loss_weights is set."""
+        import torch
         from model_training.diff_loss import DiffWeightedDataCollator
 
+        # Single-turn span: labels mark positions 1-2 as assistant.
         input_ids = [[1, 2, 3]]
         labels = [[IGNORE_INDEX, 2, 3]]
         inner = _make_inner_collator(input_ids, labels)
 
         post_code = "x = 2\n"
+        # Tokenizer returns post_input_ids=[2, 3] which matches positions 1-2.
         tok = _make_mock_tokenizer(
             post_code,
             token_ids=[2, 3],
@@ -278,28 +284,43 @@ class TestDiffWeightedDataCollator:
         )
 
         collator = DiffWeightedDataCollator(inner, tokenizer=tok)
-        features = self._make_features(n=1, pre_code="x = 1\n", post_code=post_code)
+        features = self._make_features(
+            n=1, pre_codes=["x = 1\n"], post_codes=[post_code]
+        )
 
-        with (
-            patch(
-                "model_training.diff_loss.compute_hunk_loss_weights",
-                wraps=__import__(
-                    "model_training.diff_loss", fromlist=["compute_hunk_loss_weights"]
-                ).compute_hunk_loss_weights,
-            ) as mock_hunk,
-            patch(
-                "model_training.diff_loss.compute_diff_loss_weights",
-                wraps=__import__(
-                    "model_training.diff_loss", fromlist=["compute_diff_loss_weights"]
-                ).compute_diff_loss_weights,
-            ) as mock_legacy,
-        ):
-            batch = collator(features)
+        batch = collator(features)
 
-        assert mock_hunk.called, "hunk path should have been used"
-        assert not mock_legacy.called, "legacy path should NOT have been used"
         assert "loss_weights" in batch
         assert batch["loss_weights"].shape == torch.Size([1, 3])
+        weights = batch["loss_weights"][0].tolist()
+        # Position 0: masked → 0.0
+        assert weights[0] == 0.0
+        # Positions 1-2: matched assistant tokens with non-zero offsets →
+        # changed_weight (default 1.0) or unchanged_weight (default 0.3).
+        assert weights[1] > 0.0
+        assert weights[2] > 0.0
+
+    def test_collator_accepts_legacy_singular_keys(self) -> None:
+        """Backward compat: pre_code/post_code strings are wrapped to length-1 lists."""
+        import torch
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        input_ids = [[1, 2, 3]]
+        labels = [[IGNORE_INDEX, 2, 3]]
+        inner = _make_inner_collator(input_ids, labels)
+        tok = _make_mock_tokenizer(
+            "x = 2\n", token_ids=[2, 3], offsets=[(0, 3), (3, 6)]
+        )
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [{"text": "hello", "pre_code": "x = 1\n", "post_code": "x = 2\n"}]
+
+        batch = collator(features)
+
+        assert "loss_weights" in batch
+        assert batch["loss_weights"].shape == torch.Size([1, 3])
+        # Should have produced non-zero gradient signal.
+        assert batch["loss_weights"][0, 1:].sum().item() > 0.0
 
     def test_collator_falls_back_on_missing_pre_post(
         self, caplog: pytest.LogCaptureFixture
@@ -331,9 +352,95 @@ class TestDiffWeightedDataCollator:
         assert weights[1] == 1.0, "labeled token should get 1.0"
         assert weights[2] == 1.0, "labeled token should get 1.0"
         assert any(
-            "pre_code/post_code" in rec.message or "fallback" in rec.message.lower()
+            "pre_codes/post_codes" in rec.message or "fallback" in rec.message.lower()
             for rec in caplog.records
         ), "expected a fallback warning in logs"
+
+    def test_collator_identity_fallback_when_post_too_long_for_span(self) -> None:
+        """RCA-5 H2 regression guard: when post_input_ids is longer than the
+        assistant span (legacy path's `n_post > n_seq` failure mode), the
+        per-turn alignment must fall back to identity weights for that span
+        instead of zeroing every label, otherwise the entire batch's denom
+        collapses to 0 and the next training step has no gradient signal."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # 4-token sequence with a 2-token assistant span at positions 2-3.
+        input_ids = [[1, 2, 9, 9]]
+        labels = [[IGNORE_INDEX, IGNORE_INDEX, 9, 9]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        # Tokenizer returns 5 post_input_ids — longer than the 2-token span,
+        # so subsequence search can't fit. This is the truncation-overflow
+        # case that previously zeroed every weight in the batch.
+        tok = _make_mock_tokenizer(
+            "long post code that overflows the span",
+            token_ids=[100, 101, 102, 103, 104],
+            offsets=[(0, 5), (5, 10), (10, 15), (15, 20), (20, 25)],
+        )
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["before"],
+                "post_codes": ["long post code that overflows the span"],
+            }
+        ]
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        # Span tokens (positions 2-3) must get identity weight, not zero.
+        assert weights[2] == 1.0, "span fallback must give labeled tokens weight 1.0"
+        assert weights[3] == 1.0, "span fallback must give labeled tokens weight 1.0"
+        # Masked positions stay at zero.
+        assert weights[0] == 0.0
+        assert weights[1] == 0.0
+        # Most importantly: denom > 0 so the loss function gets gradient signal.
+        denom = sum(w for w, lab in zip(weights, labels[0]) if lab != IGNORE_INDEX)
+        assert denom > 0.0, "RCA-5 H2: denom must be > 0 even on alignment failure"
+
+    def test_collator_per_turn_alignment_walks_multiple_spans(self) -> None:
+        """Multi-turn sequences: each contiguous assistant span is aligned
+        against its own (pre_k, post_k) — earlier turns get weighted, not
+        just the last one (the legacy bug)."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # Sequence: [user1, asst1, asst1, user2, asst2, asst2].
+        # Two assistant spans: positions 1-2 and 4-5.
+        input_ids = [[10, 20, 21, 30, 40, 41]]
+        labels = [[IGNORE_INDEX, 20, 21, IGNORE_INDEX, 40, 41]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        # Tokenizer returns matching 2-token sequences for both turns'
+        # post_codes; we point at the same ids to keep the mock simple but
+        # verify both spans get weighted.
+        tok = MagicMock()
+        tok.return_value = {
+            "input_ids": [20, 21],
+            "offset_mapping": [(0, 2), (2, 4)],
+        }
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["a", "b"],
+                "post_codes": ["xx", "yy"],
+            }
+        ]
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        # First span (pos 1-2) matches post_input_ids → non-zero weights.
+        assert weights[1] > 0.0, "first assistant span must contribute to loss"
+        assert weights[2] > 0.0, "first assistant span must contribute to loss"
+        # Second span (pos 4-5): post_input_ids [20,21] doesn't match [40,41]
+        # → identity fallback → weight 1.0 (still gradient signal).
+        assert weights[4] == 1.0, "unmatched span falls back to identity"
+        assert weights[5] == 1.0, "unmatched span falls back to identity"
+        # Masked positions stay at 0.
+        assert weights[0] == 0.0
+        assert weights[3] == 0.0
 
 
 # ---------------------------------------------------------------------------

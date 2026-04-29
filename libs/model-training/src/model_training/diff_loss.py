@@ -183,6 +183,70 @@ def compute_diff_loss_weights(
 
 
 # ---------------------------------------------------------------------------
+# Span helpers
+# ---------------------------------------------------------------------------
+
+
+def _iter_assistant_spans(
+    labels: list[int],
+) -> list[tuple[int, int]]:
+    """Yield half-open ``(start, end)`` ranges of contiguous label-bearing tokens.
+
+    A span is a maximal run of positions where ``label != IGNORE_INDEX``.
+    Used by the diff-aware collator to recover per-assistant-turn boundaries
+    from the labels tensor that the inner ``DataCollatorForLanguageModeling``
+    produces (which already merged ``assistant_masks`` into the label mask).
+    """
+    spans: list[tuple[int, int]] = []
+    n = len(labels)
+    i = 0
+    while i < n:
+        if labels[i] == IGNORE_INDEX:
+            i += 1
+            continue
+        start = i
+        while i < n and labels[i] != IGNORE_INDEX:
+            i += 1
+        spans.append((start, i))
+    return spans
+
+
+def _find_post_in_span(
+    input_ids_seq: list[int],
+    span_start: int,
+    span_end: int,
+    post_input_ids: list[int],
+) -> int:
+    """Return the local offset where ``post_input_ids`` matches inside the span.
+
+    The span's ``input_ids`` typically wrap the post body in chat-template
+    role markers and a section header (``## Revision`` / ``## Implementation``),
+    so the post tokens land somewhere *inside* the span.  Returns ``-1`` when
+    no contiguous match exists or the post body is empty / longer than the
+    span.
+
+    Linear subsequence search; span length is bounded by SFT ``max_length``
+    (~2k) and ``len(post_input_ids)`` by the per-turn body, so worst case is
+    well under a millisecond per span — and only runs once per training step.
+    """
+    n_post = len(post_input_ids)
+    span_len = span_end - span_start
+    if not (0 < n_post <= span_len):
+        return -1
+    span_ids = input_ids_seq[span_start:span_end]
+    for off in range(span_len - n_post + 1):
+        if span_ids[off : off + n_post] == post_input_ids:
+            return off
+    return -1
+
+
+def _fill_identity(weights: list[float], start: int, end: int) -> None:
+    """Set ``weights[start:end] = 1.0`` so the span keeps gradient signal."""
+    for j in range(start, end):
+        weights[j] = 1.0
+
+
+# ---------------------------------------------------------------------------
 # Data collator
 # ---------------------------------------------------------------------------
 
@@ -196,17 +260,28 @@ class DiffWeightedDataCollator:
     computed and stored as ``batch["loss_weights"]``.
 
     Hunk path (preferred):
-        When all features carry ``pre_code`` / ``post_code`` side-channel
-        columns AND a ``tokenizer`` is provided, weights are computed via
-        :func:`_compute_hunk_ranges` + :func:`compute_hunk_loss_weights`.
-        The tokenizer is used to re-tokenize ``post_code`` with
-        ``return_offsets_mapping=True`` to obtain char-to-token alignment.
+        When all features carry per-turn ``pre_codes`` / ``post_codes``
+        list side-channels AND a ``tokenizer`` is provided, weights are
+        computed by walking each contiguous assistant span (positions
+        where ``label != IGNORE_INDEX``) and aligning it against its own
+        per-turn ``(pre_k, post_k)`` pair.  The tokenizer re-tokenizes each
+        turn's ``post_k`` with ``return_offsets_mapping=True`` to obtain
+        char-to-token alignment, and a subsequence search inside the span
+        finds where the post-revision body sits.
+
+        Pre-2026 legacy: a single joined ``pre_code`` / ``post_code`` string
+        per feature.  Still accepted (wrapped into a length-1 list) so
+        old callers keep working, but multi-turn datasets MUST use the
+        per-turn lists — joined strings cannot be aligned against a
+        chat-templated multi-turn sequence and silently zero out every
+        weight on those rows (RCA-5 H2 regression).
 
     Fallback path:
-        When any feature is missing ``pre_code`` / ``post_code`` or no
-        tokenizer was supplied, the legacy set-based
-        :func:`compute_diff_loss_weights` is used and a one-time
-        ``logger.warning`` is emitted.
+        When any feature is missing pre/post side-channels or no
+        tokenizer was supplied, the collator emits identity weights
+        (``1.0`` for labeled tokens, ``0.0`` for masked) and warns once.
+        Spans that fail per-turn alignment also collapse to identity so
+        gradient signal is preserved even when hunk weighting is lost.
 
     Args:
         inner_collator: The underlying data collator.
@@ -244,119 +319,104 @@ class DiffWeightedDataCollator:
         self,
         input_ids_seq: list[int],
         labels_seq: list[int],
-        pre_code: str,
-        post_code: str,
+        pre_codes: list[str],
+        post_codes: list[str],
     ) -> list[float]:
-        """Compute weights using the hunk (line-level diff) path.
+        """Compute weights with per-turn hunk alignment.
 
-        Re-tokenizes ``post_code`` with ``return_offsets_mapping=True``.
-        The resulting offsets are used directly against the hunk ranges
-        computed from ``pre_code`` → ``post_code``.
+        Walks ``labels_seq`` to find each contiguous assistant span (a run
+        of ``label != IGNORE_INDEX`` positions, one per assistant turn),
+        then for each span looks up its corresponding ``(pre_k, post_k)``
+        from the per-turn lists by index — `keep_start` truncation can
+        leave fewer surviving spans than turns, but the surviving ones
+        are always the first K, so positional pairing is correct.
 
-        Note: The offset mapping is best-effort — the re-tokenized
-        ``post_code`` may not align perfectly with the assistant-span tokens
-        produced by the full chat template, but this is acceptable because:
-        (a) the identity invariant holds regardless; (b) the directional
-        property (changed > unchanged) is preserved on average.
+        Per-span heavy lifting lives in :meth:`_apply_span_weights`.  When
+        alignment fails (or ``post_k`` is empty), the span collapses to
+        identity weights so gradient signal is preserved — this is the
+        RCA-5 H2 zero-gradient regression guard.
 
         Args:
             input_ids_seq: Full sequence token IDs.
             labels_seq: Full sequence labels.
-            pre_code: Code before the edit.
-            post_code: Code after the edit.
+            pre_codes: Per-turn pre-revision code bodies.
+            post_codes: Per-turn post-revision code bodies.
 
         Returns:
-            Per-token float weights.
+            Per-token float weights of length ``len(input_ids_seq)``.
         """
-        hunk_ranges = _compute_hunk_ranges(pre_code, post_code)
-
-        # Re-tokenize post_code to get char offsets.
         assert self.tokenizer is not None  # guaranteed by caller; satisfies mypy
+
+        weights: list[float] = [0.0] * len(labels_seq)
+
+        for idx, (span_start, span_end) in enumerate(
+            _iter_assistant_spans(labels_seq)
+        ):
+            pre = pre_codes[idx] if idx < len(pre_codes) else ""
+            post = post_codes[idx] if idx < len(post_codes) else ""
+            self._apply_span_weights(
+                weights, input_ids_seq, span_start, span_end, pre, post
+            )
+
+        return weights
+
+    def _apply_span_weights(
+        self,
+        weights: list[float],
+        input_ids_seq: list[int],
+        span_start: int,
+        span_end: int,
+        pre: str,
+        post: str,
+    ) -> None:
+        """Fill ``weights[span_start:span_end]`` for one assistant turn.
+
+        Falls back to identity (``1.0``) when no ``post`` is available, no
+        subsequence match is found, or every matched token would otherwise
+        end up at weight ``0`` (e.g. tokenizer emitted only special-token
+        offsets).  This is the per-span half of the RCA-5 H2 guard.
+        """
+        if not post:
+            _fill_identity(weights, span_start, span_end)
+            return
+
+        assert self.tokenizer is not None
         enc = self.tokenizer(
-            post_code,
+            post,
             return_offsets_mapping=True,
             add_special_tokens=False,
         )
-        post_offset_mapping: list[tuple[int, int]] = [
+        post_offsets: list[tuple[int, int]] = [
             tuple(o)
             for o in enc["offset_mapping"]  # type: ignore[misc]
         ]
-        post_input_ids: list[int] = enc["input_ids"]
+        post_input_ids: list[int] = list(enc["input_ids"])
 
-        n_seq = len(input_ids_seq)
+        match_pos = _find_post_in_span(
+            input_ids_seq, span_start, span_end, post_input_ids
+        )
+        if match_pos < 0:
+            _fill_identity(weights, span_start, span_end)
+            return
+
+        hunk_ranges = _compute_hunk_ranges(pre, post)
         n_post = len(post_input_ids)
+        for j in range(span_start, span_end):
+            local = j - span_start
+            if local < match_pos or local >= match_pos + n_post:
+                continue
+            ts, te = post_offsets[local - match_pos]
+            if ts == 0 and te == 0:
+                continue
+            in_hunk = any(
+                ts < h_end and te > h_start for h_start, h_end in hunk_ranges
+            )
+            weights[j] = self.changed_weight if in_hunk else self.unchanged_weight
 
-        # Build per-token offset mapping for the *full* sequence.
-        # Strategy: match the last N tokens of the assistant span against
-        # the re-tokenized post_code.  Everything else gets (0, 0).
-        full_offset_mapping: list[tuple[int, int]] = [(0, 0)] * n_seq
-
-        if n_post > 0 and n_post <= n_seq:
-            # Find the tail of the sequence that matches post_input_ids.
-            # Walk backward from the end of the sequence.
-            tail_start = n_seq - n_post
-            if input_ids_seq[tail_start : tail_start + n_post] == post_input_ids:
-                for k, off in enumerate(post_offset_mapping):
-                    full_offset_mapping[tail_start + k] = off
-            else:
-                # Fallback: assign offsets to the last n_post positions.
-                for k, off in enumerate(post_offset_mapping):
-                    full_offset_mapping[n_seq - n_post + k] = off
-
-        return compute_hunk_loss_weights(
-            input_ids=input_ids_seq,
-            labels=labels_seq,
-            offset_mapping=full_offset_mapping,
-            hunk_ranges_chars=hunk_ranges,
-            changed_weight=self.changed_weight,
-            unchanged_weight=self.unchanged_weight,
-        )
-
-    def _weights_via_fallback(
-        self,
-        input_ids_seq: list[int],
-        labels_seq: list[int],
-        pre_code: str,
-        post_code: str,
-    ) -> list[float]:
-        """Compute weights using the legacy set-based diff path.
-
-        Args:
-            input_ids_seq: Full sequence token IDs.
-            labels_seq: Full sequence labels.
-            pre_code: Code before the edit (tokenized by splitting on
-                whitespace for the bag-of-ids approach).
-            post_code: Code after the edit.
-
-        Returns:
-            Per-token float weights.
-        """
-        # Build changed set: token IDs that appear in post but not pre.
-        # Use a simple character-level set as a proxy; the real IDs are in
-        # input_ids.  Map by intersecting with actual ids present.
-        pre_chars = set(pre_code)
-        post_chars = set(post_code)
-        changed_chars = post_chars - pre_chars
-
-        # Map char overlap to token ids: a token is "changed" if its decoded
-        # char is in changed_chars.  This is a best-effort heuristic.
-        # For correctness we use the original set-based API.
-        if self.tokenizer is not None:
-            changed_ids: set[int] = {
-                tid
-                for tid in set(input_ids_seq)
-                if any(c in changed_chars for c in self.tokenizer.decode([tid]))
-            }
-        else:
-            changed_ids = set()
-
-        return compute_diff_loss_weights(
-            input_ids=input_ids_seq,
-            labels=labels_seq,
-            changed_ids=changed_ids,
-            changed_weight=self.changed_weight,
-            unchanged_weight=self.unchanged_weight,
-        )
+        # Per-span safety net: an all-special turn would still leave every
+        # weight at zero, so restore identity inside the span.
+        if all(weights[j] == 0.0 for j in range(span_start, span_end)):
+            _fill_identity(weights, span_start, span_end)
 
     # ------------------------------------------------------------------
     # Public interface
@@ -365,13 +425,17 @@ class DiffWeightedDataCollator:
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
         """Collate a list of feature dicts into a training batch with loss weights.
 
-        Side-channel columns ``pre_code`` and ``post_code`` are popped from
-        each feature before passing to the inner collator so they don't
-        interfere with tensor stacking.
+        Side-channel columns ``pre_codes`` / ``post_codes`` (per-turn lists)
+        are popped from each feature before passing to the inner collator
+        so they don't interfere with tensor stacking.  Legacy singular
+        ``pre_code`` / ``post_code`` strings are accepted as length-1 lists
+        for backward compatibility.
 
         Args:
-            features: List of example dicts (possibly with ``pre_code`` /
-                ``post_code`` keys).
+            features: List of example dicts.  Each feature may carry either
+                per-turn lists (``pre_codes`` / ``post_codes``) or, for
+                backwards compatibility, a single ``pre_code`` / ``post_code``
+                string that's wrapped into a length-1 list.
 
         Returns:
             Batch dict with standard keys plus ``"loss_weights"`` tensor.
@@ -379,27 +443,37 @@ class DiffWeightedDataCollator:
         global _HUNK_FALLBACK_WARNED
 
         # Pop side-channel columns before handing to the inner collator.
-        pre_codes: list[str | None] = []
-        post_codes: list[str | None] = []
+        # Per-turn lists are preferred; legacy singular keys are wrapped
+        # so single-turn callers still work without code changes.
+        pre_codes_batch: list[list[str] | None] = []
+        post_codes_batch: list[list[str] | None] = []
         for feat in features:
-            pre_codes.append(feat.pop("pre_code", None))
-            post_codes.append(feat.pop("post_code", None))
+            pre_list = feat.pop("pre_codes", None)
+            post_list = feat.pop("post_codes", None)
+            legacy_pre = feat.pop("pre_code", None)
+            legacy_post = feat.pop("post_code", None)
+            if pre_list is None and legacy_pre is not None:
+                pre_list = [legacy_pre]
+            if post_list is None and legacy_post is not None:
+                post_list = [legacy_post]
+            pre_codes_batch.append(pre_list)
+            post_codes_batch.append(post_list)
 
         batch = self.inner_collator(features)
 
         # Determine which path to use.
-        has_side_channels = all(p is not None for p in pre_codes) and all(
-            p is not None for p in post_codes
+        has_side_channels = all(p is not None for p in pre_codes_batch) and all(
+            p is not None for p in post_codes_batch
         )
         use_hunk_path = has_side_channels and self.tokenizer is not None
 
         if not use_hunk_path and not _HUNK_FALLBACK_WARNED:
             logger.warning(
-                "DiffWeightedDataCollator: pre_code/post_code side-channels missing "
-                "or tokenizer not set; falling back to identity loss weights "
-                "(1.0 for labeled tokens, 0.0 otherwise). "
-                "Pass tokenizer= and include pre_code/post_code in dataset features "
-                "to use the hunk path."
+                "DiffWeightedDataCollator: pre_codes/post_codes side-channels "
+                "missing or tokenizer not set; falling back to identity loss "
+                "weights (1.0 for labeled tokens, 0.0 otherwise). "
+                "Pass tokenizer= and include per-turn pre_codes/post_codes lists "
+                "in dataset features to use the hunk path."
             )
             _HUNK_FALLBACK_WARNED = True
 
@@ -413,17 +487,19 @@ class DiffWeightedDataCollator:
         for idx in range(len(features)):
             ids_seq: list[int] = input_ids_batch[idx].tolist()
             lab_seq: list[int] = labels_batch[idx].tolist()
-            pre = str(pre_codes[idx]) if pre_codes[idx] is not None else ""
-            post = str(post_codes[idx]) if post_codes[idx] is not None else ""
+            pre_list = pre_codes_batch[idx] or []
+            post_list = post_codes_batch[idx] or []
 
             if use_hunk_path:
-                w = self._weights_via_hunk_path(ids_seq, lab_seq, pre, post)
+                w = self._weights_via_hunk_path(
+                    ids_seq, lab_seq, list(pre_list), list(post_list)
+                )
             else:
                 # Identity fallback: 1.0 for labeled tokens, 0.0 for IGNORE_INDEX.
                 # Avoids silently reducing the training objective to a uniform
                 # rescale when the diff cannot be computed (no side-channels
                 # or no tokenizer).
-                w = [1.0 if lab != -100 else 0.0 for lab in lab_seq]
+                w = [1.0 if lab != IGNORE_INDEX else 0.0 for lab in lab_seq]
             all_weights.append(w)
 
         batch["loss_weights"] = torch.tensor(all_weights, dtype=torch.float32)

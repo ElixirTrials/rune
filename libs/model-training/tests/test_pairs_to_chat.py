@@ -185,14 +185,16 @@ def test_pre_post_aligned_with_conversations() -> None:
     convs, pre_post = pairs_to_chat_messages(pairs, mode="multi_turn")
     assert len(pre_post) == len(convs) == 2
     for record in pre_post:
-        assert "pre_code" in record
-        assert "post_code" in record
-        assert isinstance(record["pre_code"], str)
-        assert isinstance(record["post_code"], str)
+        assert "pre_codes" in record
+        assert "post_codes" in record
+        assert isinstance(record["pre_codes"], list)
+        assert isinstance(record["post_codes"], list)
+        assert all(isinstance(s, str) for s in record["pre_codes"])
+        assert all(isinstance(s, str) for s in record["post_codes"])
 
 
-def test_pre_post_multi_turn_concatenation() -> None:
-    """Multi-turn: pre/post codes are joined by '\\n\\n' across turns."""
+def test_pre_post_multi_turn_per_turn_lists() -> None:
+    """Multi-turn: pre/post codes are emitted as per-turn parallel lists."""
     activation_0 = "## Task\nWrite add()"
     teacher_0 = f"{activation_0}\n\n## Implementation\ndef add(a,b): return a+b"
 
@@ -212,16 +214,12 @@ def test_pre_post_multi_turn_concatenation() -> None:
     assert len(pre_post) == 1
 
     record = pre_post[0]
-    # Turn 0: no ## Current Code → pre_code is ""
-    # Turn 1: ## Current Code present → pre_code is "def add(a,b): return a+b"
-    expected_pre = "\n\n".join(["", "def add(a,b): return a+b"])
-    assert record["pre_code"] == expected_pre
-
-    # post_code: body of ## Implementation + body of ## Revision joined by \n\n
-    expected_post = "\n\n".join(
-        ["def add(a,b): return a+b", "def add(a,b): return float(a)+float(b)"]
-    )
-    assert record["post_code"] == expected_post
+    # Two assistant turns → two entries per list, in step_index order.
+    assert record["pre_codes"] == ["", "def add(a,b): return a+b"]
+    assert record["post_codes"] == [
+        "def add(a,b): return a+b",
+        "def add(a,b): return float(a)+float(b)",
+    ]
 
 
 def test_pre_post_skips_match_conversation_skips() -> None:
@@ -236,12 +234,15 @@ def test_pre_post_skips_match_conversation_skips() -> None:
     convs, pre_post = pairs_to_chat_messages([good_pair, skip_pair], mode="multi_turn")
     assert len(convs) == 1
     assert len(pre_post) == 1
-    assert "pre_code" in pre_post[0]
-    assert "post_code" in pre_post[0]
+    assert "pre_codes" in pre_post[0]
+    assert "post_codes" in pre_post[0]
+    # Only the good pair → length 1 lists.
+    assert len(pre_post[0]["pre_codes"]) == 1
+    assert len(pre_post[0]["post_codes"]) == 1
 
 
-def test_pre_post_initial_commit_has_empty_pre_code() -> None:
-    """Initial commit pair (no ## Current Code section) → pre_code == ''."""
+def test_pre_post_single_turn_emits_length_one_lists() -> None:
+    """single_turn: pre_codes / post_codes are length-1 lists."""
     activation = "## Task\nImplement fizzbuzz"
     teacher = f"{activation}\n\n## Implementation\ndef fizzbuzz(n): pass"
     pair = _pair(activation=activation, teacher=teacher)
@@ -249,5 +250,6 @@ def test_pre_post_initial_commit_has_empty_pre_code() -> None:
     convs, pre_post = pairs_to_chat_messages([pair], mode="single_turn")
     assert len(convs) == 1
     assert len(pre_post) == 1
-    assert pre_post[0]["pre_code"] == ""
-    assert "fizzbuzz" in pre_post[0]["post_code"]
+    assert pre_post[0]["pre_codes"] == [""]  # initial commit → empty pre
+    assert len(pre_post[0]["post_codes"]) == 1
+    assert "fizzbuzz" in pre_post[0]["post_codes"][0]
