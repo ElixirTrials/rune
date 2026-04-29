@@ -349,9 +349,7 @@ class DiffWeightedDataCollator:
 
         weights: list[float] = [0.0] * len(labels_seq)
 
-        for idx, (span_start, span_end) in enumerate(
-            _iter_assistant_spans(labels_seq)
-        ):
+        for idx, (span_start, span_end) in enumerate(_iter_assistant_spans(labels_seq)):
             pre = pre_codes[idx] if idx < len(pre_codes) else ""
             post = post_codes[idx] if idx < len(post_codes) else ""
             self._apply_span_weights(
@@ -408,9 +406,7 @@ class DiffWeightedDataCollator:
             ts, te = post_offsets[local - match_pos]
             if ts == 0 and te == 0:
                 continue
-            in_hunk = any(
-                ts < h_end and te > h_start for h_start, h_end in hunk_ranges
-            )
+            in_hunk = any(ts < h_end and te > h_start for h_start, h_end in hunk_ranges)
             weights[j] = self.changed_weight if in_hunk else self.unchanged_weight
 
         # Per-span safety net: an all-special turn would still leave every
