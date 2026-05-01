@@ -94,7 +94,14 @@ export RUNE_PERSIST_BASE_MODEL=1
 # Skip Hugging Face Hub HEAD checks per trial — the model is already cached
 # locally after the first download. Saves ~1-2 s per trial × N trials and
 # avoids flaky-network failure modes mid-study.
+#TODO: Fix this and make it idempotent
+# MODEL_ID=$(uv run python -c "                                     
+# from model_training.config import get_model_config                                                                                            
+# print(get_model_config('${MODEL_CONFIG_NAME}')['model_id'])       
+# ")      
+# huggingface-cli download "$MODEL_ID" --quiet || true                                                                                          
 export HF_HUB_OFFLINE=1
+# export HF_HUB_OFFLINE=0
 export TRANSFORMERS_OFFLINE=1
 # Reduce VRAM fragmentation across HPO trials. Must be set before any torch
 # import — PyTorch reads PYTORCH_CUDA_ALLOC_CONF once at import time, so
