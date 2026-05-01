@@ -423,7 +423,7 @@ def test_compute_assistant_masks_keep_end_truncation_preserves_assistant_tail() 
     assert sum(result["assistant_masks"]) >= 1
 
 
-def test_compute_assistant_masks_keep_start_drops_assistant_when_user_too_long() -> None:
+def test_compute_assistant_masks_keep_start_drops_assistant_when_user_long() -> None:
     """``keep_start`` reproduces the bug we are fixing — useful as a guard rail.
 
     This documents the failure mode: with ``keep_start`` and a user turn

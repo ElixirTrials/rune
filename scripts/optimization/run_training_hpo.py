@@ -124,6 +124,8 @@ class HPORunArgs:
     heldout_strategy: str = "step_index"
     compute_adapter_delta: bool = True
     seed: int = 42
+    upload_adapters_to_mlflow: bool = True
+    cleanup_local_adapters: bool = True
     extra_train_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
@@ -235,6 +237,32 @@ def _build_parser() -> argparse.ArgumentParser:
         "--print-only",
         action="store_true",
         help="Resolve args and print the study plan; do not run any trials.",
+    )
+    parser.add_argument(
+        "--upload-adapters-to-mlflow",
+        dest="upload_adapters_to_mlflow",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "After eval, upload each trial's adapter as an MLflow artifact. "
+            "When the MLflow server is configured with --serve-artifacts and "
+            "--default-artifact-root s3://… (the in-pod default), the upload "
+            "lands in S3 transparently — no boto3 calls from the client. "
+            "Disable to keep adapters local-only."
+        ),
+    )
+    parser.add_argument(
+        "--cleanup-local-adapters",
+        dest="cleanup_local_adapters",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Delete each trial's local adapter directory immediately after "
+            "the MLflow upload succeeds. Avoids letting hundreds of trial "
+            "adapters fill the host disk during long studies. Has no effect "
+            "when --no-upload-adapters-to-mlflow is set, since dropping the "
+            "only copy would lose the adapter entirely."
+        ),
     )
     return parser
 
@@ -352,6 +380,63 @@ def _eval_loss_from_trainer_state(output_dir: str) -> float:
     history = state.get("log_history", [])
     losses = [float(entry["loss"]) for entry in history if "loss" in entry]
     return losses[-1] if losses else float("inf")
+
+
+def _upload_adapter_and_cleanup(
+    adapter_dir: str,
+    *,
+    upload: bool,
+    cleanup: bool,
+    artifact_path: str = "adapter",
+) -> bool:
+    """Log ``adapter_dir`` to the active MLflow run, then optionally delete it.
+
+    Why MLflow over a direct ``boto3`` upload: the in-pod MLflow server is
+    started with ``--serve-artifacts`` and ``--default-artifact-root
+    s3://…/mlflow/artifacts/`` (see ``infra/docker-compose.yml``), so any
+    ``mlflow.log_artifacts`` call from the HPO host streams through the
+    server and lands in the team S3 bucket *exactly once*, scoped to the
+    current run id. The client never holds AWS credentials and the run's
+    ``artifact_uri`` is the canonical pointer — no second copy elsewhere.
+
+    Returns ``True`` when the upload (and optional cleanup) succeeded so
+    the caller can record an MLflow tag for observability. Returns
+    ``False`` on any failure path; the local copy is preserved in that
+    case so the trial is not lost.
+
+    The ``cleanup=True`` path is gated on ``upload=True``: we never delete
+    the only existing copy.
+    """
+    if not upload:
+        return False
+
+    import shutil  # noqa: PLC0415
+
+    import mlflow  # noqa: PLC0415
+
+    adapter_path = Path(adapter_dir)
+    if not adapter_path.exists():
+        logger.warning("Adapter dir %s missing — skipping MLflow upload.", adapter_dir)
+        return False
+
+    try:
+        mlflow.log_artifacts(str(adapter_path), artifact_path=artifact_path)
+    except Exception:  # noqa: BLE001 — never let the upload kill the trial
+        logger.exception(
+            "MLflow log_artifacts(%s) failed; keeping local copy.", adapter_dir
+        )
+        return False
+
+    if cleanup:
+        try:
+            shutil.rmtree(adapter_path, ignore_errors=False)
+        except Exception:  # noqa: BLE001 — local cleanup is best-effort
+            logger.exception(
+                "Failed to remove local adapter dir %s after MLflow upload "
+                "(adapter is safely persisted in S3 via MLflow).",
+                adapter_dir,
+            )
+    return True
 
 
 def _all_masked_batch_frac_from_trainer_state(output_dir: str) -> float:
@@ -888,6 +973,20 @@ def _run_single_trial(
         )
         mlflow.set_tag("hpo.train_all_masked_batch_frac", f"{all_masked_frac:.4f}")
         eval_metrics["all_masked_batch_frac"] = all_masked_frac
+
+        # Persist the adapter to S3 via MLflow so the host disk does not
+        # accumulate trial-after-trial. The local dir is removed only after
+        # the artifact upload returns success, so a failed upload leaves
+        # the on-disk copy intact for the operator to recover.
+        uploaded = _upload_adapter_and_cleanup(
+            adapter_output_dir,
+            upload=run_args.upload_adapters_to_mlflow,
+            cleanup=run_args.cleanup_local_adapters,
+        )
+        mlflow.set_tag(
+            "hpo.adapter_uploaded_to_mlflow",
+            "true" if uploaded else "false",
+        )
     except BaseException:
         mlflow.end_run(status="FAILED")
         raise
@@ -976,6 +1075,8 @@ def main(argv: list[str] | None = None) -> int:
         heldout_strategy=args.heldout_strategy,
         compute_adapter_delta=args.adapter_improvement_eval,
         seed=args.seed,
+        upload_adapters_to_mlflow=args.upload_adapters_to_mlflow,
+        cleanup_local_adapters=args.cleanup_local_adapters,
     )
     fitness_cfg = FitnessConfig(
         hunk_loss_weight=args.hunk_loss_weight,

@@ -22,6 +22,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from run_training_hpo import (  # noqa: E402
     FitnessConfig,
     HPORunArgs,
+    _all_masked_batch_frac_from_trainer_state,
     _build_parser,
     _build_trial_kwargs,
     _compute_fitness,
@@ -526,3 +527,121 @@ def test_flush_gpu_helper_invokes_gc_collect(monkeypatch: pytest.MonkeyPatch) ->
 
     hpo._flush_gpu_between_phases()
     assert len(collect_calls) >= 2, "expected at least two gc.collect passes"
+
+
+def test_all_masked_batch_frac_averages_log_history(tmp_path: Path) -> None:
+    """The HPO helper must average ``train/all_masked_batch_frac`` entries.
+
+    Trials whose adapter looks fine on hunk metrics but trained against
+    largely empty gradients should be discounted; the per-trial mean is
+    the signal that flips the operator's confidence.
+    """
+    state = {
+        "log_history": [
+            {"loss": 1.0, "train/all_masked_batch_frac": 0.0},
+            {"loss": 0.9, "train/all_masked_batch_frac": 0.4},
+            {"loss": 0.8},  # entries without the metric must not break
+        ]
+    }
+    (tmp_path / "trainer_state.json").write_text(json.dumps(state))
+    assert _all_masked_batch_frac_from_trainer_state(str(tmp_path)) == pytest.approx(
+        0.2
+    )
+
+
+def test_all_masked_batch_frac_returns_zero_when_state_absent(
+    tmp_path: Path,
+) -> None:
+    """Missing trainer_state.json → 0.0 (vanilla SFTTrainer trials, etc.)."""
+    assert _all_masked_batch_frac_from_trainer_state(str(tmp_path)) == 0.0
+
+
+def test_upload_adapter_uses_mlflow_and_removes_local(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Successful upload removes the local adapter dir; failure preserves it.
+
+    The MLflow server in this stack is started with ``--serve-artifacts``
+    and an S3 ``--default-artifact-root`` (see infra/docker-compose.yml),
+    so ``mlflow.log_artifacts`` from the client streams into S3 with no
+    additional configuration. We assert the call goes to MLflow exactly
+    once per trial and that the local copy is cleaned up only after
+    success — both halves of the "don't store twice / don't fill up our
+    HD" contract.
+    """
+    import run_training_hpo as hpo
+
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    calls: list[tuple[str, str]] = []
+
+    class _FakeMlflow:
+        @staticmethod
+        def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
+            calls.append((local_dir, artifact_path))
+
+    monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
+
+    result = hpo._upload_adapter_and_cleanup(
+        str(adapter_dir), upload=True, cleanup=True
+    )
+    assert result is True
+    assert calls == [(str(adapter_dir), "adapter")]
+    assert not adapter_dir.exists(), "local copy must be removed after upload"
+
+
+def test_upload_adapter_keeps_local_when_upload_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed upload must NOT delete the local adapter — that would lose data."""
+    import run_training_hpo as hpo
+
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    class _FakeMlflow:
+        @staticmethod
+        def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
+            raise RuntimeError("S3 unreachable")
+
+    monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
+
+    result = hpo._upload_adapter_and_cleanup(
+        str(adapter_dir), upload=True, cleanup=True
+    )
+    assert result is False
+    assert adapter_dir.exists()
+    assert (adapter_dir / "adapter_model.safetensors").exists()
+
+
+def test_upload_adapter_noop_when_upload_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``upload=False`` short-circuits BEFORE any cleanup attempt.
+
+    Operators using ``--no-upload-adapters-to-mlflow`` keep adapters
+    local-only; deleting the local copy in that path would lose the
+    adapter outright.
+    """
+    import run_training_hpo as hpo
+
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    # Sentinel that fails loudly if mlflow is touched.
+    class _ExplodingMlflow:
+        @staticmethod
+        def log_artifacts(*_a: Any, **_kw: Any) -> None:
+            raise AssertionError("mlflow must not be called when upload=False")
+
+    monkeypatch.setitem(sys.modules, "mlflow", _ExplodingMlflow)
+
+    result = hpo._upload_adapter_and_cleanup(
+        str(adapter_dir), upload=False, cleanup=True
+    )
+    assert result is False
+    assert adapter_dir.exists()

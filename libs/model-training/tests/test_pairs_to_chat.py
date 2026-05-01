@@ -270,8 +270,7 @@ def test_multi_turn_elides_current_code_in_later_turns() -> None:
         step_index=0,
         activation=f"## Task\nfix\n\n## Current Code\n{big_code}",
         teacher=(
-            f"## Task\nfix\n\n## Current Code\n{big_code}"
-            "\n\n## Implementation\ny = 0"
+            f"## Task\nfix\n\n## Current Code\n{big_code}\n\n## Implementation\ny = 0"
         ),
     )
     p1 = _pair(
