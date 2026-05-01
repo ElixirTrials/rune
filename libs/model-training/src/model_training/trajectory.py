@@ -241,17 +241,34 @@ def compute_assistant_masks(
             mask[k] = 1
         i = end + 1
 
-    if max_length is not None and len(full_ids) > max_length:
-        if truncation_mode == "keep_end":
-            sl = slice(-max_length, None)
-        elif truncation_mode == "keep_start":
-            sl = slice(None, max_length)
-        else:
-            raise ValueError(
-                f"compute_assistant_masks: unsupported truncation_mode "
-                f"{truncation_mode!r}; expected 'keep_end' or 'keep_start'."
-            )
-        full_ids = full_ids[sl]
-        mask = mask[sl]
+    full_ids, mask = _truncate_to_max_length(
+        full_ids, mask, max_length, truncation_mode
+    )
 
     return {"input_ids": full_ids, "assistant_masks": mask}
+
+
+def _truncate_to_max_length(
+    full_ids: list[int],
+    mask: list[int],
+    max_length: int | None,
+    truncation_mode: str,
+) -> tuple[list[int], list[int]]:
+    """Slice ``(full_ids, mask)`` to ``max_length`` using ``truncation_mode``.
+
+    Extracted from :func:`compute_assistant_masks` to keep that function
+    under the C901 complexity threshold while still validating the
+    ``truncation_mode`` argument loudly.
+    """
+    if max_length is None or len(full_ids) <= max_length:
+        return full_ids, mask
+    if truncation_mode == "keep_end":
+        sl = slice(-max_length, None)
+    elif truncation_mode == "keep_start":
+        sl = slice(None, max_length)
+    else:
+        raise ValueError(
+            f"compute_assistant_masks: unsupported truncation_mode "
+            f"{truncation_mode!r}; expected 'keep_end' or 'keep_start'."
+        )
+    return full_ids[sl], mask[sl]

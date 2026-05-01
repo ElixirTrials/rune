@@ -291,7 +291,7 @@ def test_attach_assistant_masks_preserves_diff_side_channels(monkeypatch) -> Non
     monkeypatch.setattr(
         trajectory_mod,
         "compute_assistant_masks",
-        lambda tok, messages: {
+        lambda tok, messages, **_kw: {
             "input_ids": [10, 20, 30, 40],
             "assistant_masks": [0, 0, 1, 1],
         },
@@ -524,7 +524,7 @@ def test_two_trial_hpo_simulation_no_residue_and_no_all_masked_batch(
     monkeypatch.setattr(
         trajectory_mod,
         "compute_assistant_masks",
-        lambda tok, messages: {
+        lambda tok, messages, **_kw: {
             "input_ids": [10, 20, 30, 40, 50, 60],
             # First 3 tokens = prompt (masked), last 3 = assistant (trained on)
             "assistant_masks": [0, 0, 0, 1, 1, 1],

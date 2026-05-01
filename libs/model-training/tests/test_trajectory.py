@@ -399,3 +399,62 @@ def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> N
     assert all(isinstance(t, int) for t in result["input_ids"]), (
         f"expected list[int], got {[type(t).__name__ for t in result['input_ids']]}"
     )
+
+
+def test_compute_assistant_masks_keep_end_truncation_preserves_assistant_tail() -> None:
+    """``max_length`` + ``truncation_mode='keep_end'`` keeps the last assistant span.
+
+    A long user turn followed by a short assistant turn would, under the
+    legacy untruncated behaviour, balloon the dataset row size. Under the
+    ``keep_start`` slice in the inner collator, the assistant tail would
+    be discarded and ``denom = 0`` would fire every step (RCA-5 H2). The
+    new ``keep_end`` truncation here mirrors the diff-aware collator and
+    keeps the assistant span intact.
+    """
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "padding " * 100},  # long
+        {"role": "assistant", "content": "answer"},
+    ]
+    result = compute_assistant_masks(tok, messages, max_length=20)
+    assert len(result["input_ids"]) == 20
+    assert len(result["assistant_masks"]) == 20
+    # The assistant span sits at the tail; at least one mask bit must survive.
+    assert sum(result["assistant_masks"]) >= 1
+
+
+def test_compute_assistant_masks_keep_start_drops_assistant_when_user_too_long() -> None:
+    """``keep_start`` reproduces the bug we are fixing — useful as a guard rail.
+
+    This documents the failure mode: with ``keep_start`` and a user turn
+    longer than ``max_length``, the assistant span is shifted past the cap
+    and gets sliced away — leaving an all-zero ``assistant_masks``. The
+    upstream fix is to use ``keep_end`` (the new default).
+    """
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "padding " * 100},
+        {"role": "assistant", "content": "answer"},
+    ]
+    result = compute_assistant_masks(
+        tok, messages, max_length=20, truncation_mode="keep_start"
+    )
+    assert len(result["input_ids"]) == 20
+    assert sum(result["assistant_masks"]) == 0
+
+
+def test_compute_assistant_masks_unknown_truncation_mode_raises() -> None:
+    """Bogus ``truncation_mode`` must raise — silent fallback is worse."""
+    import pytest
+
+    tok = _FakeTokenizer()
+    with pytest.raises(ValueError, match="unsupported truncation_mode"):
+        compute_assistant_masks(
+            tok,
+            [
+                {"role": "user", "content": "u"},
+                {"role": "assistant", "content": "a" * 100},
+            ],
+            max_length=4,
+            truncation_mode="middle",  # type: ignore[arg-type]
+        )

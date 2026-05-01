@@ -253,3 +253,49 @@ def test_pre_post_single_turn_emits_length_one_lists() -> None:
     assert pre_post[0]["pre_codes"] == [""]  # initial commit → empty pre
     assert len(pre_post[0]["post_codes"]) == 1
     assert "fizzbuzz" in pre_post[0]["post_codes"][0]
+
+
+def test_multi_turn_elides_current_code_in_later_turns() -> None:
+    """Long ``## Current Code`` bodies are removed from non-first user turns.
+
+    The first turn keeps the body verbatim; later turns get the elision
+    sentinel so multi-turn conversations stop quadrupling in length on
+    long-tail PRs (RCA-5 H2 truncation interaction).  ``pre_codes`` is
+    still computed from the original ``## Current Code`` body so the
+    diff-aware collator can compute hunks accurately.
+    """
+    big_code = "x = 0\n" * 200
+    later_big_code = "x = 1\n" * 200
+    p0 = _pair(
+        step_index=0,
+        activation=f"## Task\nfix\n\n## Current Code\n{big_code}",
+        teacher=(
+            f"## Task\nfix\n\n## Current Code\n{big_code}"
+            "\n\n## Implementation\ny = 0"
+        ),
+    )
+    p1 = _pair(
+        step_index=1,
+        activation=(
+            f"## Task\nfix\n\n## Current Code\n{later_big_code}"
+            "\n\n## Review Feedback\nrename y"
+        ),
+        teacher=(
+            f"## Task\nfix\n\n## Current Code\n{later_big_code}"
+            "\n\n## Review Feedback\nrename y\n\n## Revision\nz = 0"
+        ),
+    )
+    convs, pre_post = pairs_to_chat_messages([p0, p1], mode="multi_turn")
+    assert len(convs) == 1
+    user_msgs = [m["content"] for m in convs[0] if m["role"] == "user"]
+    assert len(user_msgs) == 2
+    # First user turn keeps the body verbatim.
+    assert big_code.strip() in user_msgs[0]
+    # Second user turn replaces the Current Code body with the elision
+    # sentinel but keeps the surrounding framing.
+    assert later_big_code not in user_msgs[1]
+    assert "see the previous assistant turn" in user_msgs[1]
+    assert "## Review Feedback" in user_msgs[1]
+    # pre_codes for the second turn still carries the original body so the
+    # diff collator can compute hunks against the actual prior state.
+    assert later_big_code.strip() in pre_post[0]["pre_codes"][1]

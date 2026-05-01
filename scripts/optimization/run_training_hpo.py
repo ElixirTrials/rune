@@ -354,6 +354,38 @@ def _eval_loss_from_trainer_state(output_dir: str) -> float:
     return losses[-1] if losses else float("inf")
 
 
+def _all_masked_batch_frac_from_trainer_state(output_dir: str) -> float:
+    """Mean ``train/all_masked_batch_frac`` across this trial's log_history.
+
+    Surfaces the RCA-5 H2 zero-gradient-batch frequency to the HPO scoreboard.
+    A trial whose adapter looks "good" on hunk metrics but trained against
+    largely empty gradients should be discounted; this number is what tells
+    the operator whether to trust the result. ``0.0`` is healthy; ``>0.05``
+    means at least 5 % of micro-batches contributed nothing to the loss
+    (almost always a dataset/truncation issue, not a hyperparameter issue).
+
+    Returns ``0.0`` when the metric was never logged (non-diff-aware trials,
+    older trainer versions, or a missing trainer_state.json) — those trials
+    should not be ranked-against the diff-aware ones on this dimension.
+    """
+    state_file = Path(output_dir) / "trainer_state.json"
+    if not state_file.exists():
+        return 0.0
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return 0.0
+    history = state.get("log_history", [])
+    fracs = [
+        float(entry["train/all_masked_batch_frac"])
+        for entry in history
+        if "train/all_masked_batch_frac" in entry
+    ]
+    if not fracs:
+        return 0.0
+    return sum(fracs) / len(fracs)
+
+
 def _load_pairs_jsonl(path: str) -> list[dict[str, Any]]:
     """Read a pairs JSONL into a list of dicts (stdlib only, CPU-safe)."""
     out: list[dict[str, Any]] = []
@@ -839,10 +871,23 @@ def _run_single_trial(
             base_model_id=base_model_id,
             compute_adapter_delta=run_args.compute_adapter_delta,
         )
+        # Surface the per-trial fraction of zero-gradient micro-batches so the
+        # MLflow scoreboard exposes degenerate trials even when their hunk
+        # metrics happen to look fine. trainer_state lives next to the saved
+        # adapter (RUNE_ADAPTER_DIR/<adapter_id>/trainer_state.json). Logged
+        # under the ``train/`` prefix because it is a training-time metric,
+        # not an eval-time one — keeping the namespacing honest avoids the
+        # MLflow scoreboard treating it as part of the held-out signal.
+        all_masked_frac = _all_masked_batch_frac_from_trainer_state(adapter_output_dir)
         mlflow.log_metrics(
             {f"eval/{k}": v for k, v in eval_metrics.items()},
             step=trial.number,
         )
+        mlflow.log_metric(
+            "train/all_masked_batch_frac_mean", all_masked_frac, step=trial.number
+        )
+        mlflow.set_tag("hpo.train_all_masked_batch_frac", f"{all_masked_frac:.4f}")
+        eval_metrics["all_masked_batch_frac"] = all_masked_frac
     except BaseException:
         mlflow.end_run(status="FAILED")
         raise
@@ -858,12 +903,13 @@ def _run_single_trial(
     )
     logger.info(
         "Trial %d hunk_loss=%.4f hunk_acc=%.3f"
-        " adapter_imp=%.3f entropy=%.3f fitness=%.4f",
+        " adapter_imp=%.3f entropy=%.3f all_masked_frac=%.3f fitness=%.4f",
         trial.number,
         eval_metrics["hunk_loss"],
         eval_metrics["hunk_accuracy"],
         eval_metrics["adapter_improvement"],
         eval_metrics["hunk_entropy"],
+        eval_metrics["all_masked_batch_frac"],
         fitness,
     )
     prior_losses.append(eval_metrics["hunk_loss"])
