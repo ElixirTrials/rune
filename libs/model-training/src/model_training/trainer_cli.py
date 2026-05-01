@@ -138,7 +138,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--max-seq-length",
         dest="max_length",
         type=int,
-        default=2048,
+        default=3072,
         help=(
             "Truncation length for SFT tokenization. Caps activation memory; "
             "the loss-step logits/attention scratch scales with seq_len."

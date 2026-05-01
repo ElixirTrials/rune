@@ -854,6 +854,46 @@ def _extract_pre_revision(activation_text: str) -> str:
     return activation_text[body_start:next_heading].rstrip("\n")
 
 
+_CURRENT_CODE_ELIDED = (
+    "(omitted — see the previous assistant turn for the up-to-date code)"
+)
+
+
+def _strip_current_code_section(activation_text: str) -> str:
+    """Replace the ``## Current Code`` body with an elision sentinel.
+
+    Only used for non-first turns of a multi-turn conversation: the
+    previous assistant turn already contains the latest revision, so
+    repeating the full file under ``## Current Code`` is pure padding.
+    The model still sees the surrounding ``## Task`` / ``## Review
+    Feedback`` framing — only the redundant code body is replaced — so
+    review feedback stays grounded.
+
+    Returns the activation text unchanged when the marker is absent
+    (e.g. an initial-commit pair that slipped into a non-first slot).
+
+    Args:
+        activation_text: The original activation text for one mined pair.
+
+    Returns:
+        The activation text with the ``## Current Code`` body replaced
+        by :data:`_CURRENT_CODE_ELIDED`.
+    """
+    marker = "## Current Code\n"
+    start = activation_text.find(marker)
+    if start == -1:
+        return activation_text
+    body_start = start + len(marker)
+    next_heading = activation_text.find("\n## ", body_start)
+    if next_heading == -1:
+        return activation_text[:body_start] + _CURRENT_CODE_ELIDED + "\n"
+    return (
+        activation_text[:body_start]
+        + _CURRENT_CODE_ELIDED
+        + activation_text[next_heading:]
+    )
+
+
 def _extract_post_revision(activation_text: str, teacher_text: str) -> str:
     """Extract the code body from the assistant-side section of a pair.
 
@@ -1007,16 +1047,29 @@ def pairs_to_chat_messages(
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         turn_pre_codes: list[str] = []
         turn_post_codes: list[str] = []
+        accepted_turns = 0
         for pair in group:
             user = pair.get("activation_text", "")
             teacher = pair.get("teacher_text", "")
             assistant = _extract_revision(user, teacher)
             if not assistant:
                 continue
-            messages.append({"role": "user", "content": user})
+            # In non-first turns the previous assistant message already
+            # carries the up-to-date code, so re-pasting the full
+            # ``## Current Code`` body in every subsequent user turn
+            # quadruples the conversation length on long-tail PRs and is
+            # the dominant driver of the ``denom=0`` zero-grad batches
+            # under ``keep_start`` truncation (RCA-5 H2). Keep ``pre_codes``
+            # populated from the original body so the diff collator still
+            # sees the correct hunk boundaries.
+            user_for_chat = (
+                _strip_current_code_section(user) if accepted_turns > 0 else user
+            )
+            messages.append({"role": "user", "content": user_for_chat})
             messages.append({"role": "assistant", "content": assistant})
             turn_pre_codes.append(_extract_pre_revision(user))
             turn_post_codes.append(_extract_post_revision(user, teacher))
+            accepted_turns += 1
         # A valid SFT conversation needs at least one user/assistant turn.
         if len(messages) >= 3:
             conversations.append(messages)

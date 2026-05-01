@@ -124,7 +124,11 @@ def format_for_sft(trajectory: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def compute_assistant_masks(
-    tokenizer: Any, messages: list[dict[str, str]]
+    tokenizer: Any,
+    messages: list[dict[str, str]],
+    *,
+    max_length: int | None = None,
+    truncation_mode: str = "keep_end",
 ) -> dict[str, list[int]]:
     r"""Tokenize a chat conversation and emit a 0/1 mask over assistant tokens.
 
@@ -151,6 +155,18 @@ def compute_assistant_masks(
         tokenizer: A HuggingFace tokenizer that uses ``<|im_start|>`` /
             ``<|im_end|>`` role markers (Qwen and ChatML-family).
         messages: A list of ``{"role", "content"}`` dicts.
+        max_length: Optional cap on the returned sequence length. When
+            set, both ``input_ids`` and ``assistant_masks`` are sliced
+            to ``max_length`` *before* the dataset row is materialised,
+            avoiding the multi-MB-per-row bloat of long-tail mined
+            pairs (some activation_text bodies tokenize to >50k tokens).
+        truncation_mode: ``"keep_end"`` (default) keeps the last
+            ``max_length`` tokens; ``"keep_start"`` keeps the first.
+            ``keep_end`` matches the diff-aware collator default so the
+            tail of the conversation — and therefore the trailing
+            assistant span the loss is computed against — survives
+            truncation. Pass ``"keep_start"`` only if a downstream
+            consumer needs the conversation prefix.
 
     Returns:
         ``{"input_ids": [...], "assistant_masks": [...]}`` with both lists
@@ -160,7 +176,7 @@ def compute_assistant_masks(
     Raises:
         ValueError: If the tokenizer doesn't expose ``<|im_start|>`` /
             ``<|im_end|>`` token IDs — the marker-scan algorithm depends
-            on them.
+            on them, or if ``truncation_mode`` is not recognised.
     """
     # ``return_dict=False`` is critical: with ``return_dict=True`` (the
     # default in newer transformers) the call returns a BatchEncoding whose
@@ -224,5 +240,18 @@ def compute_assistant_masks(
         for k in range(i, end + 1):
             mask[k] = 1
         i = end + 1
+
+    if max_length is not None and len(full_ids) > max_length:
+        if truncation_mode == "keep_end":
+            sl = slice(-max_length, None)
+        elif truncation_mode == "keep_start":
+            sl = slice(None, max_length)
+        else:
+            raise ValueError(
+                f"compute_assistant_masks: unsupported truncation_mode "
+                f"{truncation_mode!r}; expected 'keep_end' or 'keep_start'."
+            )
+        full_ids = full_ids[sl]
+        mask = mask[sl]
 
     return {"input_ids": full_ids, "assistant_masks": mask}

@@ -489,6 +489,8 @@ def _attach_assistant_masks(
     tokenizer: Any,
     *,
     preserve_columns: list[str] | None = None,
+    max_length: int | None = None,
+    truncation_mode: str = "keep_end",
 ) -> Any:
     """Pre-tokenize ``messages`` rows and attach ``assistant_masks``.
 
@@ -506,6 +508,15 @@ def _attach_assistant_masks(
     this preservation the diff path silently loses its weights AND its labels
     (RCA-5 H2).
 
+    When ``max_length`` is set the pre-tokenized ``input_ids`` and
+    ``assistant_masks`` are truncated up-front using ``truncation_mode``
+    (``keep_end`` by default, matching the diff-aware collator). After
+    truncation any row whose ``assistant_masks`` is all zero is dropped
+    rather than passed on to training — a row with no surviving assistant
+    tokens contributes nothing but a zero-grad batch and the
+    ``denom=0.000e+00`` warning from
+    :func:`~model_training.diff_loss._compute_weighted_loss`.
+
     Extracted from ``train_qlora`` to keep that function under the C901
     complexity threshold.
     """
@@ -514,11 +525,37 @@ def _attach_assistant_masks(
     keep = set(preserve_columns or [])
     original_columns = list(dataset.column_names)
     columns_to_remove = [c for c in original_columns if c not in keep]
-    return dataset.map(
-        lambda ex: compute_assistant_masks(tokenizer, ex["messages"]),
+    pretokenized = dataset.map(
+        lambda ex: compute_assistant_masks(
+            tokenizer,
+            ex["messages"],
+            max_length=max_length,
+            truncation_mode=truncation_mode,
+        ),
         remove_columns=columns_to_remove,
         desc="Pre-tokenizing with assistant_masks",
     )
+
+    if max_length is None:
+        return pretokenized
+
+    n_before = len(pretokenized)
+    filtered = pretokenized.filter(
+        lambda ex: any(ex["assistant_masks"]),
+        desc="Dropping rows with no surviving assistant tokens",
+    )
+    dropped = n_before - len(filtered)
+    if dropped:
+        logger.warning(
+            "Dropped %d/%d rows whose assistant turns were entirely truncated "
+            "at max_length=%d (truncation_mode=%s). These rows would have "
+            "produced denom=0 zero-gradient batches.",
+            dropped,
+            n_before,
+            max_length,
+            truncation_mode,
+        )
+    return filtered
 
 
 def _build_training_dataset(
@@ -803,7 +840,7 @@ def train_qlora(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
-    max_length: int = 2048,
+    max_length: int = 3072,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -881,7 +918,9 @@ def train_qlora(
         max_length: SFT tokenizer truncation length. Caps activation
             memory; both the cross-entropy logits tensor and (with
             ``attn_implementation="eager"``) the materialised attention
-            matrix scale with this value. Defaults to ``2048``.
+            matrix scale with this value. Defaults to ``3072`` — picked
+            to fit the p75 of the mined-pairs token distribution; lower
+            values silently zero-grad on long-tail examples (RCA-5 H2).
 
     Returns:
         output_dir path where the adapter was saved.
@@ -964,11 +1003,27 @@ def train_qlora(
         # or to identity weights (loss collapses to mean CE on assistant
         # tokens only, ignoring hunks — still functional but defeats the
         # purpose).
+        #
+        # ``max_length`` is forwarded so we (a) avoid storing 50k-token rows
+        # the inner collator would slice anyway, and (b) drop rows whose
+        # entire assistant span sits past the cap *before* training sees
+        # them. ``keep_end`` matches the diff-aware collator default so the
+        # tail-pinning behaviour is consistent across pre-tokenization and
+        # batch collation.
         dataset = _attach_assistant_masks(
-            dataset, tokenizer, preserve_columns=["pre_codes", "post_codes"]
+            dataset,
+            tokenizer,
+            preserve_columns=["pre_codes", "post_codes"],
+            max_length=max_length,
+            truncation_mode="keep_end",
         )
     else:
-        dataset = _attach_assistant_masks(dataset, tokenizer)
+        dataset = _attach_assistant_masks(
+            dataset,
+            tokenizer,
+            max_length=max_length,
+            truncation_mode="keep_end",
+        )
 
     model, lora_config = _setup_lora_adapter(
         model=model,
@@ -1122,7 +1177,7 @@ def train_and_register(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
-    max_length: int = 2048,
+    max_length: int = 3072,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -1165,7 +1220,7 @@ def train_and_register(
         neftune_noise_alpha: NEFTune noise alpha forwarded to ``train_qlora``.
             When ``None`` (default), NEFTune is disabled.
         max_length: SFT tokenizer truncation length forwarded to
-            ``train_qlora``. Defaults to ``2048``.
+            ``train_qlora``. Defaults to ``3072``.
 
     Returns:
         adapter_id of the registered adapter.
