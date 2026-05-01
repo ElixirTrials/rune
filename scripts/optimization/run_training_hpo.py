@@ -382,6 +382,86 @@ def _eval_loss_from_trainer_state(output_dir: str) -> float:
     return losses[-1] if losses else float("inf")
 
 
+class _RunningTopK:
+    """Track the running top-K trials by fitness for selective S3 uploads.
+
+    The HPO study can run 30+ trials. Uploading every adapter to S3 would
+    persist 30× as many checkpoints as the operator actually wants
+    ("save a few" in the original ask), and waste S3 lifecycle later.
+    Instead we mirror the post-study ``--keep-top-k`` semantics inline:
+    only adapters that currently rank in the top-K get uploaded; when a
+    new trial displaces an older top-K member, the displaced run's
+    artifacts are dropped from MLflow so the bucket converges to ≤ K
+    adapters per study.
+
+    The set is small (K ≤ 10 in practice), so a sorted list with a linear
+    scan is faster and clearer than a heap.
+    """
+
+    def __init__(self, k: int) -> None:
+        if k < 0:
+            raise ValueError(f"_RunningTopK: k must be >= 0, got {k}")
+        self.k = k
+        # Entries sorted by fitness ascending — entries[0] is the worst-of-top-K.
+        self._entries: list[tuple[float, int, str]] = []
+
+    def offer(
+        self, fitness: float, trial_number: int, run_id: str
+    ) -> tuple[bool, str | None]:
+        """Decide whether ``trial_number`` enters the top-K.
+
+        Returns:
+            ``(should_upload, displaced_run_id)``:
+              * ``should_upload`` is ``True`` when this trial should be
+                pushed to S3.
+              * ``displaced_run_id`` is the MLflow run id of the trial
+                that just got knocked out of the top-K (caller cleans
+                up its artifacts), or ``None`` when nothing was
+                displaced.
+        """
+        if self.k == 0:
+            return False, None
+        if len(self._entries) < self.k:
+            self._entries.append((fitness, trial_number, run_id))
+            self._entries.sort(key=lambda e: e[0])
+            return True, None
+        worst_fitness, _, worst_run_id = self._entries[0]
+        if fitness <= worst_fitness:
+            return False, None
+        self._entries[0] = (fitness, trial_number, run_id)
+        self._entries.sort(key=lambda e: e[0])
+        return True, worst_run_id
+
+
+def _delete_mlflow_run(run_id: str) -> bool:
+    """Best-effort delete of a displaced MLflow run.
+
+    Marks the run as ``deleted`` in the tracking store and instructs the
+    server to delete its artifacts; on the in-pod stack the artifact
+    store is S3, so this clears the S3 prefix for the run. Returns
+    ``False`` (and logs) on any failure rather than aborting the trial —
+    a leftover orphaned run is annoying but recoverable, while a thrown
+    exception here would mask the actual training-side outcome of the
+    new trial.
+
+    Note: stale orphans (e.g. from earlier studies) are not addressed
+    here — operators should periodically run ``mlflow gc --tracking-uri
+    …`` to physically purge artifacts of runs marked deleted long ago.
+    """
+    try:
+        from mlflow.tracking import MlflowClient  # noqa: PLC0415
+
+        MlflowClient().delete_run(run_id)
+    except Exception:  # noqa: BLE001 — never break HPO on cleanup
+        logger.exception(
+            "Failed to delete displaced MLflow run %s; "
+            "artifact will linger until `mlflow gc` runs.",
+            run_id,
+        )
+        return False
+    return True
+
+
 def _upload_adapter_and_cleanup(
     adapter_dir: str,
     *,
@@ -843,14 +923,82 @@ def _compute_fitness(
     )
 
 
+def _gate_and_upload_adapter(
+    adapter_output_dir: str,
+    *,
+    run_id: str,
+    trial_number: int,
+    fitness: float,
+    run_args: HPORunArgs,
+    top_k: _RunningTopK,
+) -> str:
+    """Decide whether this trial's adapter goes to S3, and act on it.
+
+    Three exit states, returned as the string the caller writes to the
+    ``hpo.adapter_uploaded_to_mlflow`` MLflow tag:
+
+    - ``"disabled"``: ``--no-upload-adapters-to-mlflow`` was passed; the
+      adapter stays local untouched.
+    - ``"true"``: trial entered the running top-K and the adapter was
+      uploaded successfully (local copy removed when
+      ``--cleanup-local-adapters`` is on).
+    - ``"skipped_not_top_k"``: trial did not earn a slot; the adapter is
+      cleaned up locally (when cleanup is on) without ever being
+      uploaded — this is what bounds total S3 checkpoints to ≤ K per
+      study.
+    - ``"upload_failed"``: top-K slot was earned but the upload itself
+      failed; the local copy is preserved so the operator can recover.
+
+    Side effects: when the top-K offer displaces an older trial, that
+    trial's MLflow run is deleted via :func:`_delete_mlflow_run` so the
+    bucket converges to ≤ K live runs per study.
+    """
+    import shutil  # noqa: PLC0415
+
+    if not run_args.upload_adapters_to_mlflow:
+        return "disabled"
+
+    should_upload, displaced_run_id = top_k.offer(fitness, trial_number, run_id)
+    if displaced_run_id:
+        _delete_mlflow_run(displaced_run_id)
+        # Best-effort tag — the displaced run is in a different MLflow run
+        # context, so we annotate the new (current) run for traceability.
+        import mlflow  # noqa: PLC0415
+
+        mlflow.set_tag("hpo.displaced_run_id", displaced_run_id)
+
+    if should_upload:
+        ok = _upload_adapter_and_cleanup(
+            adapter_output_dir,
+            upload=True,
+            cleanup=run_args.cleanup_local_adapters,
+        )
+        return "true" if ok else "upload_failed"
+
+    # Trial did not earn a top-K slot. Remove the local copy if cleanup is
+    # enabled — keeping it would defeat the "don't fill up our HD" goal,
+    # and the trial's metrics are already in MLflow even though its
+    # weights aren't.
+    if run_args.cleanup_local_adapters:
+        shutil.rmtree(adapter_output_dir, ignore_errors=True)
+    return "skipped_not_top_k"
+
+
 def _run_single_trial(
     trial: Any,
     *,
     run_args: HPORunArgs,
     fitness_cfg: FitnessConfig,
     prior_losses: list[float],
+    top_k: _RunningTopK,
 ) -> float:
-    """Objective function body for one Optuna trial."""
+    """Objective function body for one Optuna trial.
+
+    ``top_k`` is mutated in place: when this trial earns a slot, its
+    adapter is uploaded to MLflow (S3 in the in-pod config) and any
+    displaced trial's run is deleted so the bucket converges to ≤ K
+    adapters per study.
+    """
     sampled = _suggest_trial_params(trial)
     logger.info("Trial %d sampled params: %s", trial.number, sampled)
 
@@ -974,32 +1122,33 @@ def _run_single_trial(
         mlflow.set_tag("hpo.train_all_masked_batch_frac", f"{all_masked_frac:.4f}")
         eval_metrics["all_masked_batch_frac"] = all_masked_frac
 
-        # Persist the adapter to S3 via MLflow so the host disk does not
-        # accumulate trial-after-trial. The local dir is removed only after
-        # the artifact upload returns success, so a failed upload leaves
-        # the on-disk copy intact for the operator to recover.
-        uploaded = _upload_adapter_and_cleanup(
+        # Compute fitness up-front so we can gate the S3 upload on top-K
+        # membership: trials that don't earn a slot never touch the
+        # bucket, keeping persisted checkpoint count ≤ keep_top_k per
+        # study even on long ``--n-trials`` runs.
+        fitness = _compute_fitness(
+            eval_metrics["hunk_loss"],
+            eval_metrics["hunk_accuracy"],
+            eval_metrics["adapter_improvement"],
+            prior_losses=prior_losses,
+            cfg=fitness_cfg,
+        )
+
+        run_id = mlflow.active_run().info.run_id
+        upload_status = _gate_and_upload_adapter(
             adapter_output_dir,
-            upload=run_args.upload_adapters_to_mlflow,
-            cleanup=run_args.cleanup_local_adapters,
+            run_id=run_id,
+            trial_number=trial.number,
+            fitness=fitness,
+            run_args=run_args,
+            top_k=top_k,
         )
-        mlflow.set_tag(
-            "hpo.adapter_uploaded_to_mlflow",
-            "true" if uploaded else "false",
-        )
+        mlflow.set_tag("hpo.adapter_uploaded_to_mlflow", upload_status)
     except BaseException:
         mlflow.end_run(status="FAILED")
         raise
     else:
         mlflow.end_run(status="FINISHED")
-
-    fitness = _compute_fitness(
-        eval_metrics["hunk_loss"],
-        eval_metrics["hunk_accuracy"],
-        eval_metrics["adapter_improvement"],
-        prior_losses=prior_losses,
-        cfg=fitness_cfg,
-    )
     logger.info(
         "Trial %d hunk_loss=%.4f hunk_acc=%.3f"
         " adapter_imp=%.3f entropy=%.3f all_masked_frac=%.3f fitness=%.4f",
@@ -1135,6 +1284,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     prior_losses: list[float] = []
+    # Bound persisted S3 checkpoints to the same ``--keep-top-k`` budget the
+    # post-study local pruner uses; without this every successful trial
+    # would push another adapter to the bucket.
+    top_k = _RunningTopK(k=run_args.keep_top_k)
 
     def _objective(trial: optuna.Trial) -> float:
         return _run_single_trial(
@@ -1142,6 +1295,7 @@ def main(argv: list[str] | None = None) -> int:
             run_args=run_args,
             fitness_cfg=fitness_cfg,
             prior_losses=prior_losses,
+            top_k=top_k,
         )
 
     # Tell Optuna that a per-trial exception is a *failed trial*, not a
