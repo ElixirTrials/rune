@@ -92,12 +92,11 @@ class TinyOverfitDataset(Dataset):
                 n_skipped += 1
                 continue
 
-            # Truncate from the END (keep the response, drop prompt prefix if too long)
+            # Truncate from the END (keep the response, drop prompt prefix if too long).
+            # When truncated, clamp prompt_len so at least half the kept tensor is
+            # response tokens — guarantees `labels` has non-IGNORE positions.
             if len(full_ids) > max_length:
                 full_ids = full_ids[-max_length:]
-                # Recompute prompt_len after truncation
-                prompt_len = max(0, len(prompt_ids) - (len(prompt_ids) + len(response_msg[0]["content"]) - len(full_ids)))
-                # Simpler: clamp prompt_len to half so labels exist
                 prompt_len = min(len(prompt_ids), max_length // 2)
             else:
                 prompt_len = len(prompt_ids)
