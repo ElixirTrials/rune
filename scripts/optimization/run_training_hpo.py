@@ -138,6 +138,7 @@ class HPORunArgs:
     upload_adapters_to_mlflow: bool = True
     cleanup_local_adapters: bool = True
     extra_train_kwargs: dict[str, Any] = field(default_factory=dict)
+    proxy_epochs: int = 3
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -148,6 +149,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset", required=True, help="JSONL of mined pairs.")
     parser.add_argument("--n-trials", type=int, default=10)
+    parser.add_argument(
+        "--proxy-epochs",
+        dest="proxy_epochs",
+        type=int,
+        default=3,
+        help=(
+            "Epochs per HPO trial. Was hardcoded to 1 historically; "
+            "the 2026-05-03 deep-dive established 1 epoch is below the "
+            "visibility threshold for code-edit fine-tunes against a "
+            "warm-start prior, so the historical HPO winners were tuned "
+            "under near-zero signal. Default 3 matches the canonical "
+            "Magicoder-style recipe."
+        ),
+    )
     parser.add_argument("--study-name", dest="study_name", default="rune-training-v1")
     parser.add_argument(
         "--db", default="sqlite:///./optuna_training.db", help="Optuna storage URI"
@@ -360,7 +375,7 @@ def _build_trial_kwargs(
         "encoding_mode": "multi_turn",
         "model_config_name": run_args.model_config_name,
         "warm_start_adapter_id": _resolve_warm_start(run_args.warm_start),
-        "epochs": 1,  # proxy mode; operators choose final epochs on the winner
+        "epochs": run_args.proxy_epochs,
         "learning_rate": sampled["lr"],
         "gradient_accumulation_steps": sampled["grad_accum"],
         "lr_scheduler_type": sampled["lr_scheduler"],
@@ -1360,6 +1375,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         upload_adapters_to_mlflow=args.upload_adapters_to_mlflow,
         cleanup_local_adapters=args.cleanup_local_adapters,
+        proxy_epochs=args.proxy_epochs,
     )
     fitness_cfg = FitnessConfig(
         hunk_loss_weight=args.hunk_loss_weight,
