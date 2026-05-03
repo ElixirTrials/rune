@@ -236,3 +236,55 @@ If the run ends with `tok_acc > 0.85`, I'll proceed to the HPO sweep with `proxy
 I'll send the validation result and HPO launch as a follow-up.
 
 — Your student
+
+---
+
+## Addendum: Implementing the advisor's recommendations (later that day)
+
+After your reply (`instructions/review_of_arguments.md`), addressed each item in the order of cost.
+
+### 1. `grad_norm` spike at epoch boundary — verified, not a problem
+
+Pulled the `grad_norm` history from MLflow for steps 70–95 (the boundary you flagged). Plateau is 0.20–0.30; the largest excursions are isolated single-step spikes to 0.40–0.50 with immediate return. No sustained excursion to ~1.0. The `max_grad_norm=1.0` default in HF `TrainingArguments` is in effect (we never override it). Healthy.
+
+### 2. End-of-data shuffle — verified, not a problem
+
+`SFTConfig.shuffle_dataset=False` is a one-time pre-shuffle, not per-epoch. HF Trainer's default `_get_train_sampler` returns a `RandomSampler` (since `group_by_length=False`), which DOES re-shuffle each epoch with a fresh seed. So the loss drop at the right edge is not a same-batch-as-end-of-epoch-1 artefact.
+
+### 3. Memorisation vs. generalisation — addressed via two evaluators
+
+The blocking item from your review. Built a disjoint 100-row held-out split (`data/_ab/pairs_heldout_100.jsonl`, seed=99, sampled from the 2,243 records NOT in `pairs_500_random.jsonl`) and two evaluators that run against it after training finishes:
+
+- **`scripts/_diag/eval_heldout.py`** — per-token CE + token-accuracy on the held-out split, comparing base / +deltacoder / +fine-tuned. Decision rule: tok_acc Δ > 0.005 OR loss Δ > 0.01 ⇒ generalisation confirmed.
+- **`scripts/_diag/eval_patch_quality.py`** — generates completions and scores against ground truth on three tiers. Tier 1 is syntactic validity (file headers, hunk headers, ±count consistency — checks for the "off-by-one hunk header / wrong context" pathology you flagged). Tier 2 is hunk-IoU (Jaccard over `(file, ±, line)` triples) + char-similarity + exact-match. Tier 3 (`git apply --check` against parent-commit file state) is deferred — our corpus doesn't carry the parent-commit file content.
+- **`scripts/_diag/eval_full.sh`** — runs both back-to-back on a given adapter dir.
+
+Both committed at `<HEAD>`. Will run them on the v3 checkpoint as soon as training completes (~10 min).
+
+### 4. Patch applicability as the *real* eval metric
+
+You're right that token CE is loss-aligned but not metric-aligned. The Tier-1 syntactic-validity check in `eval_patch_quality.py` is a strong proxy without needing parent-commit file states: a diff with mismatched ±counts will fail `git apply` 100 % of the time, so the rate is a useful upper bound on patch applicability. Will report this number alongside the Tier-2 IoU after the run.
+
+### 5. t010/t016 HP retest at 3 epochs — queued
+
+Agreed that the 9-step α A/B was below the visibility threshold. Plan: after v3 finishes and the held-out eval lands, run t016's exact HP (lr=4.3e-5, α=16, dropout=0.1, ga=32, constant LR, NEFTune=5) for 3 epochs on `pairs_500_random.jsonl` and compare held-out tok_acc against v3's. If t016's HP at 3 epochs hits or beats v3, the original HPO winners deserve a fairer treatment than my "tuned under noise" framing implied.
+
+### 6. Per-epoch val_loss curve — deferred to follow-up
+
+Acknowledging this is the proper way to detect overfit/divergence during training. The plumbing requires changes in `_build_sft_config` (eval_strategy=epoch), `train_qlora` (build eval dataset), `_construct_sft_trainer` (pass through), and `build_diff_aware_sft_trainer` (accept eval_dataset kwarg). About 30–60 minutes of careful work; queued as a separate commit. For now, `eval_heldout.py` after training gives end-of-run held-out metrics.
+
+### 7. The methodology lesson on HPO probes
+
+Your point — *"HPO probes must operate in the same regime where the metric is informative"* — is one I want to bake into our docs as a precondition check. Concretely: before any HPO sweep, run a single 2-epoch sanity training and verify `val_loss` moves at least 0.05 between epochs. If it doesn't, HPO is searching against zero-information signal; lengthen proxy_epochs first. Will add this to the HPO docs once the rest settles.
+
+### Updated open questions
+
+The original three open questions remain, but I'd refocus them given the additional work:
+
+1. **(Was) Was the 1-epoch-per-trial methodology a foreseeable mistake?** I now think yes — the cheapest pre-HPO check (a sanity training that measures val_loss across epochs) would have caught it. Adding to docs.
+
+2. **(Was) Corpus shape decision.** Once `eval_patch_quality.py` runs on v3, we'll have a concrete patch-applicability rate. If it's > 70 % on plain SFT with the current diff-format corpus, defer re-mining. If < 30 %, re-mining is justified. The number will tell us, not principle.
+
+3. **(New) Does t010/t016's "conservative" HP at 3 epochs match or beat the literature-canonical recipe?** Direct test queued. The result decides whether the historical HPO findings are salvageable or need full re-run.
+
+— Your student (still)
