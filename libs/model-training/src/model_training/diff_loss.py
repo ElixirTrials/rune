@@ -288,6 +288,72 @@ def _find_post_in_span(
     return -1
 
 
+def _find_post_in_span_or_suffix(
+    input_ids_seq: list[int],
+    span_start: int,
+    span_end: int,
+    post_input_ids: list[int],
+) -> tuple[int, int]:
+    """Locate ``post_input_ids`` inside the span, with suffix-match fallback.
+
+    Tries a strict contiguous match first (identical to :func:`_find_post_in_span`).
+    When that fails *and* ``span_start == 0`` (indicating keep_end front-truncation),
+    searches for the longest suffix of ``post_input_ids`` whose length is at least
+    ``max(8, len(post_input_ids) // 4)`` and that matches a prefix of the span.
+
+    Return value is a 2-tuple ``(match_pos, prefix_truncated)``:
+
+    - ``(>= 0, 0)``: strict match found; ``input_ids_seq[span_start + match_pos :]``
+      starts with ``post_input_ids``.
+    - ``(0, k > 0)``: suffix match; the first ``k`` tokens of ``post_input_ids``
+      were truncated, so ``post_input_ids[k:]`` matches
+      ``input_ids_seq[span_start : span_start + (n_post - k)]``.
+    - ``(-1, 0)``: no match.
+
+    Args:
+        input_ids_seq: Full sequence token IDs.
+        span_start: Inclusive start of the assistant span (sequence position).
+        span_end: Exclusive end of the assistant span.
+        post_input_ids: Token IDs for the post-revision body to locate.
+
+    Returns:
+        ``(match_pos, prefix_truncated)`` as described above.
+    """
+    # --- strict path (semantics identical to _find_post_in_span) ---
+    n_post = len(post_input_ids)
+    span_len = span_end - span_start
+    if 0 < n_post <= span_len:
+        span_ids = input_ids_seq[span_start:span_end]
+        for off in range(span_len - n_post + 1):
+            if span_ids[off : off + n_post] == post_input_ids:
+                return off, 0
+
+    # --- suffix path (only when span is at the sequence head) ---
+    if span_start != 0:
+        return -1, 0
+
+    if n_post == 0:
+        return -1, 0
+
+    min_suffix = max(8, n_post // 4)
+    span_ids = input_ids_seq[span_start:span_end]
+
+    # Try progressively larger k (tokens trimmed from the front of post_ids).
+    # We want the *smallest* k whose surviving suffix length >= min_suffix and
+    # that matches a prefix of the span.  Equivalently: walk k from 1 upward
+    # until the surviving length drops below min_suffix, accepting the first k
+    # that gives a matching prefix.
+    for k in range(1, n_post - min_suffix + 1):
+        surviving = n_post - k
+        if surviving < min_suffix:
+            break
+        suffix = post_input_ids[k:]
+        if span_ids[:surviving] == suffix:
+            return 0, k
+
+    return -1, 0
+
+
 def _fill_identity(weights: list[float], start: int, end: int) -> None:
     """Set ``weights[start:end] = 1.0`` so the span keeps gradient signal."""
     for j in range(start, end):
@@ -367,6 +433,7 @@ class DiffWeightedDataCollator:
         self._span_match_failures: int = 0
         self._span_no_post: int = 0
         self._span_all_zero_after_match: int = 0
+        self._span_truncated_recovered: int = 0
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -478,23 +545,27 @@ class DiffWeightedDataCollator:
         ]
         post_input_ids: list[int] = list(enc["input_ids"])
 
-        match_pos = _find_post_in_span(
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
             input_ids_seq, span_start, span_end, post_input_ids
         )
-        if match_pos < 0:
+        if match_pos < 0 and prefix_truncated == 0:
             self._span_match_failures += 1
             self._spans_aligned -= 1
             _maybe_warn_span_match_failure(self._span_match_failures)
             _fill_identity(weights, span_start, span_end)
             return
 
+        if prefix_truncated > 0:
+            self._span_truncated_recovered += 1
+
         hunk_ranges = _compute_hunk_ranges(pre, post)
         n_post = len(post_input_ids)
         for j in range(span_start, span_end):
             local = j - span_start
-            if local < match_pos or local >= match_pos + n_post:
+            post_idx = local - match_pos + prefix_truncated
+            if post_idx < prefix_truncated or post_idx >= n_post:
                 continue
-            ts, te = post_offsets[local - match_pos]
+            ts, te = post_offsets[post_idx]
             if ts == 0 and te == 0:
                 continue
             in_hunk = any(ts < h_end and te > h_start for h_start, h_end in hunk_ranges)
@@ -1003,6 +1074,9 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
             logs["train/diff_span_no_post"] = float(collator._span_no_post)
             logs["train/diff_span_all_zero_after_match"] = float(
                 collator._span_all_zero_after_match
+            )
+            logs["train/diff_span_truncated_recovered"] = float(
+                collator._span_truncated_recovered
             )
 
         return super().log(logs, start_time)

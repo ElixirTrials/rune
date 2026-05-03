@@ -1195,3 +1195,272 @@ def test_compute_weighted_loss_warns_on_all_masked_batch(caplog) -> None:
         "all-masked batch" in r.getMessage().lower() and r.levelno >= logging.WARNING
         for r in caplog.records
     ), "all-masked-batch warning not emitted at WARNING level"
+
+
+# ---------------------------------------------------------------------------
+# _find_post_in_span_or_suffix tests (Task 10 — suffix-match recovery)
+# ---------------------------------------------------------------------------
+
+
+class TestFindPostInSpanOrSuffix:
+    def test_strict_match_when_post_fits(self) -> None:
+        """post_input_ids fully present in span → returns (offset, 0)."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        # Span: [10, 20, 30, 40, 50], span_start=2, span_end=7
+        # (so span_ids = input_ids[2:7] = [30, 40, 50, 60, 70])
+        input_ids = [10, 20, 30, 40, 50, 60, 70, 80]
+        post_ids = [40, 50, 60]  # matches at local offset 1 inside span
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids, span_start=2, span_end=7, post_input_ids=post_ids
+        )
+        assert match_pos >= 0, "strict match must succeed"
+        assert prefix_truncated == 0
+        # Verify the match is correct: input_ids[2 + match_pos : 2 + match_pos + 3]
+        assert input_ids[2 + match_pos : 2 + match_pos + 3] == post_ids
+
+    def test_suffix_match_on_keep_end_truncation(self) -> None:
+        """keep_end truncation: post[k:] matches span prefix at span_start==0."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        # Simulate: post_ids has 20 tokens, but only the last 15 survived in span.
+        # span = input_ids[0:15]
+        suffix_len = 15
+        k = 5  # tokens truncated from the front
+        post_ids = list(range(100, 120))  # 20 tokens: [100..119]
+        span_ids = post_ids[k:]  # the surviving 15 tokens
+
+        # Build input_ids with span at position 0
+        input_ids = span_ids + [999, 998]  # some extra tokens after span
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids, span_start=0, span_end=suffix_len, post_input_ids=post_ids
+        )
+        assert prefix_truncated == k, (
+            f"expected k={k} truncated, got {prefix_truncated}"
+        )
+        assert match_pos == 0, "suffix match always anchors at span position 0"
+        # Verify the recovered suffix really matches
+        assert input_ids[0 : suffix_len] == post_ids[k:]
+
+    def test_no_suffix_when_span_start_nonzero(self) -> None:
+        """Suffix recovery is NOT attempted when span_start > 0."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        # Same construction as above but span_start = 3 (not 0)
+        suffix_len = 15
+        k = 5
+        post_ids = list(range(100, 120))
+        span_ids = post_ids[k:]  # last 15 of post_ids
+
+        # Place span at position 3
+        input_ids = [0, 1, 2] + span_ids + [999]
+        span_start = 3
+        span_end = 3 + suffix_len
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids,
+            span_start=span_start,
+            span_end=span_end,
+            post_input_ids=post_ids,
+        )
+        assert (match_pos, prefix_truncated) == (-1, 0), (
+            "suffix path must NOT be attempted when span_start != 0"
+        )
+
+    def test_rejects_short_suffix(self) -> None:
+        """Suffix that survives fewer than max(8, n_post // 4) tokens is rejected."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        # post has 40 tokens; min_suffix = max(8, 40//4) = 10
+        # Span holds only 5 of the post tokens — below threshold.
+        post_ids = list(range(200, 240))  # 40 tokens
+        surviving = 5  # < 10 = max(8, 40//4)
+        span_ids = post_ids[-surviving:]  # only 5 tokens survive
+
+        input_ids = span_ids + [999, 998]
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids,
+            span_start=0,
+            span_end=surviving,
+            post_input_ids=post_ids,
+        )
+        assert (match_pos, prefix_truncated) == (-1, 0), (
+            "suffix shorter than min_suffix must not be accepted"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Integration tests through DiffWeightedDataCollator.__call__
+# ---------------------------------------------------------------------------
+
+
+class TestApplySpanWeightsSuffixRecovery:
+    """Tests that exercise the full collator path for suffix-match recovery."""
+
+    def _make_collator_with_span(
+        self,
+        span_token_ids: list[int],
+        post_ids: list[int],
+        post_offsets: list[tuple[int, int]],
+        prefix_len: int = 0,
+        pre_code: str = "before\n",
+        post_code: str = "after\n",
+    ) -> tuple[Any, Any]:
+        """Build a collator and features for a single-span sequence.
+
+        Returns (collator, features_list).
+
+        The sequence is span_token_ids; all positions are labeled (assistant).
+        span_start is always 0 in this helper (front of sequence).
+        """
+        import torch
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        seq = span_token_ids
+        # All positions are assistant (labeled)
+        labels = list(seq)
+
+        inner_ids = [seq]
+        inner_labels = [labels]
+
+        def _inner(features):
+            return {
+                "input_ids": torch.tensor(inner_ids),
+                "labels": torch.tensor(inner_labels),
+            }
+
+        _inner.truncation_mode = "keep_end"
+
+        tok = MagicMock()
+        tok.return_value = {
+            "input_ids": post_ids,
+            "offset_mapping": post_offsets,
+        }
+
+        collator = DiffWeightedDataCollator(_inner, tokenizer=tok)
+        features = [{"pre_codes": [pre_code], "post_codes": [post_code]}]
+        return collator, features
+
+    def test_recovers_truncated_post_via_suffix(self) -> None:
+        """Collator increments _span_truncated_recovered; weights are diff-based."""
+        # post_ids has 20 tokens; span only holds the last 15 (k=5 truncated).
+        k = 5
+        post_ids = list(range(50, 70))  # [50..69], 20 tokens
+        span_ids = post_ids[k:]  # [55..69], 15 tokens
+
+        # Offsets: make tokens 0..4 in post map to char range (0,10) and
+        # tokens 5..19 map to distinct non-zero ranges so hunk detection works.
+        post_offsets = [(i * 2, i * 2 + 2) for i in range(20)]
+
+        # pre_code / post_code: make a diff so hunk_ranges is non-empty
+        pre_code = "x = 1\n"
+        post_code = "x = 2\n"
+
+        collator, features = self._make_collator_with_span(
+            span_ids, post_ids, post_offsets, k, pre_code, post_code
+        )
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        assert collator._span_truncated_recovered == 1, (
+            "_span_truncated_recovered must be 1 after suffix recovery"
+        )
+        assert collator._span_match_failures == 0, (
+            "_span_match_failures must stay 0 on suffix success"
+        )
+        # At least some weights in the surviving body should be diff-weighted
+        # (not all identity 1.0), because hunk_ranges is non-empty.
+        non_identity = [w for w in weights if w not in (0.0, 1.0)]
+        assert len(non_identity) > 0, (
+            "suffix recovery must produce diff-based weights (not all identity)"
+        )
+
+    def test_genuine_failure_increments_match_failures(self) -> None:
+        """Random tokens with no matching suffix → _span_match_failures == 1."""
+        # span tokens completely different from post tokens — no match possible
+        span_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        post_ids = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111]
+        post_offsets = [(i, i + 1) for i in range(len(post_ids))]
+
+        collator, features = self._make_collator_with_span(
+            span_ids, post_ids, post_offsets
+        )
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        assert collator._span_match_failures == 1, (
+            "genuine match failure must increment _span_match_failures"
+        )
+        assert collator._span_truncated_recovered == 0
+        # Identity fallback: all span positions get weight 1.0
+        assert all(w == 1.0 for w in weights), (
+            "identity fallback must set all span weights to 1.0"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Trainer log: diff_span_truncated_recovered counter
+# ---------------------------------------------------------------------------
+
+
+class TestLogEmitsTruncatedRecoveredCounter:
+    def _stub_trainer_with_collator(self) -> Any:
+        """DiffAwareSFTTrainer stub wired to a DiffWeightedDataCollator."""
+        from model_training.diff_loss import (
+            DiffAwareSFTTrainer,
+            DiffWeightedDataCollator,
+        )
+
+        # Build a minimal collator (inner collator is irrelevant for log tests)
+        collator = DiffWeightedDataCollator(MagicMock())
+        collator._span_truncated_recovered = 3  # pre-set a non-zero count
+
+        class _Stub(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                self._diff_metric_sums = {}
+                self._diff_metric_count = 0
+                self._diff_changed_weight = 1.0
+                self._diff_unchanged_weight = 0.3
+                self.data_collator = collator
+                self.logged: list[dict[str, float]] = []
+
+            def log(  # type: ignore[override]
+                self,
+                logs: dict[str, float],
+                start_time: float | None = None,
+            ) -> None:
+                # Replicate the collator-counter block from the real log()
+                # without calling super() which needs full Trainer state.
+                c = getattr(self, "data_collator", None)
+                if c is not None and hasattr(c, "_spans_aligned"):
+                    logs["train/diff_spans_aligned"] = float(c._spans_aligned)
+                    logs["train/diff_span_match_failures"] = float(
+                        c._span_match_failures
+                    )
+                    logs["train/diff_span_no_post"] = float(c._span_no_post)
+                    logs["train/diff_span_all_zero_after_match"] = float(
+                        c._span_all_zero_after_match
+                    )
+                    if hasattr(c, "_span_truncated_recovered"):
+                        logs["train/diff_span_truncated_recovered"] = float(
+                            c._span_truncated_recovered
+                        )
+                self.logged.append(dict(logs))
+
+        return _Stub()
+
+    def test_log_emits_truncated_recovered_counter(self) -> None:
+        """log() must emit train/diff_span_truncated_recovered from the collator."""
+        trainer = self._stub_trainer_with_collator()
+        trainer.log({"loss": 0.5})
+        emitted = trainer.logged[-1]
+
+        assert "train/diff_span_truncated_recovered" in emitted, (
+            "train/diff_span_truncated_recovered must appear in log() output"
+        )
+        assert emitted["train/diff_span_truncated_recovered"] == 3.0
