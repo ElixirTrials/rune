@@ -1496,18 +1496,54 @@ def _ensure_experiment_active(experiment_name: str) -> None:
     typically triggered when an operator hits "Delete" in the UI between
     HPO runs. Restoring the experiment is the documented recovery path
     and preserves prior runs / artifact lineage.
+
+    Implemented as try-set / catch-deleted / restore / retry rather than
+    a pre-flight ``get_experiment_by_name`` lookup because that method
+    only returns *active* experiments against the REST tracking server
+    (and a few other backends) — soft-deleted ones come back as
+    ``None``, so a pre-flight check would never see them. The
+    catch-restore-retry path is backend-agnostic.
     """
     import mlflow  # noqa: PLC0415
+    from mlflow.entities import ViewType  # noqa: PLC0415
+    from mlflow.exceptions import MlflowException  # noqa: PLC0415
     from mlflow.tracking import MlflowClient  # noqa: PLC0415
 
+    try:
+        mlflow.set_experiment(experiment_name)
+        return
+    except MlflowException as exc:
+        if "deleted experiment" not in str(exc).lower():
+            raise
+
+    # Locate the soft-deleted experiment via search_experiments, which
+    # honours ViewType.ALL on every backend. Filter in Python to avoid
+    # quoting edge cases in the filter_string DSL.
     client = MlflowClient()
-    exp = client.get_experiment_by_name(experiment_name)
-    if exp is not None and exp.lifecycle_stage == "deleted":
-        client.restore_experiment(exp.experiment_id)
-        logger.warning(
-            "Restored soft-deleted MLflow experiment %r so HPO can write to it.",
-            experiment_name,
+    page_token: str | None = None
+    match = None
+    while True:
+        page = client.search_experiments(
+            view_type=ViewType.ALL, page_token=page_token
         )
+        match = next((e for e in page if e.name == experiment_name), None)
+        if match is not None:
+            break
+        page_token = getattr(page, "token", None)
+        if not page_token:
+            break
+
+    if match is None:
+        raise RuntimeError(
+            f"MLflow rejected experiment {experiment_name!r} as deleted but "
+            "search_experiments(view_type=ALL) could not locate it."
+        )
+    client.restore_experiment(match.experiment_id)
+    logger.warning(
+        "Restored soft-deleted MLflow experiment %r (id=%s) so HPO can write to it.",
+        experiment_name,
+        match.experiment_id,
+    )
     mlflow.set_experiment(experiment_name)
 
 
