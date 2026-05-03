@@ -5,7 +5,7 @@
 - count of trainable parameters
 - which modules have requires_grad=True
 """
-import json, os
+import json
 from pathlib import Path
 
 # Try to find deltacoder's adapter_config.json from the HF cache

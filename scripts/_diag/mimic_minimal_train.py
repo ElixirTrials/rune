@@ -20,7 +20,10 @@ Run: uv run python scripts/_diag/mimic_minimal_train.py 2>&1 | tee /tmp/mimic.lo
 """
 from __future__ import annotations
 
-import argparse, json, math, os, random, sys
+import argparse
+import json
+import random
+import sys
 from pathlib import Path
 
 # Ensure our chat template helper is importable so we can build messages list,
@@ -28,16 +31,15 @@ from pathlib import Path
 sys.path.insert(0, "libs/model-training/src")
 
 import torch
+from peft import PeftModel
+from torch.utils.data import Dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    DataCollatorForLanguageModeling,
     Trainer,
     TrainingArguments,
 )
-from peft import PeftModel
-from torch.utils.data import Dataset
 
 MODEL = "Qwen/Qwen3.5-9B"
 ADAPTER = "danielcherubini/Qwen3.5-DeltaCoder-9B"
@@ -107,7 +109,7 @@ class TinyOverfitDataset(Dataset):
             for i in range(min(prompt_len, len(labels))):
                 labels[i] = IGNORE_INDEX
             # Skip if no labeled positions
-            if all(l == IGNORE_INDEX for l in labels):
+            if all(x == IGNORE_INDEX for x in labels):
                 n_skipped += 1
                 continue
 
@@ -198,7 +200,7 @@ def main():
 
     # Sample N rows
     random.seed(42)
-    rows = [json.loads(l) for l in Path(args.data).read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in Path(args.data).read_text().splitlines() if line.strip()]
     sample = random.sample(rows, args.n_rows)
     print(f"Loaded {len(rows)} rows, sampled {len(sample)}")
 
@@ -231,7 +233,7 @@ def main():
         pred = logits.argmax(dim=-1)
         correct = ((pred == shift_labels) & mask).sum().item()
         acc = correct / max(1, n)
-        print(f"\n=== INITIAL (warm-start, no training) ===")
+        print("\n=== INITIAL (warm-start, no training) ===")
         print(f"  loss={mean_loss:.4f}  token_accuracy={acc:.4f}  n_labeled={n}")
 
     print(f"\n=== TRAINING ({args.epochs} epochs, {len(ds)} rows, lr={args.lr}) ===")
@@ -285,9 +287,9 @@ def main():
         acc = correct / max(1, n)
         print(f"\n=== FINAL (after {args.epochs} epochs of overfitting) ===")
         print(f"  loss={mean_loss:.4f}  token_accuracy={acc:.4f}  n_labeled={n}")
-        print(f"\nIf loss did NOT drop to near 0 and accuracy did NOT reach near 1.0,")
-        print(f"the optimizer is not effective at fitting even a tiny dataset.")
-        print(f"This indicates a fundamental training-pipeline problem.")
+        print("\nIf loss did NOT drop to near 0 and accuracy did NOT reach near 1.0,")
+        print("the optimizer is not effective at fitting even a tiny dataset.")
+        print("This indicates a fundamental training-pipeline problem.")
 
 
 if __name__ == "__main__":

@@ -1,11 +1,12 @@
 """Verify trainable parameter count + which modules actually got LoRA layers."""
 import sys
+
 sys.path.insert(0, "libs/model-training/src")
 sys.path.insert(0, "libs/shared/src")
 
 import torch
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
+from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
 MODEL_ID = "Qwen/Qwen3.5-9B"
 ADAPTER = "danielcherubini/Qwen3.5-DeltaCoder-9B"
@@ -37,17 +38,17 @@ for n, p in model.named_parameters():
         # Get the module type — last segment
         modules_with_lora.add(parts.split('.')[-1])
 
-print(f"\n=== PARAM COUNTS ===")
+print("\n=== PARAM COUNTS ===")
 print(f"Total params:     {n_total/1e9:.3f}B")
 print(f"Trainable params: {n_train/1e6:.3f}M ({100*n_train/n_total:.4f}%)")
 print(f"LoRA params:      {lora_params/1e6:.3f}M")
 
-print(f"\n=== MODULES WITH LoRA ===")
+print("\n=== MODULES WITH LoRA ===")
 for m in sorted(modules_with_lora):
     print(f"  {m}")
 
 # Sanity: print one example LoRA layer's shape
-print(f"\n=== SAMPLE LoRA LAYER SHAPES ===")
+print("\n=== SAMPLE LoRA LAYER SHAPES ===")
 shown = 0
 for n, p in model.named_parameters():
     if "lora_A" in n or "lora_B" in n:

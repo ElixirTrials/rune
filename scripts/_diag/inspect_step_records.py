@@ -1,15 +1,17 @@
 """Show a step_index=1 record's pre and post in full to confirm the diff-of-diffs hypothesis."""
 from __future__ import annotations
+
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
+
 sys.path.insert(0, "libs/model-training/src")
 sys.path.insert(0, "libs/shared/src")
-from model_training.d2l_data import _extract_pre_revision, _extract_post_revision
+from model_training.d2l_data import _extract_post_revision, _extract_pre_revision
 from model_training.diff_loss import _compute_hunk_ranges
 
 DATA = Path("data/github-pairs/_merged/pairs_all.jsonl")
-rows = [json.loads(l) for l in DATA.read_text().splitlines() if l.strip()]
+rows = [json.loads(line) for line in DATA.read_text().splitlines() if line.strip()]
 
 # Find one step_index=1 record with both pre and post
 for rec in rows:

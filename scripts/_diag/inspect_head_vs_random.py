@@ -1,12 +1,14 @@
 """Why does head -500 fail to train while random-500 learns? Compare distributions."""
 from __future__ import annotations
-import json, random
-from pathlib import Path
-from collections import Counter
+
+import json
+import random
 import statistics
+from collections import Counter
+from pathlib import Path
 
 DATA = Path("data/github-pairs/_merged/pairs_all.jsonl")
-rows = [json.loads(l) for l in DATA.read_text().splitlines() if l.strip()]
+rows = [json.loads(line) for line in DATA.read_text().splitlines() if line.strip()]
 print(f"Total: {len(rows)}")
 
 random.seed(42)
@@ -23,7 +25,7 @@ def stats(name: str, sample: list) -> None:
             owner_repo = tid[3:].rsplit('_', 1)[0]
             repos[owner_repo] += 1
     print(f"unique repos: {len(repos)}")
-    print(f"top 5 repos:")
+    print("top 5 repos:")
     for repo, n in repos.most_common(5):
         print(f"  {n:3d}× {repo}")
     print(f"top-1 share: {repos.most_common(1)[0][1]/len(sample):.1%}")
@@ -31,14 +33,14 @@ def stats(name: str, sample: list) -> None:
     # has_review_feedback
     has_review = sum(1 for r in sample if "## Review Feedback" in (r.get('activation_text') or ''))
     has_current = sum(1 for r in sample if "## Current Code\n" in (r.get('activation_text') or ''))
-    print(f"\nstructural:")
+    print("\nstructural:")
     print(f"  has_review_feedback: {has_review}/{len(sample)} ({has_review/len(sample):.1%})")
     print(f"  has_current_code:    {has_current}/{len(sample)} ({has_current/len(sample):.1%})")
 
     # length distribution
     act_lens = [len(r.get('activation_text','')) for r in sample]
     teach_lens = [len(r.get('teacher_text','')) for r in sample]
-    print(f"\nlengths (chars):")
+    print("\nlengths (chars):")
     print(f"  activation_text  median={statistics.median(act_lens):.0f}  p90={sorted(act_lens)[int(0.9*len(sample))]:.0f}  max={max(act_lens)}")
     print(f"  teacher_text     median={statistics.median(teach_lens):.0f}  p90={sorted(teach_lens)[int(0.9*len(sample))]:.0f}  max={max(teach_lens)}")
 
@@ -47,7 +49,7 @@ def stats(name: str, sample: list) -> None:
     for r in sample:
         si = (r.get('metadata') or {}).get('step_index', '?')
         step_indices[si] += 1
-    print(f"\nstep_index distribution:")
+    print("\nstep_index distribution:")
     for si in sorted(step_indices, key=lambda x: (x is None, x if isinstance(x,int) else 999)):
         print(f"  step_index={si}: {step_indices[si]}")
 
@@ -61,8 +63,8 @@ def stats(name: str, sample: list) -> None:
     # language
     langs = Counter()
     for r in sample:
-        l = (r.get('metadata') or {}).get('language', '?')
-        langs[l] += 1
+        lang = (r.get('metadata') or {}).get('language', '?')
+        langs[lang] += 1
     print(f"\nlanguage distribution: {dict(langs.most_common(5))}")
 
 stats("HEAD 500 (deterministic)", head_sample)

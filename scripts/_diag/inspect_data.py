@@ -4,21 +4,25 @@ Pre and post are EXTRACTED at runtime from activation_text + teacher_text.
 This script mirrors that extraction and reports diff statistics.
 """
 from __future__ import annotations
-import json, sys, random, statistics
+
+import json
+import random
+import statistics
+import sys
 from pathlib import Path
 
 sys.path.insert(0, "libs/model-training/src")
 sys.path.insert(0, "libs/shared/src")
 
+from model_training.d2l_data import _extract_post_revision, _extract_pre_revision
 from model_training.diff_loss import _compute_hunk_ranges
-from model_training.d2l_data import _extract_pre_revision, _extract_post_revision
 
 DATA = Path("data/github-pairs/_merged/pairs_all.jsonl")
 N_SAMPLE = 200
 SEED = 42
 
 random.seed(SEED)
-rows = [json.loads(l) for l in DATA.read_text().splitlines() if l.strip()]
+rows = [json.loads(line) for line in DATA.read_text().splitlines() if line.strip()]
 sample = random.sample(rows, N_SAMPLE)
 print(f"Loaded {len(rows)} records, sampled {N_SAMPLE} (seed={SEED})")
 
@@ -77,13 +81,13 @@ if both:
           f"p90={sorted(s['post_chars'] for s in both)[int(0.9*len(both))]:.0f}  "
           f"max={max(s['post_chars'] for s in both)}")
 
-    print(f"\nn_hunks per record:")
+    print("\nn_hunks per record:")
     print(f"  mean={statistics.mean(s['n_hunks'] for s in both):.2f}")
     print(f"  median={statistics.median(s['n_hunks'] for s in both)}")
     print(f"  max={max(s['n_hunks'] for s in both)}")
     print(f"  zero hunks: {sum(1 for s in both if s['n_hunks']==0)}/{len(both)}")
 
-    print(f"\nhunk_char_frac (fraction of post chars inside ANY hunk):")
+    print("\nhunk_char_frac (fraction of post chars inside ANY hunk):")
     fracs = [s['hunk_char_frac'] for s in both]
     print(f"  mean={statistics.mean(fracs):.3f}")
     print(f"  median={statistics.median(fracs):.3f}")
