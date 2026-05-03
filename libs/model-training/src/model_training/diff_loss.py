@@ -12,7 +12,22 @@ from __future__ import annotations
 
 import difflib
 import logging
+import os
 from typing import Any
+
+
+def _step_metrics_enabled() -> bool:
+    """Return False when ``RUNE_DISABLE_STEP_METRICS`` is truthy.
+
+    The chunked-entropy path bounds peak transient VRAM, but the full
+    O(B·S·V) log_softmax is still per-step compute the operator may not
+    want on a memory-constrained run. Setting
+    ``RUNE_DISABLE_STEP_METRICS=1`` short-circuits the metrics
+    accumulation entirely (the only effect is loss of observability —
+    the loss path is unchanged).
+    """
+    raw = os.environ.get("RUNE_DISABLE_STEP_METRICS", "")
+    return raw.strip() not in {"1", "true", "True", "yes"}
 
 try:
     from trl import SFTTrainer  # type: ignore[attr-defined]
@@ -26,6 +41,39 @@ IGNORE_INDEX: int = -100
 
 # Module-level flag to emit the hunk-fallback warning only once.
 _HUNK_FALLBACK_WARNED: bool = False
+
+# Span-match-failure warnings: emit on the first occurrence and then once
+# per ``_SPAN_WARN_INTERVAL`` failures so a steady drip stays visible
+# without flooding logs. The numeric counter is owned by each collator
+# instance; this module-level flag just gates the first-time emit.
+_SPAN_WARN_FIRST: bool = False
+_SPAN_WARN_INTERVAL: int = 100
+
+
+def _maybe_warn_span_match_failure(total_failures: int) -> None:
+    """Emit a warning the first time a span fails to align, then periodically.
+
+    Args:
+        total_failures: Running count of span-match failures observed by
+            the calling collator instance.
+    """
+    global _SPAN_WARN_FIRST
+    if not _SPAN_WARN_FIRST:
+        _SPAN_WARN_FIRST = True
+        logger.warning(
+            "DiffWeightedDataCollator: span match failed; "
+            "falling back to identity weights for this assistant turn. "
+            "Repeated occurrences will be summarised every %d failures.",
+            _SPAN_WARN_INTERVAL,
+        )
+        return
+    if total_failures % _SPAN_WARN_INTERVAL == 0:
+        logger.warning(
+            "DiffWeightedDataCollator: %d span-match failures so far "
+            "(identity-weighted spans). Diff-aware signal degraded for "
+            "those turns.",
+            total_failures,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +358,15 @@ class DiffWeightedDataCollator:
         self.changed_weight = changed_weight
         self.unchanged_weight = unchanged_weight
         self.tokenizer = tokenizer
+        # Counters surfaced via batch["diff_alignment_stats"] so the trainer
+        # can fold them into observability metrics. Each counter is
+        # incremented per span, not per batch — a 4-turn batch with one bad
+        # post match increments ``span_match_failures`` once and
+        # ``spans_aligned`` three times.
+        self._spans_aligned: int = 0
+        self._span_match_failures: int = 0
+        self._span_no_post: int = 0
+        self._span_all_zero_after_match: int = 0
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -327,9 +384,13 @@ class DiffWeightedDataCollator:
         Walks ``labels_seq`` to find each contiguous assistant span (a run
         of ``label != IGNORE_INDEX`` positions, one per assistant turn),
         then for each span looks up its corresponding ``(pre_k, post_k)``
-        from the per-turn lists by index — `keep_start` truncation can
-        leave fewer surviving spans than turns, but the surviving ones
-        are always the first K, so positional pairing is correct.
+        from the per-turn lists by index. The pairing has to know which
+        end of the conversation truncation kept: with ``keep_end`` (the
+        diff-aware default — long activation_text bodies routinely push
+        the assistant tail off the start of the window), the K surviving
+        spans are the *last* K turns, so span 0 in the truncated tensor
+        maps to ``pre_codes[N - K]``.  With ``keep_start`` the surviving
+        spans are the first K, so span 0 maps to ``pre_codes[0]``.
 
         Per-span heavy lifting lives in :meth:`_apply_span_weights`.  When
         alignment fails (or ``post_k`` is empty), the span collapses to
@@ -349,9 +410,25 @@ class DiffWeightedDataCollator:
 
         weights: list[float] = [0.0] * len(labels_seq)
 
-        for idx, (span_start, span_end) in enumerate(_iter_assistant_spans(labels_seq)):
-            pre = pre_codes[idx] if idx < len(pre_codes) else ""
-            post = post_codes[idx] if idx < len(post_codes) else ""
+        spans = list(_iter_assistant_spans(labels_seq))
+        n_turns = max(len(pre_codes), len(post_codes))
+        # ``inner_collator.truncation_mode`` defaults to "keep_start" upstream
+        # but the diff-aware factory pins it to "keep_end" (see
+        # build_diff_aware_sft_trainer). Use whatever the inner collator is
+        # actually configured with, so the alignment stays correct if the
+        # mode ever changes again.
+        trunc_mode = getattr(self.inner_collator, "truncation_mode", "keep_start")
+        if trunc_mode == "keep_end" and n_turns >= len(spans):
+            # Surviving spans are the last K turns; offset their pre/post
+            # lookups so span 0 maps to the first surviving turn.
+            offset = n_turns - len(spans)
+        else:
+            offset = 0
+
+        for span_idx, (span_start, span_end) in enumerate(spans):
+            turn_idx = offset + span_idx
+            pre = pre_codes[turn_idx] if turn_idx < len(pre_codes) else ""
+            post = post_codes[turn_idx] if turn_idx < len(post_codes) else ""
             self._apply_span_weights(
                 weights, input_ids_seq, span_start, span_end, pre, post
             )
@@ -373,8 +450,19 @@ class DiffWeightedDataCollator:
         subsequence match is found, or every matched token would otherwise
         end up at weight ``0`` (e.g. tokenizer emitted only special-token
         offsets).  This is the per-span half of the RCA-5 H2 guard.
+
+        Each fallback path increments a per-instance counter
+        (``_span_no_post`` / ``_span_match_failures`` /
+        ``_span_all_zero_after_match``) so silent identity collapse stays
+        observable. ``_spans_aligned`` counts the spans that received real
+        diff-based weights; the trainer surfaces the four counters via
+        ``train/diff_*`` metrics.
         """
+        self._spans_aligned += 1
+
         if not post:
+            self._span_no_post += 1
+            self._spans_aligned -= 1
             _fill_identity(weights, span_start, span_end)
             return
 
@@ -394,6 +482,9 @@ class DiffWeightedDataCollator:
             input_ids_seq, span_start, span_end, post_input_ids
         )
         if match_pos < 0:
+            self._span_match_failures += 1
+            self._spans_aligned -= 1
+            _maybe_warn_span_match_failure(self._span_match_failures)
             _fill_identity(weights, span_start, span_end)
             return
 
@@ -412,6 +503,8 @@ class DiffWeightedDataCollator:
         # Per-span safety net: an all-special turn would still leave every
         # weight at zero, so restore identity inside the span.
         if all(weights[j] == 0.0 for j in range(span_start, span_end)):
+            self._span_all_zero_after_match += 1
+            self._spans_aligned -= 1
             _fill_identity(weights, span_start, span_end)
 
     # ------------------------------------------------------------------
@@ -630,14 +723,24 @@ def _compute_step_metrics(
         shift_weights = loss_weights[:, 1:].contiguous().float()
 
         label_mask = shift_labels != IGNORE_INDEX
-        n_labeled = int(label_mask.sum().item())
+
+        # The metrics must reflect the same domain the loss reduces over —
+        # tokens that are labeled AND weighted > 0. Otherwise a span whose
+        # alignment dropped some weights to zero would still inflate
+        # ``token_accuracy`` / ``entropy`` even though those tokens
+        # contribute no gradient.
+        weight_pos_mask = shift_weights > 0
+        effective_mask = label_mask & weight_pos_mask
+        n_effective = int(effective_mask.sum().item())
 
         # Effective token count + all-masked-batch flag (the RCA-5 H2 watchdog).
         eff_count = float((shift_weights * label_mask.float()).sum().item())
         all_masked = 1.0 if eff_count < 1e-8 else 0.0
 
-        if n_labeled == 0:
-            # Degenerate batch — emit zeros for every other metric.
+        if n_effective == 0:
+            # No token contributes to the loss — emit zeros for every other
+            # metric so downstream dashboards don't see stale signal from
+            # the previous batch.
             zero_keys = (
                 "token_accuracy",
                 "entropy",
@@ -661,25 +764,26 @@ def _compute_step_metrics(
             reduction="none",
         ).view(shift_labels.shape)
 
-        # Entropy at labeled positions, chunked along the labeled dim so peak
-        # transient stays bounded regardless of how many tokens are labeled.
-        # Multi-turn encoding can leave nearly every token labeled, so the
-        # earlier "filter then cast to float32" approach still stacks three
-        # ``[N, V]`` float32 tensors (~1.87 GB each at N=3072, V=151k) ≈ 7 GB
-        # transient and OOMs the L4. ``index_select`` per chunk avoids
-        # materialising the full ``[N, V]`` bf16 gather as well.
+        # Entropy at effective positions, chunked along the labeled dim so
+        # peak transient stays bounded regardless of how many tokens are
+        # labeled. Multi-turn encoding can leave nearly every token
+        # labeled, so the earlier "filter then cast to float32" approach
+        # still stacks three ``[N, V]`` float32 tensors (~1.87 GB each at
+        # N=3072, V=151k) ≈ 7 GB transient and OOMs the L4.
+        # ``index_select`` per chunk avoids materialising the full
+        # ``[N, V]`` bf16 gather as well.
         entropy = torch.zeros_like(per_token_ce)
         flat_entropy = entropy.view(-1)
         flat_logits = shift_logits.view(-1, shift_logits.size(-1))
-        flat_label_mask = label_mask.view(-1)
-        labeled_indices = torch.nonzero(flat_label_mask, as_tuple=True)[0]
+        flat_effective_mask = effective_mask.view(-1)
+        effective_indices = torch.nonzero(flat_effective_mask, as_tuple=True)[0]
         # 256 × 151936 × 4B ≈ 156 MB per intermediate float32 tensor; with
         # log_softmax, exp, and the multiply each holding one such tensor at
         # peak the chunk costs ~625 MB transient on top of the model state —
         # well below the L4's available headroom.
         entropy_chunk_size = 256
-        for i in range(0, labeled_indices.numel(), entropy_chunk_size):
-            idx_chunk = labeled_indices[i : i + entropy_chunk_size]
+        for i in range(0, effective_indices.numel(), entropy_chunk_size):
+            idx_chunk = effective_indices[i : i + entropy_chunk_size]
             chunk_f32 = flat_logits.index_select(0, idx_chunk).float()
             chunk_lp = F.log_softmax(chunk_f32, dim=-1)
             chunk_ent = -(chunk_lp.exp() * chunk_lp).sum(dim=-1)
@@ -689,20 +793,22 @@ def _compute_step_metrics(
             del chunk_f32, chunk_lp, chunk_ent
 
         pred = shift_logits.argmax(dim=-1)
-        correct = (pred == shift_labels) & label_mask
+        correct = (pred == shift_labels) & effective_mask
         correct_f = correct.float()
 
         # Split changed vs context by the midpoint between the two diff
-        # weights.  When changed == unchanged (identity fallback), the
-        # midpoint test collapses both to "changed" — context is empty,
-        # which is the correct semantic since there's no diff signal.
+        # weights, intersected with ``effective_mask`` so weight==0
+        # positions never count toward either bucket. When changed ==
+        # unchanged (identity fallback) the midpoint test collapses both
+        # to "changed" — context is empty, which is the correct semantic
+        # since there's no diff signal.
         if changed_weight == unchanged_weight:
-            changed_mask = label_mask
-            context_mask = torch.zeros_like(label_mask)
+            changed_mask = effective_mask
+            context_mask = torch.zeros_like(effective_mask)
         else:
             midpoint = (changed_weight + unchanged_weight) / 2.0
-            changed_mask = label_mask & (shift_weights >= midpoint)
-            context_mask = label_mask & (shift_weights > 0) & (shift_weights < midpoint)
+            changed_mask = effective_mask & (shift_weights >= midpoint)
+            context_mask = effective_mask & (shift_weights < midpoint)
 
         n_changed = int(changed_mask.sum().item())
         n_context = int(context_mask.sum().item())
@@ -715,15 +821,15 @@ def _compute_step_metrics(
         return {
             "effective_token_count": eff_count,
             "all_masked_batch": all_masked,
-            "token_accuracy": float(correct_f.sum().item()) / n_labeled,
-            "entropy": _masked_mean(entropy, label_mask, n_labeled),
+            "token_accuracy": float(correct_f.sum().item()) / n_effective,
+            "entropy": _masked_mean(entropy, effective_mask, n_effective),
             "changed_loss": _masked_mean(per_token_ce, changed_mask, n_changed),
             "context_loss": _masked_mean(per_token_ce, context_mask, n_context),
             "changed_token_acc": _masked_mean(correct_f, changed_mask, n_changed),
             "context_token_acc": _masked_mean(correct_f, context_mask, n_context),
             "changed_entropy": _masked_mean(entropy, changed_mask, n_changed),
             "context_entropy": _masked_mean(entropy, context_mask, n_context),
-            "changed_token_frac": float(n_changed) / n_labeled,
+            "changed_token_frac": float(n_changed) / n_effective,
         }
 
 
@@ -792,6 +898,12 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
 
         Returns:
             Scalar loss, or ``(loss, outputs)`` when ``return_outputs=True``.
+
+        Raises:
+            Exception: Errors from the model forward pass or the weighted
+                loss reduction propagate to the caller. Errors raised by
+                the per-step metrics helper are caught and logged so an
+                observability bug never kills training.
         """
         loss_weights = inputs.pop("loss_weights", None)
 
@@ -816,7 +928,10 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
 
         # Accumulate per-batch metrics for emission via log().  Wrapped in
         # try/except because metrics are observability-only — a bug here
-        # must never kill a training run.
+        # must never kill a training run. Skip entirely when the operator
+        # opts out via ``RUNE_DISABLE_STEP_METRICS=1``.
+        if not _step_metrics_enabled():
+            return (loss, outputs) if return_outputs else loss
         try:
             metrics = _compute_step_metrics(
                 logits,
@@ -874,6 +989,22 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
                 logs["train/all_masked_batch_frac"] = logs.pop("train/all_masked_batch")
             self._diff_metric_sums = {}
             self._diff_metric_count = 0
+
+        # Snapshot the diff collator's running counters so silent identity
+        # fallbacks become observable. Cumulative since the run started —
+        # rate of change across logging steps is what dashboards should
+        # graph (a flat counter means the diff path is healthy).
+        collator = getattr(self, "data_collator", None)
+        if collator is not None and hasattr(collator, "_spans_aligned"):
+            logs["train/diff_spans_aligned"] = float(collator._spans_aligned)
+            logs["train/diff_span_match_failures"] = float(
+                collator._span_match_failures
+            )
+            logs["train/diff_span_no_post"] = float(collator._span_no_post)
+            logs["train/diff_span_all_zero_after_match"] = float(
+                collator._span_all_zero_after_match
+            )
+
         return super().log(logs, start_time)
 
 

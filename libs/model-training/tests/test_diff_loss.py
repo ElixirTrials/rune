@@ -392,12 +392,112 @@ class TestDiffWeightedDataCollator:
         # Span tokens (positions 2-3) must get identity weight, not zero.
         assert weights[2] == 1.0, "span fallback must give labeled tokens weight 1.0"
         assert weights[3] == 1.0, "span fallback must give labeled tokens weight 1.0"
-        # Masked positions stay at zero.
         assert weights[0] == 0.0
         assert weights[1] == 0.0
         # Most importantly: denom > 0 so the loss function gets gradient signal.
         denom = sum(w for w, lab in zip(weights, labels[0]) if lab != IGNORE_INDEX)
         assert denom > 0.0, "RCA-5 H2: denom must be > 0 even on alignment failure"
+
+    def test_keep_end_alignment_offsets_pre_post_to_surviving_turns(self) -> None:
+        """With ``truncation_mode='keep_end'``, surviving spans are the *last* K turns.
+
+        Regression for Qodo "Truncation mode unvalidated": before the
+        fix, span 0 of the truncated sequence was paired with
+        pre_codes[0] / post_codes[0] regardless of truncation mode, so
+        keep_end runs were aligning the surviving-tail spans against the
+        wrong (front) turns.
+        """
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # Two surviving assistant spans at positions 1-2 and 4-5; three
+        # turns in pre_codes/post_codes — turn 0 was truncated away.
+        input_ids = [[10, 20, 21, 30, 40, 41]]
+        labels = [[IGNORE_INDEX, 20, 21, IGNORE_INDEX, 40, 41]]
+        inner = _make_inner_collator(input_ids, labels)
+        # Mark the inner collator as keep_end so the alignment uses the offset.
+        inner.truncation_mode = "keep_end"
+
+        # Tokenizer behaves differently per call to detect which post_code
+        # the collator pulled. Turn 1 (mid) returns ids matching span 0,
+        # turn 2 (last) returns ids matching span 1. Turn 0 returns
+        # something that would NOT match either span — so if the offset
+        # is wrong (idx=0 reads turn 0) both spans would fall back to
+        # identity and the assertion below would fail.
+        tok = MagicMock()
+        post_for_turn = {
+            "turn0": ([99, 99], [(0, 2), (2, 4)]),
+            "turn1": ([20, 21], [(0, 2), (2, 4)]),
+            "turn2": ([40, 41], [(0, 2), (2, 4)]),
+        }
+
+        def _tok_call(text: str, **_: Any) -> dict[str, Any]:
+            ids, offs = post_for_turn[text]
+            return {"input_ids": ids, "offset_mapping": offs}
+
+        tok.side_effect = _tok_call
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["pre0", "pre1", "pre2"],
+                "post_codes": ["turn0", "turn1", "turn2"],
+            }
+        ]
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        # Both surviving spans matched their *correct* post_code (turn1
+        # and turn2, not turn0): identity fallback would have put 1.0
+        # in but the diff-aware path with hunk_ranges=[] (pre==post for
+        # the test setup is unimportant — what matters is that match_pos
+        # >= 0, so the path proceeds past the bail-out at line 396).
+        # We simply assert the weights are not all-1.0 identity and that
+        # span 0 was matched against turn1's ids.
+        # turn1 is "pre1" -> "turn1" so hunk_ranges is computed; the
+        # token offsets (0,2),(2,4) intersect with the diff range, so
+        # weights default to changed_weight=1.0. Weight 1.0 is the
+        # identity value too — so we assert through the *counter*: the
+        # collator must have logged 2 successful spans aligned.
+        assert collator._spans_aligned == 2
+        assert collator._span_match_failures == 0
+        # Sanity: weights are non-zero in both spans.
+        assert weights[1] > 0.0 and weights[2] > 0.0
+        assert weights[4] > 0.0 and weights[5] > 0.0
+
+    def test_keep_start_alignment_unchanged(self) -> None:
+        """``truncation_mode='keep_start'`` preserves the original front-K pairing."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        input_ids = [[10, 20, 21, 30, 40, 41]]
+        labels = [[IGNORE_INDEX, 20, 21, IGNORE_INDEX, 40, 41]]
+        inner = _make_inner_collator(input_ids, labels)
+        inner.truncation_mode = "keep_start"
+
+        tok = MagicMock()
+        post_for_turn = {
+            "turn0": ([20, 21], [(0, 2), (2, 4)]),
+            "turn1": ([40, 41], [(0, 2), (2, 4)]),
+            "turn2": ([99, 99], [(0, 2), (2, 4)]),
+        }
+
+        def _tok_call(text: str, **_: Any) -> dict[str, Any]:
+            ids, offs = post_for_turn[text]
+            return {"input_ids": ids, "offset_mapping": offs}
+
+        tok.side_effect = _tok_call
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["pre0", "pre1", "pre2"],
+                "post_codes": ["turn0", "turn1", "turn2"],
+            }
+        ]
+        collator(features)
+
+        # Span 0 → turn0, span 1 → turn1 (front-K pairing).
+        assert collator._spans_aligned == 2
+        assert collator._span_match_failures == 0
 
     def test_collator_per_turn_alignment_walks_multiple_spans(self) -> None:
         """Multi-turn sequences: each contiguous assistant span is aligned
