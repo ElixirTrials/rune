@@ -633,6 +633,7 @@ def _construct_sft_trainer(
     diff_aware_loss: bool,
     diff_changed_weight: float,
     diff_unchanged_weight: float,
+    eval_dataset: Any | None = None,
 ) -> Any:
     """Pick between vanilla SFTTrainer and the diff-aware subclass.
 
@@ -641,15 +642,25 @@ def _construct_sft_trainer(
     ``DiffAwareSFTTrainer`` and wraps its auto-built collator with
     :class:`~model_training.diff_loss.DiffWeightedDataCollator` so each
     batch carries a ``loss_weights`` tensor.
+
+    When ``eval_dataset`` is provided, both SFT branches forward it to the
+    underlying trainer so HF Trainer logs ``eval/loss`` (and friends) at
+    the cadence configured on ``args``. The non-diff path passes it
+    directly to ``SFTTrainer``; the diff-aware path threads it through
+    :func:`build_diff_aware_sft_trainer` so the same ``DiffWeightedDataCollator``
+    handles eval batches.
     """
     if not diff_aware_loss:
-        return sft_trainer_cls(
-            model=model,
-            args=args,
-            train_dataset=dataset,
-            peft_config=lora_config,
-            processing_class=tokenizer,
-        )
+        kwargs = {
+            "model": model,
+            "args": args,
+            "train_dataset": dataset,
+            "peft_config": lora_config,
+            "processing_class": tokenizer,
+        }
+        if eval_dataset is not None:
+            kwargs["eval_dataset"] = eval_dataset
+        return sft_trainer_cls(**kwargs)
 
     from model_training.diff_loss import (  # noqa: PLC0415
         build_diff_aware_sft_trainer,
@@ -664,6 +675,7 @@ def _construct_sft_trainer(
         changed_weight=diff_changed_weight,
         unchanged_weight=diff_unchanged_weight,
         tokenizer=tokenizer,
+        eval_dataset=eval_dataset,
     )
 
 
@@ -681,6 +693,7 @@ def _build_sft_config(
     neftune_noise_alpha: float | None,
     max_length: int | None = None,
     dataset_size: int | None = None,
+    has_eval_dataset: bool = False,
 ) -> Any:
     """Construct an SFTConfig with optional NEFTune support.
 
@@ -702,7 +715,13 @@ def _build_sft_config(
         "save_strategy": "no",
         "logging_steps": 1,
         "report_to": report_to,
-        "eval_strategy": "no",
+        # Eval at end of every epoch when an eval_dataset is provided, so
+        # MLflow records eval/loss per epoch. Otherwise leave at "no" so
+        # SFTTrainer doesn't try to call evaluate() with no dataset.
+        "eval_strategy": "epoch" if has_eval_dataset else "no",
+        # per_device_eval_batch_size is unused when eval_strategy="no" but
+        # explicit is better — same micro-batch size as training.
+        "per_device_eval_batch_size": 1,
         # assistant_only_loss=True triggers TRL's get_training_chat_template
         # pre-flight (sft_trainer.py:925), which requires {% generation %}
         # markers in the chat template. Qwen3.5's bundled template lacks them
@@ -841,6 +860,7 @@ def train_qlora(
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
     max_length: int = 3072,
+    eval_dataset_path: str | None = None,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -921,6 +941,12 @@ def train_qlora(
             matrix scale with this value. Defaults to ``3072`` — picked
             to fit the p75 of the mined-pairs token distribution; lower
             values silently zero-grad on long-tail examples (RCA-5 H2).
+        eval_dataset_path: Optional path to a held-out JSONL of
+            mined-pair records (same shape as ``dataset_path``). When set,
+            the trainer evaluates at the end of each epoch and logs
+            ``eval/loss`` to MLflow. Use a disjoint split to detect
+            overfitting and confirm generalisation rather than just
+            memorisation.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -1025,6 +1051,41 @@ def train_qlora(
             truncation_mode="keep_end",
         )
 
+    # Build held-out eval dataset, if provided. Uses the same encoding +
+    # masking pipeline as training so loss values are directly comparable
+    # across train/eval. SFTTrainer evaluates at end of every epoch when
+    # eval_strategy="epoch" (set by _build_sft_config when this is non-None).
+    eval_dataset = None
+    if eval_dataset_path is not None:
+        eval_dataset = _build_training_dataset(
+            dataset_cls=Dataset,
+            session_id=None,
+            dataset_path=eval_dataset_path,
+            encoding_mode=encoding_mode,
+            diff_aware_loss=diff_aware_loss,
+        )
+        if diff_aware_loss:
+            eval_dataset = _attach_assistant_masks(
+                eval_dataset,
+                tokenizer,
+                preserve_columns=["pre_codes", "post_codes"],
+                max_length=max_length,
+                truncation_mode="keep_end",
+            )
+        else:
+            eval_dataset = _attach_assistant_masks(
+                eval_dataset,
+                tokenizer,
+                max_length=max_length,
+                truncation_mode="keep_end",
+            )
+        logger.info(
+            "Eval dataset enabled: %d held-out rows from %s; "
+            "eval_strategy=epoch.",
+            len(eval_dataset),
+            eval_dataset_path,
+        )
+
     model, lora_config = _setup_lora_adapter(
         model=model,
         warm_start=warm_start,
@@ -1057,6 +1118,7 @@ def train_qlora(
         neftune_noise_alpha=neftune_noise_alpha,
         max_length=max_length,
         dataset_size=len(dataset),
+        has_eval_dataset=eval_dataset is not None,
     )
 
     trainer = _construct_sft_trainer(
@@ -1069,6 +1131,7 @@ def train_qlora(
         diff_aware_loss=diff_aware_loss,
         diff_changed_weight=diff_changed_weight,
         diff_unchanged_weight=diff_unchanged_weight,
+        eval_dataset=eval_dataset,
     )
 
     # Log training-run metadata (params streamed as per-step metrics by TRL's
@@ -1178,6 +1241,7 @@ def train_and_register(
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
     max_length: int = 3072,
+    eval_dataset_path: str | None = None,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -1221,6 +1285,9 @@ def train_and_register(
             When ``None`` (default), NEFTune is disabled.
         max_length: SFT tokenizer truncation length forwarded to
             ``train_qlora``. Defaults to ``3072``.
+        eval_dataset_path: Optional held-out JSONL forwarded to
+            ``train_qlora`` for end-of-epoch evaluation. See that
+            function's docstring.
 
     Returns:
         adapter_id of the registered adapter.
@@ -1289,6 +1356,7 @@ def train_and_register(
         warmup_ratio=warmup_ratio,
         neftune_noise_alpha=neftune_noise_alpha,
         max_length=max_length,
+        eval_dataset_path=eval_dataset_path,
     )
 
     # Compute file hash and size from the saved safetensors file

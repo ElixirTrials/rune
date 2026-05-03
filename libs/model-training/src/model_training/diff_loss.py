@@ -1097,6 +1097,7 @@ def build_diff_aware_sft_trainer(
     changed_weight: float = 1.0,
     unchanged_weight: float = 0.3,
     tokenizer: Any | None = None,
+    eval_dataset: Any | None = None,
 ) -> Any:
     """Build an SFTTrainer that uses diff-aware loss weighting.
 
@@ -1125,6 +1126,10 @@ def build_diff_aware_sft_trainer(
         tokenizer: Optional tokenizer passed to :class:`DiffWeightedDataCollator`
             to enable the hunk path.  Falls back to ``processing_class`` if
             ``tokenizer`` is ``None`` and ``processing_class`` is provided.
+        eval_dataset: Optional held-out dataset for end-of-epoch evaluation.
+            When provided, the resulting trainer logs ``eval/loss`` at the
+            cadence configured on ``args.eval_strategy`` (typically
+            ``"epoch"``). When ``None``, the trainer skips evaluation.
 
     Returns:
         A configured :class:`DiffAwareSFTTrainer` instance.
@@ -1177,14 +1182,17 @@ def build_diff_aware_sft_trainer(
         tokenizer=resolved_tokenizer,
     )
 
-    trainer = DiffAwareSFTTrainer(
-        model=model,
-        args=args,
-        train_dataset=train_dataset,
-        peft_config=peft_config,
-        processing_class=processing_class,
-        data_collator=collator,
-    )
+    trainer_kwargs: dict[str, Any] = {
+        "model": model,
+        "args": args,
+        "train_dataset": train_dataset,
+        "peft_config": peft_config,
+        "processing_class": processing_class,
+        "data_collator": collator,
+    }
+    if eval_dataset is not None:
+        trainer_kwargs["eval_dataset"] = eval_dataset
+    trainer = DiffAwareSFTTrainer(**trainer_kwargs)
     # Mirror the collator's weights onto the trainer so per-step metrics
     # split changed vs context using the same midpoint the collator used.
     trainer._diff_changed_weight = changed_weight
