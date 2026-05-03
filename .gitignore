@@ -374,5 +374,6 @@ instructions/
 trained_d2l/
 evaluation_results/
 hpo_artifacts/
+artifacts/
 optuna_*.db
 *.optuna.db
