@@ -46,6 +46,12 @@ def parse_args():
         default="danielcherubini/Qwen3.5-DeltaCoder-9B",
     )
     p.add_argument("--model", default="Qwen/Qwen3.5-9B")
+    p.add_argument(
+        "--mlflow-experiment",
+        default="rune-eval-heldout",
+        help="MLflow experiment to log eval metrics under. Set to '' to disable.",
+    )
+    p.add_argument("--mlflow-uri", default=None)
     return p.parse_args()
 
 
@@ -231,6 +237,41 @@ def main():
             if delta > 0.005 or delta_loss > 0.01
             else "Within noise — fine-tune did not generalise meaningfully."
         )
+
+    # MLflow logging — log every per-state metric so dashboards can compare
+    # across adapters. Skipped when --mlflow-experiment is empty (offline use)
+    # or when mlflow is unavailable.
+    if args.mlflow_experiment:
+        try:
+            import mlflow  # noqa: PLC0415
+
+            if args.mlflow_uri:
+                mlflow.set_tracking_uri(args.mlflow_uri)
+            mlflow.set_experiment(args.mlflow_experiment)
+            with mlflow.start_run(run_name=f"eval-{Path(args.adapter or 'deltacoder').name}"):
+                mlflow.log_params({
+                    "adapter_path": str(args.adapter or args.deltacoder_id),
+                    "heldout_path": args.heldout,
+                    "n_rows": args.n_rows,
+                    "max_length": args.max_length,
+                    "deltacoder_id": args.deltacoder_id,
+                    "model": args.model,
+                })
+                for r in results:
+                    label = r["label"]
+                    mlflow.log_metrics({
+                        f"eval_heldout/{label}/loss": r["mean_loss"],
+                        f"eval_heldout/{label}/token_accuracy": r["token_accuracy"],
+                        f"eval_heldout/{label}/n_labeled_tokens": r["n_labeled_tokens"],
+                    })
+                if len(results) >= 3:
+                    mlflow.log_metrics({
+                        "eval_heldout/delta/tok_acc": delta,
+                        "eval_heldout/delta/loss_reduction": delta_loss,
+                    })
+            print(f"\nLogged to MLflow experiment '{args.mlflow_experiment}'")
+        except Exception as e:  # noqa: BLE001
+            print(f"\n[warn] MLflow logging skipped: {e}")
 
 
 if __name__ == "__main__":

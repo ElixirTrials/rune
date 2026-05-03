@@ -176,6 +176,12 @@ def parse_args():
                    help="Truncate prompts longer than this (tokens, not chars).")
     p.add_argument("--print-failures", type=int, default=2,
                    help="Print N worst-IOU examples for inspection.")
+    p.add_argument(
+        "--mlflow-experiment",
+        default="rune-eval-patch",
+        help="MLflow experiment to log eval metrics under. Set to '' to disable.",
+    )
+    p.add_argument("--mlflow-uri", default=None)
     return p.parse_args()
 
 
@@ -301,6 +307,40 @@ def main():
         print(f["gen_preview"])
         print("--- ground truth (first 600 chars) ---")
         print(f["gt_preview"])
+
+    # MLflow logging — eval metrics live in their own experiment so dashboards
+    # can compare adapters without polluting training runs. Skipped on
+    # --mlflow-experiment='' or when mlflow is unavailable.
+    if args.mlflow_experiment:
+        try:
+            import mlflow  # noqa: PLC0415
+
+            if args.mlflow_uri:
+                mlflow.set_tracking_uri(args.mlflow_uri)
+            mlflow.set_experiment(args.mlflow_experiment)
+            with mlflow.start_run(run_name=f"patch-{Path(args.adapter or 'deltacoder').name}"):
+                mlflow.log_params({
+                    "adapter_path": str(args.adapter or args.deltacoder_id),
+                    "heldout_path": args.heldout,
+                    "n_rows": args.n_rows,
+                    "max_new": args.max_new,
+                    "deltacoder_id": args.deltacoder_id,
+                    "model": args.model,
+                })
+                mlflow.log_metrics({
+                    "eval_patch/syntactic_valid_rate": valid_rate,
+                    "eval_patch/has_file_header_rate": has_file_rate,
+                    "eval_patch/has_hunk_rate": has_hunk_rate,
+                    "eval_patch/hunk_counts_match_rate": counts_match_rate,
+                    "eval_patch/exact_match_rate": exact_rate,
+                    "eval_patch/hunk_iou_mean": mean_iou,
+                    "eval_patch/hunk_iou_median": median_iou,
+                    "eval_patch/char_similarity_mean": mean_char_sim,
+                    "eval_patch/n_results": n,
+                })
+            print(f"\nLogged to MLflow experiment '{args.mlflow_experiment}'")
+        except Exception as e:  # noqa: BLE001
+            print(f"\n[warn] MLflow logging skipped: {e}")
 
 
 if __name__ == "__main__":
