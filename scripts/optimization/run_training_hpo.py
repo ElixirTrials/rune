@@ -46,10 +46,21 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# Local fallback for adapters when the MLflow/S3 upload fails. Picked under
+# ~/.rune/ so it shares the volume already mounted into the dev container and
+# isn't on the trial's ephemeral output dir.
+_LOCAL_FALLBACK_ROOT = Path.home() / ".rune" / "hpo-adapter-fallback"
+
+# Free-space safety margin we refuse to consume when copying an adapter to the
+# local fallback. ~1 GiB leaves headroom for OS / log writes / next trial's
+# trainer_state.json so a fallback save can't be the thing that fills the disk.
+_FALLBACK_FREE_SPACE_MARGIN_BYTES = 1 * 1024 * 1024 * 1024
 
 logging.basicConfig(
     level=logging.INFO,
@@ -462,6 +473,79 @@ def _delete_mlflow_run(run_id: str) -> bool:
     return True
 
 
+def _dir_size_bytes(path: Path) -> int:
+    """Sum of regular-file sizes under *path*. Unreadable entries are skipped."""
+    total = 0
+    for child in path.rglob("*"):
+        try:
+            if child.is_file():
+                total += child.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _save_to_local_fallback(
+    adapter_path: Path,
+    *,
+    run_id: str,
+    artifact_path: str,
+    fallback_root: Path = _LOCAL_FALLBACK_ROOT,
+    margin_bytes: int = _FALLBACK_FREE_SPACE_MARGIN_BYTES,
+) -> Path | None:
+    """Copy an adapter to a stable local location, gated on free disk.
+
+    Used when ``mlflow.log_artifacts`` fails so the adapter survives even if
+    the trial's output dir is later cleaned up. Returns the destination path
+    on success, ``None`` if the disk is too full to absorb the copy without
+    breaching ``margin_bytes`` of headroom (or if the copy itself errored).
+    The caller is responsible for tagging the MLflow run with the outcome.
+    """
+    adapter_size = _dir_size_bytes(adapter_path)
+    # Probe disk usage on whichever ancestor of fallback_root currently exists,
+    # so the check works on a fresh install where the root has never been made.
+    probe = fallback_root
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        usage = shutil.disk_usage(probe)
+    except OSError:
+        logger.exception(
+            "Could not stat disk usage at %s — skipping local fallback.", probe
+        )
+        return None
+    required = adapter_size + margin_bytes
+    if usage.free < required:
+        logger.error(
+            "Local fallback skipped: free=%d B at %s, need %d B "
+            "(adapter=%d B + %d B safety margin). Adapter remains at %s.",
+            usage.free,
+            probe,
+            required,
+            adapter_size,
+            margin_bytes,
+            adapter_path,
+        )
+        return None
+    dest = fallback_root / run_id / artifact_path
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(adapter_path, dest)
+    except OSError:
+        logger.exception("Local fallback copy %s -> %s failed.", adapter_path, dest)
+        return None
+    logger.warning(
+        "MLflow upload failed; adapter copied to local fallback %s "
+        "(size=%d B, free_after=%d B).",
+        dest,
+        adapter_size,
+        usage.free - adapter_size,
+    )
+    return dest
+
+
 def _upload_adapter_and_cleanup(
     adapter_dir: str,
     *,
@@ -490,8 +574,6 @@ def _upload_adapter_and_cleanup(
     if not upload:
         return False
 
-    import shutil  # noqa: PLC0415
-
     import mlflow  # noqa: PLC0415
 
     adapter_path = Path(adapter_dir)
@@ -499,12 +581,47 @@ def _upload_adapter_and_cleanup(
         logger.warning("Adapter dir %s missing — skipping MLflow upload.", adapter_dir)
         return False
 
+    active_run = mlflow.active_run()
+    run_id = active_run.info.run_id if active_run else "<no-active-run>"
+    artifact_uri = active_run.info.artifact_uri if active_run else "<unknown>"
+    target_uri = f"{artifact_uri.rstrip('/')}/{artifact_path}"
+
+    try:
+        file_count = sum(1 for _ in adapter_path.rglob("*") if _.is_file())
+    except OSError:
+        file_count = -1
+
     try:
         mlflow.log_artifacts(str(adapter_path), artifact_path=artifact_path)
-    except Exception:  # noqa: BLE001 — never let the upload kill the trial
+    except Exception as exc:  # noqa: BLE001 — never let the upload kill the trial
         logger.exception(
-            "MLflow log_artifacts(%s) failed; keeping local copy.", adapter_dir
+            "MLflow log_artifacts failed: src=%s (%d files) -> dst=%s "
+            "(run_id=%s, error=%s: %s); keeping local copy at %s. "
+            "If the tracking server is configured with --serve-artifacts, "
+            "verify its IAM role has s3:PutObject AND s3:ListBucket on the "
+            "artifact bucket prefix.",
+            adapter_dir,
+            file_count,
+            target_uri,
+            run_id,
+            type(exc).__name__,
+            exc,
+            adapter_dir,
         )
+        fallback_dest = _save_to_local_fallback(
+            adapter_path, run_id=run_id, artifact_path=artifact_path
+        )
+        # Tag the run so failed uploads show up in the MLflow UI without
+        # needing to grep logs.
+        try:
+            mlflow.set_tag("hpo.adapter_upload_error", f"{type(exc).__name__}: {exc}")
+            mlflow.set_tag("hpo.adapter_upload_target", target_uri)
+            if fallback_dest is not None:
+                mlflow.set_tag("hpo.adapter_local_fallback_path", str(fallback_dest))
+            else:
+                mlflow.set_tag("hpo.adapter_local_fallback", "skipped_no_disk")
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to set MLflow upload-error tag.", exc_info=True)
         return False
 
     if cleanup:
@@ -803,25 +920,40 @@ def _evaluate_adapter_on_heldout(
                 ).logits[0]
                 shift_logits = logits[:-1]
                 shift_ids = input_ids[0][1:]
-                log_probs = torch.log_softmax(shift_logits, dim=-1)
-                probs = log_probs.exp()
 
+                # Gather hunk-token positions first, then run log_softmax
+                # only on those rows. Materialising the full ``[L-1, V]``
+                # log_probs + probs would peak at ~2.5 GB at L=2048,
+                # V=151k — tight on the L4 with the adapter+base resident
+                # (mirrors the training-side fix in diff_loss.py).
+                hunk_idx: list[int] = []
                 for i in range(shift_logits.size(0)):
-                    tok_offset = offsets[i + 1]
-                    ts, te = tok_offset
+                    ts, te = offsets[i + 1]
                     if ts == 0 and te == 0:
                         continue
-                    in_hunk = any(ts < he and te > hs for hs, he in shifted)
-                    if not in_hunk:
-                        continue
-                    tgt = int(shift_ids[i].item())
-                    nll = -float(log_probs[i, tgt].item())
-                    pred = int(shift_logits[i].argmax().item())
-                    ent = float(-(probs[i] * log_probs[i]).sum().item())
-                    total_loss += nll
-                    total_acc += 1.0 if pred == tgt else 0.0
-                    total_ent += ent
-                    total_tok += 1
+                    if any(ts < he and te > hs for hs, he in shifted):
+                        hunk_idx.append(i)
+                if not hunk_idx:
+                    continue
+                idx_tensor = torch.tensor(
+                    hunk_idx, device=shift_logits.device, dtype=torch.long
+                )
+                hunk_logits = shift_logits.index_select(0, idx_tensor)
+                hunk_targets = shift_ids.index_select(0, idx_tensor)
+                hunk_log_probs = torch.log_softmax(hunk_logits.float(), dim=-1)
+                nll_per_token = -hunk_log_probs.gather(
+                    1, hunk_targets.unsqueeze(1)
+                ).squeeze(1)
+                hunk_preds = hunk_logits.argmax(dim=-1)
+                entropy_per_token = -(
+                    hunk_log_probs.exp() * hunk_log_probs
+                ).sum(dim=-1)
+
+                total_loss += float(nll_per_token.sum().item())
+                total_acc += float((hunk_preds == hunk_targets).sum().item())
+                total_ent += float(entropy_per_token.sum().item())
+                total_tok += len(hunk_idx)
+                del hunk_logits, hunk_log_probs, nll_per_token, entropy_per_token
         if total_tok == 0:
             return 0.0, 0.0, 0.0, 0
         return (
@@ -1064,7 +1196,9 @@ def _run_single_trial(
         kwargs.get("mlflow_tracking_uri")
         or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     )
-    mlflow.set_experiment(kwargs.get("mlflow_experiment") or run_args.experiment_name)
+    _ensure_experiment_active(
+        kwargs.get("mlflow_experiment") or run_args.experiment_name
+    )
     mlflow.start_run(
         run_name=f"{run_args.adapter_id_prefix}-t{trial.number:03d}",
     )
@@ -1354,6 +1488,29 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _ensure_experiment_active(experiment_name: str) -> None:
+    """Restore a soft-deleted MLflow experiment so ``set_experiment`` works.
+
+    MLflow refuses ``set_experiment`` on a soft-deleted experiment with
+    *"Cannot set a deleted experiment ... as the active experiment."* —
+    typically triggered when an operator hits "Delete" in the UI between
+    HPO runs. Restoring the experiment is the documented recovery path
+    and preserves prior runs / artifact lineage.
+    """
+    import mlflow  # noqa: PLC0415
+    from mlflow.tracking import MlflowClient  # noqa: PLC0415
+
+    client = MlflowClient()
+    exp = client.get_experiment_by_name(experiment_name)
+    if exp is not None and exp.lifecycle_stage == "deleted":
+        client.restore_experiment(exp.experiment_id)
+        logger.warning(
+            "Restored soft-deleted MLflow experiment %r so HPO can write to it.",
+            experiment_name,
+        )
+    mlflow.set_experiment(experiment_name)
+
+
 def _log_study_summary_to_mlflow(
     *,
     experiment_name: str,
@@ -1368,7 +1525,7 @@ def _log_study_summary_to_mlflow(
     mlflow.set_tracking_uri(
         os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     )
-    mlflow.set_experiment(experiment_name)
+    _ensure_experiment_active(experiment_name)
     with mlflow.start_run(run_name=f"study-{args.study_name}"):
         mlflow.set_tags(
             {
