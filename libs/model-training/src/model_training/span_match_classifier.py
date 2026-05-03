@@ -17,6 +17,8 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Optional
 
+from model_training.diff_loss import _find_post_in_span
+
 
 class FailureBucket(str, Enum):
     """Seven mutually-exclusive span-match failure categories."""
@@ -83,7 +85,9 @@ _LCS_MAX_LEN = 4096
 def _find_subseq(needle: list[int], haystack: list[int]) -> int:
     """Return first offset where ``needle`` is a contiguous run in ``haystack``.
 
-    Returns -1 if not found.
+    Delegates to :func:`~model_training.diff_loss._find_post_in_span` (single
+    source of truth) so that any future changes to the search algorithm (e.g.
+    early-exit guards, fuzzy-match retries) are automatically picked up here.
 
     Args:
         needle: Token-ID sequence to search for.
@@ -92,13 +96,7 @@ def _find_subseq(needle: list[int], haystack: list[int]) -> int:
     Returns:
         First matching offset, or -1.
     """
-    n, h = len(needle), len(haystack)
-    if n == 0 or n > h:
-        return -1
-    for off in range(h - n + 1):
-        if haystack[off : off + n] == needle:
-            return off
-    return -1
+    return _find_post_in_span(haystack, 0, len(haystack), needle)
 
 
 def _lcs_length(a: list[int], b: list[int]) -> int:
