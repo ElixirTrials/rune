@@ -142,9 +142,9 @@ def _make_base(
 ) -> ClassificationResult:
     """Construct a :class:`ClassificationResult` with common diagnostic fields."""
     head4_post = post_ids[:4]
-    tail4_post = post_ids[-4:] if n_post >= 4 else post_ids[:]
+    tail4_post = post_ids[-4:]
     head4_span = span_ids[:4]
-    tail4_span = span_ids[-4:] if n_span >= 4 else span_ids[:]
+    tail4_span = span_ids[-4:]
     return ClassificationResult(
         bucket=bucket,
         conv_idx=conv_idx,
@@ -237,6 +237,12 @@ def classify_failure(  # noqa: C901
 ) -> ClassificationResult:
     """Classify a single span-match failure into one of seven buckets.
 
+    Note:
+        This function classifies *failures*. The caller must have already
+        confirmed that the strict full-match (``_find_post_in_span`` on the
+        full ``post_ids``) returned -1. Calling this on a non-failure produces
+        a meaningless bucket.
+
     Decision tree evaluated in order; the first matching predicate wins:
 
     1. TRUNCATION_FRONT — ``span_start == 0`` AND ``len(post_ids) > len(span_ids)``
@@ -303,7 +309,7 @@ def classify_failure(  # noqa: C901
     # Bucket 2: TRUNCATION_TAIL
     if span_end == total_seq and n_post > n_span:
         for k in range(1, n_post):
-            prefix = post_ids[:-k] if k < n_post else []
+            prefix = post_ids[:-k]
             if not prefix:
                 break
             plen = len(prefix)

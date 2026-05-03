@@ -133,6 +133,7 @@ def main() -> None:  # noqa: C901 (complexity acceptable for a diagnostic script
     bucket_counts: dict[str, int] = {b.value: 0 for b in FailureBucket}
 
     for conv_idx, (messages, pp) in enumerate(zip(convs, pre_post)):
+        pre_codes: list[str] = pp.get("pre_codes", [])
         post_codes: list[str] = pp.get("post_codes", [])
 
         result = compute_assistant_masks(
@@ -150,7 +151,7 @@ def main() -> None:  # noqa: C901 (complexity acceptable for a diagnostic script
         spans = list(_iter_assistant_spans(labels))
 
         # Mirror _weights_via_hunk_path offset semantics.
-        n_turns = len(post_codes)
+        n_turns = max(len(pre_codes), len(post_codes))
         if args.truncation_mode == "keep_end" and n_turns >= len(spans):
             offset = n_turns - len(spans)
         else:

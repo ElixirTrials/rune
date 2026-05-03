@@ -411,14 +411,18 @@ class TestPredicateOrdering:
         )
         assert result.bucket == FailureBucket.TRUNCATION_FRONT
 
-    def test_bpe_drift_start_beats_bpe_drift_end(self) -> None:
-        """BPE_DRIFT_START (bucket 3) checked before BPE_DRIFT_END (bucket 4)."""
+    def test_bpe_drift_start_checked_before_bpe_drift_end(self) -> None:
+        """BPE_DRIFT_START (bucket 3) is checked before BPE_DRIFT_END is even evaluated.
+
+        In this input BPE_DRIFT_END would not fire anyway (post[:-1]=[10,20,30]
+        is not present in span=[100,20,30,40]), so this test does not exercise
+        simultaneous satisfaction. It verifies only that BPE_DRIFT_START fires
+        when its predicate is met, regardless of bucket 4.
+        """
         # span = [100, 20, 30, 40];  post = [10, 20, 30, 40]
         # post[1:]  = [20, 30, 40] found at offset 1 in span;
         #   expected_pre = span[0] = 100 ≠ 10 → #3 fires.
-        # post[:-1] = [10, 20, 30] → span[1:4]=[20,30,40] ≠ [10,20,30],
-        #   span[0:3]=[100,20,30] ≠ [10,20,30] → #4 would not fire anyway.
-        # This is just confirming ordering; BPE_DRIFT_START wins.
+        # post[:-1] = [10, 20, 30] → not found in span → #4 would not fire.
         span_ids = [100, 20, 30, 40]
         post_ids = [10, 20, 30, 40]
         result = _classify(
