@@ -661,8 +661,32 @@ def _compute_step_metrics(
             reduction="none",
         ).view(shift_labels.shape)
 
-        log_probs = F.log_softmax(shift_logits, dim=-1)
-        entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
+        # Entropy at labeled positions, chunked along the labeled dim so peak
+        # transient stays bounded regardless of how many tokens are labeled.
+        # Multi-turn encoding can leave nearly every token labeled, so the
+        # earlier "filter then cast to float32" approach still stacks three
+        # ``[N, V]`` float32 tensors (~1.87 GB each at N=3072, V=151k) ≈ 7 GB
+        # transient and OOMs the L4. ``index_select`` per chunk avoids
+        # materialising the full ``[N, V]`` bf16 gather as well.
+        entropy = torch.zeros_like(per_token_ce)
+        flat_entropy = entropy.view(-1)
+        flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+        flat_label_mask = label_mask.view(-1)
+        labeled_indices = torch.nonzero(flat_label_mask, as_tuple=True)[0]
+        # 256 × 151936 × 4B ≈ 156 MB per intermediate float32 tensor; with
+        # log_softmax, exp, and the multiply each holding one such tensor at
+        # peak the chunk costs ~625 MB transient on top of the model state —
+        # well below the L4's available headroom.
+        entropy_chunk_size = 256
+        for i in range(0, labeled_indices.numel(), entropy_chunk_size):
+            idx_chunk = labeled_indices[i : i + entropy_chunk_size]
+            chunk_f32 = flat_logits.index_select(0, idx_chunk).float()
+            chunk_lp = F.log_softmax(chunk_f32, dim=-1)
+            chunk_ent = -(chunk_lp.exp() * chunk_lp).sum(dim=-1)
+            flat_entropy.index_copy_(
+                0, idx_chunk, chunk_ent.to(flat_entropy.dtype)
+            )
+            del chunk_f32, chunk_lp, chunk_ent
 
         pred = shift_logits.argmax(dim=-1)
         correct = (pred == shift_labels) & label_mask
@@ -804,11 +828,26 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
             for k, v in metrics.items():
                 self._diff_metric_sums[k] = self._diff_metric_sums.get(k, 0.0) + v
             self._diff_metric_count += 1
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "DiffAwareSFTTrainer: step-metrics accumulation failed; "
                 "training continues without per-step diagnostics for this batch."
             )
+            # Drop the traceback's frame references and free any partially
+            # allocated CUDA tensors so a metrics-only OOM doesn't compound
+            # across steps. Python keeps the latest exception in
+            # sys.exc_info() until replaced; without this the failing
+            # frame's locals (notably the [B, L, V] softmax intermediates)
+            # stay GPU-resident and ratchet baseline VRAM up by ~2 GB per
+            # failure on Qwen3.5-9B.
+            exc.__traceback__ = None
+            del exc
+            try:
+                import torch  # noqa: PLC0415
+
+                torch.cuda.empty_cache()
+            except Exception:  # noqa: BLE001 — torch may be unavailable on CPU CI
+                pass
 
         return (loss, outputs) if return_outputs else loss
 

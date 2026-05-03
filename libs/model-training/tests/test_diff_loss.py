@@ -850,6 +850,99 @@ class TestComputeStepMetrics:
         assert m["context_token_acc"] == 0.0
         assert m["context_entropy"] == 0.0
 
+    def test_chunked_entropy_matches_single_shot(self) -> None:
+        """Chunked entropy == straight log_softmax entropy on the labeled positions.
+
+        Guards the chunked path against numerical drift: the production
+        loop walks labeled positions in 256-token chunks, but the metric
+        must match what a single-shot ``log_softmax`` would have produced.
+        """
+        import torch
+        import torch.nn.functional as F  # noqa: N812
+        from model_training.diff_loss import _compute_step_metrics
+
+        torch.manual_seed(0)
+        # Small enough to fit a single softmax for the reference.
+        logits = torch.randn(2, 6, 32)
+        labels = torch.tensor(
+            [
+                [IGNORE_INDEX, 1, 2, IGNORE_INDEX, 3, 4],
+                [IGNORE_INDEX, 5, IGNORE_INDEX, 6, 7, 8],
+            ]
+        )
+        weights = torch.ones_like(labels, dtype=torch.float32)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=1.0
+        )
+
+        # Reference: full log_softmax over the whole shifted tensor, then
+        # reduce only the labeled positions (matching the production
+        # semantic).
+        shift_logits = logits[:, :-1, :]
+        shift_labels = labels[:, 1:]
+        ref_lp = F.log_softmax(shift_logits.float(), dim=-1)
+        ref_ent = -(ref_lp.exp() * ref_lp).sum(dim=-1)
+        label_mask = (shift_labels != IGNORE_INDEX).float()
+        n_labeled = label_mask.sum().item()
+        ref_mean = (ref_ent * label_mask).sum().item() / n_labeled
+
+        assert m["entropy"] == pytest.approx(ref_mean, abs=1e-5)
+
+    def test_chunked_entropy_handles_more_than_chunk_size_labeled(self) -> None:
+        """Cross the entropy_chunk_size=256 boundary so the loop iterates ≥2x.
+
+        With 1×400×32 logits and every position labeled, the chunked loop
+        must produce the same mean as a single-shot reduction. This is
+        the regression test for the OOM fix — without chunking this case
+        was fine on CPU but blew up on multi-turn L4 batches at vocab
+        151k. Here we just assert correctness when n_labeled > 256.
+        """
+        import torch
+        import torch.nn.functional as F  # noqa: N812
+        from model_training.diff_loss import _compute_step_metrics
+
+        torch.manual_seed(1)
+        seq_len = 400
+        vocab = 32
+        logits = torch.randn(1, seq_len, vocab)
+        # Label every position so n_labeled (after shift) = seq_len - 1 = 399 > 256.
+        labels = torch.randint(0, vocab, (1, seq_len))
+        # Position 0 is dropped by the shift, so labeling it doesn't matter,
+        # but we make sure the rest are real labels (not IGNORE_INDEX).
+        weights = torch.ones_like(labels, dtype=torch.float32)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=1.0
+        )
+
+        shift_logits = logits[:, :-1, :]
+        ref_lp = F.log_softmax(shift_logits.float(), dim=-1)
+        ref_ent = -(ref_lp.exp() * ref_lp).sum(dim=-1)
+        # All shifted positions are labeled.
+        ref_mean = ref_ent.mean().item()
+
+        # 399 > 256 forces ≥2 chunk iterations.
+        assert seq_len - 1 > 256
+        assert m["entropy"] == pytest.approx(ref_mean, abs=1e-5)
+
+    def test_chunked_entropy_zero_labeled_skips_loop(self) -> None:
+        """No labeled positions → entropy stays 0 without entering the chunk loop."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        # All-IGNORE_INDEX → labeled_indices is empty; the chunk loop must
+        # not run and entropy must be 0.0 (matches the all-masked branch).
+        logits = torch.randn(1, 8, 16)
+        labels = torch.full((1, 8), IGNORE_INDEX, dtype=torch.long)
+        weights = torch.zeros(1, 8)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        assert m["entropy"] == 0.0
+        assert m["all_masked_batch"] == 1.0
+
 
 class TestDiffAwareTrainerStepMetrics:
     """Verify metrics are accumulated in compute_loss and flushed via log()."""
