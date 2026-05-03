@@ -129,6 +129,23 @@ Total failures:       F  (F/N = X.X%)
 
 The empirical breakdown picks the winner. **No fix is implemented before this report exists.**
 
+## Empirical breakdown (Task 7+8 result, commit 117da0c8)
+
+```
+=== SPAN-MATCH FAILURE BREAKDOWN ===
+Total spans:          1816
+Total failures:        418  (23.0%)
+  TRUNCATION_FRONT       415  (99.3% of failures)
+  TRUNCATION_TAIL          0
+  BPE_DRIFT_START          1  (0.2%)
+  BPE_DRIFT_END            0
+  BPE_DRIFT_BOTH           0
+  WRONG_TURN_LOOKUP        0
+  CONTENT_MISMATCH         2  (0.5%)
+```
+
+Audit 3's truncation hypothesis is **decisively dominant**. The BPE-drift hypothesis from audits 1, 2 and the `hpe_issues.md` reviewer is supported by exactly 1 case in 1816 — empirically below noise. The decision rule (TRUNCATION_FRONT ≥ 50 % → Fix 1) selects **Fix 1 (suffix match in `_find_post_in_span`)** as the primary intervention. **Fix A (header strip) is not warranted** by this evidence; the header divergence between `messages[assistant].content` and `post_codes[idx]` is a real-but-cosmetic data-pipeline asymmetry that affects ≤ 0.2 % of spans. **Fix C (defensive `[1:-1]` retry)** still lands regardless per the plan, as a safety net for any future regression — but by itself it cannot recover the 99.3 % of failures (the retry trims 1–2 tokens, not the 145 / 1498 / 29 that truncation removes).
+
 ---
 
 ## Decision rule (after the diagnosis runs)
