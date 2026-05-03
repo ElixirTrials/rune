@@ -270,13 +270,15 @@ def main():
                 "scores": scores,
             })
 
-        if (i + 1) % 5 == 0:
-            print(
-                f"  {i+1}/{len(rows)}: "
-                f"valid={scores['syntactic_valid']} "
-                f"iou={scores['hunk_iou']:.3f} "
-                f"sim={scores['char_similarity']:.3f}"
-            )
+        # Per-record progress (not batched-by-5) so we can see live throughput
+        # and detect hangs immediately when run with `python -u`.
+        print(
+            f"  {i+1}/{len(rows)}: "
+            f"valid={scores['syntactic_valid']} "
+            f"iou={scores['hunk_iou']:.3f} "
+            f"sim={scores['char_similarity']:.3f}",
+            flush=True,
+        )
 
     n = len(results)
     print(f"\n{'='*60}\nPATCH-QUALITY SUMMARY (n={n})\n{'='*60}")
