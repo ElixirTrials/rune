@@ -32,6 +32,7 @@ __all__ = [
     "split_by_task_id",
     "normalize_mined_pairs",
     "pairs_to_chat_messages",
+    "unroll_trajectory_to_pairs",
 ]
 
 # ---------------------------------------------------------------------------
@@ -1080,3 +1081,53 @@ def pairs_to_chat_messages(
                 }
             )
     return conversations, pre_post_records
+
+
+def unroll_trajectory_to_pairs(traj: "Trajectory") -> list[dict[str, Any]]:
+    """Unroll one trajectory into per-episode SFT pairs.
+
+    Each pair has:
+        prompt:   prior_diff + formatted feedback (task description, review
+                  comment, or test/CI/lint summary).
+        response: action_diff for that round (the model's target).
+        task_id:  the PR's task_id, repeated across all rounds.
+        round:    0-indexed round number.
+    """
+    pairs: list[dict[str, Any]] = []
+    for ep in traj.episodes:
+        feedback_text = _format_feedback(ep.feedback)
+        if ep.prior_diff:
+            prompt = (
+                "Prior diff:\n"
+                f"{ep.prior_diff}\n\n"
+                "Feedback:\n"
+                f"{feedback_text}"
+            )
+        else:
+            prompt = feedback_text
+        pairs.append(
+            {
+                "task_id": traj.task_id,
+                "round": ep.round,
+                "prompt": prompt,
+                "response": ep.action_diff,
+                "feedback_kind": ep.feedback.kind.value,
+            }
+        )
+    return pairs
+
+
+def _format_feedback(fb: "Feedback") -> str:
+    """One human-readable string per Feedback, prioritising the summary."""
+    if fb.summary:
+        head = fb.summary
+    else:
+        head = fb.body
+    parts = [head]
+    if fb.anchor and (fb.anchor.file or fb.anchor.test):
+        loc = fb.anchor.test or (
+            f"{fb.anchor.file}:{fb.anchor.line}" if fb.anchor.line
+            else fb.anchor.file
+        )
+        parts.append(f"[at {loc}]")
+    return " ".join(p for p in parts if p)
