@@ -1,5 +1,5 @@
 {
-    "description": "Phase 1 Bootstrap: 10 repos across 4 languages, ~500 PRs",
+    "description": "Phase 1 Bootstrap: 14 repos across 5 languages, ~700 PRs (incl. algorithm-rich)",
     "defaults": {
         "max_prs": 50,
         "quality": true,
@@ -11,10 +11,14 @@
         {"repo": "scikit-learn/scikit-learn", "language": "python"},
         {"repo": "fastapi/fastapi", "language": "python"},
         {"repo": "apache/airflow", "language": "python"},
+        {"repo": "python/cpython", "language": "python"},
+        {"repo": "pytorch/pytorch", "language": "python"},
+        {"repo": "TheAlgorithms/Python", "language": "python"},
         {"repo": "microsoft/TypeScript", "language": "typescript"},
         {"repo": "vercel/next.js", "language": "javascript"},
         {"repo": "denoland/deno", "language": "rust"},
         {"repo": "rust-lang/rust-analyzer", "language": "rust"},
+        {"repo": "cliutils/CLI11", "language": "cpp"},
         {"repo": "pingcap/tidb", "language": "go"},
         {"repo": "kubernetes/kubernetes", "language": "go"}
     ]
