@@ -299,18 +299,15 @@ query($query: String!, $first: Int!, $after: String) {
         mergedAt
         author { login }
         labels(first: 10) { nodes { name } }
-        commits(first: 100) {
+        commits(first: 20) {
           totalCount
           nodes {
             commit {
-              additions
-              deletions
               changedFilesIfAvailable
               statusCheckRollup {
-                contexts(first: 50) {
+                contexts(first: 10) {
                   nodes {
                     ... on CheckRun {
-                      name
                       conclusion
                     }
                   }
@@ -319,15 +316,66 @@ query($query: String!, $first: Int!, $after: String) {
             }
           }
         }
-        reviewComments(first: 100) {
+        reviews(first: 10) {
           totalCount
-          nodes { path }
+          nodes {
+            comments(first: 10) {
+              nodes { path }
+            }
+          }
         }
       }
     }
   }
 }
 """
+
+    @staticmethod
+    def _gql_node_to_features(node: dict[str, Any]) -> dict[str, Any]:
+        """Convert one GraphQL search node to a scoring feature dict."""
+        commits_data = node.get("commits", {})
+        commit_nodes = commits_data.get("nodes", [])
+        n_commits = commits_data.get("totalCount", len(commit_nodes))
+
+        files_per_commit: list[int] = []
+        n_ci_failed = 0
+        for cn in commit_nodes:
+            commit = cn.get("commit", {})
+            n_files = commit.get("changedFilesIfAvailable") or 0
+            files_per_commit.append(n_files)
+            rollup = commit.get("statusCheckRollup") or {}
+            for ctx in (rollup.get("contexts") or {}).get("nodes", []):
+                if ctx.get("conclusion") == "failure":
+                    n_ci_failed += 1
+
+        p95_files = 0
+        if files_per_commit:
+            files_per_commit.sort()
+            idx = max(0, int(0.95 * len(files_per_commit)) - 1)
+            p95_files = files_per_commit[idx]
+
+        n_anchored = 0
+        for rev in (node.get("reviews") or {}).get("nodes", []):
+            for c in (rev.get("comments") or {}).get("nodes", []):
+                if c.get("path"):
+                    n_anchored += 1
+
+        author_login = (node.get("author") or {}).get("login") or ""
+        labels = [
+            {"name": lbl["name"]}
+            for lbl in (node.get("labels") or {}).get("nodes", [])
+        ]
+
+        return {
+            "number": node.get("number"),
+            "merged_at": node.get("mergedAt"),
+            "user": {"login": author_login},
+            "labels": labels,
+            "review_comments_with_anchor": n_anchored,
+            "n_commits": n_commits,
+            "ci_failures_resolved": n_ci_failed,
+            "n_files_changed_per_commit_p95": p95_files,
+        }
 
     def search_and_score_prs_graphql(
         self,
@@ -349,7 +397,7 @@ query($query: String!, $first: Int!, $after: String) {
             List of dicts with keys matching what ``score_pr_quality`` expects.
         """
         search_query = f"repo:{repo} is:pr is:merged review:approved"
-        per_page = 100
+        per_page = 25
         pages_needed = math.ceil(max_results / per_page)
         cursor: str | None = None
         results: list[dict[str, Any]] = []
@@ -369,52 +417,7 @@ query($query: String!, $first: Int!, $after: String) {
             for node in nodes:
                 if not node:
                     continue
-                # Extract commit-level features
-                commits_data = node.get("commits", {})
-                commit_nodes = commits_data.get("nodes", [])
-                n_commits = commits_data.get("totalCount", len(commit_nodes))
-
-                files_per_commit: list[int] = []
-                n_ci_failed = 0
-                for cn in commit_nodes:
-                    commit = cn.get("commit", {})
-                    n_files = commit.get("changedFilesIfAvailable") or 0
-                    files_per_commit.append(n_files)
-                    rollup = commit.get("statusCheckRollup") or {}
-                    for ctx in (rollup.get("contexts") or {}).get("nodes", []):
-                        if ctx.get("conclusion") == "failure":
-                            n_ci_failed += 1
-
-                p95_files = 0
-                if files_per_commit:
-                    files_per_commit.sort()
-                    idx = max(0, int(0.95 * len(files_per_commit)) - 1)
-                    p95_files = files_per_commit[idx]
-
-                # Review comments with an anchor (path present)
-                rc_data = node.get("reviewComments", {})
-                n_anchored = sum(
-                    1 for c in rc_data.get("nodes", []) if c.get("path")
-                )
-
-                author_login = (node.get("author") or {}).get("login") or ""
-                labels = [
-                    {"name": lbl["name"]}
-                    for lbl in (node.get("labels") or {}).get("nodes", [])
-                ]
-
-                results.append(
-                    {
-                        "number": node.get("number"),
-                        "merged_at": node.get("mergedAt"),
-                        "user": {"login": author_login},
-                        "labels": labels,
-                        "review_comments_with_anchor": n_anchored,
-                        "n_commits": n_commits,
-                        "ci_failures_resolved": n_ci_failed,
-                        "n_files_changed_per_commit_p95": p95_files,
-                    }
-                )
+                results.append(self._gql_node_to_features(node))
 
             page_info = search.get("pageInfo", {})
             if not page_info.get("hasNextPage"):
@@ -436,13 +439,17 @@ query($owner: String!, $name: String!, $number: Int!) {
       baseRefOid
       author { login }
       labels(first: 10) { nodes { name } }
-      reviewComments(first: 100) {
+      reviews(first: 100) {
         nodes {
-          body
-          path
-          line
-          author { login }
-          createdAt
+          comments(first: 50) {
+            nodes {
+              body
+              path
+              line
+              author { login }
+              createdAt
+            }
+          }
         }
       }
       commits(first: 100) {
@@ -519,18 +526,19 @@ query($owner: String!, $name: String!, $number: Int!) {
                 }
             )
 
-        # Normalise review comments
+        # Normalise review comments (nested: reviews → comments)
         review_comments: list[dict[str, Any]] = []
-        for c in (pr.get("reviewComments") or {}).get("nodes", []):
-            review_comments.append(
-                {
-                    "body": c.get("body", ""),
-                    "path": c.get("path"),
-                    "line": c.get("line"),
-                    "user": {"login": (c.get("author") or {}).get("login")},
-                    "created_at": c.get("createdAt", ""),
-                }
-            )
+        for rev in (pr.get("reviews") or {}).get("nodes", []):
+            for c in (rev.get("comments") or {}).get("nodes", []):
+                review_comments.append(
+                    {
+                        "body": c.get("body", ""),
+                        "path": c.get("path"),
+                        "line": c.get("line"),
+                        "user": {"login": (c.get("author") or {}).get("login")},
+                        "created_at": c.get("createdAt", ""),
+                    }
+                )
 
         labels = [
             {"name": lbl["name"]}

@@ -194,6 +194,7 @@ def _hydrate_commits(
                 **c,
                 "files": detail.get("files", []),
                 "sha": sha,
+                "author": detail.get("author"),
                 "commit": {"committer": {"date": c.get("committed_date", "")}},
             }
         )
