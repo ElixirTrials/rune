@@ -23,14 +23,12 @@ SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanati
 
 __all__ = [
     "format_for_distillation",
-    "normalize_mined_trajectory",
     "generate_needle_dataset",
     "generate_trajectory_dataset",
     "augment_trajectories",
     "save_jsonl",
     "load_jsonl",
     "split_by_task_id",
-    "normalize_mined_pairs",
     "pairs_to_chat_messages",
     "unroll_trajectory_to_pairs",
 ]
@@ -345,86 +343,6 @@ def format_for_distillation(trajectory: dict[str, Any]) -> list[dict[str, str]]:
     return records
 
 
-def normalize_mined_trajectory(mined: dict[str, Any]) -> dict[str, Any]:
-    """Convert a GitHub-mined trajectory dict into distillation-ready format.
-
-    Maps the mining pipeline's output (PR/issue metadata with commit and review
-    steps) into the schema expected by ``format_for_distillation``.
-
-    Outcome mapping:
-        - ``pr_*`` task_ids: ``"merged"`` -> ``"success"``, else ``"failure"``
-        - ``issue_*`` task_ids: ``"closed"`` -> ``"success"``, else ``"failure"``
-        - Fallback: ``"merged"`` or ``"closed"`` -> ``"success"``, else ``"failure"``
-
-    Step mapping:
-        - Commit steps get ``[Commit]`` prefix in description and their content
-          as ``generated_code``.
-        - Review steps get ``[Review]`` prefix with content inlined into
-          description and empty ``generated_code``.
-        - Only the **last** commit step receives ``tests_passed=True`` and
-          ``canonical_solution`` (and only when the overall outcome is success).
-
-    Args:
-        mined: Dict from the GitHub mining pipeline with keys ``task_id``,
-            ``task_description``, ``outcome``, and ``steps`` (list of dicts
-            with ``type``, ``description``, and ``content`` fields).
-
-    Returns:
-        Trajectory dict ready for ``format_for_distillation``.
-    """
-    task_id: str = mined.get("task_id", "")
-    raw_outcome: str = mined.get("outcome", "")
-    raw_steps: list[dict[str, Any]] = mined.get("steps", [])
-
-    # --- Determine normalized outcome ---
-    if task_id.startswith("pr_"):
-        normalized_outcome = "success" if raw_outcome == "merged" else "failure"
-    elif task_id.startswith("issue_"):
-        normalized_outcome = "success" if raw_outcome == "closed" else "failure"
-    else:
-        normalized_outcome = (
-            "success" if raw_outcome in ("merged", "closed") else "failure"
-        )
-
-    # --- Identify commit steps to find the last one ---
-    commit_steps = [s for s in raw_steps if s.get("type") == "commit"]
-
-    # --- Normalize steps ---
-    normalized_steps: list[dict[str, Any]] = []
-    for step in raw_steps:
-        step_type = step.get("type", "")
-        step_description = step.get("description", "")
-        step_content = step.get("content", "")
-
-        if step_type == "commit":
-            is_last_commit = commit_steps and step is commit_steps[-1]
-            tests_passed = is_last_commit and normalized_outcome == "success"
-            entry: dict[str, Any] = {
-                "description": f"[Commit] {step_description}",
-                "generated_code": step_content,
-                "tests_passed": tests_passed,
-            }
-            if is_last_commit and normalized_outcome == "success":
-                entry["canonical_solution"] = step_content
-            normalized_steps.append(entry)
-        elif step_type == "review":
-            normalized_steps.append(
-                {
-                    "description": f"[Review] {step_content}",
-                    "generated_code": "",
-                    "tests_passed": False,
-                }
-            )
-
-    return {
-        "task_id": task_id,
-        "session_id": task_id,
-        "task_description": mined.get("task_description", ""),
-        "steps": normalized_steps,
-        "outcome": normalized_outcome,
-    }
-
-
 def generate_needle_dataset(n: int = 20) -> list[dict[str, str]]:
     """Generate needle-in-haystack records for CI smoke testing.
 
@@ -657,140 +575,6 @@ def split_by_task_id(
     train = [r for r in records if r["task_id"] not in test_ids]
     test = [r for r in records if r["task_id"] in test_ids]
     return train, test
-
-
-def _group_steps_into_blocks(
-    steps: list[dict[str, Any]],
-) -> list[tuple[str, list[dict[str, Any]]]]:
-    """Group contiguous steps of the same type into (type, steps) blocks."""
-    blocks: list[tuple[str, list[dict[str, Any]]]] = []
-    cur_type: str | None = None
-    cur_block: list[dict[str, Any]] = []
-    for step in steps:
-        stype = step.get("type", "")
-        if stype != cur_type:
-            if cur_block:
-                blocks.append((cur_type or "", cur_block))
-            cur_type = stype
-            cur_block = [step]
-        else:
-            cur_block.append(step)
-    if cur_block:
-        blocks.append((cur_type or "", cur_block))
-    return blocks
-
-
-def _make_pair_record(
-    task_id: str,
-    outcome: str,
-    language: str | None,
-    idx: int,
-    activation: str,
-    teacher: str,
-    task_description: str = "",
-) -> dict[str, Any]:
-    """Build a single training pair record."""
-    return {
-        "task_id": task_id,
-        "task_description": task_description,
-        "activation_text": activation,
-        "teacher_text": teacher,
-        "metadata": {
-            "outcome": outcome,
-            "step_index": idx,
-            "language": language,
-            "source_task_id": task_id,
-        },
-    }
-
-
-def normalize_mined_pairs(
-    trajectory: dict[str, Any],
-    compress: bool = True,
-    max_diff_lines: int = 500,
-    language: str | None = None,
-) -> list[dict[str, Any]]:
-    """Convert a mined PR trajectory into per-step training pairs.
-
-    Each review-to-revision cycle becomes one training record with
-    activation_text (task + current code + review feedback) and
-    teacher_text (activation + revision diff). Compatible with
-    ``augment_trajectories``, ``split_by_task_id``, and ``save_jsonl``.
-
-    The algorithm groups contiguous commits and reviews into blocks,
-    then pairs each reviews-block with the following commits-block.
-    Multiple commits in a block: the last commit is used (the state
-    the reviewer actually saw). Multiple reviews: concatenated.
-
-    Args:
-        trajectory: Raw mined trajectory from ``mine_pr_diff_chains``.
-        compress: Apply diff compression via ``compress_diff``.
-        max_diff_lines: Max lines per compressed diff.
-        language: Language tag for metadata (from repos config).
-
-    Returns:
-        List of training pair records with task_id, activation_text,
-        teacher_text, and metadata fields.
-    """
-    task_id: str = trajectory.get("task_id", "")
-    task_desc: str = trajectory.get("task_description", "")
-    raw_steps: list[dict[str, Any]] = trajectory.get("steps", [])
-    outcome: str = trajectory.get("outcome", "")
-
-    if not raw_steps:
-        return []
-
-    blocks = _group_steps_into_blocks(raw_steps)
-
-    def _diff(step: dict[str, Any]) -> str:
-        raw = step.get("content", "")
-        return compress_diff(raw, max_lines=max_diff_lines) if compress else raw
-
-    def _record(idx: int, activation: str, teacher: str) -> dict[str, Any]:
-        return _make_pair_record(
-            task_id,
-            outcome,
-            language,
-            idx,
-            activation,
-            teacher,
-            task_description=task_desc,
-        )
-
-    records: list[dict[str, Any]] = []
-    step_idx = 0
-    prev_diff = ""
-    bi = 0  # block index
-
-    # --- Step 0: initial commits block ---
-    if blocks[0][0] == "commit":
-        last_commit = blocks[0][1][-1]
-        diff = _diff(last_commit)
-        activation = f"## Task\n{task_desc}"
-        teacher = f"{activation}\n\n## Implementation\n{diff}"
-        records.append(_record(step_idx, activation, teacher))
-        prev_diff = diff
-        step_idx += 1
-        bi = 1
-
-    # --- Subsequent (reviews, commits) pairs ---
-    while bi < len(blocks) - 1:
-        if blocks[bi][0] == "review" and blocks[bi + 1][0] == "commit":
-            review_text = "\n\n".join(r.get("content", "") for r in blocks[bi][1])
-            revision = _diff(blocks[bi + 1][1][-1])
-            activation = f"## Task\n{task_desc}"
-            if prev_diff:
-                activation += f"\n\n## Current Code\n{prev_diff}"
-            activation += f"\n\n## Review Feedback\n{review_text}"
-            teacher = f"{activation}\n\n## Revision\n{revision}"
-            records.append(_record(step_idx, activation, teacher))
-            prev_diff = revision
-            step_idx += 1
-            bi += 2
-        else:
-            bi += 1
-
-    return records
 
 
 # ---------------------------------------------------------------------------
