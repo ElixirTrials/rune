@@ -46,7 +46,7 @@ services:
     build:
       context: ./mlflow
       dockerfile: Dockerfile
-    image: rune-mlflow:v2.16.2
+    image: rune-mlflow:v3.1.0
     ports:
       - "5000:5000"
     environment:
