@@ -171,3 +171,49 @@ class GitHubClient:
             url = match.group(1) if match else None
 
         return items
+
+    def get_repo_license(self, repo: str) -> str | None:
+        """Return the SPDX identifier for ``repo`` (or None when unlicensed).
+
+        The result is cached per-instance so a batch mine over many PRs in
+        the same repo only pays for one HTTP request.
+        """
+        cache: dict[str, str | None] = self.__dict__.setdefault(
+            "_license_cache", {}
+        )
+        if repo in cache:
+            return cache[repo]
+        data = self.get(f"/repos/{repo}")
+        spdx: str | None = None
+        license_block = data.get("license")
+        if isinstance(license_block, dict):
+            spdx = license_block.get("spdx_id")
+            if spdx == "NOASSERTION":
+                spdx = None
+        cache[repo] = spdx
+        return spdx
+
+    def get_check_runs(
+        self,
+        repo: str,
+        sha: str,
+        only_failed: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Fetch check-runs for one commit. Optionally filter to failures."""
+        data = self.get(f"/repos/{repo}/commits/{sha}/check-runs")
+        runs: list[dict[str, Any]] = list(data.get("check_runs", []))
+        if only_failed:
+            runs = [r for r in runs if r.get("conclusion") == "failure"]
+        return runs
+
+    def get_check_suites(self, repo: str, sha: str) -> list[dict[str, Any]]:
+        """Fetch check-suites for one commit (used for build_failure detection)."""
+        data = self.get(f"/repos/{repo}/commits/{sha}/check-suites")
+        return list(data.get("check_suites", []))
+
+    def get_issue_comments(self, repo: str, issue_number: int) -> list[dict[str, Any]]:
+        """Top-level issue/PR comments (the "conversation" tab, not inline reviews)."""
+        return self.get_paginated(
+            f"/repos/{repo}/issues/{issue_number}/comments",
+            max_pages=3,
+        )
