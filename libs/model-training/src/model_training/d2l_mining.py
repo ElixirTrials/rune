@@ -80,6 +80,8 @@ def score_pr_quality(pr_features: dict[str, Any]) -> float:
 
 
 _PATCH_LINE_CAP = 2000
+_ACTION_DIFF_CHAR_CAP = 30_000
+_PRIOR_DIFF_WINDOW = 8_000
 
 
 def _aggregate_patch(files: list[dict[str, Any]]) -> str:
@@ -149,78 +151,91 @@ def mine_pr_trajectories(
     return out
 
 
-def _features_for_pr(client: Any, repo: str, pr_number: int) -> dict[str, Any]:
-    """Fetch the score-input features for one PR."""
-    detail = client.get(f"/repos/{repo}/pulls/{pr_number}")
-    review_comments = client.get_paginated(
-        f"/repos/{repo}/pulls/{pr_number}/comments", max_pages=3
-    )
-    n_anchored = sum(1 for c in review_comments if c.get("path"))
-
-    commits = client.get_paginated(
-        f"/repos/{repo}/pulls/{pr_number}/commits", max_pages=5
-    )
-    p95_files = 0
-    if commits:
-        files_per_commit = []
-        for c in commits:
-            d = client.get(f"/repos/{repo}/commits/{c['sha']}")
-            files_per_commit.append(len(d.get("files", [])))
-        files_per_commit.sort()
-        idx = max(0, int(0.95 * len(files_per_commit)) - 1)
-        p95_files = files_per_commit[idx]
-
-    n_ci_failed = 0
-    for c in commits:
-        n_ci_failed += len(client.get_check_runs(repo, c["sha"], only_failed=True))
-
-    return {
-        "user": detail.get("user") or {},
-        "review_comments_with_anchor": n_anchored,
-        "n_commits": len(commits),
-        "ci_failures_resolved": n_ci_failed,
-        "labels": detail.get("labels") or [],
-        "n_files_changed_per_commit_p95": p95_files,
-        "merged_at": detail.get("merged_at"),
-    }
-
-
 def search_quality_prs_v2(
     repo: str,
     max_results: int = 100,
     github_token: str | None = None,
 ) -> list[int]:
-    """Return PR numbers ranked by corrective richness, top-``max_results``."""
+    """Return PR numbers ranked by corrective richness, top-``max_results``.
+
+    Uses GraphQL to fetch all candidate PRs and their scoring features in
+    ~1 paginated query instead of ~6 REST calls per PR candidate.
+    """
     client = GitHubClient(token=github_token)
-    items_data = client.get(
-        "/search/issues",
-        params={
-            "q": f"repo:{repo} is:pr is:merged review:approved",
-            "sort": "updated",
-            "order": "desc",
-            "per_page": min(max_results * 2, 100),
-        },
+    candidates_data = client.search_and_score_prs_graphql(
+        repo, max_results=max_results * 2
     )
-    items = items_data.get("items", [])
-    label_names_per_pr = {
-        item["number"]: {lbl["name"] for lbl in item.get("labels", [])}
-        for item in items
-    }
 
     candidates: list[tuple[float, int]] = []
-    for item in items:
-        pr_number = item["number"]
-        if label_names_per_pr[pr_number] & _NONCODE_LABELS:
+    for feats in candidates_data:
+        pr_number = feats.get("number")
+        if pr_number is None:
             continue
-        feats = _features_for_pr(client, repo, pr_number)
         score = score_pr_quality(feats)
         if score > 0:
             candidates.append((score, pr_number))
 
     candidates.sort(key=lambda x: x[0], reverse=True)
     out = [pr for _score, pr in candidates[:max_results]]
-    logger.info("search_quality_prs_v2(%s) → %d PRs", repo, len(out))
+    logger.info("search_quality_prs_v2(%s) -> %d PRs", repo, len(out))
     return out
+
+
+def _hydrate_commits(
+    client: Any, repo: str, gql_commits: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Fetch file patches for each commit via REST and merge with GQL data."""
+    hydrated: list[dict[str, Any]] = []
+    for c in gql_commits:
+        sha = c["oid"]
+        detail = client.get(f"/repos/{repo}/commits/{sha}")
+        hydrated.append(
+            {
+                **c,
+                "files": detail.get("files", []),
+                "sha": sha,
+                "commit": {"committer": {"date": c.get("committed_date", "")}},
+            }
+        )
+    return hydrated
+
+
+def _feedback_events_from_gql(
+    gql_meta: dict[str, Any],
+    hydrated: list[dict[str, Any]],
+) -> list[FeedbackEvent]:
+    """Build FeedbackEvent list from GraphQL PR metadata (no extra REST calls)."""
+    fb_events: list[FeedbackEvent] = []
+
+    for c in gql_meta.get("review_comments", []):
+        comment_author = (c.get("user") or {}).get("login")
+        body = truncate_head_tail(c.get("body") or "", max_bytes=4096)
+        created = c.get("created_at", "")
+        fb_events.append(
+            FeedbackEvent(
+                kind=FeedbackKind.review_comment.value,
+                body=body,
+                ts=datetime.fromisoformat(created.replace("Z", "+00:00")),
+                author=comment_author,
+                anchor=Anchor(file=c.get("path"), line=c.get("line")),
+            )
+        )
+
+    for c in hydrated:
+        raw_date = c.get("committed_date") or ""
+        ts = (
+            datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            if raw_date
+            else datetime.now(timezone.utc)
+        )
+        for run in c.get("check_runs", []):
+            if run.get("conclusion") != "failure":
+                continue
+            ev = _failed_check_to_event(run, ts=ts)
+            if ev is not None:
+                fb_events.append(ev)
+
+    return fb_events
 
 
 def _build_trajectory(
@@ -229,56 +244,35 @@ def _build_trajectory(
     pr: dict[str, Any],
     spdx: str,
 ) -> Trajectory | None:
-    pr_number = pr["number"]
-    pr_author = (pr.get("user") or {}).get("login") or ""
+    """Build a :class:`Trajectory` for one PR.
 
-    commits = client.get_paginated(
-        f"/repos/{repo}/pulls/{pr_number}/commits", max_pages=5
+    ``pr`` is either a raw REST PR dict (legacy path via ``mine_pr_trajectories``
+    when ``pr_numbers`` are supplied) or a normalised GraphQL metadata dict.
+
+    File patches are always fetched via REST — GraphQL doesn't expose them.
+    """
+    pr_number = pr["number"]
+    pr_author = (
+        (pr.get("user") or {}).get("login")
+        or (pr.get("author") or {}).get("login")
+        or ""
     )
-    if not commits:
+
+    gql_meta = client.fetch_pr_metadata_graphql(repo, pr_number)
+    gql_commits = gql_meta.get("commits", [])
+    if not gql_commits:
         return None
 
-    hydrated: list[dict[str, Any]] = []
-    for c in commits:
-        detail = client.get(f"/repos/{repo}/commits/{c['sha']}")
-        c = dict(c)
-        c["files"] = detail.get("files", [])
-        hydrated.append(c)
-    commits = hydrated
+    hydrated = _hydrate_commits(client, repo, gql_commits)
+    fb_events = _feedback_events_from_gql(gql_meta, hydrated)
+    rounds = pair_feedback_with_commits(hydrated, fb_events, pr_author=pr_author)
 
-    review_comments = client.get_paginated(
-        f"/repos/{repo}/pulls/{pr_number}/comments", max_pages=3
-    )
-    fb_events: list[FeedbackEvent] = []
-    for c in review_comments:
-        body = truncate_head_tail(c.get("body") or "", max_bytes=4096)
-        fb_events.append(
-            FeedbackEvent(
-                kind=FeedbackKind.review_comment.value,
-                body=body,
-                ts=datetime.fromisoformat(
-                    c["created_at"].replace("Z", "+00:00")
-                ),
-                author=(c.get("user") or {}).get("login"),
-                anchor=Anchor(file=c.get("path"), line=c.get("line")),
-            )
-        )
+    title = pr.get("title") or gql_meta.get("title", "")
+    body = pr.get("body") or gql_meta.get("body") or ""
 
-    for c in commits:
-        ts = datetime.fromisoformat(
-            c["commit"]["committer"]["date"].replace("Z", "+00:00")
-        )
-        for run in client.get_check_runs(repo, c["sha"], only_failed=True):
-            ev = _failed_check_to_event(run, ts=ts)
-            if ev is not None:
-                fb_events.append(ev)
-
-    rounds = pair_feedback_with_commits(commits, fb_events, pr_author=pr_author)
-
-    title = pr.get("title", "")
-    body = pr.get("body") or ""
-
-    initial_diff = _aggregate_patch(commits[0].get("files", []))
+    initial_diff = _aggregate_patch(hydrated[0].get("files", []))
+    if len(initial_diff) > _ACTION_DIFF_CHAR_CAP:
+        initial_diff = initial_diff[:_ACTION_DIFF_CHAR_CAP]
     episodes: list[Episode] = [
         Episode(
             round=0,
@@ -294,10 +288,13 @@ def _build_trajectory(
     for round_link in rounds:
         kind = FeedbackKind(round_link.feedback.kind)
         action_diff = _aggregate_patch(round_link.next_commit.get("files", []))
+        if len(action_diff) > _ACTION_DIFF_CHAR_CAP:
+            continue
+        windowed_prior = cumulative[-_PRIOR_DIFF_WINDOW:] if cumulative else ""
         episodes.append(
             Episode(
                 round=len(episodes),
-                prior_diff=cumulative,
+                prior_diff=windowed_prior,
                 feedback=Feedback(
                     kind=kind,
                     body=round_link.feedback.body,
@@ -320,6 +317,18 @@ def _build_trajectory(
     if len(episodes) < 2:
         return None
 
+    # Prefer head/base from GQL metadata; fall back to REST PR shape.
+    head_sha = (
+        gql_meta.get("head_sha")
+        or (pr.get("head") or {}).get("sha", "")
+    )
+    base_sha = (
+        gql_meta.get("base_sha")
+        or (pr.get("base") or {}).get("sha", "")
+    )
+
+    labels = pr.get("labels") or gql_meta.get("labels", [])
+
     return Trajectory(
         task_id=f"pr_{repo}_{pr_number}",
         task_description=truncate_head_tail(f"{title}\n\n{body}".strip(), 4096),
@@ -327,15 +336,15 @@ def _build_trajectory(
         metadata={
             "outcome": "merged",
             "n_rounds": len(episodes),
-            "n_commits": len(commits),
-            "labels": [lbl["name"] for lbl in pr.get("labels", [])],
+            "n_commits": len(hydrated),
+            "labels": [lbl["name"] for lbl in labels],
         },
         provenance=Provenance(
             repo=repo,
             pr_number=pr_number,
             license=spdx,
-            head_sha=pr["head"]["sha"],
-            base_sha=pr["base"]["sha"],
+            head_sha=head_sha,
+            base_sha=base_sha,
             mined_at=datetime.now(timezone.utc),
         ),
     )
