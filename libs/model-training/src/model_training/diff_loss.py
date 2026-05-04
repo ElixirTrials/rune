@@ -297,9 +297,10 @@ def _find_post_in_span_or_suffix(
     """Locate ``post_input_ids`` inside the span, with suffix-match fallback.
 
     Tries a strict contiguous match first (identical to :func:`_find_post_in_span`).
-    When that fails *and* ``span_start == 0`` (indicating keep_end front-truncation),
-    searches for the longest suffix of ``post_input_ids`` whose length is at least
-    ``max(8, len(post_input_ids) // 4)`` and that matches a prefix of the span.
+    When that fails, searches for the longest suffix of ``post_input_ids`` whose
+    length is at least ``max(8, len(post_input_ids) // 4)`` and that matches a
+    prefix of the span.  This handles keep_end truncation cutting into the
+    assistant span regardless of the span's absolute position in the sequence.
 
     Return value is a 2-tuple ``(match_pos, prefix_truncated)``:
 
@@ -328,10 +329,7 @@ def _find_post_in_span_or_suffix(
             if span_ids[off : off + n_post] == post_input_ids:
                 return off, 0
 
-    # --- suffix path (only when span is at the sequence head) ---
-    if span_start != 0:
-        return -1, 0
-
+    # --- suffix path (truncation cut into the assistant span) ---
     if n_post == 0:
         return -1, 0
 

@@ -188,6 +188,7 @@ def compute_assistant_masks(
             tokenize=True,
             add_generation_prompt=False,
             return_dict=False,
+            enable_thinking=False,
         )
     )
     mask: list[int] = [0] * len(full_ids)

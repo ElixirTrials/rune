@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# code-review-graph auto-refresh after every commit.
+# Incremental update via SHA-256 file diffs (~1-2s on a 2,900-file repo).
+# Runs in background; never blocks the commit. Silent no-op if CRG not installed.
+command -v code-review-graph >/dev/null 2>&1 && \
+  (code-review-graph update --quiet >/dev/null 2>&1 &)
+exit 0

@@ -2,6 +2,39 @@
 
 Local-first coding agent that encodes coding trajectories into LoRA adapters, building persistent weight-space episodic memory. 5-phase pipeline (decompose → plan → code → integrate → diagnose/repair), parallel swarm orchestration, Doc-to-LoRA hypernetwork with Sakana perceiver, TIES/DARE merging, adapter registry with lineage tracking.
 
+## Read first
+- **`PRODUCT.md`** — read before any non-trivial change. If missing or contains `<!-- TODO -->` stubs, stop and ask the user to fill it in. Cite specific sections (`do-not-break:`, `out-of-scope:`, `regulatory-surface:`) when justifying decisions.
+- **`.claude/skills-index.md`** — trigger table. Match the user's keywords to a skill, then load just that skill.
+
+## Stack
+- `uv` Python 3.12 workspace.
+- Backend: FastAPI services under `services/` (`api-service`, `training-svc`, `evolution-svc`, `lora-server`, `rune-agent`). Agents use LangGraph.
+- Libs: `libs/<name>` (Python). Common: `shared`, `events-py`, `adapter-registry`, `inference`, `model-training`, `corpus-producer`, `evaluation`.
+- Infra: `infra/docker-compose.yml` (Postgres + MLflow + litestream). Scripts: `scripts/`. Docs: `docs/` + `mkdocs.yml`.
+- Quality: ruff, mypy (strict-ish), pytest+xdist+cov.
+- Cloud: AWS (ECS Fargate / RDS / S3 / Secrets Manager / EventBridge+SQS / SageMaker).
+
+## Hard rules
+
+**Git** — never run mutating git (`commit`, `push`, `merge`, `rebase`, `reset`, `checkout`, `branch`, `stash`, `tag`, `cherry-pick`, `revert`). Hook-enforced. Read-only git only when asked.
+
+**Long-running ops** — never execute (hook-blocked). Ask the user to run and log. See `long-run-fallback` skill for the exact protocol.
+
+**Deploy / install** — never. Hook-enforced. Includes installers, migrators, deployers — all user-managed.
+
+**Migrations** (alembic) — never apply. Generate, read the SQL, flag risk. See `alembic-safe` skill.
+
+**Model routing** — default **Opus**. For trivially-scoped, single-file, read-only work: switch to Sonnet (`/sonnet`) without being asked. State the switch. Skills `senior-architect`, `compliance-check`, `ux-pathway`, `senior-devops` require Opus (hook-enforced).
+
+## Style
+- No preamble. No restating the question. No closing summary unless asked.
+- Glob/Grep before Read. Never open a file speculatively to "see what's in it".
+- Diff-style edits over rewrites. Edit existing files; don't create new ones unless required.
+- Plan-then-execute for any change touching 2+ files (`plan-first` skill).
+- One focused question when uncertain. Not multiple speculative paths.
+- No emoji unless asked. No comments unless the *why* is non-obvious.
+- Don't read lockfiles, dist, build, caches, node_modules, .venv (hook-enforced as backup).
+
 ## Running Tests
 
 ```bash
@@ -120,3 +153,91 @@ Comprehensive findings documented in `instructions/adapter-research-findings.md`
 - Adapter scaling 0.16x is optimal (full 45.25x causes degenerate repetition)
 - Skeleton prompts + prose trajectories is the winning combination
 - 200-trial Bayesian optimization across 5 diverse coding tasks
+
+## Workflow shortcuts
+- `make help` — top-level commands.
+- `scripts/create-service.sh --lang py|ts --lib|--app <name>` — scaffold new package (use via `new-package` skill).
+
+## Do not
+- Create skills, hooks, or modify settings without explicit user request.
+- Commit `.claude/runs/` — ephemeral log dumps; gitignored.
+- Treat `.github/copilot-instructions.md` as authoritative for Claude — it's for Copilot. This file is the source of truth for Claude behavior.
+- Add backwards-compatibility shims, dead-code re-exports, or feature flags Claude wasn't asked for.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

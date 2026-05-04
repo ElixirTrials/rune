@@ -227,6 +227,7 @@ class _FakeTokenizer:
         tokenize: bool,
         add_generation_prompt: bool,
         return_dict: bool = True,
+        enable_thinking: bool | None = None,
     ) -> list[int]:
         ids: list[int] = []
         for msg in messages:
@@ -298,6 +299,7 @@ def test_compute_assistant_masks_truncated_tail_marks_to_eos() -> None:
             tokenize: bool,
             add_generation_prompt: bool,
             return_dict: bool = True,
+            **kwargs: Any,
         ) -> list[int]:
             ids = super().apply_chat_template(
                 messages,
@@ -339,6 +341,7 @@ def test_compute_assistant_masks_raises_when_markers_missing() -> None:
             tokenize: bool,
             add_generation_prompt: bool,
             return_dict: bool = True,
+            **kwargs: Any,
         ) -> list[int]:
             return [1, 2, 3]
 
@@ -367,6 +370,7 @@ def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> N
             tokenize: bool,
             add_generation_prompt: bool,
             return_dict: bool = True,
+            **kwargs: Any,
         ) -> Any:
             ids = super().apply_chat_template(
                 messages,

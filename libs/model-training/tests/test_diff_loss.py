@@ -1284,17 +1284,16 @@ class TestFindPostInSpanOrSuffix:
         # Verify the recovered suffix really matches
         assert input_ids[0 : suffix_len] == post_ids[k:]
 
-    def test_no_suffix_when_span_start_nonzero(self) -> None:
-        """Suffix recovery is NOT attempted when span_start > 0."""
+    def test_suffix_works_when_span_start_nonzero(self) -> None:
+        """Suffix recovery works regardless of span_start position."""
         from model_training.diff_loss import _find_post_in_span_or_suffix
 
-        # Same construction as above but span_start = 3 (not 0)
         suffix_len = 15
         k = 5
         post_ids = list(range(100, 120))
         span_ids = post_ids[k:]  # last 15 of post_ids
 
-        # Place span at position 3
+        # Place span at position 3 (non-zero)
         input_ids = [0, 1, 2] + span_ids + [999]
         span_start = 3
         span_end = 3 + suffix_len
@@ -1305,8 +1304,8 @@ class TestFindPostInSpanOrSuffix:
             span_end=span_end,
             post_input_ids=post_ids,
         )
-        assert (match_pos, prefix_truncated) == (-1, 0), (
-            "suffix path must NOT be attempted when span_start != 0"
+        assert (match_pos, prefix_truncated) == (0, k), (
+            "suffix path should recover truncated post even when span_start != 0"
         )
 
     def test_rejects_short_suffix(self) -> None:

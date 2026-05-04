@@ -81,6 +81,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "requests-mock>=1.12.1",
     "pandas-stubs>=3.0.0.260204",
+    "code-review-graph>=2.3.2",
 ]
 
 [tool.uv.sources]

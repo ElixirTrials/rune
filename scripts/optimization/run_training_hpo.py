@@ -137,6 +137,7 @@ class HPORunArgs:
     seed: int = 42
     upload_adapters_to_mlflow: bool = True
     cleanup_local_adapters: bool = True
+    encoding_mode: str = "multi_turn"
     extra_train_kwargs: dict[str, Any] = field(default_factory=dict)
     proxy_epochs: int = 3
 
@@ -202,6 +203,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--smoke",
         action="store_true",
         help="2-trial × 1-step smoke test for CI; ignores --n-trials.",
+    )
+    parser.add_argument(
+        "--encoding-mode",
+        dest="encoding_mode",
+        choices=["multi_turn", "single_turn"],
+        default="multi_turn",
+        help="Chat encoding mode passed to train_and_register.",
     )
     parser.add_argument(
         "--hunk-loss-weight",
@@ -372,7 +380,7 @@ def _build_trial_kwargs(
         "session_id": None,
         "adapter_id": adapter_id,
         "dataset_path": trial_dataset_path,
-        "encoding_mode": "multi_turn",
+        "encoding_mode": run_args.encoding_mode,
         "model_config_name": run_args.model_config_name,
         "warm_start_adapter_id": _resolve_warm_start(run_args.warm_start),
         "epochs": run_args.proxy_epochs,
@@ -1376,6 +1384,7 @@ def main(argv: list[str] | None = None) -> int:
         upload_adapters_to_mlflow=args.upload_adapters_to_mlflow,
         cleanup_local_adapters=args.cleanup_local_adapters,
         proxy_epochs=args.proxy_epochs,
+        encoding_mode=args.encoding_mode,
     )
     fitness_cfg = FitnessConfig(
         hunk_loss_weight=args.hunk_loss_weight,
