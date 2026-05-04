@@ -1,0 +1,39 @@
+Can you fix this bash: instructions/mining_repos.json
+
+---
+
+Can you fix this to use the gh cli: '/Users/noahdolevelixir/Code/rune/instructions/mine.bash'
+
+---
+
+Can you add logic to check what has already been mined so that the script is idempotent?
+
+---
+
+Can you check the data on S3 and make sure everything is mined and saved properly?
+
+---
+
+Let's expand mining_repos.json
+
+---
+
+How many repos do we have mined and is it sufficient for our HPO training?
+
+---
+
+Make a suggestion on next steps to get good training.
+
+---
+
+Do it.
+
+---
+
+<task-notification>
+<task-id>bedj8cn1t</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-503/-Users-noahdolevelixir-Code-rune/4bf35a90-61f8-4051-bae0-1e57a7301cc8/tasks/bedj8cn1t.output</output-file>
+<status>completed</status>
+<summary>Background command "Run mining at max_prs=200 with upload skipped" completed (exit code 0)</summary>
+</task-notification>
