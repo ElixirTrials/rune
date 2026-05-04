@@ -36,6 +36,7 @@ __all__ = [
     "mine_issue_commit_chains",
     "mine_pr_trajectories",
     "search_quality_prs",
+    "search_quality_prs_v2",
     "score_pr_quality",
 ]
 
@@ -458,6 +459,80 @@ def mine_pr_trajectories(
         traj = _build_trajectory(client, repo, pr, spdx or "")
         if traj is not None:
             out.append(traj)
+    return out
+
+
+def _features_for_pr(client: Any, repo: str, pr_number: int) -> dict[str, Any]:
+    """Fetch the score-input features for one PR."""
+    detail = client.get(f"/repos/{repo}/pulls/{pr_number}")
+    review_comments = client.get_paginated(
+        f"/repos/{repo}/pulls/{pr_number}/comments", max_pages=3
+    )
+    n_anchored = sum(1 for c in review_comments if c.get("path"))
+
+    commits = client.get_paginated(
+        f"/repos/{repo}/pulls/{pr_number}/commits", max_pages=5
+    )
+    p95_files = 0
+    if commits:
+        files_per_commit = []
+        for c in commits:
+            d = client.get(f"/repos/{repo}/commits/{c['sha']}")
+            files_per_commit.append(len(d.get("files", [])))
+        files_per_commit.sort()
+        idx = max(0, int(0.95 * len(files_per_commit)) - 1)
+        p95_files = files_per_commit[idx]
+
+    n_ci_failed = 0
+    for c in commits:
+        n_ci_failed += len(client.get_check_runs(repo, c["sha"], only_failed=True))
+
+    return {
+        "user": detail.get("user") or {},
+        "review_comments_with_anchor": n_anchored,
+        "n_commits": len(commits),
+        "ci_failures_resolved": n_ci_failed,
+        "labels": detail.get("labels") or [],
+        "n_files_changed_per_commit_p95": p95_files,
+        "merged_at": detail.get("merged_at"),
+    }
+
+
+def search_quality_prs_v2(
+    repo: str,
+    max_results: int = 100,
+    github_token: str | None = None,
+) -> list[int]:
+    """Return PR numbers ranked by corrective richness, top-``max_results``."""
+    client = GitHubClient(token=github_token)
+    items_data = client.get(
+        "/search/issues",
+        params={
+            "q": f"repo:{repo} is:pr is:merged review:approved",
+            "sort": "updated",
+            "order": "desc",
+            "per_page": min(max_results * 2, 100),
+        },
+    )
+    items = items_data.get("items", [])
+    label_names_per_pr = {
+        item["number"]: {lbl["name"] for lbl in item.get("labels", [])}
+        for item in items
+    }
+
+    candidates: list[tuple[float, int]] = []
+    for item in items:
+        pr_number = item["number"]
+        if label_names_per_pr[pr_number] & _NONCODE_LABELS:
+            continue
+        feats = _features_for_pr(client, repo, pr_number)
+        score = score_pr_quality(feats)
+        if score > 0:
+            candidates.append((score, pr_number))
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    out = [pr for _score, pr in candidates[:max_results]]
+    logger.info("search_quality_prs_v2(%s) → %d PRs", repo, len(out))
     return out
 
 
