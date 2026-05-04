@@ -3,7 +3,7 @@
   "checkpoint_id": "89c19d4f5029",
   "strategy": "manual-commit",
   "branch": "fix/diff-loss-per-turn-alignment",
-  "checkpoints_count": 7,
+  "checkpoints_count": 12,
   "files_touched": [
     "instructions/mining_repos.json"
   ],
@@ -13,13 +13,19 @@
       "transcript": "/89/c19d4f5029/0/full.jsonl",
       "content_hash": "/89/c19d4f5029/0/content_hash.txt",
       "prompt": "/89/c19d4f5029/0/prompt.txt"
+    },
+    {
+      "metadata": "/89/c19d4f5029/1/metadata.json",
+      "transcript": "/89/c19d4f5029/1/full.jsonl",
+      "content_hash": "/89/c19d4f5029/1/content_hash.txt",
+      "prompt": "/89/c19d4f5029/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 135,
-    "cache_creation_tokens": 103429,
-    "cache_read_tokens": 2899698,
-    "output_tokens": 33256,
-    "api_call_count": 45
+    "input_tokens": 529,
+    "cache_creation_tokens": 1028156,
+    "cache_read_tokens": 52332743,
+    "output_tokens": 189775,
+    "api_call_count": 229
   }
 }

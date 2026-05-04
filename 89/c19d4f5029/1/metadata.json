@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "89c19d4f5029",
+  "session_id": "831aea13-8960-4af1-8c2d-bb8dde780f04",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-04T06:12:22.966409Z",
+  "branch": "fix/diff-loss-per-turn-alignment",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "instructions/mining_repos.json"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "a1d031ba6092",
+  "token_usage": {
+    "input_tokens": 394,
+    "cache_creation_tokens": 924727,
+    "cache_read_tokens": 49433045,
+    "output_tokens": 156519,
+    "api_call_count": 184
+  },
+  "session_metrics": {
+    "turn_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-04T06:12:22.588937Z",
+    "agent_lines": 0,
+    "human_added": 15582,
+    "human_modified": 22,
+    "human_removed": 0,
+    "total_committed": 15604,
+    "agent_percentage": 0
+  }
+}
