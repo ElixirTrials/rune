@@ -25,6 +25,8 @@ __all__ = [
 
 
 class FeedbackKind(str, Enum):
+    """Kind of feedback signal in a corrective episode."""
+
     task_description = "task_description"
     review_comment = "review_comment"
     ci_failure = "ci_failure"
@@ -86,6 +88,8 @@ class Provenance(BaseModel):
 
 
 class Trajectory(BaseModel):
+    """One PR's corrective episodes as a single JSONL record."""
+
     task_id: str
     task_description: str
     episodes: list[Episode]

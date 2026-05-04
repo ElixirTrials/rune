@@ -8,6 +8,8 @@ __all__ = ["LicenseStatus", "classify_license"]
 
 
 class LicenseStatus(str, Enum):
+    """SPDX license classification status."""
+
     permitted = "permitted"
     attribution = "attribution"
     excluded = "excluded"
@@ -20,6 +22,7 @@ _ATTRIBUTION = frozenset(
 
 
 def classify_license(spdx: str | None) -> LicenseStatus:
+    """Map an SPDX identifier to a license status."""
     if not spdx:
         return LicenseStatus.excluded
     key = spdx.strip().lower()

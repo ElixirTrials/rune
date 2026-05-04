@@ -13,9 +13,10 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from model_training.d2l_diff import compress_diff
+if TYPE_CHECKING:
+    from model_training.d2l_models import Feedback, Trajectory
 
 logger = logging.getLogger(__name__)
 

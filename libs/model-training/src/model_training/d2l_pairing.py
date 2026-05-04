@@ -24,6 +24,8 @@ __all__ = ["FeedbackEvent", "RoundLink", "pair_feedback_with_commits"]
 
 @dataclass(frozen=True)
 class FeedbackEvent:
+    """A feedback event with timestamp for pairing."""
+
     kind: str
     body: str
     ts: datetime
@@ -33,6 +35,8 @@ class FeedbackEvent:
 
 @dataclass(frozen=True)
 class RoundLink:
+    """A paired feedback event and its responding commit."""
+
     feedback: FeedbackEvent
     next_commit: dict[str, Any]
 
@@ -57,8 +61,7 @@ def pair_feedback_with_commits(
     feedback: list[FeedbackEvent],
     pr_author: str,
 ) -> list[RoundLink]:
-    """Return one :class:`RoundLink` per feedback event that is followed by a
-    matching commit.
+    """Return one :class:`RoundLink` per feedback event with a matching commit.
 
     Commits are walked in order. Each feedback event consumes the next
     commit that satisfies the kind-specific pairing rule and is later than
