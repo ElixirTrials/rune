@@ -16,7 +16,12 @@ from model_training.github_client import GitHubClient
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["mine_pr_diff_chains", "mine_issue_commit_chains", "search_quality_prs"]
+__all__ = [
+    "mine_pr_diff_chains",
+    "mine_issue_commit_chains",
+    "search_quality_prs",
+    "score_pr_quality",
+]
 
 _FIXES_RE = re.compile(
     r"(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE
@@ -325,3 +330,46 @@ def mine_issue_commit_chains(
         )
 
     return trajectories
+
+
+_BOT_LOGINS = frozenset(
+    {"dependabot[bot]", "renovate[bot]", "github-actions[bot]"}
+)
+_NONCODE_LABELS = frozenset(
+    {"documentation", "docs", "chore", "ci", "dependencies"}
+)
+
+
+def score_pr_quality(pr_features: dict[str, Any]) -> float:
+    """Compute a corrective-richness score for one PR.
+
+    Hard exclusions return 0.0:
+    - merged_at is None (unmerged)
+    - author login is a known bot
+    - any label in the no-code denylist
+
+    Otherwise the score is a weighted sum:
+    - +2.0 per anchored review comment (capped at 5)
+    - +1.5 per CI failure that was resolved by a subsequent commit
+    - +1.0 if 3 ≤ n_commits ≤ 12 (sweet-spot bonus)
+    - -0.05 * max(0, p95_files_per_commit - 20) (mass-edit penalty)
+    """
+    if not pr_features.get("merged_at"):
+        return 0.0
+    user = pr_features.get("user") or {}
+    if user.get("login") in _BOT_LOGINS:
+        return 0.0
+    label_names = {lbl["name"] for lbl in pr_features.get("labels", [])}
+    if label_names & _NONCODE_LABELS:
+        return 0.0
+
+    anchored = min(int(pr_features.get("review_comments_with_anchor", 0)), 5)
+    ci_resolved = int(pr_features.get("ci_failures_resolved", 0))
+    n_commits = int(pr_features.get("n_commits", 0))
+    p95_files = int(pr_features.get("n_files_changed_per_commit_p95", 0))
+
+    score = 2.0 * anchored + 1.5 * ci_resolved
+    if 3 <= n_commits <= 12:
+        score += 1.0
+    score -= 0.05 * max(0, p95_files - 20)
+    return max(0.0, score)
