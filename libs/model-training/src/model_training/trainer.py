@@ -606,6 +606,7 @@ def _build_training_dataset(
                         "messages": c,
                         "pre_codes": pp["pre_codes"],
                         "post_codes": pp["post_codes"],
+                        "quality_score": pp.get("quality_score", 1.0),
                     }
                     for c, pp in zip(conversations, pre_post)
                 ]

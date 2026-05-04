@@ -709,7 +709,7 @@ def _extract_post_revision(activation_text: str, teacher_text: str) -> str:
 
 def _pairs_to_single_turn(
     pairs: list[dict[str, Any]], system_prompt: str
-) -> tuple[list[list[dict[str, str]]], list[dict[str, list[str]]]]:
+) -> tuple[list[list[dict[str, str]]], list[dict[str, Any]]]:
     """single_turn helper: one [system, user, assistant] per pair.
 
     Returns:
@@ -719,7 +719,7 @@ def _pairs_to_single_turn(
         hunks per assistant turn rather than against a joined blob.
     """
     conversations: list[list[dict[str, str]]] = []
-    pre_post_records: list[dict[str, list[str]]] = []
+    pre_post_records: list[dict[str, Any]] = []
     for pair in pairs:
         user = pair.get("activation_text", "")
         teacher = pair.get("teacher_text", "")
@@ -737,6 +737,7 @@ def _pairs_to_single_turn(
             {
                 "pre_codes": [_extract_pre_revision(user)],
                 "post_codes": [_extract_post_revision(user, teacher)],
+                "quality_score": float(pair.get("quality_score", 1.0)),
             }
         )
     return conversations, pre_post_records
@@ -766,7 +767,7 @@ def pairs_to_chat_messages(
     *,
     mode: Literal["multi_turn", "single_turn"] = "multi_turn",
     system_prompt: str = SYSTEM_PROMPT,
-) -> tuple[list[list[dict[str, str]]], list[dict[str, list[str]]]]:
+) -> tuple[list[list[dict[str, str]]], list[dict[str, Any]]]:
     r"""Convert mined pair records into SFT chat conversations.
 
     ``multi_turn`` (preferred when pairs share a ``source_task_id``): emits
@@ -824,7 +825,7 @@ def pairs_to_chat_messages(
     # multi_turn: cluster by source_task_id (or task_id), sort by step_index.
     groups, group_order = _group_pairs_by_task(pairs)
     conversations: list[list[dict[str, str]]] = []
-    pre_post_records: list[dict[str, list[str]]] = []
+    pre_post_records: list[dict[str, Any]] = []
     for key in group_order:
         group = sorted(
             groups[key],
@@ -833,6 +834,7 @@ def pairs_to_chat_messages(
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         turn_pre_codes: list[str] = []
         turn_post_codes: list[str] = []
+        turn_quality_scores: list[float] = []
         accepted_turns = 0
         for pair in group:
             user = pair.get("activation_text", "")
@@ -855,48 +857,113 @@ def pairs_to_chat_messages(
             messages.append({"role": "assistant", "content": assistant})
             turn_pre_codes.append(_extract_pre_revision(user))
             turn_post_codes.append(_extract_post_revision(user, teacher))
+            turn_quality_scores.append(float(pair.get("quality_score", 1.0)))
             accepted_turns += 1
         # A valid SFT conversation needs at least one user/assistant turn.
         if len(messages) >= 3:
             conversations.append(messages)
+            mean_q = (
+                sum(turn_quality_scores) / len(turn_quality_scores)
+                if turn_quality_scores
+                else 1.0
+            )
             pre_post_records.append(
                 {
                     "pre_codes": turn_pre_codes,
                     "post_codes": turn_post_codes,
+                    "quality_score": mean_q,
                 }
             )
     return conversations, pre_post_records
 
 
-def unroll_trajectory_to_pairs(traj: "Trajectory") -> list[dict[str, Any]]:
-    """Unroll one trajectory into per-episode SFT pairs.
+def unroll_trajectory_to_pairs(
+    traj: "Trajectory",
+    *,
+    quality_config: Any | None = None,
+) -> list[dict[str, Any]]:
+    r"""Unroll one trajectory into per-episode SFT pairs.
 
-    Each pair has:
-        prompt:   prior_diff + formatted feedback (task description, review
-                  comment, or test/CI/lint summary).
-        response: action_diff for that round (the model's target).
-        task_id:  the PR's task_id, repeated across all rounds.
-        round:    0-indexed round number.
+    Each pair uses the ``activation_text`` / ``teacher_text`` schema
+    consumed by :func:`pairs_to_chat_messages` and carries ``pre_code``
+    / ``post_code`` side-channels for :class:`DiffWeightedDataCollator`.
+
+    ``metadata.source_task_id`` and ``metadata.step_index`` are set so
+    :func:`pairs_to_chat_messages` can cluster episodes into multi-turn
+    conversations.
+
+    When ``quality_config`` is provided (or left as ``None`` for defaults),
+    each pair receives a ``quality_score`` float in ``[0.05, 1.0]`` computed
+    by :func:`~model_training.d2l_quality.score_episode_quality`.
+
+    Layout per pair::
+
+        activation_text =
+            ## Task\n<task_description>
+            ## Current Code\n<prior_diff>   (omitted for ep0)
+            ## Review Feedback\n<feedback>
+
+        teacher_text = activation_text + "\\n\\n## Revision\\n" + action_diff
     """
+    from model_training.d2l_quality import (  # noqa: PLC0415
+        QualityWeightConfig,
+        score_episode_quality,
+    )
+
+    q_cfg = (
+        quality_config
+        if isinstance(quality_config, QualityWeightConfig)
+        else QualityWeightConfig()
+    )
+
+    kind_header = {
+        "task_description": "Task",
+        "review_comment": "Review Feedback",
+        "ci_failure": "CI Failure",
+        "test_failure": "Test Failure",
+        "lint": "Lint",
+        "build_failure": "Build Failure",
+    }
+
     pairs: list[dict[str, Any]] = []
     for ep in traj.episodes:
         feedback_text = _format_feedback(ep.feedback)
+        kind_val = (
+            ep.feedback.kind.value
+            if hasattr(ep.feedback.kind, "value")
+            else ep.feedback.kind
+        )
+        header = kind_header.get(kind_val, "Feedback")
+
+        parts: list[str] = [f"## Task\n{traj.task_description}"]
         if ep.prior_diff:
-            prompt = (
-                "Prior diff:\n"
-                f"{ep.prior_diff}\n\n"
-                "Feedback:\n"
-                f"{feedback_text}"
-            )
-        else:
-            prompt = feedback_text
+            parts.append(f"## Current Code\n{ep.prior_diff}")
+        parts.append(f"## {header}\n{feedback_text}")
+        activation_text = "\n\n".join(parts)
+
+        teacher_text = f"{activation_text}\n\n## Revision\n{ep.action_diff}"
+
+        q_score = score_episode_quality(
+            feedback_body=ep.feedback.body,
+            action_diff=ep.action_diff,
+            is_ep0=(ep.round == 0),
+            config=q_cfg,
+        )
+
         pairs.append(
             {
-                "task_id": traj.task_id,
-                "round": ep.round,
-                "prompt": prompt,
-                "response": ep.action_diff,
-                "feedback_kind": ep.feedback.kind.value,
+                "task_id": f"{traj.task_id}_r{ep.round}",
+                "activation_text": activation_text,
+                "teacher_text": teacher_text,
+                "pre_code": ep.prior_diff,
+                "post_code": ep.action_diff,
+                "quality_score": q_score,
+                "metadata": {
+                    "source_task_id": traj.task_id,
+                    "step_index": ep.round,
+                    "feedback_kind": kind_val,
+                    "quality_score": q_score,
+                },
             }
         )
     return pairs

@@ -111,7 +111,7 @@ def test_attaches_pre_post_columns_when_diff_aware(tmp_path: Path) -> None:
     assert isinstance(ds, _FakeDataset)
     assert len(ds) == 1
     row = ds.rows[0]
-    assert set(row.keys()) == {"messages", "pre_codes", "post_codes"}
+    assert set(row.keys()) == {"messages", "pre_codes", "post_codes", "quality_score"}
     assert isinstance(row["messages"], list)
     assert isinstance(row["pre_codes"], list)
     assert isinstance(row["post_codes"], list)

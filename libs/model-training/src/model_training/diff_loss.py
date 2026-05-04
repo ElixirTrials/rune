@@ -607,11 +607,13 @@ class DiffWeightedDataCollator:
         # so single-turn callers still work without code changes.
         pre_codes_batch: list[list[str] | None] = []
         post_codes_batch: list[list[str] | None] = []
+        quality_scores: list[float] = []
         for feat in features:
             pre_list = feat.pop("pre_codes", None)
             post_list = feat.pop("post_codes", None)
             legacy_pre = feat.pop("pre_code", None)
             legacy_post = feat.pop("post_code", None)
+            quality_scores.append(float(feat.pop("quality_score", 1.0)))
             if pre_list is None and legacy_pre is not None:
                 pre_list = [legacy_pre]
             if post_list is None and legacy_post is not None:
@@ -660,7 +662,8 @@ class DiffWeightedDataCollator:
                 # rescale when the diff cannot be computed (no side-channels
                 # or no tokenizer).
                 w = [1.0 if lab != IGNORE_INDEX else 0.0 for lab in lab_seq]
-            all_weights.append(w)
+            q = quality_scores[idx]
+            all_weights.append([wi * q for wi in w] if q != 1.0 else w)
 
         batch["loss_weights"] = torch.tensor(all_weights, dtype=torch.float32)
         return batch

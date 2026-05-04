@@ -542,6 +542,46 @@ class TestDiffWeightedDataCollator:
         assert weights[0] == 0.0
         assert weights[3] == 0.0
 
+    def test_quality_score_multiplied_into_weights(self) -> None:
+        """quality_score=0.5 produces half the weights of quality_score=1.0."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # Identity fallback path: no pre_codes/post_codes, no tokenizer.
+        # Labeled tokens get 1.0; quality_score scales them.
+        input_ids = [[10, 20, 30]]
+        labels = [[IGNORE_INDEX, 20, 30]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=None)
+        batch_full = collator([{"quality_score": 1.0}])
+        batch_half = collator([{"quality_score": 0.5}])
+
+        w_full = batch_full["loss_weights"][0].tolist()
+        w_half = batch_half["loss_weights"][0].tolist()
+
+        assert w_full[0] == 0.0  # IGNORE_INDEX → 0
+        assert w_full[1] == 1.0
+        assert w_full[2] == 1.0
+        assert w_half[0] == 0.0  # IGNORE_INDEX stays 0 after scaling
+        assert w_half[1] == pytest.approx(0.5)
+        assert w_half[2] == pytest.approx(0.5)
+
+    def test_quality_score_absent_defaults_to_one(self) -> None:
+        """Missing quality_score leaves weights unchanged (same as quality_score=1.0)."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        input_ids = [[10, 20, 30]]
+        labels = [[IGNORE_INDEX, 20, 30]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=None)
+        batch_explicit = collator([{"quality_score": 1.0}])
+        batch_absent = collator([{}])  # no quality_score key
+
+        assert batch_absent["loss_weights"][0].tolist() == pytest.approx(
+            batch_explicit["loss_weights"][0].tolist()
+        )
+
 
 # ---------------------------------------------------------------------------
 # _compute_weighted_loss tests (pure function, no Trainer needed)
