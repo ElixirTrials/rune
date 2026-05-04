@@ -502,11 +502,11 @@ def _attach_assistant_masks(
     ``DataCollatorForLanguageModeling`` consumes ``assistant_masks`` from
     the batch at sft_trainer.py:179-180.
 
-    The diff-aware path passes ``preserve_columns=["pre_codes", "post_codes"]``
-    so :class:`~model_training.diff_loss.DiffWeightedDataCollator` still has
-    its per-turn hunk-weighting side-channels after pre-tokenization. Without
-    this preservation the diff path silently loses its weights AND its labels
-    (RCA-5 H2).
+    The diff-aware path passes ``preserve_columns=["pre_codes", "post_codes",
+    "quality_score"]`` so :class:`~model_training.diff_loss.DiffWeightedDataCollator`
+    still has its per-turn hunk-weighting side-channels and quality scaling
+    after pre-tokenization. Without this preservation the diff path silently
+    loses its weights AND its labels (RCA-5 H2).
 
     When ``max_length`` is set the pre-tokenized ``input_ids`` and
     ``assistant_masks`` are truncated up-front using ``truncation_mode``
@@ -1040,7 +1040,7 @@ def train_qlora(
         dataset = _attach_assistant_masks(
             dataset,
             tokenizer,
-            preserve_columns=["pre_codes", "post_codes"],
+            preserve_columns=["pre_codes", "post_codes", "quality_score"],
             max_length=max_length,
             truncation_mode="keep_end",
         )
@@ -1069,7 +1069,7 @@ def train_qlora(
             eval_dataset = _attach_assistant_masks(
                 eval_dataset,
                 tokenizer,
-                preserve_columns=["pre_codes", "post_codes"],
+                preserve_columns=["pre_codes", "post_codes", "quality_score"],
                 max_length=max_length,
                 truncation_mode="keep_end",
             )

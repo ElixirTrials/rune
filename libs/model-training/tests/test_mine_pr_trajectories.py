@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
-
 from model_training.d2l_mining import mine_pr_trajectories
 from model_training.d2l_models import FeedbackKind
 
@@ -48,7 +47,10 @@ def fake_client() -> MagicMock:
             return {"check_suites": []}
         sha = path.rsplit("/", 1)[-1]
         return {
-            "files": [{"filename": "src/foo.py", "patch": f"@@ -1,1 +1,2 @@\n+{sha}\n"}]
+            "files": [
+                {"filename": "src/foo.py", "patch": f"@@ -1,1 +1,2 @@\n+{sha}\n"},
+            ],
+            "author": {"login": "alice"},
         }
 
     client.get.side_effect = get
@@ -77,6 +79,37 @@ def fake_client() -> MagicMock:
 
     client.get_paginated.side_effect = paginated
     client.get_check_runs.return_value = []
+
+    client.fetch_pr_metadata_graphql.return_value = {
+        "title": "Add feature X",
+        "body": "Implements X",
+        "merged_at": "2026-05-02T00:00:00Z",
+        "head_sha": "a" * 40,
+        "base_sha": "b" * 40,
+        "author": {"login": "alice"},
+        "labels": [],
+        "review_comments": [
+            {
+                "body": "rename foo",
+                "path": "src/foo.py",
+                "line": 1,
+                "user": {"login": "rev"},
+                "created_at": (T0 + timedelta(minutes=10)).isoformat(),
+            },
+        ],
+        "commits": [
+            {
+                "oid": "c0" + "0" * 38,
+                "committed_date": T0.isoformat(),
+                "check_runs": [],
+            },
+            {
+                "oid": "c1" + "0" * 38,
+                "committed_date": (T0 + timedelta(minutes=30)).isoformat(),
+                "check_runs": [],
+            },
+        ],
+    }
     return client
 
 
