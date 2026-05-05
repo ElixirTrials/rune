@@ -373,7 +373,8 @@ def _char_level_match_pos(
     try:
         span_ids = input_ids_seq[span_start:span_end]
         span_text = tokenizer.decode(span_ids, skip_special_tokens=False)
-        char_idx = span_text.find(post_text)
+        needle = post_text.rstrip()
+        char_idx = span_text.find(needle)
         if char_idx < 0:
             return -1
         prefix_text = span_text[:char_idx]
