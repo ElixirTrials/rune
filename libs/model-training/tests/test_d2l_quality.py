@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import pytest
-
 from model_training.d2l_quality import (
     QualityWeightConfig,
     classify_causal_link,
+    compute_causal_density,
+    compute_diff_focus,
     is_url_only,
     score_episode_quality,
     score_external_quality,
 )
-
 
 # ---------------------------------------------------------------------------
 # is_url_only
@@ -73,25 +73,32 @@ class TestClassifyCausalLink:
 
 class TestScoreEpisodeQuality:
     def test_best_case_trajectory(self) -> None:
+        fb = (
+            "The parse_response function should handle None values"
+            " gracefully and return an empty dict instead of raising"
+        )
+        diff = "+def parse_response(data):\n+    if data is None:\n+        return {}"
         score = score_episode_quality(
-            feedback_body="The parse_response function should handle None values gracefully and return an empty dict instead of raising",
-            action_diff="+def parse_response(data):\n+    if data is None:\n+        return {}",
+            feedback_body=fb,
+            action_diff=diff,
             is_ep0=False,
         )
         assert score == pytest.approx(1.0)
 
     def test_ep0_skips_causal_factor(self) -> None:
+        fb = (
+            "Implement a REST API for user management"
+            " with CRUD operations"
+        )
         score = score_episode_quality(
-            feedback_body="Implement a REST API for user management with CRUD operations",
+            feedback_body=fb,
             action_diff="+class UserController:\n+    pass",
             is_ep0=True,
         )
         cfg = QualityWeightConfig()
-        # ep0: source=1.0, causal=1.0(skip), feedback=0.7(62 chars=moderate), prop=1.0
         assert score == pytest.approx(cfg.feedback_moderate_factor)
-        # Verify ep0 is NOT penalized by causal factor (no-overlap would give 0.28)
         non_ep0 = score_episode_quality(
-            feedback_body="Implement a REST API for user management with CRUD operations",
+            feedback_body=fb,
             action_diff="+class UserController:\n+    pass",
             is_ep0=False,
         )
@@ -158,33 +165,126 @@ class TestScoreEpisodeQuality:
 
 
 # ---------------------------------------------------------------------------
+# compute_causal_density
+# ---------------------------------------------------------------------------
+
+
+class TestComputeCausalDensity:
+    def test_high_overlap(self) -> None:
+        fb = "rename parse_response to handle_response"
+        code = "+def handle_response(data):\n+    return parse_response(data)"
+        density = compute_causal_density(fb, code)
+        # "rename" is in fb but not code → 2/3
+        assert density == pytest.approx(2.0 / 3.0)
+
+    def test_partial_overlap(self) -> None:
+        fb = "the validate_input function should check for None"
+        code = "def validate_input(s):\n    if s is None: return ''"
+        density = compute_causal_density(fb, code)
+        assert 0.0 < density < 1.0
+
+    def test_no_overlap(self) -> None:
+        fb = "this approach is fragile and should be reworked"
+        code = "+def validate(x):\n+    if x < 0: raise ValueError"
+        density = compute_causal_density(fb, code)
+        assert density == 0.0
+
+    def test_url_only_feedback(self) -> None:
+        density = compute_causal_density("https://example.com", "def foo(): pass")
+        assert density == 0.0
+
+    def test_empty_feedback(self) -> None:
+        assert compute_causal_density("", "def foo(): pass") == 0.0
+
+
+# ---------------------------------------------------------------------------
+# compute_diff_focus
+# ---------------------------------------------------------------------------
+
+
+class TestComputeDiffFocus:
+    def test_identical(self) -> None:
+        code = "def foo():\n    return 42"
+        assert compute_diff_focus(code, code) == pytest.approx(1.0)
+
+    def test_focused_change(self) -> None:
+        before = "def foo(x):\n    return x + 1\n\ndef bar():\n    return 0"
+        after = "def foo(x):\n    return x + 2\n\ndef bar():\n    return 0"
+        sim = compute_diff_focus(before, after)
+        assert 0.85 <= sim < 1.0
+
+    def test_major_rewrite(self) -> None:
+        before = "def foo():\n    return 1"
+        after = "class Bar:\n    def baz(self) -> int:\n        return 42"
+        sim = compute_diff_focus(before, after)
+        assert sim < 0.70
+
+    def test_empty_before(self) -> None:
+        assert compute_diff_focus("", "def foo(): pass") == 0.0
+
+    def test_empty_after(self) -> None:
+        assert compute_diff_focus("def foo(): pass", "") == 0.0
+
+
+# ---------------------------------------------------------------------------
 # score_external_quality
 # ---------------------------------------------------------------------------
 
 
 class TestScoreExternalQuality:
-    def test_good_external_review(self) -> None:
-        # 99 chars — just under the 100-char rich threshold
-        fb = "The validate_input function should check for None before accessing .strip() to avoid AttributeError"
+    def test_high_quality_external(self) -> None:
+        fb = (
+            "The validate_input function should check for None"
+            " before accessing .strip() to avoid AttributeError"
+        )
+        before = (
+            "def validate_input(s):\n    return s.strip()"
+        )
+        after = (
+            "def validate_input(s):\n"
+            "    if s is None:\n        return ''\n"
+            "    return s.strip()"
+        )
         score = score_external_quality(
-            feedback_body=fb,
-            before_code="def validate_input(s):\n    return s.strip()",
-            after_code="def validate_input(s):\n    if s is None:\n        return ''\n    return s.strip()",
+            feedback_body=fb, before_code=before, after_code=after,
         )
-        cfg = QualityWeightConfig()
-        # source=0.4, feedback=0.7(99 chars=moderate), prop=1.0
-        assert score == pytest.approx(cfg.source_external * cfg.feedback_moderate_factor)
+        assert score > 0.5
 
-    def test_external_always_below_trajectory(self) -> None:
-        fb = "rename parse_response to handle_response — it does more than parse"
-        diff = "+def handle_response(data):\n+    return data"
-        ext = score_external_quality(
-            feedback_body=fb, before_code="old", after_code=diff,
+    def test_best_case_external_can_reach_one(self) -> None:
+        fb = (
+            "The parse_response function should validate the"
+            " status_code field before accessing the data"
+            " payload to prevent KeyError"
         )
-        traj = score_episode_quality(
-            feedback_body=fb, action_diff=diff, is_ep0=False,
+        unchanged = "\n".join(
+            f"    line_{i} = {i}" for i in range(20)
         )
-        assert ext < traj
+        before = (
+            f'def parse_response(response):\n'
+            f'    """Parse API response."""\n'
+            f'{unchanged}\n'
+            f'    return response["data"]'
+        )
+        after = (
+            f'def parse_response(response):\n'
+            f'    """Parse API response."""\n'
+            f'{unchanged}\n'
+            f'    if response.get("status_code") != 200:\n'
+            f'        return None\n'
+            f'    return response["data"]'
+        )
+        score = score_external_quality(
+            feedback_body=fb, before_code=before, after_code=after,
+        )
+        assert score == pytest.approx(1.0)
+
+    def test_no_overlap_vague_feedback_scores_low(self) -> None:
+        score = score_external_quality(
+            feedback_body="Really good idea to allow them to be injected!",
+            before_code="x = 1\ny = 2\nz = 3",
+            after_code="a = 10\nb = 20\nc = 30",
+        )
+        assert score < 0.15
 
     def test_short_feedback_large_diff_penalized(self) -> None:
         score = score_external_quality(
@@ -193,12 +293,7 @@ class TestScoreExternalQuality:
             after_code="+" * 6000,
         )
         cfg = QualityWeightConfig()
-        assert score == pytest.approx(
-            max(
-                cfg.floor,
-                cfg.source_external * cfg.feedback_short_factor * cfg.proportionality_penalty,
-            )
-        )
+        assert score <= cfg.proportionality_penalty
 
     def test_floor_respected(self) -> None:
         score = score_external_quality(
@@ -207,3 +302,19 @@ class TestScoreExternalQuality:
             after_code="+" * 6000,
         )
         assert score >= QualityWeightConfig().floor
+
+    def test_trivial_diff_penalized(self) -> None:
+        code = "def foo():\n    return 42\n" * 20
+        after = code[:-1] + " "  # near-identical
+        fb = (
+            "The foo function should be cleaned up and improved"
+            " for readability and consistency with the"
+            " codebase style"
+        )
+        score = score_external_quality(
+            feedback_body=fb,
+            before_code=code,
+            after_code=after,
+        )
+        cfg = QualityWeightConfig()
+        assert score <= cfg.diff_focus_trivial_factor

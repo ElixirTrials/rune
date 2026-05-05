@@ -860,7 +860,7 @@ def train_qlora(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
-    max_length: int = 3072,
+    max_length: int = 4096,
     eval_dataset_path: str | None = None,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
@@ -1241,7 +1241,7 @@ def train_and_register(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
-    max_length: int = 3072,
+    max_length: int = 4096,
     eval_dataset_path: str | None = None,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.

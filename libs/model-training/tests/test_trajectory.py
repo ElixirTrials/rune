@@ -420,7 +420,9 @@ def test_compute_assistant_masks_keep_end_truncation_preserves_assistant_tail() 
         {"role": "user", "content": "padding " * 100},  # long
         {"role": "assistant", "content": "answer"},
     ]
-    result = compute_assistant_masks(tok, messages, max_length=20)
+    result = compute_assistant_masks(
+        tok, messages, max_length=20, truncation_mode="keep_end"
+    )
     assert len(result["input_ids"]) == 20
     assert len(result["assistant_masks"]) == 20
     # The assistant span sits at the tail; at least one mask bit must survive.
@@ -444,6 +446,47 @@ def test_compute_assistant_masks_keep_start_drops_assistant_when_user_long() -> 
         tok, messages, max_length=20, truncation_mode="keep_start"
     )
     assert len(result["input_ids"]) == 20
+    assert sum(result["assistant_masks"]) == 0
+
+
+def test_compute_assistant_masks_keep_user_end_preserves_user_and_assistant_tail() -> None:
+    """``keep_user_end`` keeps user prompt + assistant tail within budget.
+
+    With _FakeTokenizer each char is one token, plus 4 overhead tokens per
+    turn (im_start, role, newline, im_end) and 2 trailing newlines.
+    User "hi" → 7 tokens prefix.  Assistant "x"*200 → 206 tokens.
+    Total = 213. At max_length=20, keep_user_end keeps the 7-token user
+    prefix + 13 tokens of assistant tail.
+    """
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "x" * 200},
+    ]
+    result = compute_assistant_masks(tok, messages, max_length=20)
+    assert len(result["input_ids"]) == 20
+    assert len(result["assistant_masks"]) == 20
+    # User tokens (non-assistant prefix) should be present at the start
+    assert result["assistant_masks"][0] == 0
+    # Assistant tokens should survive at the tail
+    assert sum(result["assistant_masks"]) >= 1
+    # Both user and assistant content present
+    n_user = sum(1 for m in result["assistant_masks"] if m == 0)
+    n_asst = sum(result["assistant_masks"])
+    assert n_user >= 1
+    assert n_asst >= 1
+
+
+def test_compute_assistant_masks_keep_user_end_long_user_exceeds_budget() -> None:
+    """When user alone exceeds max_length, keep_user_end truncates user only."""
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "padding " * 100},  # ~805 tokens
+        {"role": "assistant", "content": "answer"},
+    ]
+    result = compute_assistant_masks(tok, messages, max_length=20)
+    assert len(result["input_ids"]) == 20
+    # All budget consumed by user prefix — no assistant tokens survive
     assert sum(result["assistant_masks"]) == 0
 
 

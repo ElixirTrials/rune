@@ -140,6 +140,7 @@ class HPORunArgs:
     encoding_mode: str = "multi_turn"
     extra_train_kwargs: dict[str, Any] = field(default_factory=dict)
     proxy_epochs: int = 3
+    force_diff_aware_loss: bool | None = None
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -298,10 +299,23 @@ def _build_parser() -> argparse.ArgumentParser:
             "only copy would lose the adapter entirely."
         ),
     )
+    parser.add_argument(
+        "--force-diff-aware-loss",
+        dest="force_diff_aware_loss",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Force diff_aware_loss to True (or False with --no-). "
+            "Removes it from the search space so every trial uses the "
+            "fixed value. Useful for A/B comparison across studies."
+        ),
+    )
     return parser
 
 
-def _suggest_trial_params(trial: Any) -> dict[str, Any]:
+def _suggest_trial_params(
+    trial: Any, *, force_diff_aware_loss: bool | None = None,
+) -> dict[str, Any]:
     """Sample one trial's hyperparameters from the warm-start-aware search space."""
     lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
     alpha = trial.suggest_categorical("alpha_override", [16, 32, 64, 128])
@@ -309,7 +323,12 @@ def _suggest_trial_params(trial: Any) -> dict[str, Any]:
     warmup = trial.suggest_float("warmup_ratio", 0.0, 0.1)
     grad_accum = trial.suggest_categorical("grad_accum", [8, 16, 32])
     scheduler = trial.suggest_categorical("lr_scheduler", ["constant", "cosine"])
-    diff_aware = trial.suggest_categorical("diff_aware_loss", [False, True])
+    if force_diff_aware_loss is not None:
+        diff_aware = trial.suggest_categorical(
+            "diff_aware_loss", [force_diff_aware_loss],
+        )
+    else:
+        diff_aware = trial.suggest_categorical("diff_aware_loss", [False, True])
     neftune = trial.suggest_categorical("neftune_noise_alpha", [None, 5.0, 10.0])
     return {
         "lr": lr,
@@ -1154,7 +1173,9 @@ def _run_single_trial(
     displaced trial's run is deleted so the bucket converges to ≤ K
     adapters per study.
     """
-    sampled = _suggest_trial_params(trial)
+    sampled = _suggest_trial_params(
+        trial, force_diff_aware_loss=run_args.force_diff_aware_loss,
+    )
     logger.info("Trial %d sampled params: %s", trial.number, sampled)
 
     trial_dir = run_args.output_root / f"trial_{trial.number:03d}"
@@ -1385,6 +1406,7 @@ def main(argv: list[str] | None = None) -> int:
         cleanup_local_adapters=args.cleanup_local_adapters,
         proxy_epochs=args.proxy_epochs,
         encoding_mode=args.encoding_mode,
+        force_diff_aware_loss=args.force_diff_aware_loss,
     )
     fitness_cfg = FitnessConfig(
         hunk_loss_weight=args.hunk_loss_weight,

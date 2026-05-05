@@ -352,6 +352,37 @@ def _find_post_in_span_or_suffix(
     return -1, 0
 
 
+def _char_level_match_pos(
+    tokenizer: Any,
+    input_ids_seq: list[int],
+    span_start: int,
+    span_end: int,
+    post_text: str,
+) -> int:
+    """Fallback when token-level matching fails due to BPE boundary effects.
+
+    Decodes the span back to text, finds ``post_text`` as a character
+    substring, then estimates the token offset by encoding the prefix
+    text before the match. Off-by-one at the boundary is tolerable
+    because the downstream weight assignment uses character-range
+    intersection, not exact token identity.
+
+    Returns the estimated match position (local offset within the span),
+    or ``-1`` when the text cannot be found.
+    """
+    try:
+        span_ids = input_ids_seq[span_start:span_end]
+        span_text = tokenizer.decode(span_ids, skip_special_tokens=False)
+        char_idx = span_text.find(post_text)
+        if char_idx < 0:
+            return -1
+        prefix_text = span_text[:char_idx]
+        prefix_ids = tokenizer.encode(prefix_text, add_special_tokens=False)
+        return len(prefix_ids)
+    except Exception:  # noqa: BLE001
+        return -1
+
+
 def _fill_identity(weights: list[float], start: int, end: int) -> None:
     """Set ``weights[start:end] = 1.0`` so the span keeps gradient signal."""
     for j in range(start, end):
@@ -547,11 +578,15 @@ class DiffWeightedDataCollator:
             input_ids_seq, span_start, span_end, post_input_ids
         )
         if match_pos < 0 and prefix_truncated == 0:
-            self._span_match_failures += 1
-            self._spans_aligned -= 1
-            _maybe_warn_span_match_failure(self._span_match_failures)
-            _fill_identity(weights, span_start, span_end)
-            return
+            match_pos = _char_level_match_pos(
+                self.tokenizer, input_ids_seq, span_start, span_end, post,
+            )
+            if match_pos < 0:
+                self._span_match_failures += 1
+                self._spans_aligned -= 1
+                _maybe_warn_span_match_failure(self._span_match_failures)
+                _fill_identity(weights, span_start, span_end)
+                return
 
         if prefix_truncated > 0:
             self._span_truncated_recovered += 1
@@ -644,6 +679,7 @@ class DiffWeightedDataCollator:
         labels_batch: Any = batch["labels"]
 
         all_weights: list[list[float]] = []
+        all_changed: list[list[bool]] = []
         for idx in range(len(features)):
             ids_seq: list[int] = input_ids_batch[idx].tolist()
             lab_seq: list[int] = labels_batch[idx].tolist()
@@ -655,15 +691,20 @@ class DiffWeightedDataCollator:
                     ids_seq, lab_seq, list(pre_list), list(post_list)
                 )
             else:
-                # Identity fallback: 1.0 for labeled tokens, 0.0 for IGNORE_INDEX.
-                # Avoids silently reducing the training objective to a uniform
-                # rescale when the diff cannot be computed (no side-channels
-                # or no tokenizer).
                 w = [1.0 if lab != IGNORE_INDEX else 0.0 for lab in lab_seq]
+
+            # Build changed/context mask BEFORE quality scaling so the
+            # metrics split doesn't depend on the quality multiplier.
+            changed_row = [
+                wi == self.changed_weight and wi > 0 for wi in w
+            ]
+            all_changed.append(changed_row)
+
             q = quality_scores[idx]
             all_weights.append([wi * q for wi in w] if q != 1.0 else w)
 
         batch["loss_weights"] = torch.tensor(all_weights, dtype=torch.float32)
+        batch["changed_mask"] = torch.tensor(all_changed, dtype=torch.bool)
         return batch
 
 
@@ -742,6 +783,7 @@ def _compute_step_metrics(
     *,
     changed_weight: float,
     unchanged_weight: float,
+    changed_mask_tensor: Any | None = None,
 ) -> dict[str, float]:
     """Per-step training observability metrics from the existing forward pass.
 
@@ -782,6 +824,8 @@ def _compute_step_metrics(
         changed_weight: Per-token weight assigned to changed (hunk)
             tokens by the diff collator.
         unchanged_weight: Per-token weight for non-hunk assistant tokens.
+        changed_mask_tensor: Explicit boolean mask from the collator
+            identifying changed tokens before quality scaling.
 
     Returns:
         Dict of scalar Python floats; keys are unprefixed metric names.
@@ -829,52 +873,45 @@ def _compute_step_metrics(
             out["all_masked_batch"] = all_masked
             return out
 
-        per_token_ce = F.cross_entropy(
-            shift_logits.view(-1, shift_logits.size(-1)),
-            shift_labels.view(-1),
-            ignore_index=IGNORE_INDEX,
-            reduction="none",
-        ).view(shift_labels.shape)
-
-        # Entropy at effective positions, chunked along the labeled dim so
-        # peak transient stays bounded regardless of how many tokens are
-        # labeled. Multi-turn encoding can leave nearly every token
-        # labeled, so the earlier "filter then cast to float32" approach
-        # still stacks three ``[N, V]`` float32 tensors (~1.87 GB each at
-        # N=3072, V=151k) ≈ 7 GB transient and OOMs the L4.
-        # ``index_select`` per chunk avoids materialising the full
-        # ``[N, V]`` bf16 gather as well.
+        # Compute per-token CE and entropy only at effective positions,
+        # chunked to avoid materializing the full [batch*seq, vocab]
+        # tensor (~3.7 GiB at seq=4096, vocab=151k on Qwen).
+        per_token_ce = torch.zeros(shift_labels.shape, device=logits.device)
         entropy = torch.zeros_like(per_token_ce)
+        flat_ce = per_token_ce.view(-1)
         flat_entropy = entropy.view(-1)
         flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+        flat_labels = shift_labels.view(-1)
         flat_effective_mask = effective_mask.view(-1)
         effective_indices = torch.nonzero(flat_effective_mask, as_tuple=True)[0]
-        # 256 × 151936 × 4B ≈ 156 MB per intermediate float32 tensor; with
-        # log_softmax, exp, and the multiply each holding one such tensor at
-        # peak the chunk costs ~625 MB transient on top of the model state —
-        # well below the L4's available headroom.
-        entropy_chunk_size = 256
-        for i in range(0, effective_indices.numel(), entropy_chunk_size):
-            idx_chunk = effective_indices[i : i + entropy_chunk_size]
+        chunk_size = 256
+        for i in range(0, effective_indices.numel(), chunk_size):
+            idx_chunk = effective_indices[i : i + chunk_size]
             chunk_f32 = flat_logits.index_select(0, idx_chunk).float()
+            chunk_targets = flat_labels.index_select(0, idx_chunk)
             chunk_lp = F.log_softmax(chunk_f32, dim=-1)
+            chunk_ce = -chunk_lp.gather(1, chunk_targets.unsqueeze(1)).squeeze(1)
             chunk_ent = -(chunk_lp.exp() * chunk_lp).sum(dim=-1)
+            flat_ce.index_copy_(0, idx_chunk, chunk_ce.to(flat_ce.dtype))
             flat_entropy.index_copy_(
                 0, idx_chunk, chunk_ent.to(flat_entropy.dtype)
             )
-            del chunk_f32, chunk_lp, chunk_ent
+            del chunk_f32, chunk_targets, chunk_lp, chunk_ce, chunk_ent
 
         pred = shift_logits.argmax(dim=-1)
         correct = (pred == shift_labels) & effective_mask
         correct_f = correct.float()
 
-        # Split changed vs context by the midpoint between the two diff
-        # weights, intersected with ``effective_mask`` so weight==0
-        # positions never count toward either bucket. When changed ==
-        # unchanged (identity fallback) the midpoint test collapses both
-        # to "changed" — context is empty, which is the correct semantic
-        # since there's no diff signal.
-        if changed_weight == unchanged_weight:
+        # Split changed vs context. When the collator provides an
+        # explicit ``changed_mask`` tensor, use it directly — this is
+        # immune to quality-score scaling that shifts weights below the
+        # midpoint threshold. Fall back to the midpoint heuristic when
+        # the mask isn't available (e.g. tests or older collators).
+        if changed_mask_tensor is not None:
+            shift_changed = changed_mask_tensor[:, 1:].contiguous()
+            changed_mask = effective_mask & shift_changed
+            context_mask = effective_mask & ~shift_changed
+        elif changed_weight == unchanged_weight:
             changed_mask = effective_mask
             context_mask = torch.zeros_like(effective_mask)
         else:
@@ -978,14 +1015,9 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
                 observability bug never kills training.
         """
         loss_weights = inputs.pop("loss_weights", None)
+        changed_mask_input = inputs.pop("changed_mask", None)
 
         if loss_weights is None:
-            # No weights provided — fall back to the model's own CE loss.
-            # HuggingFace causal-LM heads honor -100 label masking internally,
-            # so outputs.loss is standard CE on the labeled tokens. Avoids
-            # super().compute_loss() which depends on full Trainer init state
-            # (self.model, self.processing_class, …) and can't be exercised
-            # from a minimal subclass used in unit tests.
             outputs = model(**inputs)
             return (outputs.loss, outputs) if return_outputs else outputs.loss
 
@@ -993,15 +1025,12 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
         logits = outputs.logits
         labels = inputs["labels"]
 
-        # Move loss_weights to the same device as logits.
         loss_weights = loss_weights.to(logits.device)
+        if changed_mask_input is not None:
+            changed_mask_input = changed_mask_input.to(logits.device)
 
         loss = _compute_weighted_loss(logits, labels, loss_weights)
 
-        # Accumulate per-batch metrics for emission via log().  Wrapped in
-        # try/except because metrics are observability-only — a bug here
-        # must never kill a training run. Skip entirely when the operator
-        # opts out via ``RUNE_DISABLE_STEP_METRICS=1``.
         if not _step_metrics_enabled():
             return (loss, outputs) if return_outputs else loss
         try:
@@ -1011,6 +1040,7 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
                 loss_weights,
                 changed_weight=self._diff_changed_weight,
                 unchanged_weight=self._diff_unchanged_weight,
+                changed_mask_tensor=changed_mask_input,
             )
             for k, v in metrics.items():
                 self._diff_metric_sums[k] = self._diff_metric_sums.get(k, 0.0) + v

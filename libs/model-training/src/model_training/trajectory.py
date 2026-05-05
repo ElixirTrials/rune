@@ -128,7 +128,7 @@ def compute_assistant_masks(
     messages: list[dict[str, str]],
     *,
     max_length: int | None = None,
-    truncation_mode: str = "keep_end",
+    truncation_mode: str = "keep_user_end",
 ) -> dict[str, list[int]]:
     r"""Tokenize a chat conversation and emit a 0/1 mask over assistant tokens.
 
@@ -160,13 +160,12 @@ def compute_assistant_masks(
             to ``max_length`` *before* the dataset row is materialised,
             avoiding the multi-MB-per-row bloat of long-tail mined
             pairs (some activation_text bodies tokenize to >50k tokens).
-        truncation_mode: ``"keep_end"`` (default) keeps the last
-            ``max_length`` tokens; ``"keep_start"`` keeps the first.
-            ``keep_end`` matches the diff-aware collator default so the
-            tail of the conversation — and therefore the trailing
-            assistant span the loss is computed against — survives
-            truncation. Pass ``"keep_start"`` only if a downstream
-            consumer needs the conversation prefix.
+        truncation_mode: ``"keep_user_end"`` (default) preserves the
+            non-assistant prefix (system+user turns) and fills remaining
+            budget with the assistant tail — preventing context-free
+            code from reaching the loss. ``"keep_end"`` keeps the last
+            ``max_length`` tokens (legacy). ``"keep_start"`` keeps the
+            first ``max_length`` tokens.
 
     Returns:
         ``{"input_ids": [...], "assistant_masks": [...]}`` with both lists
@@ -260,16 +259,63 @@ def _truncate_to_max_length(
     Extracted from :func:`compute_assistant_masks` to keep that function
     under the C901 complexity threshold while still validating the
     ``truncation_mode`` argument loudly.
+
+    Modes:
+        keep_end: Keep the last ``max_length`` tokens (original behavior).
+        keep_start: Keep the first ``max_length`` tokens.
+        keep_user_end: Keep the non-assistant prefix (user prompt) and fill
+            remaining budget with the assistant tail. Prevents the model
+            from seeing context-free code after truncation.
     """
     if max_length is None or len(full_ids) <= max_length:
         return full_ids, mask
     if truncation_mode == "keep_end":
         sl = slice(-max_length, None)
-    elif truncation_mode == "keep_start":
+        return full_ids[sl], mask[sl]
+    if truncation_mode == "keep_start":
         sl = slice(None, max_length)
-    else:
-        raise ValueError(
-            f"compute_assistant_masks: unsupported truncation_mode "
-            f"{truncation_mode!r}; expected 'keep_end' or 'keep_start'."
-        )
-    return full_ids[sl], mask[sl]
+        return full_ids[sl], mask[sl]
+    if truncation_mode == "keep_user_end":
+        return _truncate_keep_user_end(full_ids, mask, max_length)
+    raise ValueError(
+        f"compute_assistant_masks: unsupported truncation_mode "
+        f"{truncation_mode!r}; expected 'keep_end', 'keep_start', "
+        f"or 'keep_user_end'."
+    )
+
+
+def _truncate_keep_user_end(
+    full_ids: list[int],
+    mask: list[int],
+    max_length: int,
+) -> tuple[list[int], list[int]]:
+    """Keep non-assistant prefix + assistant tail, dropping assistant middle.
+
+    Strategy: find where the assistant span starts (first mask==1), keep
+    everything before it (system+user turns), then fill the remaining
+    budget with the TAIL of the assistant span. This ensures the model
+    always sees the full instruction context while keeping the end of
+    the code (where diff hunks typically cluster in code-review data).
+    """
+    first_asst = -1
+    for i, m in enumerate(mask):
+        if m == 1:
+            first_asst = i
+            break
+    if first_asst < 0:
+        return full_ids[:max_length], mask[:max_length]
+
+    prefix_ids = full_ids[:first_asst]
+    prefix_mask = mask[:first_asst]
+
+    if len(prefix_ids) >= max_length:
+        return prefix_ids[:max_length], prefix_mask[:max_length]
+
+    asst_budget = max_length - len(prefix_ids)
+    asst_ids = full_ids[first_asst:]
+    asst_mask = mask[first_asst:]
+
+    tail_ids = asst_ids[-asst_budget:]
+    tail_mask = asst_mask[-asst_budget:]
+
+    return prefix_ids + tail_ids, prefix_mask + tail_mask
