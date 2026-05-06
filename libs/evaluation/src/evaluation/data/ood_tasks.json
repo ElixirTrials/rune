@@ -58,5 +58,35 @@
     "prompt": "def running_average(nums: list[float]) -> list[float]:\n    \"\"\"Compute the running average of a list of numbers.\"\"\"\n",
     "test": "assert running_average([1, 2, 3]) == [1.0, 1.5, 2.0]\nassert running_average([10]) == [10.0]\nassert running_average([]) == []",
     "canonical_solution": "    result = []\n    total = 0.0\n    for i, n in enumerate(nums, 1):\n        total += n\n        result.append(total / i)\n    return result"
+  },
+  {
+    "task_id": "OOD/10",
+    "prompt": "def longest_common_prefix(strs: list[str]) -> str:\n    \"\"\"Find the longest common prefix among a list of strings.\"\"\"\n",
+    "test": "assert longest_common_prefix(['flower', 'flow', 'flight']) == 'fl'\nassert longest_common_prefix(['dog', 'racecar', 'car']) == ''\nassert longest_common_prefix(['']) == ''\nassert longest_common_prefix(['single']) == 'single'",
+    "canonical_solution": "    if not strs:\n        return ''\n    prefix = strs[0]\n    for s in strs[1:]:\n        while not s.startswith(prefix):\n            prefix = prefix[:-1]\n            if not prefix:\n                return ''\n    return prefix"
+  },
+  {
+    "task_id": "OOD/11",
+    "prompt": "def rotate_list(lst: list, k: int) -> list:\n    \"\"\"Rotate a list to the right by k positions.\"\"\"\n",
+    "test": "assert rotate_list([1, 2, 3, 4, 5], 2) == [4, 5, 1, 2, 3]\nassert rotate_list([1, 2, 3], 0) == [1, 2, 3]\nassert rotate_list([], 5) == []\nassert rotate_list([1], 100) == [1]",
+    "canonical_solution": "    if not lst:\n        return []\n    k = k % len(lst)\n    return lst[-k:] + lst[:-k] if k else lst[:]"
+  },
+  {
+    "task_id": "OOD/12",
+    "prompt": "def interleave(a: list, b: list) -> list:\n    \"\"\"Interleave two lists. If lengths differ, append remaining elements.\"\"\"\n",
+    "test": "assert interleave([1, 2, 3], ['a', 'b', 'c']) == [1, 'a', 2, 'b', 3, 'c']\nassert interleave([1, 2], ['a', 'b', 'c']) == [1, 'a', 2, 'b', 'c']\nassert interleave([], [1, 2]) == [1, 2]\nassert interleave([], []) == []",
+    "canonical_solution": "    result = []\n    i = 0\n    while i < len(a) or i < len(b):\n        if i < len(a):\n            result.append(a[i])\n        if i < len(b):\n            result.append(b[i])\n        i += 1\n    return result"
+  },
+  {
+    "task_id": "OOD/13",
+    "prompt": "def deep_get(d: dict, keys: list[str], default=None):\n    \"\"\"Safely traverse nested dicts by a list of keys.\"\"\"\n",
+    "test": "assert deep_get({'a': {'b': {'c': 42}}}, ['a', 'b', 'c']) == 42\nassert deep_get({'a': 1}, ['a', 'b'], default=-1) == -1\nassert deep_get({}, ['x'], default=0) == 0\nassert deep_get({'a': {'b': 2}}, []) == {'a': {'b': 2}}",
+    "canonical_solution": "    current = d\n    for key in keys:\n        if isinstance(current, dict) and key in current:\n            current = current[key]\n        else:\n            return default\n    return current"
+  },
+  {
+    "task_id": "OOD/14",
+    "prompt": "def group_by(items: list[dict], key: str) -> dict[str, list[dict]]:\n    \"\"\"Group a list of dicts by a given key.\"\"\"\n",
+    "test": "assert group_by([{'a': 1, 'b': 2}, {'a': 1, 'b': 3}, {'a': 2, 'b': 4}], 'a') == {1: [{'a': 1, 'b': 2}, {'a': 1, 'b': 3}], 2: [{'a': 2, 'b': 4}]}\nassert group_by([], 'x') == {}\nassert group_by([{'x': 'hello'}], 'x') == {'hello': [{'x': 'hello'}]}",
+    "canonical_solution": "    result: dict[str, list[dict]] = {}\n    for item in items:\n        k = item.get(key)\n        result.setdefault(k, []).append(item)\n    return result"
   }
 ]

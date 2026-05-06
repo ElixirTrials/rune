@@ -176,3 +176,28 @@ def test_validate_against_probe_hidden_size_mismatch() -> None:
     assert len(warnings) == 1
     assert "q_proj" in warnings[0]
     assert "2048" in warnings[0]
+
+
+# ---------------------------------------------------------------------------
+# Additional model presets (paper B.8 sweep)
+# ---------------------------------------------------------------------------
+
+
+def test_llama_32_3b_registered() -> None:
+    """Llama 3.2 3B is available in the default registry."""
+    ModelRegistry._default_instance = None
+    registry = ModelRegistry.default()
+    config = registry.get("llama-3.2-3b")
+    assert config.model_id == "meta-llama/Llama-3.2-3B"
+    assert config.expected_num_layers == 28
+    assert config.expected_hidden_size == 3072
+
+
+def test_phi_35_mini_registered() -> None:
+    """Phi-3.5 mini is available in the default registry."""
+    ModelRegistry._default_instance = None
+    registry = ModelRegistry.default()
+    config = registry.get("phi-3.5-mini")
+    assert config.model_id == "microsoft/Phi-3.5-mini-instruct"
+    assert config.expected_num_layers == 32
+    assert config.expected_hidden_size == 3072

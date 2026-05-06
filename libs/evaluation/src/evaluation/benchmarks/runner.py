@@ -61,10 +61,9 @@ def _generate_completion(
 ) -> str:
     """Synchronously call provider.generate() from a thread.
 
-    Creates a new event loop per thread. ThreadPoolExecutor threads have
-    no running loop by default, so we create one per call. This works
-    with any InferenceProvider that is not bound to a specific loop at
-    construction time (open question #4 from plan).
+    When adapter_generator is set on the stack, generates a per-problem
+    adapter via the hypernetwork, loads it into the provider, generates,
+    then unloads it. Otherwise uses the first static adapter_id.
 
     Args:
         adapter_stack: AdapterStack with provider and model config.
@@ -74,9 +73,12 @@ def _generate_completion(
     Returns:
         Generated text string.
     """
-    adapter_id = adapter_stack.adapter_ids[0] if adapter_stack.adapter_ids else None
     loop = asyncio.new_event_loop()
     try:
+        if adapter_stack.adapter_generator is not None:
+            return _generate_with_hypernet(adapter_stack, problem, max_tokens, loop)
+
+        adapter_id = adapter_stack.adapter_ids[0] if adapter_stack.adapter_ids else None
         result = loop.run_until_complete(
             adapter_stack.provider.generate(
                 prompt=problem.prompt,
@@ -88,6 +90,62 @@ def _generate_completion(
         return str(result.text)
     finally:
         loop.close()
+
+
+def _generate_with_hypernet(
+    adapter_stack: AdapterStack,
+    problem: Problem,
+    max_tokens: int,
+    loop: asyncio.AbstractEventLoop,
+) -> str:
+    """Generate a completion using a per-problem hypernetwork adapter.
+
+    Args:
+        adapter_stack: AdapterStack with adapter_generator set.
+        problem: Problem whose prompt drives adapter generation.
+        max_tokens: Generation token cap.
+        loop: Event loop for async provider calls.
+
+    Returns:
+        Generated text string.
+    """
+    assert adapter_stack.adapter_generator is not None
+    adapter_path = adapter_stack.adapter_generator(problem.prompt)
+    if adapter_path is None:
+        logger.warning(
+            "adapter_generator returned None for %s, using base",
+            problem.problem_id,
+        )
+        result = loop.run_until_complete(
+            adapter_stack.provider.generate(
+                prompt=problem.prompt,
+                model=adapter_stack.base_model,
+                max_tokens=max_tokens,
+            )
+        )
+        return str(result.text)
+
+    adapter_id = f"hypernet_{problem.problem_id}"
+    try:
+        loop.run_until_complete(
+            adapter_stack.provider.load_adapter(adapter_id, adapter_path)
+        )
+        result = loop.run_until_complete(
+            adapter_stack.provider.generate(
+                prompt=problem.prompt,
+                model=adapter_stack.base_model,
+                adapter_id=adapter_id,
+                max_tokens=max_tokens,
+            )
+        )
+        return str(result.text)
+    finally:
+        try:
+            loop.run_until_complete(
+                adapter_stack.provider.unload_adapter(adapter_id)
+            )
+        except Exception:
+            logger.debug("Failed to unload adapter %s", adapter_id)
 
 
 def _evaluate_one(

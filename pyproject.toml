@@ -271,7 +271,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["services", "libs", "tests"]
+testpaths = ["services", "libs", "tests", "scripts/paper"]
 norecursedirs = ["site", "docs", ".venv", "venv", ".uv_cache", "node_modules", ".git"]
 markers = [
     "e2e: end-to-end API workflow tests",
@@ -290,6 +290,7 @@ filterwarnings = [
     "ignore:`torch.jit.script_method` is deprecated:DeprecationWarning",
 ]
 pythonpath = [
+    ".",
     "services/api-service/src",
     "services/evolution-svc/src",
     "services/rune-agent/src",

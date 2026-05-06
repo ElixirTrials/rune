@@ -9,10 +9,12 @@ No GPU imports. CPU-safe.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from inference.provider import InferenceProvider
+
+AdapterGenerator = Callable[[str], str | None]
 
 
 @dataclass
@@ -24,12 +26,17 @@ class AdapterStack:
         adapter_ids: Ordered list of adapter IDs to apply (first = innermost).
         adapter_paths: Dict mapping adapter_id -> filesystem path.
         provider: InferenceProvider used to generate completions.
+        adapter_generator: Optional callable that takes a problem prompt and
+            returns a filesystem path to a generated adapter, or None. Used
+            by the Rune hypernetwork to produce per-problem adapters at eval
+            time.
     """
 
     base_model: str
     adapter_ids: list[str]
     adapter_paths: dict[str, str]
     provider: InferenceProvider
+    adapter_generator: AdapterGenerator | None = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         """Human-readable representation."""

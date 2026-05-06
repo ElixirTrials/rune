@@ -97,7 +97,7 @@ def test_run_batch_produces_per_repo_jsonl(
 
     pairs = load_jsonl(output_dir / "test_alpha.unrolled.jsonl")
     assert len(pairs) == 2
-    assert pairs[0]["task_id"] == "pr_test/alpha_1"
+    assert pairs[0]["task_id"] == "pr_test/alpha_1_r0"
 
 
 def test_mining_repos_config_is_valid_json() -> None:

@@ -14,10 +14,10 @@ def test_ood_json_exists() -> None:
     assert OOD_JSON.exists()
 
 
-def test_ood_json_has_10_tasks() -> None:
+def test_ood_json_has_15_tasks() -> None:
     with OOD_JSON.open() as f:
         tasks = json.load(f)
-    assert len(tasks) == 10
+    assert len(tasks) == 15
 
 
 def test_generalization_delta_positive() -> None:
