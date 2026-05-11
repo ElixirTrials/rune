@@ -24,11 +24,16 @@ def test_truncate_head_tail_keeps_head_and_tail() -> None:
 
 def test_extract_pytest_failure() -> None:
     raw = (
-        "============================= test session starts ==============================\n"
-        "tests/test_foo.py::test_bar FAILED                                       [ 50%]\n"
-        "tests/test_foo.py::test_baz PASSED                                       [100%]\n"
-        "=================================== FAILURES ===================================\n"
-        "FAILED tests/test_foo.py::test_bar - AssertionError: expected 1 got 2\n"
+        "============================= test session starts "
+        "==============================\n"
+        "tests/test_foo.py::test_bar FAILED"
+        "                                       [ 50%]\n"
+        "tests/test_foo.py::test_baz PASSED"
+        "                                       [100%]\n"
+        "=================================== FAILURES "
+        "===================================\n"
+        "FAILED tests/test_foo.py::test_bar"
+        " - AssertionError: expected 1 got 2\n"
     )
     summary, anchor, kind = extract_failure_summary(raw, hint=None)
     assert kind is FeedbackKind.test_failure
@@ -63,7 +68,10 @@ def test_extract_lint_summary_with_hint() -> None:
 
 
 def test_extract_falls_back_to_first_line_for_unknown() -> None:
-    raw = "ld: symbol(s) not found for architecture x86_64\nclang: error: linker command failed"
+    raw = (
+        "ld: symbol(s) not found for architecture x86_64\n"
+        "clang: error: linker command failed"
+    )
     summary, _anchor, kind = extract_failure_summary(raw, hint="build")
     assert kind is FeedbackKind.build_failure
     assert summary.startswith("ld: symbol(s) not found")

@@ -79,7 +79,7 @@ def build_vector_store(
         Dict with "index" (faiss.IndexFlatIP), "chunks" (list[str]),
         "n_chunks" (int).
     """
-    import faiss
+    import faiss  # type: ignore[import-untyped]
     import numpy as np
 
     encoder = _get_encoder(config.embedding_model)
@@ -136,7 +136,7 @@ def query_trajectory_rag(
 
     q_emb = encoder.encode([query], convert_to_numpy=True).astype(np.float32)
 
-    import faiss
+    import faiss  # type: ignore[import-untyped]
 
     faiss.normalize_L2(q_emb)
 

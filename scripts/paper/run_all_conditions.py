@@ -41,7 +41,7 @@ HPO_S3_PREFIX = (
 
 
 def flush_partial_results(
-    all_results: dict[str, dict[str, float]],
+    all_results: dict[str, dict[str, float | None]],
     output_path: Path,
     metadata: dict[str, Any] | None = None,
 ) -> None:
@@ -139,7 +139,7 @@ def run_condition_static(
     adapter_paths: dict[str, str] | None = None,
     max_samples: int | None = None,
     checkpoint_dir: Path | str | None = None,
-) -> dict[str, float]:
+) -> dict[str, float | None]:
     """Evaluate with a fixed adapter stack (conditions i, iii).
 
     Args:
@@ -211,7 +211,7 @@ def run_condition_rag(
     provider: Any,
     max_samples: int | None = None,
     checkpoint_dir: Path | str | None = None,
-) -> dict[str, float]:
+) -> dict[str, float | None]:
     """Evaluate with trajectory-aware RAG prompt augmentation (condition ii).
 
     Builds a FAISS vector store from the trajectory corpus, then for each
@@ -294,7 +294,7 @@ def run_condition_ttt(
     provider: Any,
     max_samples: int | None = None,
     checkpoint_dir: Path | str | None = None,
-) -> dict[str, float]:
+) -> dict[str, float | None]:
     """Evaluate with test-time training on MLP layers (condition iv).
 
     For each benchmark problem, runs inner-loop gradient updates on a
@@ -382,7 +382,7 @@ def run_condition_rune(
     provider: Any,
     max_samples: int | None = None,
     checkpoint_dir: Path | str | None = None,
-) -> dict[str, float]:
+) -> dict[str, float | None]:
     """Evaluate with per-task hypernetwork-generated adapters (condition v).
 
     For each benchmark problem, generates a task-specific adapter via the
@@ -445,7 +445,7 @@ def run_condition_rune(
 
 
 def assemble_table2(
-    all_results: dict[str, dict[str, float]],
+    all_results: dict[str, dict[str, float | None]],
 ) -> dict[str, Any]:
     """Assemble Table 2 data from per-condition results.
 
@@ -581,7 +581,7 @@ def main() -> None:
         "benchmarks": args.benchmarks,
         "hypernet_checkpoint": args.hypernet_checkpoint,
     }
-    all_results: dict[str, dict[str, float]] = {}
+    all_results: dict[str, dict[str, float | None]] = {}
     ckpt_base = args.output.parent / "checkpoints"
 
     for cond in args.conditions:

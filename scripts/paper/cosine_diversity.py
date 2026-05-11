@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as f_nn
 
 
 def compute_cosine_diversity(adapters: list[torch.Tensor]) -> float:
@@ -31,7 +31,7 @@ def compute_cosine_diversity(adapters: list[torch.Tensor]) -> float:
         return 0.0
 
     flat = torch.stack([a.flatten().float() for a in adapters])
-    flat = F.normalize(flat, dim=1)
+    flat = f_nn.normalize(flat, dim=1)
     sim_matrix = flat @ flat.T
 
     n = len(adapters)

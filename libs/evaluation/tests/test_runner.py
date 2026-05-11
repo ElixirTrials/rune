@@ -160,7 +160,7 @@ def test_checkpoint_creates_jsonl(
     )
     ckpt = tmp_path / "humaneval.jsonl"
     assert ckpt.exists()
-    lines = [l for l in ckpt.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in ckpt.read_text().splitlines() if ln.strip()]
     assert len(lines) == 3
 
 
@@ -186,7 +186,7 @@ def test_checkpoint_resumes_from_prior(
     assert result2.n_problems == 3
     # Checkpoint file should still have only 3 lines (not 6)
     ckpt = tmp_path / "humaneval.jsonl"
-    lines = [l for l in ckpt.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in ckpt.read_text().splitlines() if ln.strip()]
     assert len(lines) == 3
 
 

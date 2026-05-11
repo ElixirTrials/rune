@@ -567,7 +567,7 @@ class TestDiffWeightedDataCollator:
         assert w_half[2] == pytest.approx(0.5)
 
     def test_quality_score_absent_defaults_to_one(self) -> None:
-        """Missing quality_score leaves weights unchanged (same as quality_score=1.0)."""
+        """Missing quality_score leaves weights unchanged."""
         from model_training.diff_loss import DiffWeightedDataCollator
 
         input_ids = [[10, 20, 30]]

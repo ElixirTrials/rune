@@ -276,7 +276,7 @@ def _append_checkpoint(path: Path, verdict: PassVerdict) -> None:
             f.write(line + "\n")
 
 
-def run_benchmark(
+def run_benchmark(  # noqa: C901
     adapter_stack: AdapterStack,
     benchmark_id: str,
     problem_ids: list[str] | None = None,
@@ -300,6 +300,9 @@ def run_benchmark(
             evaluation to a subset. If None, evaluates all loaded problems.
         max_samples: Cap on total problems evaluated.
         config: BenchmarkConfig overriding defaults (timeout, workers, seed).
+        checkpoint_dir: Directory for per-problem JSONL checkpoints. When set,
+            completed verdicts are appended incrementally and subsequent runs
+            resume from the checkpoint.
 
     Returns:
         BenchmarkResult with per-problem verdicts and aggregate pass_at_1.
@@ -365,7 +368,9 @@ def run_benchmark(
 
     if not remaining:
         logger.info(
-            "All %d problems already cached for %s", len(problems), benchmark_id
+            "All %d problems already cached for %s",
+            len(problems),
+            benchmark_id,
         )
         id_order = {p.problem_id: i for i, p in enumerate(problems)}
         cached_verdicts.sort(key=lambda v: id_order.get(v.problem_id, 9999))

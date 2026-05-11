@@ -123,6 +123,7 @@ class VLLMProvider(InferenceProvider):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
     ) -> GenerationResult:
+        """Generate a raw text completion via the vLLM completions endpoint."""
         effective_model = adapter_id if adapter_id is not None else model
         logger.debug(
             "complete_text: model=%s adapter_id=%s max_tokens=%d",

@@ -39,7 +39,6 @@ from pathlib import Path
 
 # Unified diff structure regexes.
 _FILE_HEADER = re.compile(r"^---\s+(.+?)\s*$", re.MULTILINE)
-_FILE_HEADER_PLUS = re.compile(r"^\+\+\+\s+(.+?)\s*$", re.MULTILINE)
 _HUNK_HEADER = re.compile(
     r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@",
     re.MULTILINE,
