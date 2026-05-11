@@ -10,6 +10,7 @@ Usage:
         --results-a evaluation_results/condition_v.json \
         --results-b evaluation_results/condition_i.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,7 +88,11 @@ def wilson_score_ci(
 
     denominator = 1 + z**2 / n_total
     center = (p_hat + z**2 / (2 * n_total)) / denominator
-    spread = z * math.sqrt(p_hat * (1 - p_hat) / n_total + z**2 / (4 * n_total**2)) / denominator
+    spread = (
+        z
+        * math.sqrt(p_hat * (1 - p_hat) / n_total + z**2 / (4 * n_total**2))
+        / denominator
+    )
 
     lower = max(0.0, center - spread)
     upper = min(1.0, center + spread)
@@ -145,8 +150,16 @@ def main() -> None:
 
     report = {
         "mcnemar": mcnemar_result,
-        "ci_a": {"lower": ci_a[0], "upper": ci_a[1], "pass_rate": n_a / len(common_ids)},
-        "ci_b": {"lower": ci_b[0], "upper": ci_b[1], "pass_rate": n_b / len(common_ids)},
+        "ci_a": {
+            "lower": ci_a[0],
+            "upper": ci_a[1],
+            "pass_rate": n_a / len(common_ids),
+        },
+        "ci_b": {
+            "lower": ci_b[0],
+            "upper": ci_b[1],
+            "pass_rate": n_b / len(common_ids),
+        },
         "n_problems": len(common_ids),
     }
 

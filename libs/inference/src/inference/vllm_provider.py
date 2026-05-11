@@ -126,7 +126,9 @@ class VLLMProvider(InferenceProvider):
         effective_model = adapter_id if adapter_id is not None else model
         logger.debug(
             "complete_text: model=%s adapter_id=%s max_tokens=%d",
-            effective_model, adapter_id, max_tokens,
+            effective_model,
+            adapter_id,
+            max_tokens,
         )
 
         response = await self._client.completions.create(

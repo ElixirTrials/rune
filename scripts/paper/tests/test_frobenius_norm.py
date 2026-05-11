@@ -1,8 +1,8 @@
 """Tests for per-layer Frobenius norm computation."""
+
 from __future__ import annotations
 
 import torch
-import pytest
 
 from scripts.paper.frobenius_norm import compute_frobenius_norms
 

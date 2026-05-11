@@ -12,7 +12,9 @@ T0 = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
 def _commit(sha: str, minutes: int, author: str) -> dict:
     return {
         "sha": sha,
-        "commit": {"committer": {"date": (T0 + timedelta(minutes=minutes)).isoformat()}},
+        "commit": {
+            "committer": {"date": (T0 + timedelta(minutes=minutes)).isoformat()}
+        },
         "author": {"login": author},
     }
 

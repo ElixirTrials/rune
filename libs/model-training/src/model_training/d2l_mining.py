@@ -35,13 +35,8 @@ __all__ = [
     "score_pr_quality",
 ]
 
-_BOT_LOGINS = frozenset(
-    {"dependabot[bot]", "renovate[bot]", "github-actions[bot]"}
-)
-_NONCODE_LABELS = frozenset(
-    {"documentation", "docs", "chore", "ci", "dependencies"}
-)
-
+_BOT_LOGINS = frozenset({"dependabot[bot]", "renovate[bot]", "github-actions[bot]"})
+_NONCODE_LABELS = frozenset({"documentation", "docs", "chore", "ci", "dependencies"})
 
 
 def score_pr_quality(pr_features: dict[str, Any]) -> float:
@@ -98,9 +93,7 @@ def _aggregate_patch(files: list[dict[str, Any]]) -> str:
     return "\n".join(parts)
 
 
-def _failed_check_to_event(
-    run: dict[str, Any], ts: datetime
-) -> FeedbackEvent:
+def _failed_check_to_event(run: dict[str, Any], ts: datetime) -> FeedbackEvent:
     body = (run.get("output") or {}).get("summary") or run.get("name", "")
     body = truncate_head_tail(body, max_bytes=4096)
     name = (run.get("name") or "").lower()
@@ -325,14 +318,8 @@ def _build_trajectory(
         return None
 
     # Prefer head/base from GQL metadata; fall back to REST PR shape.
-    head_sha = (
-        gql_meta.get("head_sha")
-        or (pr.get("head") or {}).get("sha", "")
-    )
-    base_sha = (
-        gql_meta.get("base_sha")
-        or (pr.get("base") or {}).get("sha", "")
-    )
+    head_sha = gql_meta.get("head_sha") or (pr.get("head") or {}).get("sha", "")
+    base_sha = gql_meta.get("base_sha") or (pr.get("base") or {}).get("sha", "")
 
     labels = pr.get("labels") or gql_meta.get("labels", [])
 

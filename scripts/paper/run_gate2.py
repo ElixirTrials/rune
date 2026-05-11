@@ -9,6 +9,7 @@ Usage:
         --hypernet-checkpoint path/to/checkpoint.bin \
         --output evaluation_results/gate2.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,15 +31,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Gate 2 evaluation")
     parser.add_argument("--model", type=str, default=DEFAULT_BASE_MODEL)
     parser.add_argument(
-        "--warm-start-adapter", default=DEFAULT_WARM_START,
+        "--warm-start-adapter",
+        default=DEFAULT_WARM_START,
         help="Warm-start LoRA for substrate (DeltaCoder)",
     )
     parser.add_argument(
-        "--hypernet-checkpoint", type=str, required=True,
+        "--hypernet-checkpoint",
+        type=str,
+        required=True,
         help="Path to trained hypernetwork checkpoint",
     )
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--output", type=Path, default=Path("evaluation_results/gate2.json"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("evaluation_results/gate2.json")
+    )
     args = parser.parse_args()
 
     import subprocess
@@ -62,14 +68,17 @@ def main() -> None:
         import mlflow
 
         mlflow.start_run(run_name="gate2")
-        mlflow_log_params({
-            "model": args.model,
-            "warm_start_adapter": args.warm_start_adapter,
-            "hypernet_checkpoint": args.hypernet_checkpoint,
-            "git_commit": subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], text=True,
-            ).strip(),
-        })
+        mlflow_log_params(
+            {
+                "model": args.model,
+                "warm_start_adapter": args.warm_start_adapter,
+                "hypernet_checkpoint": args.hypernet_checkpoint,
+                "git_commit": subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"],
+                    text=True,
+                ).strip(),
+            }
+        )
 
     benchmarks = list(REQUIRED_BENCHMARKS)
     provider = get_provider()

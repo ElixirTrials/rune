@@ -86,10 +86,7 @@ class TestScoreEpisodeQuality:
         assert score == pytest.approx(1.0)
 
     def test_ep0_skips_causal_factor(self) -> None:
-        fb = (
-            "Implement a REST API for user management"
-            " with CRUD operations"
-        )
+        fb = "Implement a REST API for user management with CRUD operations"
         score = score_episode_quality(
             feedback_body=fb,
             action_diff="+class UserController:\n+    pass",
@@ -237,16 +234,16 @@ class TestScoreExternalQuality:
             "The validate_input function should check for None"
             " before accessing .strip() to avoid AttributeError"
         )
-        before = (
-            "def validate_input(s):\n    return s.strip()"
-        )
+        before = "def validate_input(s):\n    return s.strip()"
         after = (
             "def validate_input(s):\n"
             "    if s is None:\n        return ''\n"
             "    return s.strip()"
         )
         score = score_external_quality(
-            feedback_body=fb, before_code=before, after_code=after,
+            feedback_body=fb,
+            before_code=before,
+            after_code=after,
         )
         assert score > 0.5
 
@@ -256,25 +253,25 @@ class TestScoreExternalQuality:
             " status_code field before accessing the data"
             " payload to prevent KeyError"
         )
-        unchanged = "\n".join(
-            f"    line_{i} = {i}" for i in range(20)
-        )
+        unchanged = "\n".join(f"    line_{i} = {i}" for i in range(20))
         before = (
-            f'def parse_response(response):\n'
+            f"def parse_response(response):\n"
             f'    """Parse API response."""\n'
-            f'{unchanged}\n'
+            f"{unchanged}\n"
             f'    return response["data"]'
         )
         after = (
-            f'def parse_response(response):\n'
+            f"def parse_response(response):\n"
             f'    """Parse API response."""\n'
-            f'{unchanged}\n'
+            f"{unchanged}\n"
             f'    if response.get("status_code") != 200:\n'
-            f'        return None\n'
+            f"        return None\n"
             f'    return response["data"]'
         )
         score = score_external_quality(
-            feedback_body=fb, before_code=before, after_code=after,
+            feedback_body=fb,
+            before_code=before,
+            after_code=after,
         )
         assert score == pytest.approx(1.0)
 

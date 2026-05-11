@@ -203,7 +203,9 @@ class APPSAdapter:
         from huggingface_hub import hf_hub_download  # noqa: PLC0415
 
         path = hf_hub_download(
-            "codeparrot/apps", "train.jsonl", repo_type="dataset",
+            "codeparrot/apps",
+            "train.jsonl",
+            repo_type="dataset",
         )
         rows: list[dict[str, Any]] = []
         with open(path) as f:

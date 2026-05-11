@@ -9,6 +9,7 @@ Usage:
         --benchmarks humaneval livecodebench \
         --output evaluation_results/condition_iv.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,16 +31,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Condition (iv): TTT-E2E baseline")
     parser.add_argument("--model", type=str, default=DEFAULT_BASE_MODEL)
     parser.add_argument(
-        "--warm-start-adapter", default=DEFAULT_WARM_START,
+        "--warm-start-adapter",
+        default=DEFAULT_WARM_START,
         help="Warm-start LoRA for substrate (DeltaCoder)",
     )
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--steps", type=int, default=5)
     parser.add_argument("--mlp-fraction", type=float, default=0.25)
     parser.add_argument(
-        "--benchmarks", nargs="+", default=["humaneval", "livecodebench"],
+        "--benchmarks",
+        nargs="+",
+        default=["humaneval", "livecodebench"],
     )
-    parser.add_argument("--output", type=Path, default=Path("evaluation_results/condition_iv.json"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("evaluation_results/condition_iv.json")
+    )
     args = parser.parse_args()
 
     import torch
@@ -59,7 +65,9 @@ def main() -> None:
     print(f"Loading model {args.model}...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     ttt_model = AutoModelForCausalLM.from_pretrained(
-        args.model, torch_dtype=torch.float16, device_map="auto",
+        args.model,
+        torch_dtype=torch.float16,
+        device_map="auto",
     )
     original_sd = {k: v.cpu().clone() for k, v in ttt_model.state_dict().items()}
 

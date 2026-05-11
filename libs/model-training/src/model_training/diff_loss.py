@@ -29,6 +29,7 @@ def _step_metrics_enabled() -> bool:
     raw = os.environ.get("RUNE_DISABLE_STEP_METRICS", "")
     return raw.strip() not in {"1", "true", "True", "yes"}
 
+
 try:
     from trl import SFTTrainer  # type: ignore[attr-defined]
 except ModuleNotFoundError:
@@ -587,7 +588,11 @@ class DiffWeightedDataCollator:
         )
         if match_pos < 0 and prefix_truncated == 0:
             match_pos = _char_level_match_pos(
-                self.tokenizer, input_ids_seq, span_start, span_end, post,
+                self.tokenizer,
+                input_ids_seq,
+                span_start,
+                span_end,
+                post,
             )
             if match_pos < 0:
                 self._span_match_failures += 1
@@ -711,9 +716,7 @@ class DiffWeightedDataCollator:
 
             # Build changed/context mask BEFORE quality scaling so the
             # metrics split doesn't depend on the quality multiplier.
-            changed_row = [
-                wi == self.changed_weight and wi > 0 for wi in w
-            ]
+            changed_row = [wi == self.changed_weight and wi > 0 for wi in w]
             all_changed.append(changed_row)
 
             q = quality_scores[idx]
@@ -909,9 +912,7 @@ def _compute_step_metrics(
             chunk_ce = -chunk_lp.gather(1, chunk_targets.unsqueeze(1)).squeeze(1)
             chunk_ent = -(chunk_lp.exp() * chunk_lp).sum(dim=-1)
             flat_ce.index_copy_(0, idx_chunk, chunk_ce.to(flat_ce.dtype))
-            flat_entropy.index_copy_(
-                0, idx_chunk, chunk_ent.to(flat_entropy.dtype)
-            )
+            flat_entropy.index_copy_(0, idx_chunk, chunk_ent.to(flat_entropy.dtype))
             del chunk_f32, chunk_targets, chunk_lp, chunk_ce, chunk_ent
 
         pred = shift_logits.argmax(dim=-1)

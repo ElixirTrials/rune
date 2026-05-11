@@ -1,8 +1,8 @@
 """Tests for run_all_conditions: incremental result flushing and HPO adapter fetch."""
+
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +13,6 @@ from scripts.paper.run_all_conditions import (
     fetch_best_hpo_adapter,
     flush_partial_results,
 )
-
 
 # ── flush_partial_results ────────────────────────────────────────────
 
@@ -97,7 +96,10 @@ class TestAssembleTable2:
             "v": {"humaneval": 0.50},
         }
         table = assemble_table2(results)
-        assert abs(table["conditions"]["v"]["delta_vs_substrate"]["humaneval"] - 0.20) < 1e-9
+        assert (
+            abs(table["conditions"]["v"]["delta_vs_substrate"]["humaneval"] - 0.20)
+            < 1e-9
+        )
 
     def test_label_assignment(self) -> None:
         table = assemble_table2({"v": {"humaneval": 0.5}})
@@ -124,7 +126,9 @@ class TestFetchBestHpoAdapter:
             (adapter_dir / "adapter_config.json").write_text('{"type": "lora"}')
             return MagicMock(returncode=0)
 
-        with patch("scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_s3_run):
+        with patch(
+            "scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_s3_run
+        ):
             result = fetch_best_hpo_adapter(adapter_dir)
 
         assert result == adapter_dir
@@ -143,7 +147,9 @@ class TestFetchBestHpoAdapter:
             (adapter_dir / "adapter_config.json").write_text('{"type": "lora"}')
             return MagicMock(returncode=0)
 
-        with patch("scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run):
+        with patch(
+            "scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run
+        ):
             result = fetch_best_hpo_adapter(adapter_dir)
 
         assert result == adapter_dir
@@ -157,7 +163,9 @@ class TestFetchBestHpoAdapter:
         def fake_run(cmd, **kwargs):
             return MagicMock(returncode=1)
 
-        with patch("scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run):
+        with patch(
+            "scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run
+        ):
             with pytest.raises(FileNotFoundError, match="Could not fetch HPO adapter"):
                 fetch_best_hpo_adapter(adapter_dir)
 
@@ -174,7 +182,9 @@ class TestFetchBestHpoAdapter:
             (adapter_dir / "adapter_config.json").write_text("{}")
             return MagicMock(returncode=0)
 
-        with patch("scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run):
+        with patch(
+            "scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run
+        ):
             fetch_best_hpo_adapter(
                 adapter_dir,
                 run_id=custom_id,
@@ -196,7 +206,9 @@ class TestFetchBestHpoAdapter:
             (adapter_dir / "adapter_config.json").write_text("{}")
             return MagicMock(returncode=0)
 
-        with patch("scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run):
+        with patch(
+            "scripts.paper.run_all_conditions.subprocess.run", side_effect=fake_run
+        ):
             fetch_best_hpo_adapter(
                 adapter_dir,
                 mlflow_tracking_uri="http://mlflow:5000",

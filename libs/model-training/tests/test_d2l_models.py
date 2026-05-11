@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from pydantic import ValidationError
-
 from model_training.d2l_models import (
     Anchor,
     Episode,
@@ -15,6 +13,7 @@ from model_training.d2l_models import (
     Provenance,
     Trajectory,
 )
+from pydantic import ValidationError
 
 
 def _provenance() -> Provenance:

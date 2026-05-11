@@ -179,9 +179,7 @@ class GitHubClient:
         The result is cached per-instance so a batch mine over many PRs in
         the same repo only pays for one HTTP request.
         """
-        cache: dict[str, str | None] = self.__dict__.setdefault(
-            "_license_cache", {}
-        )
+        cache: dict[str, str | None] = self.__dict__.setdefault("_license_cache", {})
         if repo in cache:
             return cache[repo]
         data = self.get(f"/repos/{repo}")
@@ -362,8 +360,7 @@ query($query: String!, $first: Int!, $after: String) {
 
         author_login = (node.get("author") or {}).get("login") or ""
         labels = [
-            {"name": lbl["name"]}
-            for lbl in (node.get("labels") or {}).get("nodes", [])
+            {"name": lbl["name"]} for lbl in (node.get("labels") or {}).get("nodes", [])
         ]
 
         return {
@@ -541,8 +538,7 @@ query($owner: String!, $name: String!, $number: Int!) {
                 )
 
         labels = [
-            {"name": lbl["name"]}
-            for lbl in (pr.get("labels") or {}).get("nodes", [])
+            {"name": lbl["name"]} for lbl in (pr.get("labels") or {}).get("nodes", [])
         ]
         author_login = (pr.get("author") or {}).get("login") or ""
 

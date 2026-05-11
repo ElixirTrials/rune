@@ -1,7 +1,6 @@
 """Tests for the controlled-confound evaluation harness."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from scripts.paper.controlled_confound import (
     ConfoundCondition,

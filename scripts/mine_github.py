@@ -135,7 +135,9 @@ def _run_batch(config_path: Path, output_dir: Path, token: str) -> None:
 
     logger.info(
         "Batch complete: %d trajectories / %d pairs across %d repos",
-        total_traj, total_pairs, len(repos),
+        total_traj,
+        total_pairs,
+        len(repos),
     )
 
 

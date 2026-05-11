@@ -19,6 +19,7 @@ Usage:
         --num-steps 1000 \
         --checkpoint-dir checkpoints/hypernet_hpo
 """
+
 from __future__ import annotations
 
 import argparse
@@ -80,11 +81,13 @@ def _chunked_kl_ce_loss(
                 reduction="sum",
             )
             ce_sum = ce_sum + F.cross_entropy(
-                s.reshape(-1, vocab), t.argmax(-1).reshape(-1), reduction="sum",
+                s.reshape(-1, vocab),
+                t.argmax(-1).reshape(-1),
+                reduction="sum",
             )
         total_elements += chunk_elems
 
-    kl = kl_sum / total_elements * temperature ** 2
+    kl = kl_sum / total_elements * temperature**2
     ce = ce_sum / total_elements
     total = alpha * kl + (1.0 - alpha) * ce
 
@@ -106,11 +109,15 @@ def main() -> None:  # noqa: C901
         description="Train HyperLoRA from scratch with HPO DeltaCoder teacher"
     )
     parser.add_argument(
-        "--teacher-adapter", type=str, required=True,
+        "--teacher-adapter",
+        type=str,
+        required=True,
         help="Path to HPO-tuned LoRA adapter directory",
     )
     parser.add_argument(
-        "--dataset", type=str, default="data/mined/all_unrolled.jsonl",
+        "--dataset",
+        type=str,
+        default="data/mined/all_unrolled.jsonl",
         help="Path to training JSONL (activation_text + teacher_text fields)",
     )
     parser.add_argument("--base-model", type=str, default="Qwen/Qwen3.5-9B")
@@ -124,11 +131,14 @@ def main() -> None:  # noqa: C901
     parser.add_argument("--warmup-steps", type=int, default=_t["warmup_steps"])
     parser.add_argument("--max-length", type=int, default=_t["max_length"])
     parser.add_argument(
-        "--activation-max-length", type=int,
+        "--activation-max-length",
+        type=int,
         default=_t.get("activation_max_length", 512),
         help="Max tokens for perceiver activation extraction (shorter to save VRAM)",
     )
-    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints/hypernet_hpo")
+    parser.add_argument(
+        "--checkpoint-dir", type=str, default="checkpoints/hypernet_hpo"
+    )
     parser.add_argument("--checkpoint-every", type=int, default=100)
     parser.add_argument("--experiment-name", type=str, default="hypernet-hpo")
     parser.add_argument("--smoke-test", action="store_true")
@@ -159,19 +169,38 @@ def main() -> None:  # noqa: C901
     teacher_path = Path(args.teacher_adapter)
     if not (teacher_path / "adapter_config.json").exists():
         import subprocess  # noqa: PLC0415
+
         teacher_path.mkdir(parents=True, exist_ok=True)
-        logger.info("Teacher adapter not found at %s — fetching from S3...", teacher_path)
-        s3_ok = subprocess.run(  # noqa: S603, S607
-            ["aws", "s3", "cp", f"{hpo_s3_prefix}/", f"{teacher_path}/", "--recursive"],
-            capture_output=True,
-        ).returncode == 0
+        logger.info(
+            "Teacher adapter not found at %s — fetching from S3...", teacher_path
+        )
+        s3_ok = (
+            subprocess.run(  # noqa: S603, S607
+                [
+                    "aws",
+                    "s3",
+                    "cp",
+                    f"{hpo_s3_prefix}/",
+                    f"{teacher_path}/",
+                    "--recursive",
+                ],
+                capture_output=True,
+            ).returncode
+            == 0
+        )
         if not s3_ok:
             logger.info("S3 download failed — trying MLflow CLI...")
             subprocess.run(  # noqa: S603
                 [
-                    "uv", "run", "mlflow", "artifacts", "download",
-                    "--run-id", hpo_run_id,
-                    "--dst-path", str(teacher_path),
+                    "uv",
+                    "run",
+                    "mlflow",
+                    "artifacts",
+                    "download",
+                    "--run-id",
+                    hpo_run_id,
+                    "--dst-path",
+                    str(teacher_path),
                 ],
                 check=True,
             )
@@ -300,7 +329,10 @@ def main() -> None:  # noqa: C901
             [mod_a.get(i, torch.zeros_like(sample_a)) for i in teacher_layer_indices]
         ).unsqueeze(0)
         b_stack = torch.stack(
-            [mod_b.get(i, torch.zeros_like(sample_b)).t() for i in teacher_layer_indices]
+            [
+                mod_b.get(i, torch.zeros_like(sample_b)).t()
+                for i in teacher_layer_indices
+            ]
         ).unsqueeze(0)
         teacher_lora_dict[mod_name] = {"A": a_stack, "B": b_stack}
 
@@ -314,8 +346,10 @@ def main() -> None:  # noqa: C901
     )
     logger.info(
         "Teacher adapter: r=%d, alpha=%d, %d modules, %d layers",
-        teacher_r, teacher_alpha,
-        len(teacher_lora_dict), len(teacher_layer_indices),
+        teacher_r,
+        teacher_alpha,
+        len(teacher_lora_dict),
+        len(teacher_layer_indices),
     )
     del teacher_weights
 
@@ -345,6 +379,7 @@ def main() -> None:  # noqa: C901
     # --- Data ---
     if args.smoke_test or not Path(args.dataset).exists():
         from model_training.d2l_data import generate_needle_dataset  # noqa: PLC0415
+
         records = generate_needle_dataset(n=20)
         logger.info("Using needle dataset (%d records)", len(records))
     else:
@@ -359,24 +394,27 @@ def main() -> None:  # noqa: C901
     mlflow_ok = setup_mlflow(args.experiment_name, tracking_uri=None)
     if mlflow_ok:
         import mlflow  # noqa: PLC0415
+
         mlflow.start_run(run_name=f"{args.experiment_name}-{num_steps}steps")
-        mlflow.log_params({
-            "base_model": args.base_model,
-            "teacher_adapter": args.teacher_adapter,
-            "lora_r": args.lora_r,
-            "num_steps": num_steps,
-            "lr": args.lr,
-            "alpha": args.alpha,
-            "temperature": args.temperature,
-            "max_length": args.max_length,
-            "activation_max_length": args.activation_max_length,
-            "n_records": len(records),
-            "n_params": n_params,
-            "target_modules": ",".join(args.target_modules),
-            "n_layers": len(hc.layer_indices),
-            "base_model_quant": "nf4",
-            "optimizer": "PagedAdamW8bit",
-        })
+        mlflow.log_params(
+            {
+                "base_model": args.base_model,
+                "teacher_adapter": args.teacher_adapter,
+                "lora_r": args.lora_r,
+                "num_steps": num_steps,
+                "lr": args.lr,
+                "alpha": args.alpha,
+                "temperature": args.temperature,
+                "max_length": args.max_length,
+                "activation_max_length": args.activation_max_length,
+                "n_records": len(records),
+                "n_params": n_params,
+                "target_modules": ",".join(args.target_modules),
+                "n_layers": len(hc.layer_indices),
+                "base_model_quant": "nf4",
+                "optimizer": "PagedAdamW8bit",
+            }
+        )
 
     layer_indices = list(hc.layer_indices)
     ckpt_dir = Path(args.checkpoint_dir)
@@ -396,22 +434,29 @@ def main() -> None:  # noqa: C901
 
             # Pre-check: skip records where context fills the entire
             # max_length, leaving no answer tokens for the loss.
-            answer_start = len(tokenizer(
-                record["activation_text"],
-                truncation=True,
-                max_length=args.max_length,
-            )["input_ids"])
-            teacher_tok_len = len(tokenizer(
-                record["teacher_text"],
-                truncation=True,
-                max_length=args.max_length,
-            )["input_ids"])
+            answer_start = len(
+                tokenizer(
+                    record["activation_text"],
+                    truncation=True,
+                    max_length=args.max_length,
+                )["input_ids"]
+            )
+            teacher_tok_len = len(
+                tokenizer(
+                    record["teacher_text"],
+                    truncation=True,
+                    max_length=args.max_length,
+                )["input_ids"]
+            )
             if answer_start >= teacher_tok_len:
                 skipped += 1
                 if skipped <= 5 or skipped % 50 == 0:
                     logger.info(
                         "Step %d skipped (answer_start=%d >= seq_len=%d, total skipped=%d)",
-                        step, answer_start, teacher_tok_len, skipped,
+                        step,
+                        answer_start,
+                        teacher_tok_len,
+                        skipped,
                     )
                 continue
 
@@ -445,7 +490,9 @@ def main() -> None:  # noqa: C901
             }
             with torch.no_grad():
                 with apply_functional_lora(
-                    base_model, teacher_lora_gpu, teacher_hc,
+                    base_model,
+                    teacher_lora_gpu,
+                    teacher_hc,
                 ):
                     teacher_logits = base_model(
                         **teacher_inputs,
@@ -481,7 +528,8 @@ def main() -> None:  # noqa: C901
             # intermediates too large (~600 MB per tensor).  Processing
             # 128 tokens at a time keeps peak at ~37 MB.
             loss, metrics = _chunked_kl_ce_loss(
-                student_logits, teacher_logits,
+                student_logits,
+                teacher_logits,
                 alpha=args.alpha,
                 temperature=args.temperature,
             )
@@ -503,8 +551,11 @@ def main() -> None:  # noqa: C901
 
             logger.info(
                 "Step %d/%d — loss=%.4f (kl=%.4f, ce=%.4f)",
-                step, num_steps,
-                metrics["total_loss"], metrics["kl_loss"], metrics["ce_loss"],
+                step,
+                num_steps,
+                metrics["total_loss"],
+                metrics["kl_loss"],
+                metrics["ce_loss"],
             )
 
             # Free graph-connected tensors to prevent cross-step accumulation
@@ -515,16 +566,19 @@ def main() -> None:  # noqa: C901
             # Checkpoint
             if step % args.checkpoint_every == 0 or step == num_steps:
                 ckpt_path = ckpt_dir / f"ckpt-{step}.pt"
-                torch.save({
-                    "hypernet_state_dict": hypernet.state_dict(),
-                    "hypernet_config": hc,
-                    "base_model_name_or_path": args.base_model,
-                    "teacher_adapter_path": args.teacher_adapter,
-                    "step": step,
-                    "attention_layer_indices": layer_indices,
-                    "best_loss": best_loss,
-                    "lora_r": args.lora_r,
-                }, ckpt_path)
+                torch.save(
+                    {
+                        "hypernet_state_dict": hypernet.state_dict(),
+                        "hypernet_config": hc,
+                        "base_model_name_or_path": args.base_model,
+                        "teacher_adapter_path": args.teacher_adapter,
+                        "step": step,
+                        "attention_layer_indices": layer_indices,
+                        "best_loss": best_loss,
+                        "lora_r": args.lora_r,
+                    },
+                    ckpt_path,
+                )
                 logger.info("Checkpoint saved: %s", ckpt_path)
                 if mlflow_ok:
                     mlflow.log_artifact(str(ckpt_path))
@@ -545,30 +599,38 @@ def main() -> None:  # noqa: C901
 
     # Save final checkpoint
     final_ckpt = ckpt_dir / "checkpoint.pt"
-    torch.save({
-        "hypernet_state_dict": hypernet.state_dict(),
-        "hypernet_config": hc,
-        "base_model_name_or_path": args.base_model,
-        "teacher_adapter_path": args.teacher_adapter,
-        "step": num_steps,
-        "attention_layer_indices": layer_indices,
-        "best_loss": best_loss,
-        "lora_r": args.lora_r,
-    }, final_ckpt)
+    torch.save(
+        {
+            "hypernet_state_dict": hypernet.state_dict(),
+            "hypernet_config": hc,
+            "base_model_name_or_path": args.base_model,
+            "teacher_adapter_path": args.teacher_adapter,
+            "step": num_steps,
+            "attention_layer_indices": layer_indices,
+            "best_loss": best_loss,
+            "lora_r": args.lora_r,
+        },
+        final_ckpt,
+    )
     logger.info("Final checkpoint: %s", final_ckpt)
 
     if mlflow_ok:
         mlflow.log_artifact(str(final_ckpt))
-        mlflow.log_metrics({
-            "final_loss": final_loss,
-            "best_loss": best_loss,
-            "skipped_records": skipped,
-        })
+        mlflow.log_metrics(
+            {
+                "final_loss": final_loss,
+                "best_loss": best_loss,
+                "skipped_records": skipped,
+            }
+        )
         mlflow.end_run()
 
     logger.info(
         "Training complete: %d steps, best_loss=%.4f, final_loss=%.4f, skipped=%d",
-        num_steps, best_loss, final_loss, skipped,
+        num_steps,
+        best_loss,
+        final_loss,
+        skipped,
     )
 
 

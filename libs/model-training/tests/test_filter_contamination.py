@@ -20,8 +20,11 @@ def _write_traj(p: Path, repo: str, body: str) -> None:
         "episodes": [],
         "metadata": {},
         "provenance": {
-            "repo": repo, "pr_number": 1, "license": "MIT",
-            "head_sha": "a"*40, "base_sha": "b"*40,
+            "repo": repo,
+            "pr_number": 1,
+            "license": "MIT",
+            "head_sha": "a" * 40,
+            "base_sha": "b" * 40,
             "mined_at": "2026-05-01T00:00:00+00:00",
         },
     }
@@ -31,10 +34,14 @@ def _write_traj(p: Path, repo: str, body: str) -> None:
 
 def test_drops_traj_whose_description_matches_fingerprint(tmp_path) -> None:
     fp_file = tmp_path / "fp.json"
-    fp_file.write_text(json.dumps({
-        "humaneval_plus": [fingerprint("solve sudoku")],
-        "swebench_lite_repos": [],
-    }))
+    fp_file.write_text(
+        json.dumps(
+            {
+                "humaneval_plus": [fingerprint("solve sudoku")],
+                "swebench_lite_repos": [],
+            }
+        )
+    )
     in_file = tmp_path / "in.jsonl"
     out_file = tmp_path / "out.jsonl"
     _write_traj(in_file, "owner/repo", "solve  sudoku")
@@ -47,10 +54,14 @@ def test_drops_traj_whose_description_matches_fingerprint(tmp_path) -> None:
 
 def test_drops_traj_from_swebench_repo(tmp_path) -> None:
     fp_file = tmp_path / "fp.json"
-    fp_file.write_text(json.dumps({
-        "humaneval_plus": [],
-        "swebench_lite_repos": ["sympy/sympy"],
-    }))
+    fp_file.write_text(
+        json.dumps(
+            {
+                "humaneval_plus": [],
+                "swebench_lite_repos": ["sympy/sympy"],
+            }
+        )
+    )
     in_file = tmp_path / "in.jsonl"
     out_file = tmp_path / "out.jsonl"
     _write_traj(in_file, "sympy/sympy", "anything")

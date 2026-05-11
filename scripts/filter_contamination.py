@@ -40,8 +40,10 @@ def filter_corpus(
 
     counts: Counter = Counter()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with input_path.open("r", encoding="utf-8") as fh_in, \
-         output_path.open("w", encoding="utf-8") as fh_out:
+    with (
+        input_path.open("r", encoding="utf-8") as fh_in,
+        output_path.open("w", encoding="utf-8") as fh_out,
+    ):
         for line in fh_in:
             rec = json.loads(line)
             if rec["provenance"]["repo"] in repo_filter:

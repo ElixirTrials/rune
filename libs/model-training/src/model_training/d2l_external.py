@@ -105,8 +105,7 @@ def codereview_row_to_pair(
     )
 
     task_description = (
-        f"Review and revise code from {repo_name} "
-        f"(PR #{pr_number}, file: {file_path})"
+        f"Review and revise code from {repo_name} (PR #{pr_number}, file: {file_path})"
     )
     activation_text = (
         f"## Task\n{task_description}"
@@ -162,9 +161,7 @@ def ingest_codereview_to_pairs(
         List of pair dicts ready for
         :func:`~model_training.d2l_data.pairs_to_chat_messages`.
     """
-    ds = load_codereview_dataset(
-        split=split, max_rows=max_rows, streaming=streaming
-    )
+    ds = load_codereview_dataset(split=split, max_rows=max_rows, streaming=streaming)
 
     pairs: list[dict[str, Any]] = []
     for row in ds:

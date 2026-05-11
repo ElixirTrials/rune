@@ -14,6 +14,7 @@ Usage:
         --tasks data/confound_tasks.json \
         --output evaluation_results/figure2a.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -103,11 +104,15 @@ def run_confound_experiment(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Controlled-confound harness for Figure 2(a)")
+    parser = argparse.ArgumentParser(
+        description="Controlled-confound harness for Figure 2(a)"
+    )
     parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-9B")
     parser.add_argument("--tasks", type=Path, required=True)
     parser.add_argument("--depths", type=int, nargs="+", default=[1, 2, 4, 8, 16, 32])
-    parser.add_argument("--output", type=Path, default=Path("evaluation_results/figure2a.json"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("evaluation_results/figure2a.json")
+    )
     args = parser.parse_args()
 
     with args.tasks.open() as f:
@@ -116,7 +121,11 @@ def main() -> None:
     results = run_confound_experiment(
         tasks,
         args.depths,
-        [ConfoundCondition.RUNE, ConfoundCondition.INJECTED_HISTORY, ConfoundCondition.MEMORY_STRIPPED],
+        [
+            ConfoundCondition.RUNE,
+            ConfoundCondition.INJECTED_HISTORY,
+            ConfoundCondition.MEMORY_STRIPPED,
+        ],
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

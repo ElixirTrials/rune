@@ -45,6 +45,7 @@ def _humaneval_plus(out: dict[str, set[str]]) -> None:
 
 def _mbpp_plus(out: dict[str, set[str]]) -> None:
     from datasets import load_dataset
+
     ds = load_dataset("evalplus/mbppplus", split="test")
     for row in ds:
         out.setdefault("mbpp_plus", set()).add(fingerprint(row["text"]))
@@ -52,16 +53,22 @@ def _mbpp_plus(out: dict[str, set[str]]) -> None:
 
 def _bigcodebench(out: dict[str, set[str]]) -> None:
     from datasets import load_dataset
+
     for split in ("complete", "instruct"):
         ds = load_dataset("bigcode/bigcodebench", split=split)
         for row in ds:
             out.setdefault(f"bigcodebench_{split}", set()).add(
-                fingerprint(row["instruct_prompt"] if "instruct_prompt" in row else row.get("complete_prompt", ""))
+                fingerprint(
+                    row["instruct_prompt"]
+                    if "instruct_prompt" in row
+                    else row.get("complete_prompt", "")
+                )
             )
 
 
 def _swebench_lite_repos(out: dict[str, set[str]]) -> None:
     from datasets import load_dataset
+
     ds = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
     for row in ds:
         out.setdefault("swebench_lite_repos", set()).add(row["repo"])
@@ -69,7 +76,12 @@ def _swebench_lite_repos(out: dict[str, set[str]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("-o", "--output", type=Path, default=Path("data/contamination/fingerprints.json"))
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("data/contamination/fingerprints.json"),
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
 

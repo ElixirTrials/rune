@@ -14,7 +14,9 @@ import mine_github  # noqa: E402  type: ignore[import-untyped]
 def test_cli_rejects_missing_token(monkeypatch, capsys, tmp_path) -> None:
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.setattr(
-        sys, "argv", ["mine_github.py", "--repo", "owner/repo", "-o", str(tmp_path / "out.jsonl")]
+        sys,
+        "argv",
+        ["mine_github.py", "--repo", "owner/repo", "-o", str(tmp_path / "out.jsonl")],
     )
     try:
         mine_github.main()
@@ -26,7 +28,17 @@ def test_cli_no_mode_flag(monkeypatch, tmp_path) -> None:
     """The --mode flag is gone (issue mining removed)."""
     monkeypatch.setenv("GITHUB_TOKEN", "x")
     monkeypatch.setattr(
-        sys, "argv", ["mine_github.py", "--repo", "o/r", "--mode", "issues", "-o", str(tmp_path / "out.jsonl")]
+        sys,
+        "argv",
+        [
+            "mine_github.py",
+            "--repo",
+            "o/r",
+            "--mode",
+            "issues",
+            "-o",
+            str(tmp_path / "out.jsonl"),
+        ],
     )
     try:
         mine_github.main()

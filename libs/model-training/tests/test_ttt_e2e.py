@@ -1,15 +1,10 @@
 """Tests for TTT-E2E (test-time training) baseline."""
+
 from __future__ import annotations
-
-from unittest.mock import MagicMock, patch
-
-import pytest
-import torch
 
 from model_training.ttt_e2e import (
     TTTConfig,
     select_mlp_layers,
-    ttt_forward_pass,
 )
 
 

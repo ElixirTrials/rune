@@ -1,8 +1,8 @@
 """Tests for corpus statistics computation."""
+
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest

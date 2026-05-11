@@ -27,8 +27,11 @@ def _write_traj(p: Path, n_episodes: int, episode_len_chars: int) -> None:
         ],
         "metadata": {},
         "provenance": {
-            "repo": "owner/repo", "pr_number": n_episodes, "license": "MIT",
-            "head_sha": "a"*40, "base_sha": "b"*40,
+            "repo": "owner/repo",
+            "pr_number": n_episodes,
+            "license": "MIT",
+            "head_sha": "a" * 40,
+            "base_sha": "b" * 40,
             "mined_at": "2026-05-01T00:00:00+00:00",
         },
     }

@@ -11,6 +11,7 @@ Usage:
         --excluded-repos data/excluded_repos.txt \
         --output evaluation_results/contamination_report.json
 """
+
 from __future__ import annotations
 
 import argparse

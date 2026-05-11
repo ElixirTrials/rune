@@ -1,11 +1,9 @@
 """Tests for contamination filter."""
+
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
-
-import pytest
 
 from scripts.paper.contamination_filter import (
     check_exact_match,
@@ -39,7 +37,10 @@ def test_filter_corpus_counts(tmp_path: Path) -> None:
     """filter_corpus returns per-benchmark exclusion counts."""
     corpus = tmp_path / "corpus.jsonl"
     records = [
-        {"trajectory": "def has_close_elements(numbers, threshold):\n    for i in range(len(numbers)):\n        for j in range(i+1, len(numbers)):\n            if abs(numbers[i] - numbers[j]) < threshold:\n                return True\n    return False\n", "repo": "owner/safe"},
+        {
+            "trajectory": "def has_close_elements(numbers, threshold):\n    for i in range(len(numbers)):\n        for j in range(i+1, len(numbers)):\n            if abs(numbers[i] - numbers[j]) < threshold:\n                return True\n    return False\n",
+            "repo": "owner/safe",
+        },
         {"trajectory": "clean trajectory", "repo": "owner/safe"},
     ]
     with corpus.open("w") as f:
@@ -47,7 +48,9 @@ def test_filter_corpus_counts(tmp_path: Path) -> None:
             f.write(json.dumps(r) + "\n")
 
     benchmark_solutions = {
-        "humaneval": ["def has_close_elements(numbers, threshold):\n    for i in range(len(numbers)):\n        for j in range(i+1, len(numbers)):\n            if abs(numbers[i] - numbers[j]) < threshold:\n                return True\n    return False\n"],
+        "humaneval": [
+            "def has_close_elements(numbers, threshold):\n    for i in range(len(numbers)):\n        for j in range(i+1, len(numbers)):\n            if abs(numbers[i] - numbers[j]) < threshold:\n                return True\n    return False\n"
+        ],
     }
     result = filter_corpus(corpus, benchmark_solutions, excluded_repos=set())
     assert result["humaneval"]["exact_match_excluded"] >= 1

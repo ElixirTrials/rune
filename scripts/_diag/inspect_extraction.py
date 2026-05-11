@@ -1,4 +1,5 @@
 """Why is _extract_pre_revision returning empty so often?"""
+
 from __future__ import annotations
 
 import json
@@ -25,8 +26,8 @@ empty_pre_count = 0
 examples_no_current_code = []
 
 for rec in sample:
-    activation = rec.get('activation_text') or ''
-    teacher = rec.get('teacher_text') or ''
+    activation = rec.get("activation_text") or ""
+    teacher = rec.get("teacher_text") or ""
 
     # Find all "## " section headers
     headers = [line for line in activation.splitlines() if line.startswith("## ")]
@@ -37,7 +38,7 @@ for rec in sample:
     if not has_current_code:
         no_current_code += 1
         if len(examples_no_current_code) < 3:
-            examples_no_current_code.append(rec.get('task_id'))
+            examples_no_current_code.append(rec.get("task_id"))
 
     pre = _extract_pre_revision(activation)
     if not pre:
@@ -55,19 +56,19 @@ print(f"  examples without marker: {examples_no_current_code}")
 # Show the activation_text of one no-current-code record
 print("\n=== ACTIVATION_TEXT for one record without '## Current Code' ===")
 for rec in sample:
-    if "## Current Code\n" not in (rec.get('activation_text') or ''):
+    if "## Current Code\n" not in (rec.get("activation_text") or ""):
         print(f"task_id: {rec.get('task_id')}")
         print("activation_text (first 800 chars):")
-        print(rec['activation_text'][:800])
+        print(rec["activation_text"][:800])
         print("\n---\nteacher_text (first 800 chars):")
-        print(rec['teacher_text'][:800])
+        print(rec["teacher_text"][:800])
         break
 
 # Also dig into why hunk_frac is so high — show one high-frac case in detail
 print("\n=== HIGH hunk_frac case in detail ===")
 for rec in sample:
-    activation = rec.get('activation_text') or ''
-    teacher = rec.get('teacher_text') or ''
+    activation = rec.get("activation_text") or ""
+    teacher = rec.get("teacher_text") or ""
     if "## Current Code\n" not in activation:
         continue
     pre = _extract_pre_revision(activation)
@@ -77,11 +78,14 @@ for rec in sample:
     if pre == post:
         continue
     from model_training.diff_loss import _compute_hunk_ranges
+
     h = _compute_hunk_ranges(pre, post)
     hc = sum(e - s for s, e in h)
     if hc / max(1, len(post)) > 0.95 and len(post) > 500:
         print(f"task_id: {rec.get('task_id')}")
-        print(f"pre_chars={len(pre)}, post_chars={len(post)}, hunks={len(h)}, hunk_char_frac={hc/len(post):.3f}")
+        print(
+            f"pre_chars={len(pre)}, post_chars={len(post)}, hunks={len(h)}, hunk_char_frac={hc / len(post):.3f}"
+        )
         print("\nPRE (first 400 chars):")
         print(pre[:400])
         print("\nPOST (first 400 chars):")
@@ -90,6 +94,8 @@ for rec in sample:
         pre_lines = set(pre.splitlines())
         post_lines = set(post.splitlines())
         common = pre_lines & post_lines
-        print(f"\nUnique lines: pre={len(pre_lines)}, post={len(post_lines)}, common={len(common)}")
+        print(
+            f"\nUnique lines: pre={len(pre_lines)}, post={len(post_lines)}, common={len(common)}"
+        )
         print(f"First 5 common lines: {list(common)[:5]}")
         break

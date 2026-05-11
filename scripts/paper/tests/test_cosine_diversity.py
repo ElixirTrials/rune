@@ -1,8 +1,8 @@
 """Tests for inter-adapter cosine diversity metric (Eq. 3)."""
+
 from __future__ import annotations
 
 import torch
-import pytest
 
 from scripts.paper.cosine_diversity import compute_cosine_diversity
 

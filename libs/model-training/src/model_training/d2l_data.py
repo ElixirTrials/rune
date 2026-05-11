@@ -978,8 +978,7 @@ def _format_feedback(fb: "Feedback") -> str:
     parts = [head]
     if fb.anchor and (fb.anchor.file or fb.anchor.test):
         loc = fb.anchor.test or (
-            f"{fb.anchor.file}:{fb.anchor.line}" if fb.anchor.line
-            else fb.anchor.file
+            f"{fb.anchor.file}:{fb.anchor.line}" if fb.anchor.line else fb.anchor.file
         )
         parts.append(f"[at {loc}]")
     return " ".join(p for p in parts if p)

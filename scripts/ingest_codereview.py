@@ -14,11 +14,18 @@ def main() -> None:
         description="Ingest microsoft/codereview-data into D2L training pairs JSONL."
     )
     parser.add_argument("--output", required=True, help="Path to write output JSONL.")
-    parser.add_argument("--max-rows", type=int, default=None, help="Max HF rows to read.")
     parser.add_argument(
-        "--min-quality", type=float, default=0.0, help="Minimum quality score (default 0.0)."
+        "--max-rows", type=int, default=None, help="Max HF rows to read."
     )
-    parser.add_argument("--split", default="train", help="HF dataset split (default: train).")
+    parser.add_argument(
+        "--min-quality",
+        type=float,
+        default=0.0,
+        help="Minimum quality score (default 0.0).",
+    )
+    parser.add_argument(
+        "--split", default="train", help="HF dataset split (default: train)."
+    )
     args = parser.parse_args()
 
     pairs = ingest_codereview_to_pairs(

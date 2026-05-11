@@ -16,9 +16,7 @@ class LicenseStatus(str, Enum):
 
 
 _PERMITTED = frozenset({"mit", "apache-2.0", "bsd-2-clause", "bsd-3-clause"})
-_ATTRIBUTION = frozenset(
-    {"gpl-2.0", "gpl-3.0", "lgpl-2.1", "lgpl-3.0"}
-)
+_ATTRIBUTION = frozenset({"gpl-2.0", "gpl-3.0", "lgpl-2.1", "lgpl-3.0"})
 
 
 def classify_license(spdx: str | None) -> LicenseStatus:

@@ -1282,7 +1282,7 @@ class TestFindPostInSpanOrSuffix:
         )
         assert match_pos == 0, "suffix match always anchors at span position 0"
         # Verify the recovered suffix really matches
-        assert input_ids[0 : suffix_len] == post_ids[k:]
+        assert input_ids[0:suffix_len] == post_ids[k:]
 
     def test_suffix_works_when_span_start_nonzero(self) -> None:
         """Suffix recovery works regardless of span_start position."""

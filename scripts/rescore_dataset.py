@@ -58,7 +58,9 @@ def _extract_post(activation_text: str, teacher_text: str) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Re-score quality_score in a dataset JSONL.")
+    parser = argparse.ArgumentParser(
+        description="Re-score quality_score in a dataset JSONL."
+    )
     parser.add_argument(
         "--dataset",
         type=Path,

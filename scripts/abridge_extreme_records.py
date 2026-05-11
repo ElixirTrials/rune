@@ -93,9 +93,7 @@ def extract_filename_from_metadata(record: dict) -> str:
     return "unknown_file"
 
 
-def reconstruct_record(
-    record: dict, abridged_pre: str, abridged_post: str
-) -> dict:
+def reconstruct_record(record: dict, abridged_pre: str, abridged_post: str) -> dict:
     task_header = extract_task_header(record["activation_text"])
     new_activation = f"{task_header}\n\n## Current Code\n{abridged_pre}"
     new_teacher = f"{new_activation}\n\n## Revision\n{abridged_post}"
@@ -130,9 +128,7 @@ def abridge_record(client, record: dict) -> dict | None:  # type: ignore[type-ar
         )
         response_text = response.content[0].text
     except Exception as exc:
-        logger.warning(
-            "API call failed for %s: %s", record.get("task_id", "?"), exc
-        )
+        logger.warning("API call failed for %s: %s", record.get("task_id", "?"), exc)
         return None
 
     parsed = parse_abridge_response(response_text)
@@ -182,9 +178,7 @@ def main() -> None:
         logger.error("Dataset not found: %s", dataset_path)
         sys.exit(1)
 
-    output_path: Path = args.output or dataset_path.with_suffix(
-        ".abridged.jsonl"
-    )
+    output_path: Path = args.output or dataset_path.with_suffix(".abridged.jsonl")
 
     records: list[dict] = []
     with dataset_path.open("r", encoding="utf-8") as fh:
@@ -199,7 +193,7 @@ def main() -> None:
     for i, rec in enumerate(records):
         activation_tokens = estimate_tokens(rec.get("activation_text", ""))
         teacher_suffix = rec.get("teacher_text", "")[
-            len(rec.get("activation_text", "")):
+            len(rec.get("activation_text", "")) :
         ]
         assistant_tokens = estimate_tokens(teacher_suffix)
         total_tokens = activation_tokens + assistant_tokens
@@ -220,13 +214,10 @@ def main() -> None:
             rec = records[idx]
             activation_tokens = estimate_tokens(rec.get("activation_text", ""))
             teacher_suffix = rec.get("teacher_text", "")[
-                len(rec.get("activation_text", "")):
+                len(rec.get("activation_text", "")) :
             ]
             total = activation_tokens + estimate_tokens(teacher_suffix)
-            print(
-                f"  [{idx:>4d}] {rec.get('task_id', '?'):<50s} "
-                f"~{total:>5d} tokens"
-            )
+            print(f"  [{idx:>4d}] {rec.get('task_id', '?'):<50s} ~{total:>5d} tokens")
         if len(extreme_indices) > 20:
             print(f"  ... and {len(extreme_indices) - 20} more")
         print(f"\nOutput would be written to: {output_path}")
@@ -240,7 +231,7 @@ def main() -> None:
     failed_count = 0
 
     for batch_start in range(0, len(extreme_indices), BATCH_SIZE):
-        batch = extreme_indices[batch_start: batch_start + BATCH_SIZE]
+        batch = extreme_indices[batch_start : batch_start + BATCH_SIZE]
         batch_num = batch_start // BATCH_SIZE + 1
         total_batches = (len(extreme_indices) + BATCH_SIZE - 1) // BATCH_SIZE
         logger.info(
@@ -259,14 +250,12 @@ def main() -> None:
                 new_total = estimate_tokens(
                     result["activation_text"]
                 ) + estimate_tokens(
-                    result["teacher_text"][len(result["activation_text"]):]
+                    result["teacher_text"][len(result["activation_text"]) :]
                 )
                 old_total = estimate_tokens(
                     rec.get("activation_text", "")
                 ) + estimate_tokens(
-                    rec.get("teacher_text", "")[
-                        len(rec.get("activation_text", "")):
-                    ]
+                    rec.get("teacher_text", "")[len(rec.get("activation_text", "")) :]
                 )
                 logger.info(
                     "  Abridged %s: %d -> %d tokens", task_id, old_total, new_total

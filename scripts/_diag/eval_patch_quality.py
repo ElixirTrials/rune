@@ -28,6 +28,7 @@ Usage:
       --adapter ./hpo_artifacts/<run>/adapter \\
       --n-rows 25 --max-new 1024
 """
+
 from __future__ import annotations
 
 import argparse
@@ -88,7 +89,10 @@ def parse_diff_structure(text: str) -> dict:
     for h in hunks:
         actual_old = len(h["removed"]) + len(h["context"])
         actual_new = len(h["added"]) + len(h["context"])
-        if actual_old != h["old_count_declared"] or actual_new != h["new_count_declared"]:
+        if (
+            actual_old != h["old_count_declared"]
+            or actual_new != h["new_count_declared"]
+        ):
             counts_match = False
             h["counts_ok"] = False
         else:
@@ -121,6 +125,7 @@ def syntactic_validity(text: str) -> tuple[bool, dict]:
 
 def hunk_iou(gen_text: str, gt_text: str) -> float:
     """Tier 2: Jaccard over (file, +/- line) triples."""
+
     def signatures(t: str) -> set:
         parse_diff_structure(t)
         sig = set()
@@ -168,14 +173,25 @@ def parse_args():
     p.add_argument("--heldout", default="data/_ab/pairs_heldout_100.jsonl")
     p.add_argument("--n-rows", type=int, default=25)
     p.add_argument("--max-new", type=int, default=1024)
-    p.add_argument("--adapter", default=None,
-                   help="PEFT adapter dir; defaults to deltacoder if omitted.")
+    p.add_argument(
+        "--adapter",
+        default=None,
+        help="PEFT adapter dir; defaults to deltacoder if omitted.",
+    )
     p.add_argument("--deltacoder-id", default="danielcherubini/Qwen3.5-DeltaCoder-9B")
     p.add_argument("--model", default="Qwen/Qwen3.5-9B")
-    p.add_argument("--max-prompt-tokens", type=int, default=2000,
-                   help="Truncate prompts longer than this (tokens, not chars).")
-    p.add_argument("--print-failures", type=int, default=2,
-                   help="Print N worst-IOU examples for inspection.")
+    p.add_argument(
+        "--max-prompt-tokens",
+        type=int,
+        default=2000,
+        help="Truncate prompts longer than this (tokens, not chars).",
+    )
+    p.add_argument(
+        "--print-failures",
+        type=int,
+        default=2,
+        help="Print N worst-IOU examples for inspection.",
+    )
     p.add_argument(
         "--mlflow-experiment",
         default="rune-eval-patch",
@@ -188,7 +204,7 @@ def parse_args():
 def extract_response(teacher: str, prompt: str) -> str:
     """Lift the response (assistant content) from teacher_text minus prompt."""
     if teacher.startswith(prompt):
-        return teacher[len(prompt):].lstrip("\n")
+        return teacher[len(prompt) :].lstrip("\n")
     if prompt in teacher:
         return teacher.split(prompt, 1)[1].lstrip("\n")
     return teacher
@@ -205,17 +221,25 @@ def main():
     if tok.pad_token_id is None:
         tok.pad_token_id = tok.eos_token_id
     bnb = BitsAndBytesConfig(
-        load_in_4bit=True, bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True,
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
-        args.model, quantization_config=bnb, dtype=torch.bfloat16,
+        args.model,
+        quantization_config=bnb,
+        dtype=torch.bfloat16,
     )
     adapter_path = args.adapter or args.deltacoder_id
     model = PeftModel.from_pretrained(model, adapter_path)
     model.eval()
 
-    rows = [json.loads(line) for line in Path(args.heldout).read_text().splitlines() if line.strip()]
+    rows = [
+        json.loads(line)
+        for line in Path(args.heldout).read_text().splitlines()
+        if line.strip()
+    ]
     rows = rows[: args.n_rows]
     print(f"Evaluating {len(rows)} held-out records (adapter={adapter_path[:60]})")
 
@@ -230,12 +254,14 @@ def main():
         # Build prompt + generation prompt
         msgs = [{"role": "user", "content": prompt}]
         prompt_text = tok.apply_chat_template(
-            msgs, tokenize=False, add_generation_prompt=True,
+            msgs,
+            tokenize=False,
+            add_generation_prompt=True,
         )
         ids = tok(prompt_text, add_special_tokens=False, return_tensors="pt")
         # Truncate if prompt too long
         if ids["input_ids"].shape[1] > args.max_prompt_tokens:
-            ids = {k: v[:, -args.max_prompt_tokens:] for k, v in ids.items()}
+            ids = {k: v[:, -args.max_prompt_tokens :] for k, v in ids.items()}
         ids = {k: v.to(model.device) for k, v in ids.items()}
 
         with torch.no_grad():
@@ -250,7 +276,7 @@ def main():
         # Trim the prompt prefix from the generated text.
         prompt_decoded = tok.decode(ids["input_ids"][0], skip_special_tokens=True)
         if gen_full.startswith(prompt_decoded):
-            gen_resp = gen_full[len(prompt_decoded):].lstrip("\n")
+            gen_resp = gen_full[len(prompt_decoded) :].lstrip("\n")
         else:
             # Fall back: strip everything before the first '## ' or '---'
             cut = max(gen_full.find("\n## "), gen_full.find("\n---"))
@@ -263,17 +289,19 @@ def main():
         results.append(scores)
 
         if scores["hunk_iou"] < 0.10 and len(failures) < args.print_failures:
-            failures.append({
-                "task_id": scores["task_id"],
-                "gen_preview": gen_resp[:600],
-                "gt_preview": gt[:600],
-                "scores": scores,
-            })
+            failures.append(
+                {
+                    "task_id": scores["task_id"],
+                    "gen_preview": gen_resp[:600],
+                    "gt_preview": gt[:600],
+                    "scores": scores,
+                }
+            )
 
         # Per-record progress (not batched-by-5) so we can see live throughput
         # and detect hangs immediately when run with `python -u`.
         print(
-            f"  {i+1}/{len(rows)}: "
+            f"  {i + 1}/{len(rows)}: "
             f"valid={scores['syntactic_valid']} "
             f"iou={scores['hunk_iou']:.3f} "
             f"sim={scores['char_similarity']:.3f}",
@@ -281,7 +309,7 @@ def main():
         )
 
     n = len(results)
-    print(f"\n{'='*60}\nPATCH-QUALITY SUMMARY (n={n})\n{'='*60}")
+    print(f"\n{'=' * 60}\nPATCH-QUALITY SUMMARY (n={n})\n{'=' * 60}")
     if not n:
         print("No results.")
         return
@@ -304,7 +332,9 @@ def main():
     print(f"  char_similarity mean={mean_char_sim:.3f}")
 
     for f in failures:
-        print(f"\n--- FAILURE EXAMPLE: {f['task_id']} (iou={f['scores']['hunk_iou']:.3f}) ---")
+        print(
+            f"\n--- FAILURE EXAMPLE: {f['task_id']} (iou={f['scores']['hunk_iou']:.3f}) ---"
+        )
         print("--- generated (first 600 chars) ---")
         print(f["gen_preview"])
         print("--- ground truth (first 600 chars) ---")
@@ -320,26 +350,32 @@ def main():
             if args.mlflow_uri:
                 mlflow.set_tracking_uri(args.mlflow_uri)
             mlflow.set_experiment(args.mlflow_experiment)
-            with mlflow.start_run(run_name=f"patch-{Path(args.adapter or 'deltacoder').name}"):
-                mlflow.log_params({
-                    "adapter_path": str(args.adapter or args.deltacoder_id),
-                    "heldout_path": args.heldout,
-                    "n_rows": args.n_rows,
-                    "max_new": args.max_new,
-                    "deltacoder_id": args.deltacoder_id,
-                    "model": args.model,
-                })
-                mlflow.log_metrics({
-                    "eval_patch/syntactic_valid_rate": valid_rate,
-                    "eval_patch/has_file_header_rate": has_file_rate,
-                    "eval_patch/has_hunk_rate": has_hunk_rate,
-                    "eval_patch/hunk_counts_match_rate": counts_match_rate,
-                    "eval_patch/exact_match_rate": exact_rate,
-                    "eval_patch/hunk_iou_mean": mean_iou,
-                    "eval_patch/hunk_iou_median": median_iou,
-                    "eval_patch/char_similarity_mean": mean_char_sim,
-                    "eval_patch/n_results": n,
-                })
+            with mlflow.start_run(
+                run_name=f"patch-{Path(args.adapter or 'deltacoder').name}"
+            ):
+                mlflow.log_params(
+                    {
+                        "adapter_path": str(args.adapter or args.deltacoder_id),
+                        "heldout_path": args.heldout,
+                        "n_rows": args.n_rows,
+                        "max_new": args.max_new,
+                        "deltacoder_id": args.deltacoder_id,
+                        "model": args.model,
+                    }
+                )
+                mlflow.log_metrics(
+                    {
+                        "eval_patch/syntactic_valid_rate": valid_rate,
+                        "eval_patch/has_file_header_rate": has_file_rate,
+                        "eval_patch/has_hunk_rate": has_hunk_rate,
+                        "eval_patch/hunk_counts_match_rate": counts_match_rate,
+                        "eval_patch/exact_match_rate": exact_rate,
+                        "eval_patch/hunk_iou_mean": mean_iou,
+                        "eval_patch/hunk_iou_median": median_iou,
+                        "eval_patch/char_similarity_mean": mean_char_sim,
+                        "eval_patch/n_results": n,
+                    }
+                )
             print(f"\nLogged to MLflow experiment '{args.mlflow_experiment}'")
         except Exception as e:  # noqa: BLE001
             print(f"\n[warn] MLflow logging skipped: {e}")

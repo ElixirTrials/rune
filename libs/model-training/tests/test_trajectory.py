@@ -449,7 +449,9 @@ def test_compute_assistant_masks_keep_start_drops_assistant_when_user_long() -> 
     assert sum(result["assistant_masks"]) == 0
 
 
-def test_compute_assistant_masks_keep_user_end_preserves_user_and_assistant_tail() -> None:
+def test_compute_assistant_masks_keep_user_end_preserves_user_and_assistant_tail() -> (
+    None
+):
     """``keep_user_end`` keeps user prompt + assistant tail within budget.
 
     With _FakeTokenizer each char is one token, plus 4 overhead tokens per

@@ -102,7 +102,7 @@ def _per_factor(records: list[dict]) -> None:
             fb_buckets["moderate (20-99)"] += 1
         else:
             fb_buckets["short (<20)"] += 1
-    print(f"\nFeedback length (non-ep0):")
+    print("\nFeedback length (non-ep0):")
     for k in ["rich (>=100)", "moderate (20-99)", "short (<20)", "url_only"]:
         c = fb_buckets.get(k, 0)
         print(f"  {k:<20} {c:>5}  ({100 * c / total:.1f}%)")
@@ -113,7 +113,9 @@ def _per_factor(records: list[dict]) -> None:
         if r["feedback_len"] < CFG.proportionality_short_chars
         and r["diff_len"] > CFG.proportionality_diff_chars
     )
-    print(f"\nProportionality penalty fired: {prop_fired} ({100 * prop_fired / total:.1f}%)")
+    print(
+        f"\nProportionality penalty fired: {prop_fired} ({100 * prop_fired / total:.1f}%)"
+    )
 
 
 def _per_repo(records: list[dict]) -> None:
@@ -125,7 +127,7 @@ def _per_repo(records: list[dict]) -> None:
         if not subset:
             continue
         print(
-            f"  {repo:<40} {len(subset):>5} {sum(subset)/len(subset):>6.3f} "
+            f"  {repo:<40} {len(subset):>5} {sum(subset) / len(subset):>6.3f} "
             f"{min(subset):>6.3f} {max(subset):>6.3f}"
         )
 
@@ -135,14 +137,18 @@ def _spot_check(records: list[dict]) -> None:
     non_ep0.sort(key=lambda r: r["quality_score"])
     print("\n=== Spot Check: 3 Lowest Non-Ep0 ===")
     for r in non_ep0[:3]:
-        print(f"  score={r['quality_score']:.3f}  causal={r['causal']}  fb_len={r['feedback_len']}  diff_len={r['diff_len']}")
+        print(
+            f"  score={r['quality_score']:.3f}  causal={r['causal']}  fb_len={r['feedback_len']}  diff_len={r['diff_len']}"
+        )
         print(f"    feedback: {r['feedback_snippet']}")
         print(f"    diff:     {r['diff_snippet']}")
         print()
 
     print("=== Spot Check: 3 Highest Non-Ep0 ===")
     for r in non_ep0[-3:]:
-        print(f"  score={r['quality_score']:.3f}  causal={r['causal']}  fb_len={r['feedback_len']}  diff_len={r['diff_len']}")
+        print(
+            f"  score={r['quality_score']:.3f}  causal={r['causal']}  fb_len={r['feedback_len']}  diff_len={r['diff_len']}"
+        )
         print(f"    feedback: {r['feedback_snippet']}")
         print(f"    diff:     {r['diff_snippet']}")
         print()
@@ -170,9 +176,13 @@ def _edge_cases(records: list[dict]) -> None:
         for r in non_ep0
         if r["causal"] == "no_overlap" and r["feedback_len"] >= CFG.feedback_rich_chars
     ]
-    print(f"  No entity overlap but rich feedback (>= 100 chars): {len(no_overlap_rich)}")
+    print(
+        f"  No entity overlap but rich feedback (>= 100 chars): {len(no_overlap_rich)}"
+    )
     if no_overlap_rich:
-        print("    (These may be false-negative causal — reviewer uses concepts, not identifiers)")
+        print(
+            "    (These may be false-negative causal — reviewer uses concepts, not identifiers)"
+        )
         for r in no_overlap_rich[:3]:
             print(f"      {r['repo']} r{r['round']}: {r['feedback_snippet'][:80]}")
 
@@ -183,7 +193,9 @@ def main() -> None:
         sys.exit(1)
 
     records = _score_corpus()
-    print(f"Scored {len(records)} episodes across {len({r['repo'] for r in records})} repos")
+    print(
+        f"Scored {len(records)} episodes across {len({r['repo'] for r in records})} repos"
+    )
 
     scores = [r["quality_score"] for r in records]
     _histogram(scores)

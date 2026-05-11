@@ -68,7 +68,9 @@ def compute_stats(input_path: Path, output_path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", type=Path, required=True)
-    parser.add_argument("-o", "--output", type=Path, default=Path("data/corpus_stats.json"))
+    parser.add_argument(
+        "-o", "--output", type=Path, default=Path("data/corpus_stats.json")
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     stats = compute_stats(args.input, args.output)

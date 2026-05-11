@@ -18,6 +18,7 @@ is broken at a level deeper than any of our custom code.
 
 Run: uv run python scripts/_diag/mimic_minimal_train.py 2>&1 | tee /tmp/mimic.log
 """
+
 from __future__ import annotations
 
 import argparse
@@ -66,7 +67,7 @@ class TinyOverfitDataset(Dataset):
                 else:
                     response = teacher  # whole teacher is response
             else:
-                response = teacher[len(prompt):].lstrip("\n")
+                response = teacher[len(prompt) :].lstrip("\n")
 
             # Manual prompt+response with response-only labels
             prompt_msg = [{"role": "user", "content": prompt}]
@@ -79,12 +80,18 @@ class TinyOverfitDataset(Dataset):
             # which silently breaks naive dict-checks).
             try:
                 prompt_text = tokenizer.apply_chat_template(
-                    prompt_msg, tokenize=False, add_generation_prompt=True,
+                    prompt_msg,
+                    tokenize=False,
+                    add_generation_prompt=True,
                 )
                 full_text = tokenizer.apply_chat_template(
-                    response_msg, tokenize=False, add_generation_prompt=False,
+                    response_msg,
+                    tokenize=False,
+                    add_generation_prompt=False,
                 )
-                prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
+                prompt_ids = tokenizer(prompt_text, add_special_tokens=False)[
+                    "input_ids"
+                ]
                 full_ids = tokenizer(full_text, add_special_tokens=False)["input_ids"]
             except Exception as e:
                 if n_skipped == 0:
@@ -112,11 +119,13 @@ class TinyOverfitDataset(Dataset):
                 n_skipped += 1
                 continue
 
-            self.examples.append({
-                "input_ids": full_ids,
-                "labels": labels,
-                "attention_mask": [1] * len(full_ids),
-            })
+            self.examples.append(
+                {
+                    "input_ids": full_ids,
+                    "labels": labels,
+                    "attention_mask": [1] * len(full_ids),
+                }
+            )
 
         print(f"Built {len(self.examples)} examples; skipped {n_skipped}")
 
@@ -129,6 +138,7 @@ class TinyOverfitDataset(Dataset):
 
 class PadCollator:
     """Pad to longest in batch; pad labels with IGNORE_INDEX."""
+
     def __init__(self, pad_token_id: int):
         self.pad_token_id = pad_token_id
 
@@ -181,8 +191,12 @@ def main():
 
     if args.no_warm_start:
         from peft import LoraConfig, get_peft_model
+
         cfg = LoraConfig(
-            r=32, lora_alpha=32, lora_dropout=0.0, bias="none",
+            r=32,
+            lora_alpha=32,
+            lora_dropout=0.0,
+            bias="none",
             task_type="CAUSAL_LM",
             target_modules=["q_proj", "v_proj"],
         )
@@ -195,11 +209,15 @@ def main():
                 p.requires_grad_(True)
 
     n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Trainable params: {n_trainable/1e6:.2f}M")
+    print(f"Trainable params: {n_trainable / 1e6:.2f}M")
 
     # Sample N rows
     random.seed(42)
-    rows = [json.loads(line) for line in Path(args.data).read_text().splitlines() if line.strip()]
+    rows = [
+        json.loads(line)
+        for line in Path(args.data).read_text().splitlines()
+        if line.strip()
+    ]
     sample = random.sample(rows, args.n_rows)
     print(f"Loaded {len(rows)} rows, sampled {len(sample)}")
 

@@ -7,6 +7,7 @@ Usage:
         --adapter-dir checkpoints/adapters/ \
         --output evaluation_results/diversity.json
 """
+
 from __future__ import annotations
 
 import argparse

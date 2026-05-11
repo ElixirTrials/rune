@@ -35,8 +35,12 @@ _RETRY_BACKOFF_S = 2.0
 
 try:
     from openai import APIConnectionError, APITimeoutError
+
     _RETRYABLE_ERRORS: tuple[type[Exception], ...] = (
-        ConnectionError, OSError, APIConnectionError, APITimeoutError,
+        ConnectionError,
+        OSError,
+        APIConnectionError,
+        APITimeoutError,
     )
 except ImportError:
     _RETRYABLE_ERRORS = (ConnectionError, OSError)
@@ -123,10 +127,9 @@ def _generate_completion(
                 return str(result.text)
             except _RETRYABLE_ERRORS as exc:
                 last_exc = exc
-                wait = _RETRY_BACKOFF_S * (2 ** attempt)
+                wait = _RETRY_BACKOFF_S * (2**attempt)
                 logger.warning(
-                    "Connection error on %s (attempt %d/%d), "
-                    "retrying in %.1fs: %s",
+                    "Connection error on %s (attempt %d/%d), retrying in %.1fs: %s",
                     problem.problem_id,
                     attempt + 1,
                     _MAX_RETRIES,
@@ -193,9 +196,7 @@ def _generate_with_hypernet(
         return str(result.text)
     finally:
         try:
-            loop.run_until_complete(
-                adapter_stack.provider.unload_adapter(adapter_id)
-            )
+            loop.run_until_complete(adapter_stack.provider.unload_adapter(adapter_id))
         except Exception:
             logger.warning(
                 "Failed to unload adapter %s; GPU memory may leak",
@@ -244,13 +245,15 @@ def _load_checkpoint(path: Path) -> list[PassVerdict]:
         if not line.strip():
             continue
         d = json.loads(line)
-        verdicts.append(PassVerdict(
-            problem_id=d["problem_id"],
-            passed=d["passed"],
-            generation=d["generation"],
-            error=d.get("error"),
-            timed_out=d["timed_out"],
-        ))
+        verdicts.append(
+            PassVerdict(
+                problem_id=d["problem_id"],
+                passed=d["passed"],
+                generation=d["generation"],
+                error=d.get("error"),
+                timed_out=d["timed_out"],
+            )
+        )
     return verdicts
 
 
@@ -259,13 +262,15 @@ _checkpoint_lock = threading.Lock()
 
 def _append_checkpoint(path: Path, verdict: PassVerdict) -> None:
     """Append a single verdict to the JSONL checkpoint file (thread-safe)."""
-    line = json.dumps({
-        "problem_id": verdict.problem_id,
-        "passed": verdict.passed,
-        "generation": verdict.generation,
-        "error": verdict.error,
-        "timed_out": verdict.timed_out,
-    })
+    line = json.dumps(
+        {
+            "problem_id": verdict.problem_id,
+            "passed": verdict.passed,
+            "generation": verdict.generation,
+            "error": verdict.error,
+            "timed_out": verdict.timed_out,
+        }
+    )
     with _checkpoint_lock:
         with path.open("a") as f:
             f.write(line + "\n")
@@ -337,7 +342,9 @@ def run_benchmark(
         cached_ids = {v.problem_id for v in cached_verdicts}
         if cached_ids:
             logger.info(
-                "Resumed %d cached verdicts for %s", len(cached_ids), benchmark_id,
+                "Resumed %d cached verdicts for %s",
+                len(cached_ids),
+                benchmark_id,
             )
 
     adapter = _import_adapter(_ADAPTER_REGISTRY[benchmark_id])
@@ -357,7 +364,9 @@ def run_benchmark(
         return BenchmarkResult(benchmark_id=benchmark_id, verdicts=[])
 
     if not remaining:
-        logger.info("All %d problems already cached for %s", len(problems), benchmark_id)
+        logger.info(
+            "All %d problems already cached for %s", len(problems), benchmark_id
+        )
         id_order = {p.problem_id: i for i, p in enumerate(problems)}
         cached_verdicts.sort(key=lambda v: id_order.get(v.problem_id, 9999))
         return BenchmarkResult(benchmark_id=benchmark_id, verdicts=cached_verdicts)
@@ -383,8 +392,7 @@ def run_benchmark(
     verdicts: list[PassVerdict] = list(cached_verdicts) + [first_verdict]
     with ThreadPoolExecutor(max_workers=cfg.max_workers) as executor:
         futures = {
-            executor.submit(_evaluate_and_checkpoint, p): p
-            for p in remaining[1:]
+            executor.submit(_evaluate_and_checkpoint, p): p for p in remaining[1:]
         }
         for future in as_completed(futures):
             verdict = future.result()

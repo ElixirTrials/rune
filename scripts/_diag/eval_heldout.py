@@ -16,6 +16,7 @@ Run: uv run python scripts/_diag/eval_heldout.py \\
     --heldout data/_ab/pairs_heldout_100.jsonl \\
     --adapter ./hpo_artifacts/<run>/adapter
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,7 +29,9 @@ IGNORE_INDEX = -100
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--heldout", default="data/_ab/pairs_heldout_100.jsonl")
-    p.add_argument("--n-rows", type=int, default=50, help="Rows of heldout to evaluate.")
+    p.add_argument(
+        "--n-rows", type=int, default=50, help="Rows of heldout to evaluate."
+    )
     p.add_argument("--max-length", type=int, default=2048)
     p.add_argument(
         "--adapter",
@@ -62,7 +65,7 @@ def build_examples(records, tokenizer, max_length):
         prompt = r["activation_text"]
         teacher = r["teacher_text"]
         if teacher.startswith(prompt):
-            response = teacher[len(prompt):].lstrip("\n")
+            response = teacher[len(prompt) :].lstrip("\n")
         elif prompt in teacher:
             response = teacher.split(prompt, 1)[1].lstrip("\n")
         else:
@@ -73,10 +76,14 @@ def build_examples(records, tokenizer, max_length):
         prompt_msg = [{"role": "user", "content": prompt}]
         response_msg = prompt_msg + [{"role": "assistant", "content": response}]
         prompt_text = tokenizer.apply_chat_template(
-            prompt_msg, tokenize=False, add_generation_prompt=True,
+            prompt_msg,
+            tokenize=False,
+            add_generation_prompt=True,
         )
         full_text = tokenizer.apply_chat_template(
-            response_msg, tokenize=False, add_generation_prompt=False,
+            response_msg,
+            tokenize=False,
+            add_generation_prompt=False,
         )
         prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
         full_ids = tokenizer(full_text, add_special_tokens=False)["input_ids"]
@@ -175,11 +182,17 @@ def main():
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
-        args.model, quantization_config=bnb, dtype=torch.bfloat16,
+        args.model,
+        quantization_config=bnb,
+        dtype=torch.bfloat16,
     )
 
     print(f"Loading {args.heldout} ...")
-    rows = [json.loads(line) for line in Path(args.heldout).read_text().splitlines() if line.strip()]
+    rows = [
+        json.loads(line)
+        for line in Path(args.heldout).read_text().splitlines()
+        if line.strip()
+    ]
     rows = rows[: args.n_rows]
     examples = build_examples(rows, tok, max_length=args.max_length)
     print(f"Built {len(examples)} eval examples (from {len(rows)} rows)")
@@ -192,16 +205,20 @@ def main():
     # State 1: base model alone
     if not args.skip_base:
         results.append(evaluate(model, tok, examples, label="base"))
-        print(f"  [base] loss={results[-1]['mean_loss']:.4f} "
-              f"tok_acc={results[-1]['token_accuracy']:.4f} "
-              f"n_tokens={results[-1]['n_labeled_tokens']}")
+        print(
+            f"  [base] loss={results[-1]['mean_loss']:.4f} "
+            f"tok_acc={results[-1]['token_accuracy']:.4f} "
+            f"n_tokens={results[-1]['n_labeled_tokens']}"
+        )
 
     # State 2: + deltacoder warm-start
     print(f"Loading deltacoder warm-start: {args.deltacoder_id}")
     model = PeftModel.from_pretrained(model, args.deltacoder_id)
     results.append(evaluate(model, tok, examples, label="deltacoder"))
-    print(f"  [deltacoder] loss={results[-1]['mean_loss']:.4f} "
-          f"tok_acc={results[-1]['token_accuracy']:.4f}")
+    print(
+        f"  [deltacoder] loss={results[-1]['mean_loss']:.4f} "
+        f"tok_acc={results[-1]['token_accuracy']:.4f}"
+    )
 
     # State 3: + fine-tuned adapter (replace deltacoder)
     if args.adapter:
@@ -210,15 +227,15 @@ def main():
         # Get the inner base back
         base = model.unload()
         model = PeftModel.from_pretrained(base, args.adapter)
-        results.append(
-            evaluate(model, tok, examples, label="fine-tuned")
+        results.append(evaluate(model, tok, examples, label="fine-tuned"))
+        print(
+            f"  [fine-tuned] loss={results[-1]['mean_loss']:.4f} "
+            f"tok_acc={results[-1]['token_accuracy']:.4f}"
         )
-        print(f"  [fine-tuned] loss={results[-1]['mean_loss']:.4f} "
-              f"tok_acc={results[-1]['token_accuracy']:.4f}")
 
-    print(f"\n{'='*60}\nSUMMARY\n{'='*60}")
+    print(f"\n{'=' * 60}\nSUMMARY\n{'=' * 60}")
     print(f"{'state':<14} {'loss':>8} {'tok_acc':>9}  {'n_tokens':>10}")
-    print(f"{'-'*14} {'-'*8} {'-'*9}  {'-'*10}")
+    print(f"{'-' * 14} {'-' * 8} {'-' * 9}  {'-' * 10}")
     for r in results:
         print(
             f"{r['label']:<14} {r['mean_loss']:>8.4f} {r['token_accuracy']:>9.4f}  "
@@ -248,27 +265,37 @@ def main():
             if args.mlflow_uri:
                 mlflow.set_tracking_uri(args.mlflow_uri)
             mlflow.set_experiment(args.mlflow_experiment)
-            with mlflow.start_run(run_name=f"eval-{Path(args.adapter or 'deltacoder').name}"):
-                mlflow.log_params({
-                    "adapter_path": str(args.adapter or args.deltacoder_id),
-                    "heldout_path": args.heldout,
-                    "n_rows": args.n_rows,
-                    "max_length": args.max_length,
-                    "deltacoder_id": args.deltacoder_id,
-                    "model": args.model,
-                })
+            with mlflow.start_run(
+                run_name=f"eval-{Path(args.adapter or 'deltacoder').name}"
+            ):
+                mlflow.log_params(
+                    {
+                        "adapter_path": str(args.adapter or args.deltacoder_id),
+                        "heldout_path": args.heldout,
+                        "n_rows": args.n_rows,
+                        "max_length": args.max_length,
+                        "deltacoder_id": args.deltacoder_id,
+                        "model": args.model,
+                    }
+                )
                 for r in results:
                     label = r["label"]
-                    mlflow.log_metrics({
-                        f"eval_heldout/{label}/loss": r["mean_loss"],
-                        f"eval_heldout/{label}/token_accuracy": r["token_accuracy"],
-                        f"eval_heldout/{label}/n_labeled_tokens": r["n_labeled_tokens"],
-                    })
+                    mlflow.log_metrics(
+                        {
+                            f"eval_heldout/{label}/loss": r["mean_loss"],
+                            f"eval_heldout/{label}/token_accuracy": r["token_accuracy"],
+                            f"eval_heldout/{label}/n_labeled_tokens": r[
+                                "n_labeled_tokens"
+                            ],
+                        }
+                    )
                 if len(results) >= 3:
-                    mlflow.log_metrics({
-                        "eval_heldout/delta/tok_acc": delta,
-                        "eval_heldout/delta/loss_reduction": delta_loss,
-                    })
+                    mlflow.log_metrics(
+                        {
+                            "eval_heldout/delta/tok_acc": delta,
+                            "eval_heldout/delta/loss_reduction": delta_loss,
+                        }
+                    )
             print(f"\nLogged to MLflow experiment '{args.mlflow_experiment}'")
         except Exception as e:  # noqa: BLE001
             print(f"\n[warn] MLflow logging skipped: {e}")

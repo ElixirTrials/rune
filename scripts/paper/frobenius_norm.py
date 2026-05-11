@@ -5,6 +5,7 @@ Confirms non-trivial weight changes across trajectory depths.
 Usage:
     uv run python scripts/paper/frobenius_norm.py --adapter path/to/adapter.pt
 """
+
 from __future__ import annotations
 
 import argparse

@@ -58,10 +58,18 @@ def fake_client() -> MagicMock:
     def paginated(path: str, **_kwargs):
         if path.endswith("/commits"):
             return [
-                _commit("c0", 0, "alice",
-                        [{"filename": "src/foo.py", "patch": "@@ -1,1 +1,2 @@\n+x\n"}]),
-                _commit("c1", 30, "alice",
-                        [{"filename": "src/foo.py", "patch": "@@ -1,1 +1,2 @@\n+y\n"}]),
+                _commit(
+                    "c0",
+                    0,
+                    "alice",
+                    [{"filename": "src/foo.py", "patch": "@@ -1,1 +1,2 @@\n+x\n"}],
+                ),
+                _commit(
+                    "c1",
+                    30,
+                    "alice",
+                    [{"filename": "src/foo.py", "patch": "@@ -1,1 +1,2 @@\n+y\n"}],
+                ),
             ]
         if path.endswith("/comments"):
             return [

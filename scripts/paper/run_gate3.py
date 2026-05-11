@@ -9,6 +9,7 @@ Usage:
         --hypernet-checkpoint path/to/checkpoint.bin \
         --output evaluation_results/gate3.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -88,7 +89,9 @@ def _generate_completions(
                             provider.unload_adapter(adapter_id_to_unload)
                         )
                     except Exception:
-                        logger.debug("Failed to unload adapter %s", adapter_id_to_unload)
+                        logger.debug(
+                            "Failed to unload adapter %s", adapter_id_to_unload
+                        )
     finally:
         loop.close()
 
@@ -99,16 +102,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Gate 3: OOD procedural encoding")
     parser.add_argument("--model", type=str, default=DEFAULT_BASE_MODEL)
     parser.add_argument(
-        "--warm-start-adapter", default=DEFAULT_WARM_START,
+        "--warm-start-adapter",
+        default=DEFAULT_WARM_START,
         help="Warm-start LoRA for substrate (DeltaCoder)",
     )
     parser.add_argument(
-        "--hypernet-checkpoint", type=str, required=True,
+        "--hypernet-checkpoint",
+        type=str,
+        required=True,
         help="Path to trained hypernetwork checkpoint",
     )
     parser.add_argument("--n-inputs", type=int, default=8)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--output", type=Path, default=Path("evaluation_results/gate3.json"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("evaluation_results/gate3.json")
+    )
     args = parser.parse_args()
 
     import subprocess
@@ -127,15 +135,18 @@ def main() -> None:
         import mlflow
 
         mlflow.start_run(run_name="gate3")
-        mlflow_log_params({
-            "model": args.model,
-            "warm_start_adapter": args.warm_start_adapter,
-            "hypernet_checkpoint": args.hypernet_checkpoint,
-            "n_inputs": args.n_inputs,
-            "git_commit": subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], text=True,
-            ).strip(),
-        })
+        mlflow_log_params(
+            {
+                "model": args.model,
+                "warm_start_adapter": args.warm_start_adapter,
+                "hypernet_checkpoint": args.hypernet_checkpoint,
+                "n_inputs": args.n_inputs,
+                "git_commit": subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"],
+                    text=True,
+                ).strip(),
+            }
+        )
 
     ood_data_path = Path("libs/evaluation/src/evaluation/data/ood_tasks.json")
     with ood_data_path.open() as f:
@@ -150,15 +161,19 @@ def main() -> None:
 
     print("\n=== Substrate baseline ===")
     substrate_completions = _generate_completions(
-        all_tasks, args.model, provider,
+        all_tasks,
+        args.model,
+        provider,
     )
     substrate_result = run_ood_benchmark(
         adapter_id=None,
         completions=substrate_completions,
         benchmark_name="ood_python_substrate",
     )
-    print(f"  Pass rate: {substrate_result['ood_pass_rate']:.2%} "
-          f"({substrate_result['pass_count']}/{substrate_result['total']})")
+    print(
+        f"  Pass rate: {substrate_result['ood_pass_rate']:.2%} "
+        f"({substrate_result['pass_count']}/{substrate_result['total']})"
+    )
 
     print("\n=== Rune (substrate + hypernetwork adapter) ===")
     tmp_dir = tempfile.mkdtemp(prefix="rune_gate3_")
@@ -173,7 +188,9 @@ def main() -> None:
         )
 
     rune_completions = _generate_completions(
-        all_tasks, args.model, provider,
+        all_tasks,
+        args.model,
+        provider,
         adapter_generator=adapter_generator,
     )
     rune_result = run_ood_benchmark(
@@ -181,10 +198,14 @@ def main() -> None:
         completions=rune_completions,
         benchmark_name="ood_python_rune",
     )
-    print(f"  Pass rate: {rune_result['ood_pass_rate']:.2%} "
-          f"({rune_result['pass_count']}/{rune_result['total']})")
+    print(
+        f"  Pass rate: {rune_result['ood_pass_rate']:.2%} "
+        f"({rune_result['pass_count']}/{rune_result['total']})"
+    )
 
-    substrate_by_task = {r["task_id"]: r["passed"] for r in substrate_result["task_results"]}
+    substrate_by_task = {
+        r["task_id"]: r["passed"] for r in substrate_result["task_results"]
+    }
     rune_by_task = {r["task_id"]: r["passed"] for r in rune_result["task_results"]}
 
     common_ids = sorted(set(substrate_by_task) & set(rune_by_task))

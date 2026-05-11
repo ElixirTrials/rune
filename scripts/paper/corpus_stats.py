@@ -6,11 +6,11 @@ and percentage of sessions exceeding context windows.
 Usage:
     uv run python scripts/paper/corpus_stats.py --corpus data/pairs/corpus.jsonl
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 

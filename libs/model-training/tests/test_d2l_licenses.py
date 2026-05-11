@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from model_training.d2l_licenses import LicenseStatus, classify_license
 
 

@@ -1,9 +1,8 @@
 """Tests for trajectory-aware RAG pipeline."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from model_training.rag_pipeline import (
     RAGConfig,
@@ -34,7 +33,10 @@ def test_build_vector_store_returns_index(tmp_path) -> None:
 
     with patch("model_training.rag_pipeline._get_encoder") as mock_enc:
         import numpy as np
-        mock_enc.return_value.encode.return_value = np.random.randn(5, 768).astype(np.float32)
+
+        mock_enc.return_value.encode.return_value = np.random.randn(5, 768).astype(
+            np.float32
+        )
         store = build_vector_store(corpus, RAGConfig(chunk_size=512))
 
     assert store["n_chunks"] >= 5
@@ -55,7 +57,9 @@ def test_query_returns_top_k() -> None:
         query="def foo():",
         index=mock_index,
         chunks=chunks,
-        encoder=MagicMock(encode=MagicMock(return_value=np.random.randn(1, 768).astype(np.float32))),
+        encoder=MagicMock(
+            encode=MagicMock(return_value=np.random.randn(1, 768).astype(np.float32))
+        ),
         top_k=3,
     )
     assert len(results) == 3

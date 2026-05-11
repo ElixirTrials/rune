@@ -165,9 +165,7 @@ def _patch_flash_attention() -> None:  # noqa: C901
         self.n_latents = config.n_latents
         self.rms_norm_eps = config.rms_norm_eps
 
-        self.latents_q = nn.Parameter(
-            torch.randn(self.n_latents, self.hidden_size)
-        )
+        self.latents_q = nn.Parameter(torch.randn(self.n_latents, self.hidden_size))
 
         first_x_attn = [Idefics2PerceiverLayer(config, is_cross_attn=True)]
         first_self_attn_block = [
@@ -179,9 +177,7 @@ def _patch_flash_attention() -> None:  # noqa: C901
         for layer_idx in range(1, config.num_blocks):
             if self.shared_weights:
                 if layer_idx == 1:
-                    second_x_attn = Idefics2PerceiverLayer(
-                        config, is_cross_attn=True
-                    )
+                    second_x_attn = Idefics2PerceiverLayer(config, is_cross_attn=True)
                 x_attn = second_x_attn
             else:
                 x_attn = Idefics2PerceiverLayer(config, is_cross_attn=True)
@@ -191,14 +187,10 @@ def _patch_flash_attention() -> None:  # noqa: C901
                 if self.shared_weights:
                     self_attn = first_self_attn_block[i]
                 else:
-                    self_attn = Idefics2PerceiverLayer(
-                        config, is_cross_attn=False
-                    )
+                    self_attn = Idefics2PerceiverLayer(config, is_cross_attn=False)
                 self.layers.append(self_attn)
 
-        self.layernorm = Idefics2RMSNorm(
-            self.hidden_size, eps=self.rms_norm_eps
-        )
+        self.layernorm = Idefics2RMSNorm(self.hidden_size, eps=self.rms_norm_eps)
         self._use_flash_attention_2 = False
 
     Idefics2PerceiverResampler.__init__ = _patched_resampler_init

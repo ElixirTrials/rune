@@ -5,11 +5,12 @@ relevant trajectory chunks at inference time using (state, goal) queries.
 
 GPU-heavy imports deferred per INFRA-05.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -97,7 +98,9 @@ def build_vector_store(
     if not all_chunks:
         raise ValueError(f"No chunks produced from {corpus_path}")
 
-    embeddings = encoder.encode(all_chunks, convert_to_numpy=True, show_progress_bar=True)
+    embeddings = encoder.encode(
+        all_chunks, convert_to_numpy=True, show_progress_bar=True
+    )
     embeddings = embeddings.astype(np.float32)
 
     faiss.normalize_L2(embeddings)
@@ -134,6 +137,7 @@ def query_trajectory_rag(
     q_emb = encoder.encode([query], convert_to_numpy=True).astype(np.float32)
 
     import faiss
+
     faiss.normalize_L2(q_emb)
 
     scores, indices = index.search(q_emb, top_k)

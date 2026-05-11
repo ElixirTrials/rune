@@ -1081,8 +1081,7 @@ def train_qlora(
                 truncation_mode="keep_end",
             )
         logger.info(
-            "Eval dataset enabled: %d held-out rows from %s; "
-            "eval_strategy=epoch.",
+            "Eval dataset enabled: %d held-out rows from %s; eval_strategy=epoch.",
             len(eval_dataset),
             eval_dataset_path,
         )

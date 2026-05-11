@@ -145,8 +145,7 @@ def main() -> None:  # noqa: C901 (complexity acceptable for a diagnostic script
         input_ids: list[int] = result["input_ids"]
         assistant_masks: list[int] = result["assistant_masks"]
         labels = [
-            tid if m else IGNORE_INDEX
-            for tid, m in zip(input_ids, assistant_masks)
+            tid if m else IGNORE_INDEX for tid, m in zip(input_ids, assistant_masks)
         ]
         spans = list(_iter_assistant_spans(labels))
 
@@ -159,9 +158,7 @@ def main() -> None:  # noqa: C901 (complexity acceptable for a diagnostic script
 
         # Pre-tokenise all post_codes for WRONG_TURN_LOOKUP.
         all_post_ids: list[list[int]] = [
-            list(tok(pc, add_special_tokens=False)["input_ids"])
-            if pc
-            else []
+            list(tok(pc, add_special_tokens=False)["input_ids"]) if pc else []
             for pc in post_codes
         ]
 
@@ -196,10 +193,18 @@ def main() -> None:  # noqa: C901 (complexity acceptable for a diagnostic script
             bucket_counts[cls_result.bucket.value] += 1
 
             # Build decoded diagnostic text.
-            head4_post = tok.decode(cls_result.post_ids_head) if cls_result.post_ids_head else ""
-            head4_span = tok.decode(cls_result.span_ids_head) if cls_result.span_ids_head else ""
-            tail4_post = tok.decode(cls_result.post_ids_tail) if cls_result.post_ids_tail else ""
-            tail4_span = tok.decode(cls_result.span_ids_tail) if cls_result.span_ids_tail else ""
+            head4_post = (
+                tok.decode(cls_result.post_ids_head) if cls_result.post_ids_head else ""
+            )
+            head4_span = (
+                tok.decode(cls_result.span_ids_head) if cls_result.span_ids_head else ""
+            )
+            tail4_post = (
+                tok.decode(cls_result.post_ids_tail) if cls_result.post_ids_tail else ""
+            )
+            tail4_span = (
+                tok.decode(cls_result.span_ids_tail) if cls_result.span_ids_tail else ""
+            )
 
             rec = asdict(cls_result)
             rec["post_ids_head_text"] = head4_post

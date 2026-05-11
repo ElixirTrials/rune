@@ -314,7 +314,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _suggest_trial_params(
-    trial: Any, *, force_diff_aware_loss: bool | None = None,
+    trial: Any,
+    *,
+    force_diff_aware_loss: bool | None = None,
 ) -> dict[str, Any]:
     """Sample one trial's hyperparameters from the warm-start-aware search space."""
     lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
@@ -325,7 +327,8 @@ def _suggest_trial_params(
     scheduler = trial.suggest_categorical("lr_scheduler", ["constant", "cosine"])
     if force_diff_aware_loss is not None:
         diff_aware = trial.suggest_categorical(
-            "diff_aware_loss", [force_diff_aware_loss],
+            "diff_aware_loss",
+            [force_diff_aware_loss],
         )
     else:
         diff_aware = trial.suggest_categorical("diff_aware_loss", [False, True])
@@ -987,9 +990,7 @@ def _evaluate_adapter_on_heldout(
                     1, hunk_targets.unsqueeze(1)
                 ).squeeze(1)
                 hunk_preds = hunk_logits.argmax(dim=-1)
-                entropy_per_token = -(
-                    hunk_log_probs.exp() * hunk_log_probs
-                ).sum(dim=-1)
+                entropy_per_token = -(hunk_log_probs.exp() * hunk_log_probs).sum(dim=-1)
 
                 total_loss += float(nll_per_token.sum().item())
                 total_acc += float((hunk_preds == hunk_targets).sum().item())
@@ -1174,7 +1175,8 @@ def _run_single_trial(
     adapters per study.
     """
     sampled = _suggest_trial_params(
-        trial, force_diff_aware_loss=run_args.force_diff_aware_loss,
+        trial,
+        force_diff_aware_loss=run_args.force_diff_aware_loss,
     )
     logger.info("Trial %d sampled params: %s", trial.number, sampled)
 
@@ -1570,9 +1572,7 @@ def _ensure_experiment_active(experiment_name: str) -> None:
     page_token: str | None = None
     match = None
     while True:
-        page = client.search_experiments(
-            view_type=ViewType.ALL, page_token=page_token
-        )
+        page = client.search_experiments(view_type=ViewType.ALL, page_token=page_token)
         match = next((e for e in page if e.name == experiment_name), None)
         if match is not None:
             break

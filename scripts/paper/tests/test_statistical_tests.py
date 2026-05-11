@@ -1,12 +1,13 @@
 """Tests for McNemar and Wilson CI computation."""
+
 from __future__ import annotations
 
 import pytest
 
 from scripts.paper.statistical_tests import (
+    bonferroni_correct,
     mcnemar_test,
     wilson_score_ci,
-    bonferroni_correct,
 )
 
 

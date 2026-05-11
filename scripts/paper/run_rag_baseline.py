@@ -10,6 +10,7 @@ Usage:
         --benchmarks humaneval livecodebench \
         --output evaluation_results/condition_ii.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,15 +33,20 @@ def main() -> None:
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--model", type=str, default=DEFAULT_BASE_MODEL)
     parser.add_argument(
-        "--warm-start-adapter", default=DEFAULT_WARM_START,
+        "--warm-start-adapter",
+        default=DEFAULT_WARM_START,
         help="Warm-start LoRA for substrate (DeltaCoder)",
     )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--chunk-size", type=int, default=512)
     parser.add_argument(
-        "--benchmarks", nargs="+", default=["humaneval", "livecodebench"],
+        "--benchmarks",
+        nargs="+",
+        default=["humaneval", "livecodebench"],
     )
-    parser.add_argument("--output", type=Path, default=Path("evaluation_results/condition_ii.json"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("evaluation_results/condition_ii.json")
+    )
     args = parser.parse_args()
 
     from evaluation.benchmarks import run_benchmark

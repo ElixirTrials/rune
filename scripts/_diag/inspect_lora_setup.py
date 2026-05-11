@@ -5,6 +5,7 @@
 - count of trainable parameters
 - which modules have requires_grad=True
 """
+
 import json
 from pathlib import Path
 
@@ -18,18 +19,27 @@ for p in candidates:
     if "DeltaCoder" in name or "deltacoder" in name.lower():
         print(f"\n=== {p} ===")
         cfg = json.loads(p.read_text())
-        for k in ['r','lora_alpha','target_modules','lora_dropout','base_model_name_or_path','task_type','peft_type']:
+        for k in [
+            "r",
+            "lora_alpha",
+            "target_modules",
+            "lora_dropout",
+            "base_model_name_or_path",
+            "task_type",
+            "peft_type",
+        ]:
             print(f"  {k}: {cfg.get(k)}")
         # Compute scaling
-        r = cfg.get('r')
-        a = cfg.get('lora_alpha')
+        r = cfg.get("r")
+        a = cfg.get("lora_alpha")
         if r and a:
-            print(f"  → scaling (alpha/r) = {a/r:.3f}")
+            print(f"  → scaling (alpha/r) = {a / r:.3f}")
 
 # Also check huggingface API for the model
 print("\n=== HF API: danielcherubini/Qwen3.5-DeltaCoder-9B ===")
 try:
     from huggingface_hub import HfApi
+
     api = HfApi()
     info = api.model_info("danielcherubini/Qwen3.5-DeltaCoder-9B")
     print(f"  pipeline_tag: {info.pipeline_tag}")

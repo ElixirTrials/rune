@@ -6,6 +6,7 @@ Tests:
 - Checkpoint format is compatible with rune_runner._is_sakana_checkpoint
 - load_sakana_checkpoint can load from-scratch checkpoints
 """
+
 from __future__ import annotations
 
 import pytest
@@ -14,6 +15,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _patch_flash() -> None:
     from model_training.sakana_d2l import _patch_flash_attention
+
     _patch_flash_attention()
 
 
@@ -50,7 +52,8 @@ def test_build_from_scratch_config_feature_sizes_attention() -> None:
     from model_training.d2l_config import build_from_scratch_hypernet_config
 
     hc = build_from_scratch_hypernet_config(
-        "qwen3.5-9b", target_modules=["q_proj", "v_proj"],
+        "qwen3.5-9b",
+        target_modules=["q_proj", "v_proj"],
     )
     in_sizes, out_sizes = hc.feature_sizes
     assert in_sizes["q_proj"] == 4096
@@ -93,11 +96,14 @@ def test_checkpoint_format_detected_as_sakana() -> None:
     hc = build_from_scratch_hypernet_config("qwen3.5-9b", lora_r=8)
 
     with tempfile.NamedTemporaryFile(suffix=".pt") as f:
-        torch.save({
-            "hypernet_config": hc,
-            "hypernet_state_dict": {},
-            "base_model_name_or_path": "Qwen/Qwen3.5-9B",
-        }, f.name)
+        torch.save(
+            {
+                "hypernet_config": hc,
+                "hypernet_state_dict": {},
+                "base_model_name_or_path": "Qwen/Qwen3.5-9B",
+            },
+            f.name,
+        )
 
         sd = torch.load(f.name, map_location="cpu", weights_only=False)
         loaded_hc = sd.get("hypernet_config")
@@ -117,15 +123,20 @@ def test_load_sakana_checkpoint_reads_hypernet_state_dict() -> None:
     hyperlora = HyperLoRA(hc)
 
     with tempfile.NamedTemporaryFile(suffix=".pt") as f:
-        torch.save({
-            "hypernet_config": hc,
-            "hypernet_state_dict": hyperlora.state_dict(),
-            "base_model_name_or_path": "Qwen/Qwen3.5-9B",
-        }, f.name)
+        torch.save(
+            {
+                "hypernet_config": hc,
+                "hypernet_state_dict": hyperlora.state_dict(),
+                "base_model_name_or_path": "Qwen/Qwen3.5-9B",
+            },
+            f.name,
+        )
 
         from model_training.sakana_d2l import load_sakana_checkpoint
+
         loaded_hypernet, loaded_hc = load_sakana_checkpoint(
-            checkpoint_path=f.name, device="cpu",
+            checkpoint_path=f.name,
+            device="cpu",
         )
         assert loaded_hc.latent_size == 512
         assert loaded_hc.lora_config.r == 8

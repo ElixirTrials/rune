@@ -31,6 +31,7 @@ def load_hypernet_defaults() -> dict[str, Any]:
     with open(_DEFAULTS_PATH) as f:
         return yaml.safe_load(f)
 
+
 __all__ = [
     "get_d2l_qwen3_config",
     "build_qwen3_hypernet_config",

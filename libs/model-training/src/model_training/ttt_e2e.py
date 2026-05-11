@@ -6,6 +6,7 @@ the "learn at test time" baseline from Sun et al. 2024.
 
 GPU imports deferred per INFRA-05.
 """
+
 from __future__ import annotations
 
 import logging
@@ -81,7 +82,9 @@ def ttt_forward_pass(
     import torch
 
     all_mlp_names = [
-        name for name, _ in model.named_parameters() if "mlp" in name and "weight" in name
+        name
+        for name, _ in model.named_parameters()
+        if "mlp" in name and "weight" in name
     ]
     selected = select_mlp_layers(all_mlp_names, config.mlp_fraction)
 
@@ -119,12 +122,12 @@ def ttt_forward_pass(
     query_ids = tokenizer(query, return_tensors="pt").to(model.device)
     gen_start = time.perf_counter()
     with torch.no_grad():
-        gen_ids = model.generate(
-            **query_ids, max_new_tokens=512, do_sample=False
-        )
+        gen_ids = model.generate(**query_ids, max_new_tokens=512, do_sample=False)
     gen_time = (time.perf_counter() - gen_start) * 1000
 
-    generation = tokenizer.decode(gen_ids[0][query_ids["input_ids"].shape[1]:], skip_special_tokens=True)
+    generation = tokenizer.decode(
+        gen_ids[0][query_ids["input_ids"].shape[1] :], skip_special_tokens=True
+    )
 
     return {
         "generation": generation,

@@ -176,7 +176,8 @@ class CodeContestsAdapter:
         import datasets as hf_datasets  # deferred
 
         ds = hf_datasets.load_dataset(
-            "deepmind/code_contests", split="test",
+            "deepmind/code_contests",
+            split="test",
         )
         return list(ds)
 

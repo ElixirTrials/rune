@@ -14,6 +14,7 @@ Usage:
         --hypernet-checkpoint path/to/checkpoint.bin \
         --output evaluation_results/table2.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,20 +79,33 @@ def fetch_best_hpo_adapter(
     dest.mkdir(parents=True, exist_ok=True)
     logger.info("HPO adapter not found at %s — fetching from S3...", dest)
 
-    s3_ok = subprocess.run(
-        ["aws", "s3", "cp", f"{s3_prefix}/", f"{dest}/", "--recursive"],
-        capture_output=True,
-    ).returncode == 0
+    s3_ok = (
+        subprocess.run(
+            ["aws", "s3", "cp", f"{s3_prefix}/", f"{dest}/", "--recursive"],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
     if not s3_ok:
         logger.info("S3 download failed — trying MLflow CLI...")
         env = None
         if mlflow_tracking_uri:
             import os
+
             env = {**os.environ, "MLFLOW_TRACKING_URI": mlflow_tracking_uri}
         subprocess.run(
-            ["uv", "run", "mlflow", "artifacts", "download",
-             "--run-id", run_id, "--dst-path", str(dest)],
+            [
+                "uv",
+                "run",
+                "mlflow",
+                "artifacts",
+                "download",
+                "--run-id",
+                run_id,
+                "--dst-path",
+                str(dest),
+            ],
             capture_output=True,
             env=env,
         )
@@ -167,7 +181,8 @@ def run_condition_static(
         for bench_id in benchmarks:
             try:
                 result = run_benchmark(
-                    stack, bench_id,
+                    stack,
+                    bench_id,
                     max_samples=max_samples,
                     checkpoint_dir=checkpoint_dir,
                 )
@@ -256,7 +271,8 @@ def run_condition_rag(
     for bench_id in benchmarks:
         try:
             result = run_benchmark(
-                stack, bench_id,
+                stack,
+                bench_id,
                 max_samples=max_samples,
                 checkpoint_dir=checkpoint_dir,
             )
@@ -315,7 +331,9 @@ def run_condition_ttt(
     print(f"  Loading model {model} for TTT inner-loop...")
     tokenizer = AutoTokenizer.from_pretrained(model)
     ttt_model = AutoModelForCausalLM.from_pretrained(
-        model, torch_dtype=torch.float16, device_map="auto",
+        model,
+        torch_dtype=torch.float16,
+        device_map="auto",
     )
     original_sd = {k: v.cpu().clone() for k, v in ttt_model.state_dict().items()}
 
@@ -342,7 +360,8 @@ def run_condition_ttt(
     for bench_id in benchmarks:
         try:
             result = run_benchmark(
-                stack, bench_id,
+                stack,
+                bench_id,
                 max_samples=max_samples,
                 checkpoint_dir=checkpoint_dir,
             )
@@ -412,7 +431,8 @@ def run_condition_rune(
     for bench_id in benchmarks:
         try:
             result = run_benchmark(
-                stack, bench_id,
+                stack,
+                bench_id,
                 max_samples=max_samples,
                 checkpoint_dir=checkpoint_dir,
             )
@@ -456,37 +476,54 @@ def assemble_table2(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run all paper conditions (Table 2)")
     parser.add_argument(
-        "--conditions", nargs="+", default=["i", "ii", "iii", "iv", "v"],
+        "--conditions",
+        nargs="+",
+        default=["i", "ii", "iii", "iv", "v"],
         choices=["i", "ii", "iii", "iv", "v"],
     )
     parser.add_argument(
-        "--benchmarks", nargs="+", default=["humaneval", "livecodebench"],
+        "--benchmarks",
+        nargs="+",
+        default=["humaneval", "livecodebench"],
     )
     parser.add_argument("--model", default=DEFAULT_BASE_MODEL)
     parser.add_argument(
-        "--warm-start-adapter", default=DEFAULT_WARM_START,
+        "--warm-start-adapter",
+        default=DEFAULT_WARM_START,
         help="Warm-start LoRA for substrate (DeltaCoder)",
     )
     parser.add_argument(
-        "--adapter-iii", type=str, default=None,
+        "--adapter-iii",
+        type=str,
+        default=None,
         help="Path to HPO-tuned QLoRA adapter for Condition (iii)",
     )
     parser.add_argument(
-        "--corpus", type=Path, default=None,
+        "--corpus",
+        type=Path,
+        default=None,
         help="Path to JSONL trajectory corpus for Condition (ii) RAG",
     )
     parser.add_argument("--rag-top-k", type=int, default=5)
     parser.add_argument(
-        "--hypernet-checkpoint", type=str, default=None,
+        "--hypernet-checkpoint",
+        type=str,
+        default=None,
         help="Path to trained hypernetwork checkpoint for Condition (v)",
     )
     parser.add_argument("--ttt-lr", type=float, default=1e-4)
     parser.add_argument("--ttt-steps", type=int, default=5)
     parser.add_argument("--ttt-mlp-fraction", type=float, default=0.25)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--max-samples", type=int, default=None,
-                        help="Cap problems per benchmark (useful for quick smoke runs)")
-    parser.add_argument("--output", type=Path, default=Path("evaluation_results/table2.json"))
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Cap problems per benchmark (useful for quick smoke runs)",
+    )
+    parser.add_argument(
+        "--output", type=Path, default=Path("evaluation_results/table2.json")
+    )
     args = parser.parse_args()
 
     from inference.factory import get_provider
@@ -501,25 +538,32 @@ def main() -> None:
         import mlflow
 
         mlflow.start_run(run_name="table2")
-        mlflow_log_params({
-            "model": args.model,
-            "warm_start_adapter": args.warm_start_adapter,
-            "benchmarks": ",".join(args.benchmarks),
-            "conditions": ",".join(args.conditions),
-            "git_commit": subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], text=True,
-            ).strip(),
-            "rag_top_k": args.rag_top_k,
-            "ttt_lr": args.ttt_lr,
-            "ttt_steps": args.ttt_steps,
-            "ttt_mlp_fraction": args.ttt_mlp_fraction,
-        })
+        mlflow_log_params(
+            {
+                "model": args.model,
+                "warm_start_adapter": args.warm_start_adapter,
+                "benchmarks": ",".join(args.benchmarks),
+                "conditions": ",".join(args.conditions),
+                "git_commit": subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"],
+                    text=True,
+                ).strip(),
+                "rag_top_k": args.rag_top_k,
+                "ttt_lr": args.ttt_lr,
+                "ttt_steps": args.ttt_steps,
+                "ttt_mlp_fraction": args.ttt_mlp_fraction,
+            }
+        )
 
     # Auto-fetch HPO adapter for conditions that need it (iii, v)
     hpo_adapter_path: Path | None = None
     needs_hpo = {"iii", "v"} & set(args.conditions)
     if needs_hpo:
-        hpo_dest = Path(args.adapter_iii) if args.adapter_iii else Path("hpo_artifacts/best_diffloss_v1")
+        hpo_dest = (
+            Path(args.adapter_iii)
+            if args.adapter_iii
+            else Path("hpo_artifacts/best_diffloss_v1")
+        )
         try:
             hpo_adapter_path = fetch_best_hpo_adapter(hpo_dest)
             if not args.adapter_iii:
@@ -541,16 +585,17 @@ def main() -> None:
     ckpt_base = args.output.parent / "checkpoints"
 
     for cond in args.conditions:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Condition ({cond}): {CONDITION_LABELS[cond]}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         cond_ckpt = ckpt_base / cond
         start = time.time()
 
         if cond == "i":
             results = run_condition_static(
-                args.benchmarks, args.model,
+                args.benchmarks,
+                args.model,
                 adapter_ids=[args.warm_start_adapter],
                 provider=provider,
                 max_samples=args.max_samples,
@@ -563,7 +608,8 @@ def main() -> None:
                 continue
             try:
                 results = run_condition_rag(
-                    args.benchmarks, args.model,
+                    args.benchmarks,
+                    args.model,
                     warm_start_adapter=args.warm_start_adapter,
                     corpus_path=args.corpus,
                     top_k=args.rag_top_k,
@@ -581,7 +627,8 @@ def main() -> None:
                 continue
             iii_id = "hpo_qlora"
             results = run_condition_static(
-                args.benchmarks, args.model,
+                args.benchmarks,
+                args.model,
                 adapter_ids=[args.warm_start_adapter, iii_id],
                 adapter_paths={iii_id: str(args.adapter_iii)},
                 provider=provider,
@@ -591,7 +638,8 @@ def main() -> None:
 
         elif cond == "iv":
             results = run_condition_ttt(
-                args.benchmarks, args.model,
+                args.benchmarks,
+                args.model,
                 warm_start_adapter=args.warm_start_adapter,
                 ttt_lr=args.ttt_lr,
                 ttt_steps=args.ttt_steps,
@@ -606,7 +654,8 @@ def main() -> None:
                 print("  SKIPPED: --hypernet-checkpoint not provided")
                 continue
             results = run_condition_rune(
-                args.benchmarks, args.model,
+                args.benchmarks,
+                args.model,
                 warm_start_adapter=args.warm_start_adapter,
                 hypernet_checkpoint=args.hypernet_checkpoint,
                 device=args.device,

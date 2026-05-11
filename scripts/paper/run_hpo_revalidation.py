@@ -10,6 +10,7 @@ Usage:
         --n-trials 200 \
         --output evaluation_results/hpo_revalidation.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,15 +25,20 @@ def main() -> None:
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--n-trials", type=int, default=200)
     parser.add_argument("--study-name", type=str, default="rune-hpo-postfix-v1")
-    parser.add_argument("--output", type=Path, default=Path("evaluation_results/hpo_revalidation.json"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("evaluation_results/hpo_revalidation.json")
+    )
     args = parser.parse_args()
 
     cmd = [
         sys.executable,
         "scripts/optimization/run_training_hpo.py",
-        "--dataset", str(args.dataset),
-        "--n-trials", str(args.n_trials),
-        "--study-name", args.study_name,
+        "--dataset",
+        str(args.dataset),
+        "--n-trials",
+        str(args.n_trials),
+        "--study-name",
+        args.study_name,
     ]
 
     print(f"Running: {' '.join(cmd)}")
