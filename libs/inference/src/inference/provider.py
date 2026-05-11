@@ -87,6 +87,40 @@ class InferenceProvider(ABC):
         """
         ...
 
+    async def complete_text(
+        self,
+        prompt: str,
+        model: str,
+        adapter_id: str | None = None,
+        max_tokens: int = 512,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
+    ) -> GenerationResult:
+        """Generate a text completion (no chat template).
+
+        Unlike generate(), this uses the raw completions API so the model
+        continues the prompt directly — critical for base models doing
+        code completion (HumanEval, MBPP, etc.).
+
+        Default implementation falls back to generate() with a system prompt
+        instructing code completion. Providers with a native completions
+        endpoint should override this.
+        """
+        return await self.generate(
+            prompt=prompt,
+            model=model,
+            adapter_id=adapter_id,
+            max_tokens=max_tokens,
+            system_prompt=(
+                "Complete the code. Output ONLY the function body, "
+                "no explanation, no markdown fencing."
+            ),
+            temperature=temperature,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
+        )
+
     @abstractmethod
     async def load_adapter(self, adapter_id: str, adapter_path: str) -> None:
         """Load a LoRA adapter into the inference server.

@@ -41,6 +41,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("evaluation_results/gate2.json"))
     args = parser.parse_args()
 
+    import subprocess
     import tempfile
 
     from evaluation.benchmarks import run_benchmark
@@ -50,6 +51,25 @@ def main() -> None:
         REQUIRED_BENCHMARKS,
         evaluate_round2_gate,
     )
+    from model_training.training_common import (
+        mlflow_log_artifact,
+        mlflow_log_params,
+        setup_mlflow,
+    )
+
+    mlflow_ok = setup_mlflow("paper-gate2", tracking_uri=None)
+    if mlflow_ok:
+        import mlflow
+
+        mlflow.start_run(run_name="gate2")
+        mlflow_log_params({
+            "model": args.model,
+            "warm_start_adapter": args.warm_start_adapter,
+            "hypernet_checkpoint": args.hypernet_checkpoint,
+            "git_commit": subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], text=True,
+            ).strip(),
+        })
 
     benchmarks = list(REQUIRED_BENCHMARKS)
     provider = get_provider()
@@ -114,6 +134,14 @@ def main() -> None:
     verdict = "PASS" if gate_result["passed"] else "FAIL"
     print(f"\nGate 2 verdict: {verdict}")
     print(f"Output: {args.output}")
+
+    if mlflow_ok:
+        for bench in benchmarks:
+            mlflow.log_metric(f"substrate_{bench}", baseline_scores[bench])
+            mlflow.log_metric(f"rune_{bench}", rune_scores[bench])
+        mlflow.log_metric("gate2_passed", 1.0 if gate_result["passed"] else 0.0)
+        mlflow_log_artifact(str(args.output))
+        mlflow.end_run()
 
 
 if __name__ == "__main__":

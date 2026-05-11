@@ -143,3 +143,65 @@ def test_run_benchmark_config_passed_through(mock_adapter_stack: MagicMock) -> N
     )
     assert isinstance(result, BenchmarkResult)
     assert result.n_problems <= 2
+
+
+# ── Checkpoint tests ───────────────────────────────────────────────
+
+
+def test_checkpoint_creates_jsonl(mock_adapter_stack: MagicMock, tmp_path: Path) -> None:
+    """run_benchmark with checkpoint_dir writes a JSONL file per benchmark."""
+    result = run_benchmark(
+        adapter_stack=mock_adapter_stack,
+        benchmark_id="humaneval",
+        max_samples=3,
+        checkpoint_dir=tmp_path,
+    )
+    ckpt = tmp_path / "humaneval.jsonl"
+    assert ckpt.exists()
+    lines = [l for l in ckpt.read_text().splitlines() if l.strip()]
+    assert len(lines) == 3
+
+
+def test_checkpoint_resumes_from_prior(mock_adapter_stack: MagicMock, tmp_path: Path) -> None:
+    """A second run with same checkpoint_dir skips already-evaluated problems."""
+    import json as _json
+
+    result1 = run_benchmark(
+        adapter_stack=mock_adapter_stack,
+        benchmark_id="humaneval",
+        max_samples=3,
+        checkpoint_dir=tmp_path,
+    )
+    assert result1.n_problems == 3
+
+    result2 = run_benchmark(
+        adapter_stack=mock_adapter_stack,
+        benchmark_id="humaneval",
+        max_samples=3,
+        checkpoint_dir=tmp_path,
+    )
+    assert result2.n_problems == 3
+    # Checkpoint file should still have only 3 lines (not 6)
+    ckpt = tmp_path / "humaneval.jsonl"
+    lines = [l for l in ckpt.read_text().splitlines() if l.strip()]
+    assert len(lines) == 3
+
+
+def test_checkpoint_preserves_verdict_fields(
+    mock_adapter_stack: MagicMock, tmp_path: Path,
+) -> None:
+    """Checkpoint JSONL entries contain all PassVerdict fields."""
+    import json as _json
+
+    run_benchmark(
+        adapter_stack=mock_adapter_stack,
+        benchmark_id="humaneval",
+        max_samples=1,
+        checkpoint_dir=tmp_path,
+    )
+    ckpt = tmp_path / "humaneval.jsonl"
+    entry = _json.loads(ckpt.read_text().splitlines()[0])
+    assert "problem_id" in entry
+    assert "passed" in entry
+    assert "generation" in entry
+    assert "timed_out" in entry

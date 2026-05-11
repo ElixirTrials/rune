@@ -113,6 +113,37 @@ class VLLMProvider(InferenceProvider):
             finish_reason=choice.finish_reason or "stop",
         )
 
+    async def complete_text(
+        self,
+        prompt: str,
+        model: str,
+        adapter_id: str | None = None,
+        max_tokens: int = 512,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
+    ) -> GenerationResult:
+        effective_model = adapter_id if adapter_id is not None else model
+        logger.debug(
+            "complete_text: model=%s adapter_id=%s max_tokens=%d",
+            effective_model, adapter_id, max_tokens,
+        )
+
+        response = await self._client.completions.create(
+            model=effective_model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+        )
+
+        choice = response.choices[0]
+        return GenerationResult(
+            text=choice.text,
+            model=response.model,
+            adapter_id=adapter_id,
+            token_count=response.usage.total_tokens if response.usage else 0,
+            finish_reason=choice.finish_reason or "stop",
+        )
+
     async def load_adapter(self, adapter_id: str, adapter_path: str) -> None:
         """Load a LoRA adapter into the vLLM server.
 

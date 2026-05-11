@@ -48,6 +48,8 @@ dependencies = [
     "events-py",
     "corpus-producer",
     "igraph>=1.0.0",
+    "vllm>=0.20.1",
+    "sentence-transformers>=5.4.1",
 ]
 
 [project.optional-dependencies]

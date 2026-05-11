@@ -175,7 +175,9 @@ class CodeContestsAdapter:
         """Load from HuggingFace datasets."""
         import datasets as hf_datasets  # deferred
 
-        ds = hf_datasets.load_dataset("deepmind/code_contests", split="test")
+        ds = hf_datasets.load_dataset(
+            "deepmind/code_contests", split="test",
+        )
         return list(ds)
 
     def _load_from_fixture(self) -> list[dict[str, Any]]:

@@ -61,7 +61,11 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
 
     uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(uri)
-    mlflow.set_experiment(experiment_name)
+    try:
+        mlflow.set_experiment(experiment_name)
+    except Exception as exc:
+        logger.warning("MLflow tracking server unreachable at %s: %s", uri, exc)
+        return False
     logger.info("MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name)
     return True
 
@@ -112,6 +116,24 @@ def mlflow_log_output_artifacts(output_dir: str) -> None:
         mlflow_log_artifact(str(adapter_config))
 
 
+def _log_failure(exc: BaseException) -> None:
+    """Record an exception in the active MLflow run (tags + FAILED status)."""
+    import traceback  # noqa: PLC0415
+
+    try:
+        import mlflow  # noqa: PLC0415
+
+        if mlflow.active_run() is None:
+            return
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        mlflow.set_tag("error_type", type(exc).__qualname__)
+        mlflow.set_tag("error_message", str(exc)[:250])
+        mlflow.log_text(tb, "error_traceback.txt")
+        mlflow.end_run(status="FAILED")
+    except Exception:  # noqa: BLE001
+        logger.debug("_log_failure: could not record error in MLflow", exc_info=True)
+
+
 @contextmanager
 def mlflow_run(
     *, enabled: bool, run_name: str, params: dict[str, Any]
@@ -148,5 +170,8 @@ def mlflow_run(
     try:
         mlflow_log_params(params)
         yield
+    except BaseException as exc:
+        _log_failure(exc)
+        raise
     finally:
         mlflow.end_run()
