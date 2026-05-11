@@ -379,3 +379,5 @@ optuna_*.db
 *.optuna.db
 # Added by code-review-graph
 .code-review-graph/
+
+*.pt
