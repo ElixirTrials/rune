@@ -939,7 +939,7 @@ def train_qlora(
         max_length: SFT tokenizer truncation length. Caps activation
             memory; both the cross-entropy logits tensor and (with
             ``attn_implementation="eager"``) the materialised attention
-            matrix scale with this value. Defaults to ``3072`` — picked
+            matrix scale with this value. Defaults to ``4096`` — picked
             to fit the p75 of the mined-pairs token distribution; lower
             values silently zero-grad on long-tail examples (RCA-5 H2).
         eval_dataset_path: Optional path to a held-out JSONL of
@@ -1285,7 +1285,7 @@ def train_and_register(
         neftune_noise_alpha: NEFTune noise alpha forwarded to ``train_qlora``.
             When ``None`` (default), NEFTune is disabled.
         max_length: SFT tokenizer truncation length forwarded to
-            ``train_qlora``. Defaults to ``3072``.
+            ``train_qlora``. Defaults to ``4096``.
         eval_dataset_path: Optional held-out JSONL forwarded to
             ``train_qlora`` for end-of-epoch evaluation. See that
             function's docstring.

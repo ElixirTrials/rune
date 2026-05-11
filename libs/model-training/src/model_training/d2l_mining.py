@@ -85,6 +85,7 @@ _PRIOR_DIFF_WINDOW = 8_000
 
 
 def _aggregate_patch(files: list[dict[str, Any]]) -> str:
+    """Concatenate per-file patches into a single unified diff string."""
     parts: list[str] = []
     for f in files:
         patch = f.get("patch", "")
@@ -93,13 +94,13 @@ def _aggregate_patch(files: list[dict[str, Any]]) -> str:
         lines = patch.splitlines()
         if len(lines) > _PATCH_LINE_CAP:
             continue
-        parts.append(f"--- {f['filename']} ---\n{patch}")
+        parts.append(f"--- {f.get('filename', '<unknown>')} ---\n{patch}")
     return "\n".join(parts)
 
 
 def _failed_check_to_event(
     run: dict[str, Any], ts: datetime
-) -> FeedbackEvent | None:
+) -> FeedbackEvent:
     body = (run.get("output") or {}).get("summary") or run.get("name", "")
     body = truncate_head_tail(body, max_bytes=4096)
     name = (run.get("name") or "").lower()
@@ -212,11 +213,16 @@ def _feedback_events_from_gql(
         comment_author = (c.get("user") or {}).get("login")
         body = truncate_head_tail(c.get("body") or "", max_bytes=4096)
         created = c.get("created_at", "")
+        ts = (
+            datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if created
+            else datetime.now(timezone.utc)
+        )
         fb_events.append(
             FeedbackEvent(
                 kind=FeedbackKind.review_comment.value,
                 body=body,
-                ts=datetime.fromisoformat(created.replace("Z", "+00:00")),
+                ts=ts,
                 author=comment_author,
                 anchor=Anchor(file=c.get("path"), line=c.get("line")),
             )

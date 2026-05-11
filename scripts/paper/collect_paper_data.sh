@@ -74,7 +74,7 @@ cat > "${RESULTS_DIR}/metadata.json" <<METAEOF
   "timestamp": "${TIMESTAMP}",
   "git_commit": "${GIT_COMMIT}",
   "git_branch": "${GIT_BRANCH}",
-  "git_dirty": $(python3 -c "import json; print(json.dumps('''${GIT_DIRTY}'''.strip()))"),
+  "git_dirty": $(GIT_DIRTY="${GIT_DIRTY}" python3 -c "import json, os; print(json.dumps(os.environ['GIT_DIRTY'].strip()))"),
   "model": "${MODEL}",
   "warm_start": "${WARM_START}",
   "benchmarks": "$(echo ${BENCHMARKS})",

@@ -157,15 +157,20 @@ def _generate_with_hypernet(
         Generated text string.
     """
     assert adapter_stack.adapter_generator is not None
-    adapter_path = adapter_stack.adapter_generator(problem.prompt)
+
+    effective_prompt = problem.prompt
+    if adapter_stack.prompt_augmenter is not None:
+        effective_prompt = adapter_stack.prompt_augmenter(effective_prompt)
+
+    adapter_path = adapter_stack.adapter_generator(effective_prompt)
     if adapter_path is None:
         logger.warning(
             "adapter_generator returned None for %s, using base",
             problem.problem_id,
         )
         result = loop.run_until_complete(
-            adapter_stack.provider.generate(
-                prompt=problem.prompt,
+            adapter_stack.provider.complete_text(
+                prompt=effective_prompt,
                 model=adapter_stack.base_model,
                 max_tokens=max_tokens,
             )
@@ -178,8 +183,8 @@ def _generate_with_hypernet(
             adapter_stack.provider.load_adapter(adapter_id, adapter_path)
         )
         result = loop.run_until_complete(
-            adapter_stack.provider.generate(
-                prompt=problem.prompt,
+            adapter_stack.provider.complete_text(
+                prompt=effective_prompt,
                 model=adapter_stack.base_model,
                 adapter_id=adapter_id,
                 max_tokens=max_tokens,
@@ -192,7 +197,11 @@ def _generate_with_hypernet(
                 adapter_stack.provider.unload_adapter(adapter_id)
             )
         except Exception:
-            logger.debug("Failed to unload adapter %s", adapter_id)
+            logger.warning(
+                "Failed to unload adapter %s; GPU memory may leak",
+                adapter_id,
+                exc_info=True,
+            )
 
 
 def _evaluate_one(

@@ -61,7 +61,7 @@ def main() -> None:
     ttt_model = AutoModelForCausalLM.from_pretrained(
         args.model, torch_dtype=torch.float16, device_map="auto",
     )
-    original_sd = {k: v.clone() for k, v in ttt_model.state_dict().items()}
+    original_sd = {k: v.cpu().clone() for k, v in ttt_model.state_dict().items()}
 
     def completion_override(prompt: str, max_tokens: int) -> str:
         ttt_model.load_state_dict(original_sd)

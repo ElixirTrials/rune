@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Optional
 
 from model_training.diff_loss import _find_post_in_span
 
@@ -68,9 +67,9 @@ class ClassificationResult:
     span_ids_head: list[int] = field(default_factory=list)
     post_ids_tail: list[int] = field(default_factory=list)
     span_ids_tail: list[int] = field(default_factory=list)
-    drift_start_token: Optional[int] = None
-    drift_end_token: Optional[int] = None
-    wrong_turn_j: Optional[int] = None
+    drift_start_token: int | None = None
+    drift_end_token: int | None = None
+    wrong_turn_j: int | None = None
     lcs_ratio: float = 0.0
     lcs_skipped: bool = False
 

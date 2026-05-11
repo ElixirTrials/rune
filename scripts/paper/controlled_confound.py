@@ -75,6 +75,10 @@ def run_confound_experiment(
     Returns:
         Nested results: {condition: {depth: pass_rate}}.
     """
+    raise NotImplementedError(
+        "Inference callback not wired — scaffold only (see paper §2.3)"
+    )
+
     results: dict[str, dict[int, float]] = {c.value: {} for c in conditions}
 
     for depth in trajectory_depths:

@@ -84,7 +84,7 @@ def _chunked_kl_ce_loss(
             )
         total_elements += chunk_elems
 
-    kl = kl_sum / student_logits.shape[0]
+    kl = kl_sum / total_elements * temperature ** 2
     ce = ce_sum / total_elements
     total = alpha * kl + (1.0 - alpha) * ce
 
@@ -389,6 +389,7 @@ def main() -> None:  # noqa: C901
     # --- Training loop ---
     logger.info("Starting training: %d steps", num_steps)
     skipped = 0
+    step = 0
     try:
         for step in range(1, num_steps + 1):
             record = records[(step - 1) % len(records)]

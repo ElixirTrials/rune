@@ -155,18 +155,15 @@ def run_condition_static(
     try:
         for aid, path in paths.items():
             loop.run_until_complete(provider.load_adapter(aid, path))
-    finally:
-        loop.close()
 
-    stack = AdapterStack(
-        base_model=model,
-        adapter_ids=adapter_ids,
-        adapter_paths=paths,
-        provider=provider,
-    )
+        stack = AdapterStack(
+            base_model=model,
+            adapter_ids=adapter_ids,
+            adapter_paths=paths,
+            provider=provider,
+        )
 
-    results: dict[str, float] = {}
-    try:
+        results: dict[str, float | None] = {}
         for bench_id in benchmarks:
             try:
                 result = run_benchmark(
@@ -176,18 +173,16 @@ def run_condition_static(
                 )
                 results[bench_id] = result.pass_at_1
             except Exception as exc:
-                print(f"  ERROR running {bench_id}: {exc}")
+                logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
+                results[bench_id] = None
                 continue
     finally:
-        loop = asyncio.new_event_loop()
-        try:
-            for aid in paths:
-                try:
-                    loop.run_until_complete(provider.unload_adapter(aid))
-                except Exception:
-                    pass
-        finally:
-            loop.close()
+        for aid in paths:
+            try:
+                loop.run_until_complete(provider.unload_adapter(aid))
+            except Exception:
+                logger.warning("Failed to unload adapter %s", aid, exc_info=True)
+        loop.close()
 
     return results
 
@@ -257,7 +252,7 @@ def run_condition_rag(
         prompt_augmenter=prompt_augmenter,
     )
 
-    results: dict[str, float] = {}
+    results: dict[str, float | None] = {}
     for bench_id in benchmarks:
         try:
             result = run_benchmark(
@@ -267,7 +262,8 @@ def run_condition_rag(
             )
             results[bench_id] = result.pass_at_1
         except Exception as exc:
-            print(f"  ERROR running {bench_id}: {exc}")
+            logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
+            results[bench_id] = None
             continue
     return results
 
@@ -342,7 +338,7 @@ def run_condition_ttt(
         completion_override=completion_override,
     )
 
-    results: dict[str, float] = {}
+    results: dict[str, float | None] = {}
     for bench_id in benchmarks:
         try:
             result = run_benchmark(
@@ -352,7 +348,8 @@ def run_condition_ttt(
             )
             results[bench_id] = result.pass_at_1
         except Exception as exc:
-            print(f"  ERROR running {bench_id}: {exc}")
+            logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
+            results[bench_id] = None
             continue
     return results
 
@@ -411,7 +408,7 @@ def run_condition_rune(
         adapter_generator=adapter_generator,
     )
 
-    results: dict[str, float] = {}
+    results: dict[str, float | None] = {}
     for bench_id in benchmarks:
         try:
             result = run_benchmark(
@@ -421,7 +418,8 @@ def run_condition_rune(
             )
             results[bench_id] = result.pass_at_1
         except Exception as exc:
-            print(f"  ERROR running {bench_id}: {exc}")
+            logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
+            results[bench_id] = None
             continue
     return results
 

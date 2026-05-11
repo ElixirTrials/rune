@@ -381,6 +381,13 @@ def _char_level_match_pos(
         prefix_ids = tokenizer.encode(prefix_text, add_special_tokens=False)
         return len(prefix_ids)
     except Exception:  # noqa: BLE001
+        logger.warning(
+            "_char_level_match_pos failed for span [%d:%d] (post_text len=%d)",
+            span_start,
+            span_end,
+            len(post_text),
+            exc_info=True,
+        )
         return -1
 
 
@@ -647,7 +654,15 @@ class DiffWeightedDataCollator:
             post_list = feat.pop("post_codes", None)
             legacy_pre = feat.pop("pre_code", None)
             legacy_post = feat.pop("post_code", None)
-            quality_scores.append(float(feat.pop("quality_score", 1.0)))
+            raw_q = float(feat.pop("quality_score", 1.0))
+            if not (0.0 < raw_q <= 10.0) or raw_q != raw_q:  # NaN != NaN
+                logger.warning(
+                    "Invalid quality_score=%r at index %d, clamping to 1.0",
+                    raw_q,
+                    len(quality_scores),
+                )
+                raw_q = 1.0
+            quality_scores.append(raw_q)
             if pre_list is None and legacy_pre is not None:
                 pre_list = [legacy_pre]
             if post_list is None and legacy_post is not None:
@@ -1064,8 +1079,8 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
                 import torch  # noqa: PLC0415
 
                 torch.cuda.empty_cache()
-            except Exception:  # noqa: BLE001 — torch may be unavailable on CPU CI
-                pass
+            except (ImportError, RuntimeError):
+                logger.debug("empty_cache skipped", exc_info=True)
 
         return (loss, outputs) if return_outputs else loss
 
