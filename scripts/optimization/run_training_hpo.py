@@ -1314,7 +1314,9 @@ def _run_single_trial(
             cfg=fitness_cfg,
         )
 
-        run_id = mlflow.active_run().info.run_id
+        active_run = mlflow.active_run()
+        assert active_run is not None
+        run_id = active_run.info.run_id
         upload_status = _gate_and_upload_adapter(
             adapter_output_dir,
             run_id=run_id,

@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 

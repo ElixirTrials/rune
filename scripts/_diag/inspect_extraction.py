@@ -20,10 +20,10 @@ sample = random.sample(rows, 200)
 # What sections are in activation_text?
 from collections import Counter
 
-section_headers = Counter()
+section_headers: Counter[str] = Counter()
 no_current_code = 0
 empty_pre_count = 0
-examples_no_current_code = []
+examples_no_current_code: list[str | None] = []
 
 for rec in sample:
     activation = rec.get("activation_text") or ""

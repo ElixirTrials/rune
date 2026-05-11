@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()  # noqa: E402
 
@@ -557,7 +557,7 @@ async def run_phased_pipeline(
     # Load pipeline config and apply optimized defaults via env vars.
     # These are read by TransformersProvider and generate_node at call time.
     from shared.pipeline_config import load_config as _load_config
-    from swarm_evolution import evolution_sweep
+    from swarm_evolution import evolution_sweep  # type: ignore[import-not-found]
 
     _pipeline_cfg = _load_config()
     os.environ.setdefault("RUNE_TEMPERATURE", str(_pipeline_cfg.generation.temperature))

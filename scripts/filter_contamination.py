@@ -20,7 +20,7 @@ import logging
 from collections import Counter
 from pathlib import Path
 
-from build_benchmark_fingerprints import fingerprint
+from build_benchmark_fingerprints import fingerprint  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 

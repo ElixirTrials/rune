@@ -34,13 +34,13 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 warnings.filterwarnings("ignore", message=".*guard_size_oblivious.*")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 
 logger = logging.getLogger(__name__)
 
-_LOSS_CHUNK = 128
+_LOSS_CHUNK = 48
 
 
 def _chunked_kl_ce_loss(
@@ -52,12 +52,18 @@ def _chunked_kl_ce_loss(
 ) -> tuple[Any, dict[str, float]]:
     """KL+CE loss chunked along the token dimension to cap VRAM.
 
-    With vocab ~152K, a single log_softmax over the full answer span
-    allocates answer_tokens × 152K × 2 bytes — easily 600+ MB.
-    Chunking to _LOSS_CHUNK tokens keeps peak intermediates at ~37 MB.
+    Each chunk is gradient-checkpointed so autograd discards forward
+    intermediates (log_softmax, softmax — ~14 MB each at vocab 152K)
+    and recomputes them during backward. Without this, the running-sum
+    accumulation retains all chunk intermediates simultaneously (~2 GB
+    for a 2048-token answer span).
+
+    Teacher logits are moved to CPU and brought back per-chunk to free
+    an additional ~780 MB during the loss computation.
     """
     import torch  # noqa: PLC0415
     import torch.nn.functional as F  # noqa: PLC0415, N812
+    from torch.utils.checkpoint import checkpoint  # noqa: PLC0415
 
     n_tokens = student_logits.shape[1]
     if n_tokens == 0:
@@ -65,27 +71,52 @@ def _chunked_kl_ce_loss(
         return zero, {"kl_loss": 0.0, "ce_loss": 0.0, "total_loss": 0.0}
 
     vocab = student_logits.shape[-1]
-    kl_sum = torch.tensor(0.0, device=student_logits.device)
-    ce_sum = torch.tensor(0.0, device=student_logits.device)
+
+    # Teacher logits are detached — keep on CPU, bring chunks to GPU on-the-fly.
+    teacher_logits_cpu = teacher_logits.to("cpu")
+    del teacher_logits
+    torch.cuda.empty_cache()
+
+    def _chunk_fn(
+        s_chunk: torch.Tensor,
+        t_chunk_cpu: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        t_chunk = t_chunk_cpu.to(s_chunk.device, non_blocking=True)
+        with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+            t_soft = F.softmax(t_chunk / temperature, dim=-1)
+            t_hard = t_chunk.argmax(-1).reshape(-1)
+            del t_chunk
+
+            s_log = F.log_softmax(s_chunk / temperature, dim=-1)
+            kl = F.kl_div(s_log, t_soft, reduction="sum")
+            del s_log, t_soft
+
+            ce = F.cross_entropy(
+                s_chunk.reshape(-1, vocab),
+                t_hard,
+                reduction="sum",
+            )
+            del t_hard
+        return kl, ce
+
+    kl_parts: list[Any] = []
+    ce_parts: list[Any] = []
     total_elements = 0
 
     for i in range(0, n_tokens, _LOSS_CHUNK):
         s = student_logits[:, i : i + _LOSS_CHUNK, :]
-        t = teacher_logits[:, i : i + _LOSS_CHUNK, :]
+        t_cpu = teacher_logits_cpu[:, i : i + _LOSS_CHUNK, :].contiguous()
         chunk_elems = s.shape[0] * s.shape[1]
 
-        with torch.amp.autocast("cuda", dtype=torch.bfloat16):
-            kl_sum = kl_sum + F.kl_div(
-                F.log_softmax(s / temperature, dim=-1),
-                F.softmax(t / temperature, dim=-1),
-                reduction="sum",
-            )
-            ce_sum = ce_sum + F.cross_entropy(
-                s.reshape(-1, vocab),
-                t.argmax(-1).reshape(-1),
-                reduction="sum",
-            )
+        kl, ce = checkpoint(_chunk_fn, s, t_cpu, use_reentrant=False)
+        kl_parts.append(kl)
+        ce_parts.append(ce)
         total_elements += chunk_elems
+
+    del teacher_logits_cpu
+
+    kl_sum = torch.stack(kl_parts).sum()
+    ce_sum = torch.stack(ce_parts).sum()
 
     kl = kl_sum / total_elements * temperature**2
     ce = ce_sum / total_elements
@@ -519,10 +550,13 @@ def main() -> None:  # noqa: C901
                     use_cache=False,
                 ).logits
             del teacher_inputs
+            torch.cuda.empty_cache()
 
-            # Slice student logits to match pre-sliced teacher span
+            # Slice student logits to match pre-sliced teacher span.
+            # .contiguous() creates a new storage so the full-length tensor
+            # (~600 MB) can be freed instead of kept alive by the view.
             if answer_start < seq_len:
-                student_logits = student_logits[:, logit_start:, :]
+                student_logits = student_logits[:, logit_start:, :].contiguous()
 
             # Chunked KL+CE loss: vocab=152K makes full-span softmax
             # intermediates too large (~600 MB per tensor).  Processing

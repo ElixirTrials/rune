@@ -79,7 +79,7 @@ def build_vector_store(
         Dict with "index" (faiss.IndexFlatIP), "chunks" (list[str]),
         "n_chunks" (int).
     """
-    import faiss  # type: ignore[import-untyped]
+    import faiss  # type: ignore[import-untyped,import-not-found]
     import numpy as np
 
     encoder = _get_encoder(config.embedding_model)

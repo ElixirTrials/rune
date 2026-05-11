@@ -29,8 +29,12 @@ from shared.checkpoint_db import SwarmCheckpointDB
 from shared.hardware import HardwareProbe
 from shared.rune_models import SwarmConfig
 from shared.sandbox import get_sandbox_backend
-from swarm_evolution import evolution_worker
-from swarm_workers import TrainingRequest, memory_watchdog, training_pool_manager
+from swarm_evolution import evolution_worker  # type: ignore[import-not-found]
+from swarm_workers import (  # type: ignore[import-not-found]
+    TrainingRequest,
+    memory_watchdog,
+    training_pool_manager,
+)
 
 if TYPE_CHECKING:
     from adapter_registry import AdapterRegistry
@@ -288,7 +292,9 @@ async def agent_supervisor(
 
         try:
             if use_iteration_loop:
-                from rune_runner import run_phased_pipeline
+                from rune_runner import (
+                    run_phased_pipeline,  # type: ignore[import-not-found]
+                )
 
                 project_prompt = task.get("task_description", task.get("prompt", ""))
                 iter_result = await run_phased_pipeline(
@@ -548,7 +554,7 @@ async def run_swarm(config: SwarmConfig, dry_run: bool = False) -> dict[str, Any
                 agent_results.append(result)
 
     # Final evolution sweep after all agents complete
-    from swarm_evolution import evolution_sweep
+    from swarm_evolution import evolution_sweep  # type: ignore[import-not-found]
 
     evolution_result = evolution_sweep(registry)
     logger.info("Final evolution sweep: %s", evolution_result)

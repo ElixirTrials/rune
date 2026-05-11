@@ -20,7 +20,9 @@ from scripts.paper.run_all_conditions import (
 class TestFlushPartialResults:
     def test_writes_json_after_one_condition(self, tmp_path: Path) -> None:
         out = tmp_path / "results" / "table2.json"
-        all_results = {"i": {"humaneval": 0.35, "mbpp": 0.42}}
+        all_results: dict[str, dict[str, float | None]] = {
+            "i": {"humaneval": 0.35, "mbpp": 0.42},
+        }
         flush_partial_results(all_results, out)
 
         assert out.exists()
@@ -30,13 +32,14 @@ class TestFlushPartialResults:
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         out = tmp_path / "deep" / "nested" / "dir" / "table2.json"
-        flush_partial_results({"i": {"humaneval": 0.5}}, out)
+        results: dict[str, dict[str, float | None]] = {"i": {"humaneval": 0.5}}
+        flush_partial_results(results, out)
         assert out.exists()
 
     def test_accumulates_across_conditions(self, tmp_path: Path) -> None:
         out = tmp_path / "table2.json"
 
-        all_results: dict[str, dict[str, float]] = {}
+        all_results: dict[str, dict[str, float | None]] = {}
 
         all_results["i"] = {"humaneval": 0.30}
         flush_partial_results(all_results, out)
@@ -52,22 +55,25 @@ class TestFlushPartialResults:
     def test_includes_metadata_when_provided(self, tmp_path: Path) -> None:
         out = tmp_path / "table2.json"
         meta = {"model": "Qwen/Qwen3.5-9B", "warm_start_adapter": "deltacoder"}
-        flush_partial_results({"i": {"humaneval": 0.5}}, out, metadata=meta)
+        results: dict[str, dict[str, float | None]] = {"i": {"humaneval": 0.5}}
+        flush_partial_results(results, out, metadata=meta)
 
         data = json.loads(out.read_text())
         assert data["metadata"]["model"] == "Qwen/Qwen3.5-9B"
 
     def test_overwrites_previous_file(self, tmp_path: Path) -> None:
         out = tmp_path / "table2.json"
-        flush_partial_results({"i": {"humaneval": 0.30}}, out)
-        flush_partial_results({"i": {"humaneval": 0.35}}, out)
+        r1: dict[str, dict[str, float | None]] = {"i": {"humaneval": 0.30}}
+        r2: dict[str, dict[str, float | None]] = {"i": {"humaneval": 0.35}}
+        flush_partial_results(r1, out)
+        flush_partial_results(r2, out)
 
         data = json.loads(out.read_text())
         assert data["conditions"]["i"]["scores"]["humaneval"] == 0.35
 
     def test_computes_deltas_vs_substrate(self, tmp_path: Path) -> None:
         out = tmp_path / "table2.json"
-        all_results = {
+        all_results: dict[str, dict[str, float | None]] = {
             "i": {"humaneval": 0.30, "mbpp": 0.40},
             "iii": {"humaneval": 0.45, "mbpp": 0.50},
         }
@@ -87,11 +93,12 @@ class TestAssembleTable2:
         assert table["conditions"] == {}
 
     def test_single_condition_no_delta(self) -> None:
-        table = assemble_table2({"i": {"humaneval": 0.30}})
+        data: dict[str, dict[str, float | None]] = {"i": {"humaneval": 0.30}}
+        table = assemble_table2(data)
         assert table["conditions"]["i"]["delta_vs_substrate"]["humaneval"] == 0.0
 
     def test_delta_computed_against_condition_i(self) -> None:
-        results = {
+        results: dict[str, dict[str, float | None]] = {
             "i": {"humaneval": 0.30},
             "v": {"humaneval": 0.50},
         }
@@ -102,7 +109,8 @@ class TestAssembleTable2:
         )
 
     def test_label_assignment(self) -> None:
-        table = assemble_table2({"v": {"humaneval": 0.5}})
+        data: dict[str, dict[str, float | None]] = {"v": {"humaneval": 0.5}}
+        table = assemble_table2(data)
         assert table["conditions"]["v"]["label"] == "Rune (ours)"
 
 

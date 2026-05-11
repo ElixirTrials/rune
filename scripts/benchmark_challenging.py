@@ -26,7 +26,7 @@ os.environ.setdefault("TRANSFORMERS_MODEL_NAME", MODEL_NAME)
 os.environ.setdefault("RUNE_MODEL", MODEL_NAME)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 
@@ -152,7 +152,7 @@ def evaluate_code(code: str, timeout: int = 60) -> dict[str, Any]:
 
 async def main() -> None:
     from model_training.sakana_d2l import download_checkpoint
-    from rune_runner import run_phased_pipeline
+    from rune_runner import run_phased_pipeline  # type: ignore[import-not-found]
 
     # Download checkpoint once
     checkpoint_path = str(download_checkpoint(variant="gemma_demo"))

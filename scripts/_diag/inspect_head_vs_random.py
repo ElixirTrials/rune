@@ -20,7 +20,7 @@ head_sample = rows[:500]
 def stats(name: str, sample: list) -> None:
     print(f"\n=== {name} (N={len(sample)}) ===")
     # repo distribution
-    repos = Counter()
+    repos: Counter[str] = Counter()
     for r in sample:
         tid = r.get("task_id", "")
         if tid.startswith("pr_"):
@@ -59,7 +59,7 @@ def stats(name: str, sample: list) -> None:
     )
 
     # step_index from metadata
-    step_indices = Counter()
+    step_indices: Counter[object] = Counter()
     for r in sample:
         si = (r.get("metadata") or {}).get("step_index", "?")
         step_indices[si] += 1
@@ -70,14 +70,14 @@ def stats(name: str, sample: list) -> None:
         print(f"  step_index={si}: {step_indices[si]}")
 
     # outcome from metadata
-    outcomes = Counter()
+    outcomes: Counter[str] = Counter()
     for r in sample:
         oc = (r.get("metadata") or {}).get("outcome", "?")
         outcomes[oc] += 1
     print(f"\noutcome distribution: {dict(outcomes)}")
 
     # language
-    langs = Counter()
+    langs: Counter[str] = Counter()
     for r in sample:
         lang = (r.get("metadata") or {}).get("language", "?")
         langs[lang] += 1

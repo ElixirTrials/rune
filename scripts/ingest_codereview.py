@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 
 from model_training.d2l_data import save_jsonl
 from model_training.d2l_external import ingest_codereview_to_pairs

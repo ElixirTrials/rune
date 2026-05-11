@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 
@@ -406,7 +406,7 @@ def run_condition_rune(
 
     from evaluation.benchmarks import run_benchmark
     from evaluation.benchmarks.adapter_stack import AdapterStack
-    from rune_runner import run_hypernetwork
+    from rune_runner import run_hypernetwork  # type: ignore[import-not-found]
 
     tmp_dir = tempfile.mkdtemp(prefix="rune_eval_")
 
@@ -459,10 +459,13 @@ def assemble_table2(
     base_i = all_results.get("i", {})
 
     for cond, scores in all_results.items():
-        deltas = {}
+        deltas: dict[str, float | None] = {}
         for bench, score in scores.items():
-            i_score = base_i.get(bench, 0.0)
-            deltas[bench] = score - i_score
+            i_score = base_i.get(bench)
+            if score is not None and i_score is not None:
+                deltas[bench] = score - i_score
+            else:
+                deltas[bench] = None
 
         table["conditions"][cond] = {
             "label": CONDITION_LABELS.get(cond, cond),
@@ -669,7 +672,8 @@ def main() -> None:
 
         elapsed = time.time() - start
         for bench_id, score in results.items():
-            print(f"  {bench_id}: {score:.2%}")
+            label = f"{score:.2%}" if score is not None else "FAILED"
+            print(f"  {bench_id}: {label}")
         print(f"  Elapsed: {elapsed:.1f}s")
 
         all_results[cond] = results
@@ -680,7 +684,8 @@ def main() -> None:
     if mlflow_ok:
         for cond, scores in all_results.items():
             for bench, score in scores.items():
-                mlflow.log_metric(f"{cond}_{bench}_pass_at_1", score)
+                if score is not None:
+                    mlflow.log_metric(f"{cond}_{bench}_pass_at_1", score)
         mlflow_log_artifact(str(args.output))
         mlflow.end_run()
 

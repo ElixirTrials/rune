@@ -22,7 +22,7 @@ os.environ.setdefault("RUNE_MODEL", "Qwen/Qwen3.5-9B")
 os.environ.setdefault("RUNE_EXEC_TIMEOUT", "30")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()  # noqa: E402
 

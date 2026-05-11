@@ -112,9 +112,9 @@ def evaluate(model, tokenizer, examples, *, label: str) -> dict:
     import torch.nn.functional as F  # noqa: N812
 
     model.eval()
-    total_correct = 0
-    total_labeled = 0
-    total_ce = 0.0
+    total_correct: int | float = 0
+    total_labeled: int | float = 0
+    total_ce: float = 0.0
     n_skipped = 0
 
     with torch.no_grad():

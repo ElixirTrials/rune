@@ -11,6 +11,7 @@ import random
 import statistics
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, "libs/model-training/src")
 sys.path.insert(0, "libs/shared/src")
@@ -27,7 +28,7 @@ rows = [json.loads(line) for line in DATA.read_text().splitlines() if line.strip
 sample = random.sample(rows, N_SAMPLE)
 print(f"Loaded {len(rows)} records, sampled {N_SAMPLE} (seed={SEED})")
 
-stats = []
+stats: list[dict[str, Any]] = []
 for rec in sample:
     activation = rec.get("activation_text") or ""
     teacher = rec.get("teacher_text") or ""

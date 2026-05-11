@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 
@@ -128,7 +128,7 @@ def main() -> None:
         mlflow_log_params,
         setup_mlflow,
     )
-    from rune_runner import run_hypernetwork
+    from rune_runner import run_hypernetwork  # type: ignore[import-not-found]
 
     mlflow_ok = setup_mlflow("paper-gate3", tracking_uri=None)
     if mlflow_ok:

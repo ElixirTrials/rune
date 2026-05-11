@@ -10,7 +10,7 @@ from sqlmodel import create_engine
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from swarm_evolution import (
+from swarm_evolution import (  # type: ignore[import-not-found]
     MERGE_MIN_ADAPTERS,
     PRUNE_FITNESS_THRESHOLD,
     evaluate_adapter,

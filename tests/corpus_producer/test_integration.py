@@ -95,7 +95,7 @@ def _mock_run_benchmark_pass(
 )
 def test_produce_corpus_one_problem_emits_manifests(mock_rb: MagicMock) -> None:
     """One HumanEval problem, Pass@1=1.0 → 4 manifest files (one per phase)."""
-    import phase_corpus_producer as pcp  # noqa: PLC0415
+    import phase_corpus_producer as pcp  # type: ignore[import-not-found]  # noqa: PLC0415
 
     with patch.object(
         pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
@@ -125,7 +125,7 @@ def test_produce_corpus_one_problem_emits_manifests(mock_rb: MagicMock) -> None:
 )
 def test_produce_corpus_dry_run_does_not_train(mock_rb: MagicMock) -> None:
     """dry_run=True should emit manifests but not call real train_and_register."""
-    import phase_corpus_producer as pcp  # noqa: PLC0415
+    import phase_corpus_producer as pcp  # type: ignore[import-not-found]  # noqa: PLC0415
 
     with patch.object(
         pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
@@ -152,7 +152,7 @@ def test_produce_corpus_dry_run_does_not_train(mock_rb: MagicMock) -> None:
 )
 def test_produce_corpus_resume_skips_done_problems(mock_rb: MagicMock) -> None:
     """Second run with same out_dir skips already-done problem."""
-    import phase_corpus_producer as pcp  # noqa: PLC0415
+    import phase_corpus_producer as pcp  # type: ignore[import-not-found]  # noqa: PLC0415
 
     call_count: list[int] = [0]
 
@@ -196,7 +196,7 @@ def test_produce_corpus_uploads_manifests_to_s3_when_bucket_set(
     mock_rb: MagicMock,
 ) -> None:
     """When s3_bucket is set, upload_manifest is called once per emitted manifest."""
-    import phase_corpus_producer as pcp  # noqa: PLC0415
+    import phase_corpus_producer as pcp  # type: ignore[import-not-found]  # noqa: PLC0415
 
     with patch.object(
         pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
@@ -229,7 +229,7 @@ def test_produce_corpus_uploads_manifests_to_s3_when_bucket_set(
 )
 def test_produce_corpus_shard_processes_only_its_slice(mock_rb: MagicMock) -> None:
     """Shard 1/3 only runs the middle-third of the problem list."""
-    import phase_corpus_producer as pcp  # noqa: PLC0415
+    import phase_corpus_producer as pcp  # type: ignore[import-not-found]  # noqa: PLC0415
 
     problems = [(f"HumanEval/{i}", f"prompt {i}") for i in range(6)]
     seen: list[str] = []
@@ -260,7 +260,7 @@ def test_produce_corpus_shard_processes_only_its_slice(mock_rb: MagicMock) -> No
 )
 def test_produce_corpus_no_upload_when_bucket_unset(mock_rb: MagicMock) -> None:
     """When s3_bucket is None, upload_manifest is NOT called."""
-    import phase_corpus_producer as pcp  # noqa: PLC0415
+    import phase_corpus_producer as pcp  # type: ignore[import-not-found]  # noqa: PLC0415
 
     with patch.object(
         pcp, "run_pipeline_for_problem", side_effect=_fake_pipeline_runner
@@ -284,7 +284,7 @@ def test_produce_corpus_no_upload_when_bucket_unset(mock_rb: MagicMock) -> None:
 )
 def test_produce_corpus_force_reruns_done_problems(mock_rb: MagicMock) -> None:
     """--force re-runs even done problems."""
-    import phase_corpus_producer as pcp  # noqa: PLC0415
+    import phase_corpus_producer as pcp  # type: ignore[import-not-found]  # noqa: PLC0415
 
     call_count: list[int] = [0]
 

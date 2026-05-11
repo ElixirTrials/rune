@@ -33,7 +33,7 @@ def mcnemar_test(
     Returns:
         Dict with chi2 statistic, p_value, n_discordant_ab, n_discordant_ba.
     """
-    from scipy.stats import chi2 as chi2_dist
+    from scipy.stats import chi2 as chi2_dist  # type: ignore[import-untyped]
 
     n_ab = sum(1 for a, b in paired_results if a and not b)
     n_ba = sum(1 for a, b in paired_results if not a and b)
@@ -78,7 +78,7 @@ def wilson_score_ci(
     Returns:
         (lower, upper) bounds of the CI.
     """
-    from scipy.stats import norm
+    from scipy.stats import norm  # type: ignore[import-untyped]
 
     if n_total == 0:
         return (0.0, 1.0)

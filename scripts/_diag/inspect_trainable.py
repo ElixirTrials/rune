@@ -23,7 +23,7 @@ model = AutoModelForCausalLM.from_pretrained(
     MODEL_ID, quantization_config=bnb, torch_dtype=torch.bfloat16
 )
 print(f"Loading adapter {ADAPTER} ...")
-model = PeftModel.from_pretrained(model, ADAPTER)
+model = PeftModel.from_pretrained(model, ADAPTER)  # type: ignore[assignment]
 # Enable training on adapter
 for n, p in model.named_parameters():
     if "lora_" in n:
@@ -66,8 +66,8 @@ for n, p in model.named_parameters():
 # Check the active adapter's effective alpha + scaling
 if hasattr(model, "peft_config"):
     for name, cfg in model.peft_config.items():
-        a = cfg.lora_alpha
-        r = cfg.r
+        a = cfg.lora_alpha  # type: ignore[attr-defined]
+        r = cfg.r  # type: ignore[attr-defined]
         print(f"\n=== adapter '{name}' ===")
         print(f"  r={r}, alpha={a}, scaling={a / r:.3f}")
-        print(f"  target_modules: {cfg.target_modules}")
+        print(f"  target_modules: {cfg.target_modules}")  # type: ignore[attr-defined]

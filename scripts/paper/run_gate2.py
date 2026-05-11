@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 
@@ -97,7 +97,7 @@ def main() -> None:
         print(f"  [substrate] {bench}: {result.pass_at_1:.2%}")
 
     print("\n=== Gate 2: Rune (substrate + hypernetwork adapter) ===")
-    from rune_runner import run_hypernetwork
+    from rune_runner import run_hypernetwork  # type: ignore[import-not-found]
 
     tmp_dir = tempfile.mkdtemp(prefix="rune_gate2_")
 
