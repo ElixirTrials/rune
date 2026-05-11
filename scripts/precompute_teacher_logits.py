@@ -45,6 +45,7 @@ import re
 import sys
 import warnings
 from collections import defaultdict
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -103,6 +104,28 @@ def _s3_upload_tensor_dict(
     _s3_upload_bytes(bucket, f"{prefix}/{filename}", buf.getvalue())
 
 
+def _estimate_batch_size(max_length: int) -> int:
+    """Estimate inference batch size from free VRAM after model loading."""
+    import torch  # noqa: PLC0415
+
+    if not torch.cuda.is_available():
+        return 1
+    free_bytes, _ = torch.cuda.mem_get_info()
+    usable = int(free_bytes * 0.65)
+    per_seq = int(1.6e9 * (max_length / 2048))
+    bs = max(1, min(usable // per_seq, 32))
+    gpu_name = torch.cuda.get_device_name()
+    logger.info(
+        "Auto batch size: %d (%s, %.1f GB free, ~%.1f GB/seq @ %d tokens)",
+        bs,
+        gpu_name,
+        free_bytes / 1e9,
+        per_seq / 1e9,
+        max_length,
+    )
+    return bs
+
+
 def main() -> None:
     from model_training.d2l_data import load_jsonl, split_by_task_id  # noqa: PLC0415
 
@@ -143,6 +166,12 @@ def main() -> None:
         help="nf4 (~5 GB) or bf16 (~18 GB, better quality teacher signal).",
     )
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=0,
+        help="Inference batch size (0 = auto-detect from free VRAM).",
+    )
     args = parser.parse_args()
 
     if not args.output_dir and not args.s3_uri:
@@ -169,7 +198,17 @@ def main() -> None:
     _patch_flash_attention()
 
     # --- Load model ---
+    nf4_cache = (
+        Path.home()
+        / ".cache"
+        / "rune"
+        / "quantized_models"
+        / args.base_model.replace("/", "--")
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
     if args.base_model_precision == "bf16":
         logger.info("Loading base model: %s (bf16)", args.base_model)
         base_model = AutoModelForCausalLM.from_pretrained(
@@ -177,10 +216,16 @@ def main() -> None:
             torch_dtype=torch.bfloat16,
             device_map="auto",
         ).eval()
+    elif nf4_cache.exists():
+        logger.info("Loading cached NF4 model from %s", nf4_cache)
+        base_model = AutoModelForCausalLM.from_pretrained(
+            str(nf4_cache),
+            device_map="auto",
+        ).eval()
     else:
         from transformers import BitsAndBytesConfig  # noqa: PLC0415
 
-        logger.info("Loading base model: %s (NF4)", args.base_model)
+        logger.info("Loading base model: %s (NF4, will cache)", args.base_model)
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -193,6 +238,13 @@ def main() -> None:
             quantization_config=bnb_config,
             device_map="auto",
         ).eval()
+        try:
+            nf4_cache.mkdir(parents=True, exist_ok=True)
+            base_model.save_pretrained(str(nf4_cache))
+            tokenizer.save_pretrained(str(nf4_cache))
+            logger.info("Cached NF4 model to %s", nf4_cache)
+        except Exception:
+            logger.warning("Failed to cache NF4 model — will re-quantize next run", exc_info=True)
 
     device = torch.device(get_best_device())
 
@@ -221,9 +273,7 @@ def main() -> None:
         ab_key = "A" if ab == "lora_A" else "B"
         _per_layer[short_name][ab_key][layer_idx] = tensor
 
-    layer_indices = sorted(
-        {idx for mod in _per_layer.values() for idx in mod["A"]}
-    )
+    layer_indices = sorted({idx for mod in _per_layer.values() for idx in mod["A"]})
 
     teacher_lora_dict: dict[str, dict[str, torch.Tensor]] = {}
     for mod_name in teacher_target_modules:
@@ -285,13 +335,19 @@ def main() -> None:
     if use_s3:
         logger.info("Listing existing objects in s3://%s/%s/ ...", s3_bucket, s3_prefix)
         already_done = _s3_list_existing(s3_bucket, s3_prefix)
-        logger.info("Found %d existing .pt files in S3 — will skip those", len(already_done))
+        logger.info(
+            "Found %d existing .pt files in S3 — will skip those", len(already_done)
+        )
     elif out_dir is not None:
         already_done = {f.name for f in out_dir.glob("*.pt")}
         if already_done:
-            logger.info("Found %d existing .pt files locally — will skip those", len(already_done))
+            logger.info(
+                "Found %d existing .pt files locally — will skip those",
+                len(already_done),
+            )
 
-    # --- Process records ---
+    # --- Pre-filter and pre-tokenize (CPU) ---
+    pending: list[tuple[int, int, int, list[int]]] = []
     n_valid = 0
     n_skipped = 0
     n_resumed = 0
@@ -299,7 +355,6 @@ def main() -> None:
 
     for idx, record in enumerate(records):
         filename = f"{idx:06d}.pt"
-
         if filename in already_done:
             n_resumed += 1
             n_valid += 1
@@ -312,55 +367,126 @@ def main() -> None:
                 max_length=args.max_length,
             )["input_ids"]
         )
-        inputs = tokenizer(
+        teacher_ids: list[int] = tokenizer(
             record["teacher_text"],
-            return_tensors="pt",
             truncation=True,
             max_length=args.max_length,
-        )
-        seq_len = inputs["input_ids"].shape[1]
+        )["input_ids"]
+        seq_len = len(teacher_ids)
 
         if answer_start >= seq_len:
             n_skipped += 1
             continue
 
-        inputs = {k: v.to(device) for k, v in inputs.items()}
+        pending.append((idx, answer_start, seq_len, teacher_ids))
 
-        with torch.no_grad():
-            with apply_functional_lora(base_model, teacher_lora_dict, teacher_hc):
-                logits = base_model(
-                    **inputs, output_hidden_states=False, use_cache=False
-                ).logits
+    pending.sort(key=lambda x: x[2])
 
-        logit_start = max(0, answer_start - 1)
-        span_logits = logits[:, logit_start:, :].to(torch.bfloat16).cpu()
-        del logits, inputs
-        torch.cuda.empty_cache()
+    batch_size = args.batch_size if args.batch_size > 0 else _estimate_batch_size(args.max_length)
+    logger.info(
+        "%d records to process (batch_size=%d, resumed=%d, skipped=%d)",
+        len(pending),
+        batch_size,
+        n_resumed,
+        n_skipped,
+    )
 
-        payload = {
-            "logits": span_logits,
-            "answer_start": answer_start,
-            "seq_len": seq_len,
-        }
+    # --- Batched inference under a single LoRA context ---
+    pad_id = tokenizer.pad_token_id or 0
+    io_workers = 16 if use_s3 else 2
+    max_pending = io_workers * 3
+    io_pool = ThreadPoolExecutor(max_workers=io_workers)
+    pending_futures: list[Future[None]] = []
 
-        if use_s3:
-            _s3_upload_tensor_dict(s3_bucket, s3_prefix, filename, payload)
-        else:
-            assert out_dir is not None  # noqa: S101
-            torch.save(payload, out_dir / filename)
+    def _drain_futures(force: bool = False) -> None:
+        """Check completed futures for exceptions; block if *force*."""
+        nonlocal pending_futures
+        still_pending: list[Future[None]] = []
+        for fut in pending_futures:
+            if force or fut.done():
+                fut.result()
+            else:
+                still_pending.append(fut)
+        pending_futures = still_pending
+        if not force and len(pending_futures) >= max_pending:
+            pending_futures[0].result()
+            pending_futures = pending_futures[1:]
 
-        n_valid += 1
-        total_logit_tokens += span_logits.shape[1]
+    with torch.inference_mode(), apply_functional_lora(
+        base_model, teacher_lora_dict, teacher_hc
+    ):
+        for batch_start in range(0, len(pending), batch_size):
+            batch = pending[batch_start : batch_start + batch_size]
+            max_len = max(sl for _, _, sl, _ in batch)
 
-        if (idx + 1) % 50 == 0 or idx == len(records) - 1:
-            logger.info(
-                "Progress: %d/%d (valid=%d, skipped=%d, resumed=%d)",
-                idx + 1,
-                len(records),
-                n_valid,
-                n_skipped,
-                n_resumed,
+            input_ids = torch.full(
+                (len(batch), max_len), pad_id, dtype=torch.long, device=device
             )
+            attention_mask = torch.zeros(
+                len(batch), max_len, dtype=torch.long, device=device
+            )
+            for i, (_, _, _, ids) in enumerate(batch):
+                input_ids[i, : len(ids)] = torch.tensor(ids, dtype=torch.long)
+                attention_mask[i, : len(ids)] = 1
+
+            logits = base_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                output_hidden_states=False,
+                use_cache=False,
+            ).logits
+
+            for i, (orig_idx, answer_start, seq_len, _) in enumerate(batch):
+                filename = f"{orig_idx:06d}.pt"
+                logit_start = max(0, answer_start - 1)
+                span_logits = (
+                    logits[i : i + 1, logit_start:seq_len, :]
+                    .to(torch.bfloat16)
+                    .cpu()
+                )
+
+                payload = {
+                    "logits": span_logits,
+                    "answer_start": answer_start,
+                    "seq_len": seq_len,
+                }
+
+                if use_s3:
+                    pending_futures.append(
+                        io_pool.submit(
+                            _s3_upload_tensor_dict,
+                            s3_bucket,
+                            s3_prefix,
+                            filename,
+                            payload,
+                        )
+                    )
+                else:
+                    assert out_dir is not None  # noqa: S101
+                    pending_futures.append(
+                        io_pool.submit(torch.save, payload, out_dir / filename)
+                    )
+
+                n_valid += 1
+                total_logit_tokens += span_logits.shape[1]
+
+            del logits, input_ids, attention_mask
+            _drain_futures()
+
+            done = batch_start + len(batch)
+            if done % (batch_size * 10) < batch_size or done >= len(pending):
+                logger.info(
+                    "Progress: %d/%d (valid=%d, skipped=%d, resumed=%d, io_pending=%d)",
+                    done,
+                    len(pending),
+                    n_valid,
+                    n_skipped,
+                    n_resumed,
+                    len(pending_futures),
+                )
+
+    _drain_futures(force=True)
+    io_pool.shutdown()
 
     # --- Write manifest ---
     manifest = {

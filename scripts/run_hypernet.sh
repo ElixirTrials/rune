@@ -22,6 +22,17 @@
 # ────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+CURRENT_STAGE="init"
+
+_on_error() {
+    local exit_code=$?
+    echo "" >&2
+    echo "!! FAILED during: ${CURRENT_STAGE} (exit code ${exit_code})" >&2
+    echo "!! Line ${BASH_LINENO[0]} in ${BASH_SOURCE[1]:-$0}" >&2
+    exit "$exit_code"
+}
+trap _on_error ERR
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
@@ -38,6 +49,10 @@ SMOKE=0
 SKIP_PRECOMPUTE=0
 VRAM_TIER=""          # auto, low, mid, high
 S3_URI=""             # --s3-uri: stream logits directly to S3
+SAGEMAKER=0           # --sagemaker: launch on SageMaker instead of local
+FLEET=0               # --fleet: SageMaker fleet mode (spot fallback)
+DRY_RUN=0             # --dry-run: print config without launching
+SM_EXTRA_ARGS=()
 EXTRA_TRAIN_ARGS=()
 
 # ── arg parse ─────────────────────────────────────────────────────────────
@@ -54,16 +69,42 @@ while [[ $# -gt 0 ]]; do
         --smoke)             SMOKE=1; shift;;
         --skip-precompute)   SKIP_PRECOMPUTE=1; shift;;
         --s3-uri)            S3_URI="$2"; shift 2;;
+        --sagemaker)         SAGEMAKER=1; shift;;
+        --fleet)             SAGEMAKER=1; FLEET=1; shift;;
+        --dry-run)           DRY_RUN=1; shift;;
+        --instance-type)     SM_EXTRA_ARGS+=(--instance-type "$2"); shift 2;;
         -h|--help)           sed -n '2,16p' "$0"; exit 0;;
         *)                   EXTRA_TRAIN_ARGS+=("$1"); shift;;
     esac
 done
 
+# ── SageMaker dispatch ────────────────────────────────────────────────────
+if (( SAGEMAKER )); then
+    command -v uv >/dev/null || { echo "missing: uv" >&2; exit 127; }
+    SM_CMD=(
+        uv run python scripts/launch_sagemaker.py
+        --num-steps "$NUM_STEPS"
+        --experiment-name "$EXPERIMENT"
+        --base-model "$BASE_MODEL"
+    )
+    if (( FLEET )); then SM_CMD+=(--fleet); fi
+    if (( DRY_RUN )); then SM_CMD+=(--dry-run); fi
+    if (( SMOKE )); then SM_CMD+=(--smoke); fi
+    if [[ -n "$VRAM_TIER" ]]; then SM_CMD+=(--vram-tier "$VRAM_TIER"); fi
+    SM_CMD+=("${SM_EXTRA_ARGS[@]}")
+    echo "── Launching on SageMaker ─────────────────────────"
+    echo "  ${SM_CMD[*]}"
+    echo ""
+    exec "${SM_CMD[@]}"
+fi
+
+CURRENT_STAGE="prereq checks"
 # ── prereq checks ────────────────────────────────────────────────────────
 command -v uv  >/dev/null || { echo "missing: uv"  >&2; exit 127; }
 command -v nvidia-smi >/dev/null || { echo "missing: nvidia-smi" >&2; exit 1; }
 nvidia-smi -L | grep -q "GPU 0" || { echo "no GPU visible" >&2; exit 1; }
 
+CURRENT_STAGE="VRAM detection"
 # ── VRAM detection ────────────────────────────────────────────────────────
 VRAM_MIB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits \
            | head -1 | tr -d '[:space:]')
@@ -171,6 +212,7 @@ else
         PRECOMPUTE_CMD+=(--smoke-test)
     fi
 
+    CURRENT_STAGE="Stage 1: precompute teacher logits (${PRECOMPUTE_DEST})"
     echo "  ${PRECOMPUTE_CMD[*]}"
     echo ""
     "${PRECOMPUTE_CMD[@]}"
@@ -201,6 +243,7 @@ TRAIN_CMD=(
     "${EXTRA_TRAIN_ARGS[@]}"
 )
 
+CURRENT_STAGE="Stage 2: train hypernetwork (${NUM_STEPS} steps, tier=${VRAM_TIER})"
 echo "  ${TRAIN_CMD[*]}"
 echo ""
 "${TRAIN_CMD[@]}"
