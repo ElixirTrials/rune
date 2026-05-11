@@ -142,6 +142,30 @@ fi
 # actual host GPU's compute capability via TORCH_CUDA_ARCH_LIST: a default
 # install builds for ~9 archs and takes 30-45 min; a single-arch build takes
 # 5-10. Falls back to a portable arch list if no GPU is detected (CPU-only CI).
+# Persistent shell history — flush after every command, 100k line ring.
+# devcontainer.json bind-mounts /home/vscode/.bash_history from the host's
+# /home/ubuntu/.bash_history (which is in restic's backup paths), so commands
+# survive instance rollovers. Without these settings bash only flushes on
+# shell exit, so most session commands are never written before terminate.
+if ! grep -q "### persistent-history ###" ~/.bashrc 2>/dev/null; then
+  cat >> ~/.bashrc <<'HISTORY'
+
+### persistent-history ###
+HISTSIZE=100000
+HISTFILESIZE=100000
+HISTTIMEFORMAT='%F %T '
+HISTCONTROL=ignoredups
+shopt -s histappend 2>/dev/null
+case "${PROMPT_COMMAND:-}" in
+  *"history -a"*) ;;
+  *) PROMPT_COMMAND="history -a${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
+esac
+export HISTSIZE HISTFILESIZE HISTTIMEFORMAT HISTCONTROL PROMPT_COMMAND
+### end persistent-history ###
+HISTORY
+fi
+
+# Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
 if [ -f pyproject.toml ]; then
   echo "Installing rune dependencies (with GPU extras)..."
   if command -v nvidia-smi &>/dev/null; then

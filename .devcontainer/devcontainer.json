@@ -18,6 +18,11 @@
     }
   },
   "remoteUser": "vscode",
+  "initializeCommand": "mkdir -p /home/ubuntu/.claude && touch /home/ubuntu/.bash_history && chown -R ubuntu:ubuntu /home/ubuntu/.claude /home/ubuntu/.bash_history 2>/dev/null || true",
+  "mounts": [
+    "source=/home/ubuntu/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=/home/ubuntu/.bash_history,target=/home/vscode/.bash_history,type=bind,consistency=cached"
+  ],
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "remoteEnv": {
     "PATH": "${containerEnv:PATH}:${containerEnv:HOME}/.local/bin:/usr/local/cuda/bin",
