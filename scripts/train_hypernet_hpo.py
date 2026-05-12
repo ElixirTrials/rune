@@ -448,16 +448,14 @@ def main() -> None:  # noqa: C901
         ).eval()
     base_model.requires_grad_(False)
     if args.gradient_checkpointing:
-        # use_reentrant=False: functional LoRA injects closure-captured tensors
-        # (A, B weights) that require grad but aren't checkpoint-function inputs.
-        # determinism_check="none": NF4 dequant caches weights after first call,
-        # so recomputation creates fewer tensors (41 vs 37) — harmless since
-        # base params have requires_grad=False.
+        # use_reentrant=True: non-reentrant mode fails with NF4 quantization
+        # because internal caching (dequant/autocast) creates fewer tensors
+        # on recomputation (41 vs 37), and the count check can't be suppressed.
+        # Reentrant mode avoids this — its backward calls torch.autograd.backward
+        # on the recomputed graph, which traverses through the LoRA tensors'
+        # grad_fn back to the hypernet, computing all gradients correctly.
         base_model.gradient_checkpointing_enable(
-            gradient_checkpointing_kwargs={
-                "use_reentrant": False,
-                "determinism_check": "none",
-            }
+            gradient_checkpointing_kwargs={"use_reentrant": True}
         )
         # gradient_checkpointing activates only when self.training is True
         # (transformers checks `self.gradient_checkpointing and self.training`).
