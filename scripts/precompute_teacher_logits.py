@@ -48,6 +48,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 warnings.filterwarnings("ignore", message=".*guard_size_oblivious.*")
@@ -85,9 +86,9 @@ def _s3_list_existing(bucket: str, prefix: str) -> set[str]:
     return existing
 
 
-def _s3_upload_bytes(s3_client: object, bucket: str, key: str, data: bytes) -> None:
+def _s3_upload_bytes(s3_client: Any, bucket: str, key: str, data: bytes) -> None:
     """Upload raw bytes to S3 using a shared client."""
-    s3_client.put_object(Bucket=bucket, Key=key, Body=data)  # type: ignore[union-attr]
+    s3_client.put_object(Bucket=bucket, Key=key, Body=data)
 
 
 def _estimate_batch_size(max_length: int) -> int:
@@ -396,7 +397,7 @@ def main() -> None:
     io_workers = 16 if use_s3 else 2
     max_pending = io_workers * 3
     io_pool = ThreadPoolExecutor(max_workers=io_workers)
-    pending_futures: list[Future[None]] = []
+    pending_futures: list[Future[Any]] = []
 
     # Shared S3 client — thread-safe, avoids per-upload client creation
     s3_client: object | None = None

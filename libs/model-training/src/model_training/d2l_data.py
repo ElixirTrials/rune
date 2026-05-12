@@ -369,7 +369,7 @@ def generate_needle_dataset(n: int = 20) -> list[dict[str, str]]:
             trajectory = template["trajectory_template"].format(**slots)
             query = template["query_template"].format(**slots)
             answer = template["answer_template"].format(**slots)
-        except KeyError:
+        except (KeyError, ValueError):
             # If template has a slot not in _SLOT_VALUES, use a safe fallback
             trajectory = (
                 f"# code fact {i}\ndef func_{i}(x: int) -> int:\n    return {i}"

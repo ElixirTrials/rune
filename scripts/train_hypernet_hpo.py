@@ -416,6 +416,16 @@ def main() -> None:  # noqa: C901
     hypernet = HyperLoRA(hc).to(torch.float32)
     hypernet.train()
 
+    # Warm-start scaler_B: zero init creates a dead gradient bottleneck where
+    # all gradients through the LoRA B path (and thus the perceiver/head) are
+    # zero until scaler_B grows from 0.  Initialising to a small positive value
+    # unblocks gradient flow from step 1.
+    with torch.no_grad():
+        for name, param in hypernet.named_parameters():
+            if "scaler_B" in name and param.abs().max() == 0:
+                param.fill_(0.01)
+                logger.info("Warm-started %s → 0.01 (was zeros)", name)
+
     n_params = sum(p.numel() for p in hypernet.parameters())
     logger.info("HyperLoRA params: %d (all trainable)", n_params)
 
@@ -448,14 +458,21 @@ def main() -> None:  # noqa: C901
         ).eval()
     base_model.requires_grad_(False)
     if args.gradient_checkpointing:
-        # use_reentrant=True: non-reentrant mode fails with NF4 quantization
-        # because internal caching (dequant/autocast) creates fewer tensors
-        # on recomputation (41 vs 37), and the count check can't be suppressed.
-        # Reentrant mode avoids this — its backward calls torch.autograd.backward
-        # on the recomputed graph, which traverses through the LoRA tensors'
-        # grad_fn back to the hypernet, computing all gradients correctly.
+        # use_reentrant=False: non-reentrant checkpointing is required for
+        # functional LoRA because all LoRA tensors share an upstream graph
+        # (the hypernetwork output).  Reentrant mode creates nested
+        # torch.autograd.backward() calls per block; the first block's
+        # backward frees the shared graph, causing "backward through the
+        # graph a second time" on subsequent blocks.
+        #
+        # determinism_check="none": NF4 dequantization is not bitwise
+        # deterministic across calls (cached vs recomputed), so the default
+        # tensor-count check would fail on recomputation.
         base_model.gradient_checkpointing_enable(
-            gradient_checkpointing_kwargs={"use_reentrant": True}
+            gradient_checkpointing_kwargs={
+                "use_reentrant": False,
+                "determinism_check": "none",
+            }
         )
         # gradient_checkpointing activates only when self.training is True
         # (transformers checks `self.gradient_checkpointing and self.training`).
@@ -778,6 +795,7 @@ def main() -> None:  # noqa: C901
                             )
                         continue
                 else:
+                    assert logits_dir is not None  # noqa: S101
                     cache_path = logits_dir / filename
                     if not cache_path.exists():
                         skipped += 1
@@ -895,31 +913,39 @@ def main() -> None:  # noqa: C901
                     gc.collect()
                     torch.cuda.empty_cache()
 
-            # Student forward: base + hypernetwork-generated LoRA
+            # Student forward + backward must both live inside the functional
+            # LoRA context: reentrant gradient checkpointing recomputes each
+            # transformer block during backward, so the LoRA monkey-patches
+            # must still be active or the recomputed graph omits the LoRA path
+            # and the hypernetwork receives zero gradients.
             with apply_functional_lora(base_model, lora_dict, hc):
                 student_logits = base_model(
                     **teacher_inputs,
                     output_hidden_states=False,
                     use_cache=False,
                 ).logits
-            del teacher_inputs
-            gc.collect()
-            torch.cuda.empty_cache()
+                del teacher_inputs
+                gc.collect()
+                torch.cuda.empty_cache()
 
-            # Slice student logits to match the teacher answer span
-            if answer_start < seq_len:
-                student_logits = student_logits[:, logit_start:, :].contiguous()
+                # Slice student logits to match the teacher answer span
+                if answer_start < seq_len:
+                    student_logits = student_logits[:, logit_start:, :].contiguous()
 
-            # Loss
-            _loss_fn = _chunked_kl_ce_loss if args.chunk_loss else _full_kl_ce_loss
-            loss, metrics = _loss_fn(
-                student_logits,
-                teacher_logits,
-                alpha=args.alpha,
-                temperature=args.temperature,
-            )
+                # Loss
+                _loss_fn = _chunked_kl_ce_loss if args.chunk_loss else _full_kl_ce_loss
+                loss, metrics = _loss_fn(
+                    student_logits,
+                    teacher_logits,
+                    alpha=args.alpha,
+                    temperature=args.temperature,
+                )
 
-            loss.backward()
+                loss.backward()
+
+            # Gradient diagnostics: log raw norm before clipping so we can
+            # verify gradient flow through the hypernetwork.
+            raw_grad_norm = clip_grad_norm_(trainable_params, float("inf"))
             clip_grad_norm_(trainable_params, args.grad_clip)
             optimizer.step()
             scheduler.step()
@@ -932,15 +958,17 @@ def main() -> None:  # noqa: C901
                 best_loss = step_loss
 
             if mlflow_ok:
+                metrics["grad_norm_raw"] = raw_grad_norm.item()
                 mlflow.log_metrics(metrics, step=step)
 
             logger.info(
-                "Step %d/%d — loss=%.4f (kl=%.4f, ce=%.4f)",
+                "Step %d/%d — loss=%.4f (kl=%.4f, ce=%.4f) grad_norm=%.4e",
                 step,
                 num_steps,
                 metrics["total_loss"],
                 metrics["kl_loss"],
                 metrics["ce_loss"],
+                raw_grad_norm.item(),
             )
 
             # Free graph-connected tensors to prevent cross-step accumulation

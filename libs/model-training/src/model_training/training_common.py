@@ -44,6 +44,10 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
     except ImportError:
         return False
 
+    # sagemaker-mlflow plugin unconditionally claims in_context()=True and
+    # then fails to parse non-ARN tracking URIs → noisy IndexError warnings.
+    logging.getLogger("mlflow.tracking.request_header.registry").setLevel(logging.ERROR)
+
     # If a parent harness (e.g. the HPO wrapper at run_training_hpo.py:701)
     # already started a run, respect the URI it was started against.
     # Re-setting the tracking URI here would orphan that run because MLflow

@@ -292,8 +292,8 @@ async def agent_supervisor(
 
         try:
             if use_iteration_loop:
-                from rune_runner import (
-                    run_phased_pipeline,  # type: ignore[import-not-found]
+                from rune_runner import (  # type: ignore[import-not-found]
+                    run_phased_pipeline,
                 )
 
                 project_prompt = task.get("task_description", task.get("prompt", ""))
