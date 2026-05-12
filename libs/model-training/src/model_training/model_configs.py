@@ -117,17 +117,12 @@ class ModelRegistry:
                 warm_start_adapter_id=("danielcherubini/Qwen3.5-DeltaCoder-9B"),
                 default_lora_rank=64,
                 default_lora_alpha=32,
-                attn_implementation="eager",
+                attn_implementation="sdpa",
                 expected_num_layers=32,
                 expected_hidden_size=4096,
                 gradient_accumulation_steps=16,
                 lr_scheduler_type="constant",
                 epochs=3,
-                quirks={
-                    "flash_attention_warning": (
-                        "Flash + sample packing causes loss collapse"
-                    ),
-                },
             )
         )
 

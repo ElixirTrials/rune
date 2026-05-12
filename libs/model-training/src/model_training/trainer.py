@@ -720,9 +720,6 @@ def _build_sft_config(
         # MLflow records eval/loss per epoch. Otherwise leave at "no" so
         # SFTTrainer doesn't try to call evaluate() with no dataset.
         "eval_strategy": "epoch" if has_eval_dataset else "no",
-        # per_device_eval_batch_size is unused when eval_strategy="no" but
-        # explicit is better — same micro-batch size as training.
-        "per_device_eval_batch_size": 1,
         # assistant_only_loss=True triggers TRL's get_training_chat_template
         # pre-flight (sft_trainer.py:925), which requires {% generation %}
         # markers in the chat template. Qwen3.5's bundled template lacks them
@@ -739,6 +736,10 @@ def _build_sft_config(
         # Paged 8-bit AdamW spills optimizer state to host RAM under pressure;
         # required to fit Qwen3.5-9B QLoRA + adapter grads on a 22 GB L4.
         "optim": "paged_adamw_8bit",
+        "dataloader_num_workers": 2,
+        "dataloader_pin_memory": True,
+        "dataloader_persistent_workers": True,
+        "per_device_eval_batch_size": 4,
     }
     # transformers v5.2 removes warmup_ratio in favour of warmup_steps; convert
     # here using the resolved schedule so SFTConfig stops emitting the warning.
@@ -972,6 +973,8 @@ def train_qlora(
     from datasets import Dataset
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import SFTConfig, SFTTrainer
+
+    torch.set_float32_matmul_precision("high")
 
     # Resolve defaults from model registry and explicit overrides
     params = _resolve_training_params(

@@ -36,6 +36,10 @@ from typing import Any
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 warnings.filterwarnings("ignore", message=".*guard_size_oblivious.*")
 
+import torch  # noqa: E402
+
+torch.set_float32_matmul_precision("high")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bootstrap import setup_path  # type: ignore[import-not-found]
 

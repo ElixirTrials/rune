@@ -326,19 +326,43 @@ def run_condition_ttt(
     )
 
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     print(f"  Loading model {model} for TTT inner-loop...")
     tokenizer = AutoTokenizer.from_pretrained(model)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+    )
     ttt_model = AutoModelForCausalLM.from_pretrained(
         model,
-        torch_dtype=torch.float16,
+        quantization_config=bnb_config,
         device_map="auto",
     )
-    original_sd = {k: v.cpu().clone() for k, v in ttt_model.state_dict().items()}
+
+    from model_training.ttt_e2e import select_mlp_layers
+
+    all_mlp_names = [
+        name
+        for name, _ in ttt_model.named_parameters()
+        if "mlp" in name and "weight" in name
+    ]
+    trainable_names = set(
+        select_mlp_layers(all_mlp_names, ttt_config.mlp_fraction)
+    )
+    original_sd = {
+        k: v.detach().cpu().clone()
+        for k, v in ttt_model.state_dict().items()
+        if k in trainable_names
+    }
 
     def completion_override(prompt: str, max_tokens: int) -> str:
-        ttt_model.load_state_dict(original_sd, assign=False)
+        for k, v in original_sd.items():
+            param = ttt_model.get_parameter(k)
+            param.data.copy_(v.to(param.device))
         result = ttt_forward_pass(
             model=ttt_model,
             tokenizer=tokenizer,

@@ -34,7 +34,7 @@ TTT_STEPS=5
 TTT_MLP_FRACTION=0.25
 
 # Hypernetwork checkpoint (required for phase 2)
-HYPERNET_CHECKPOINT="${HYPERNET_CHECKPOINT:-checkpoints/hypernet_hpo/checkpoint.pt}"
+HYPERNET_CHECKPOINT="${HYPERNET_CHECKPOINT:-checkpoints/hypernet_hpo/hypernet-full-t10/checkpoint.pt}"
 
 # vLLM health check: 200 attempts × 5s = 1000s (~16 min) to cover slow overlay FS loads
 MAX_TRIES=200
