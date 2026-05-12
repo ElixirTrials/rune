@@ -28,8 +28,8 @@ head:
 
 # --- Training ---
 training:
-  alpha: 1.0                   # 1.0 = pure KL (D2L ablation: KL > NTP)
-  temperature: 2.0
+  alpha: 0.999                  # 0.1% CE anchors argmax without distorting KL gradients
+  temperature: 1.0              # T=1.0 sharpens KL; validated in kd-a10-t10 experiment (top1=0.84)
   lr: 0.0002
   grad_clip: 1.0
   warmup_steps: 10

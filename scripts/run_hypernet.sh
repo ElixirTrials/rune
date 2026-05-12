@@ -46,6 +46,7 @@ BASE_MODEL="Qwen/Qwen3.5-9B"
 NUM_STEPS=500
 EXPERIMENT="hypernet-hpo"
 SMOKE=0
+FRESH=0               # --fresh: ignore cached logits + checkpoints, start clean
 SKIP_PRECOMPUTE=0
 VRAM_TIER=""          # auto, low, mid, high
 S3_URI=""             # --s3-uri: stream logits directly to S3
@@ -67,6 +68,7 @@ while [[ $# -gt 0 ]]; do
         --experiment-name)   EXPERIMENT="$2"; shift 2;;
         --vram-tier)         VRAM_TIER="$2"; shift 2;;
         --smoke)             SMOKE=1; shift;;
+        --fresh)             FRESH=1; shift;;
         --skip-precompute)   SKIP_PRECOMPUTE=1; shift;;
         --s3-uri)            S3_URI="$2"; shift 2;;
         --sagemaker)         SAGEMAKER=1; shift;;
@@ -168,7 +170,11 @@ esac
 if (( SMOKE )); then
     NUM_STEPS=5
     EXTRA_TRAIN_ARGS+=(--smoke-test)
+    LOGITS_DIR="data/teacher_logits_smoke"
 fi
+
+# Namespace checkpoints by experiment to prevent cross-arm contamination
+CHECKPOINT_DIR="${CHECKPOINT_DIR}/${EXPERIMENT}"
 
 # ── MLflow ────────────────────────────────────────────────────────────────
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://localhost:5000}"
@@ -180,8 +186,25 @@ if [[ "$MLFLOW_TRACKING_URI" =~ ^https?:// ]]; then
     fi
 fi
 
+# ── --fresh: wipe cached logits and checkpoints ─────────────────────────
+if (( FRESH )); then
+    echo "── --fresh: cleaning cached state ────────────────"
+    [[ -d "$LOGITS_DIR" ]] && rm -rf "$LOGITS_DIR" && echo "  removed ${LOGITS_DIR}"
+    [[ -d "$CHECKPOINT_DIR" ]] && rm -rf "$CHECKPOINT_DIR" && echo "  removed ${CHECKPOINT_DIR}"
+fi
+
 # ── Stage 1: precompute teacher logits ────────────────────────────────────
 MANIFEST="${LOGITS_DIR}/manifest.json"
+
+# Detect stale smoke-test cache (≤20 records) and auto-clean
+if [[ -z "$S3_URI" ]] && [[ -f "$MANIFEST" ]] && ! (( SMOKE )); then
+    N_VALID=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['n_valid'])" 2>/dev/null || echo "?")
+    if [[ "$N_VALID" =~ ^[0-9]+$ ]] && (( N_VALID <= 20 )); then
+        echo "── Stage 1: STALE CACHE (only ${N_VALID} records — likely from smoke test)"
+        echo "  Deleting ${LOGITS_DIR} and regenerating…"
+        rm -rf "$LOGITS_DIR"
+    fi
+fi
 
 if (( SKIP_PRECOMPUTE )); then
     echo "── Stage 1: SKIPPED (--skip-precompute) ──────────"

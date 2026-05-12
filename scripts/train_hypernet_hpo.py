@@ -70,7 +70,12 @@ def _chunked_kl_ce_loss(
     n_tokens = student_logits.shape[1]
     if n_tokens == 0:
         zero = torch.tensor(0.0, device=student_logits.device, requires_grad=True)
-        return zero, {"kl_loss": 0.0, "ce_loss": 0.0, "total_loss": 0.0}
+        return zero, {
+            "kl_loss": 0.0,
+            "ce_loss": 0.0,
+            "total_loss": 0.0,
+            "top1_agreement": 0.0,
+        }
 
     vocab = student_logits.shape[-1]
 
@@ -82,7 +87,7 @@ def _chunked_kl_ce_loss(
     def _chunk_fn(
         s_chunk: torch.Tensor,
         t_chunk: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         t_chunk = t_chunk.to(s_chunk.device, non_blocking=True)
         with torch.amp.autocast("cuda", dtype=torch.bfloat16):
             t_soft = F.softmax(t_chunk / temperature, dim=-1)
@@ -98,12 +103,15 @@ def _chunked_kl_ce_loss(
                 t_hard,
                 reduction="sum",
             )
-            del t_hard
-        return kl, ce
+            s_hard = s_chunk.argmax(-1).reshape(-1)
+            top1_matches = (s_hard == t_hard).sum()
+            del s_hard, t_hard
+        return kl, ce, top1_matches
 
     device = student_logits.device
     kl_sum = torch.zeros(1, device=device)
     ce_sum = torch.zeros(1, device=device)
+    top1_match_sum = 0
     total_elements = 0
 
     for i in range(0, n_tokens, _LOSS_CHUNK):
@@ -111,9 +119,10 @@ def _chunked_kl_ce_loss(
         t = teacher_ref[:, i : i + _LOSS_CHUNK, :].contiguous()
         chunk_elems = s.shape[0] * s.shape[1]
 
-        kl, ce = checkpoint(_chunk_fn, s, t, use_reentrant=False)
+        kl, ce, matches = checkpoint(_chunk_fn, s, t, use_reentrant=False)
         kl_sum = kl_sum + kl
         ce_sum = ce_sum + ce
+        top1_match_sum += matches.item()
         total_elements += chunk_elems
 
     del teacher_ref
@@ -126,6 +135,9 @@ def _chunked_kl_ce_loss(
         "kl_loss": kl.item(),
         "ce_loss": ce.item(),
         "total_loss": total.item(),
+        "top1_agreement": top1_match_sum / total_elements
+        if total_elements > 0
+        else 0.0,
     }
 
 
@@ -147,7 +159,12 @@ def _full_kl_ce_loss(
     n_tokens = student_logits.shape[1]
     if n_tokens == 0:
         zero = torch.tensor(0.0, device=student_logits.device, requires_grad=True)
-        return zero, {"kl_loss": 0.0, "ce_loss": 0.0, "total_loss": 0.0}
+        return zero, {
+            "kl_loss": 0.0,
+            "ce_loss": 0.0,
+            "total_loss": 0.0,
+            "top1_agreement": 0.0,
+        }
 
     vocab = student_logits.shape[-1]
     total_elements = student_logits.shape[0] * n_tokens
@@ -167,13 +184,16 @@ def _full_kl_ce_loss(
             F.cross_entropy(student_logits.reshape(-1, vocab), t_hard, reduction="sum")
             / total_elements
         )
-        del t_hard
+        s_hard = student_logits.argmax(-1).reshape(-1)
+        top1_agreement = (s_hard == t_hard).float().mean().item()
+        del s_hard, t_hard
 
     total = alpha * kl + (1.0 - alpha) * ce
     return total, {
         "kl_loss": kl.item(),
         "ce_loss": ce.item(),
         "total_loss": total.item(),
+        "top1_agreement": top1_agreement,
     }
 
 
@@ -228,6 +248,12 @@ def main() -> None:  # noqa: C901
         type=str,
         default=None,
         help="MLflow tracking server URI. Defaults to MLFLOW_TRACKING_URI env var.",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=0,
+        help="Early-stop after this many steps without loss improvement. 0 = disabled.",
     )
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--target-modules", nargs="+", default=_l["target_modules"])
@@ -680,6 +706,7 @@ def main() -> None:  # noqa: C901
                 "chunk_loss": args.chunk_loss,
                 "use_precomputed_logits": use_precomputed,
                 "high_vram": args.high_vram,
+                "patience": args.patience,
             }
         )
 
@@ -689,6 +716,7 @@ def main() -> None:  # noqa: C901
 
     best_loss = float("inf")
     final_loss = float("inf")
+    steps_without_improvement = 0
     step_losses: list[float] = []
 
     # --- Atomic checkpoint helpers ---
@@ -703,6 +731,7 @@ def main() -> None:  # noqa: C901
             "step": step_num,
             "attention_layer_indices": layer_indices,
             "best_loss": best_loss,
+            "steps_without_improvement": steps_without_improvement,
             "lora_r": args.lora_r,
         }
 
@@ -755,6 +784,7 @@ def main() -> None:  # noqa: C901
             scheduler.load_state_dict(ckpt_data["scheduler_state_dict"])
         start_step = ckpt_data["step"]
         best_loss = ckpt_data.get("best_loss", float("inf"))
+        steps_without_improvement = ckpt_data.get("steps_without_improvement", 0)
         logger.info("Resumed at step %d (best_loss=%.4f)", start_step, best_loss)
         del ckpt_data
         if mlflow_ok:
@@ -956,18 +986,22 @@ def main() -> None:  # noqa: C901
             final_loss = step_loss
             if step_loss < best_loss:
                 best_loss = step_loss
+                steps_without_improvement = 0
+            else:
+                steps_without_improvement += 1
 
             if mlflow_ok:
                 metrics["grad_norm_raw"] = raw_grad_norm.item()
                 mlflow.log_metrics(metrics, step=step)
 
             logger.info(
-                "Step %d/%d — loss=%.4f (kl=%.4f, ce=%.4f) grad_norm=%.4e",
+                "Step %d/%d — loss=%.4f (kl=%.4f, ce=%.4f, top1=%.3f) grad_norm=%.4e",
                 step,
                 num_steps,
                 metrics["total_loss"],
                 metrics["kl_loss"],
                 metrics["ce_loss"],
+                metrics["top1_agreement"],
                 raw_grad_norm.item(),
             )
 
@@ -996,6 +1030,22 @@ def main() -> None:  # noqa: C901
 
             if _shutdown[0]:
                 logger.warning("Shutting down after step %d (SIGTERM)", step)
+                break
+
+            if (
+                args.patience > 0
+                and step > args.warmup_steps
+                and steps_without_improvement >= args.patience
+            ):
+                logger.info(
+                    "Early stopping at step %d: no improvement for %d steps "
+                    "(best_loss=%.4f)",
+                    step,
+                    args.patience,
+                    best_loss,
+                )
+                if mlflow_ok:
+                    mlflow.log_metrics({"early_stopped_at_step": step}, step=step)
                 break
 
     except KeyboardInterrupt:
