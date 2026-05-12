@@ -106,6 +106,90 @@ def mlflow_log_artifact(path: str) -> None:
         logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
 
 
+def mlflow_log_checkpoint(
+    path: str, artifact_path: str = "checkpoints"
+) -> None:
+    """Log a checkpoint file to MLflow under a structured artifact path."""
+    try:
+        import mlflow  # noqa: PLC0415
+
+        mlflow.log_artifact(path, artifact_path=artifact_path)
+    except Exception:  # noqa: BLE001
+        logger.debug(
+            "mlflow.log_artifact skipped for %s", path, exc_info=True
+        )
+
+
+def mlflow_download_latest_checkpoint(
+    experiment_name: str, dest_dir: Path
+) -> Path | None:
+    """Download the latest checkpoint from the MLflow experiment's artifact store.
+
+    Searches all finished/running runs in the experiment for checkpoint
+    artifacts, picks the run with the highest step, and downloads the
+    checkpoint to ``dest_dir``.
+
+    Returns the local path to the downloaded checkpoint, or None if no
+    checkpoint was found.
+    """
+    try:
+        import mlflow  # noqa: PLC0415
+        from mlflow.tracking import MlflowClient  # noqa: PLC0415
+
+        client = MlflowClient()
+        experiment = client.get_experiment_by_name(experiment_name)
+        if experiment is None:
+            logger.debug("MLflow experiment %r not found", experiment_name)
+            return None
+
+        runs = client.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            order_by=["attributes.start_time DESC"],
+            max_results=10,
+        )
+
+        for run in runs:
+            artifacts = client.list_artifacts(run.info.run_id, path="checkpoints")
+            ckpt_artifacts = [
+                a for a in artifacts if a.path.endswith(".pt")
+            ]
+            if not ckpt_artifacts:
+                continue
+
+            def _step_from_path(a: Any) -> int:
+                name = Path(a.path).stem
+                parts = name.split("-")
+                try:
+                    return int(parts[1]) if len(parts) >= 2 else 0
+                except ValueError:
+                    return 0
+
+            best = sorted(ckpt_artifacts, key=_step_from_path)[-1]
+            local_path = dest_dir / Path(best.path).name
+            logger.info(
+                "Downloading checkpoint from MLflow run %s: %s",
+                run.info.run_id,
+                best.path,
+            )
+            mlflow.artifacts.download_artifacts(
+                run_id=run.info.run_id,
+                artifact_path=best.path,
+                dst_path=str(dest_dir),
+            )
+            downloaded = dest_dir / best.path
+            if downloaded != local_path:
+                downloaded.rename(local_path)
+            return local_path
+
+        logger.debug("No checkpoint artifacts found in experiment %r", experiment_name)
+        return None
+    except Exception:  # noqa: BLE001
+        logger.debug(
+            "mlflow_download_latest_checkpoint failed", exc_info=True
+        )
+        return None
+
+
 def mlflow_log_output_artifacts(output_dir: str) -> None:
     """Log the saved adapter's safetensors + config.json to MLflow, if present."""
     adapter_safetensors = Path(output_dir) / "adapter_model.safetensors"

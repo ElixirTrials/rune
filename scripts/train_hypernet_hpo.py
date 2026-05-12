@@ -23,6 +23,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gc
+import io
 import logging
 import os
 import signal
@@ -235,7 +237,7 @@ def main() -> None:  # noqa: C901
         "--teacher-logits-dir",
         type=str,
         default=None,
-        help="Path to precomputed teacher logits (from precompute_teacher_logits.py). "
+        help="Path or S3 URI (s3://bucket/prefix) to precomputed teacher logits. "
         "When set, skips teacher LoRA loading and teacher forward pass entirely.",
     )
 
@@ -316,6 +318,11 @@ def main() -> None:  # noqa: C901
         return
 
     use_precomputed = args.teacher_logits_dir is not None
+    logits_is_s3 = False
+    logits_s3_bucket = ""
+    logits_s3_prefix = ""
+    logits_s3_client: Any = None
+    logits_dir: Path | None = None
 
     # Auto-fetch teacher adapter from MLflow/S3 if missing (skip if precomputed)
     if not use_precomputed:
@@ -382,6 +389,8 @@ def main() -> None:  # noqa: C901
     from model_training.sakana_d2l import _patch_flash_attention  # noqa: PLC0415
     from model_training.training_common import (  # noqa: PLC0415
         _log_failure,
+        mlflow_download_latest_checkpoint,
+        mlflow_log_checkpoint,
         setup_mlflow,
     )
     from shared.hardware import get_best_device  # noqa: PLC0415
@@ -530,18 +539,41 @@ def main() -> None:  # noqa: C901
             }
             logger.info("Teacher LoRA pinned to GPU")
     else:
-        logits_dir = Path(args.teacher_logits_dir)
-        manifest_path = logits_dir / "manifest.json"
-        if manifest_path.exists():
-            with open(manifest_path) as f:
-                _manifest = json.load(f)
-            logger.info(
-                "Using precomputed teacher logits from %s (%d records)",
-                logits_dir,
-                _manifest.get("n_valid", "?"),
-            )
+        logits_src = args.teacher_logits_dir
+        logits_is_s3 = logits_src.startswith("s3://")
+        if logits_is_s3:
+            import boto3  # noqa: PLC0415
+
+            _s3_parts = logits_src[5:].split("/", 1)
+            logits_s3_bucket = _s3_parts[0]
+            logits_s3_prefix = _s3_parts[1].rstrip("/") if len(_s3_parts) > 1 else ""
+            logits_s3_client = boto3.client("s3")
+            try:
+                resp = logits_s3_client.get_object(
+                    Bucket=logits_s3_bucket,
+                    Key=f"{logits_s3_prefix}/manifest.json",
+                )
+                _manifest = json.loads(resp["Body"].read())
+                logger.info(
+                    "Using precomputed teacher logits from %s (%d records)",
+                    logits_src,
+                    _manifest.get("n_valid", "?"),
+                )
+            except Exception:
+                logger.info("Using precomputed teacher logits from %s", logits_src)
         else:
-            logger.info("Using precomputed teacher logits from %s", logits_dir)
+            logits_dir = Path(logits_src)
+            manifest_path = logits_dir / "manifest.json"
+            if manifest_path.exists():
+                with open(manifest_path) as f:
+                    _manifest = json.load(f)
+                logger.info(
+                    "Using precomputed teacher logits from %s (%d records)",
+                    logits_dir,
+                    _manifest.get("n_valid", "?"),
+                )
+            else:
+                logger.info("Using precomputed teacher logits from %s", logits_dir)
 
     # --- Device ---
     device = torch.device(get_best_device())
@@ -671,12 +703,19 @@ def main() -> None:  # noqa: C901
     for _tmp in ckpt_dir.glob("*.pt.tmp"):
         _tmp.unlink()
 
-    # --- Resume from checkpoint ---
+    # --- Resume from checkpoint (local first, then MLflow/S3) ---
     start_step = 0
     ckpt_files = sorted(
         (p for p in ckpt_dir.glob("ckpt-[0-9]*.pt") if "-emergency" not in p.name),
         key=lambda p: int(p.stem.split("-")[1]),
     )
+    if not ckpt_files and not args.smoke_test and mlflow_ok:
+        mlflow_ckpt = mlflow_download_latest_checkpoint(
+            args.experiment_name, ckpt_dir
+        )
+        if mlflow_ckpt is not None:
+            ckpt_files = [mlflow_ckpt]
+            logger.info("Downloaded checkpoint from MLflow: %s", mlflow_ckpt)
     if ckpt_files and not args.smoke_test:
         latest = ckpt_files[-1]
         logger.info("Resuming from checkpoint: %s", latest)
@@ -705,22 +744,57 @@ def main() -> None:  # noqa: C901
 
             # --- Load or compute teacher logits ---
             if use_precomputed:
-                cache_path = logits_dir / f"{record_idx:06d}.pt"
-                if not cache_path.exists():
-                    skipped += 1
-                    if skipped <= 5 or skipped % 50 == 0:
-                        logger.info(
-                            "Step %d skipped (no precomputed logits at %s, total skipped=%d)",
-                            step,
-                            cache_path,
-                            skipped,
+                filename = f"{record_idx:06d}.pt"
+                if logits_is_s3:
+                    try:
+                        obj = logits_s3_client.get_object(
+                            Bucket=logits_s3_bucket,
+                            Key=f"{logits_s3_prefix}/{filename}",
                         )
-                    continue
-                cached = torch.load(cache_path, map_location="cpu", weights_only=True)
-                teacher_logits = cached["logits"]
+                        cached = torch.load(
+                            io.BytesIO(obj["Body"].read()),
+                            map_location="cpu",
+                            weights_only=True,
+                        )
+                    except logits_s3_client.exceptions.NoSuchKey:
+                        skipped += 1
+                        if skipped <= 5 or skipped % 50 == 0:
+                            logger.info(
+                                "Step %d skipped (no precomputed logits at s3://.../%s, total skipped=%d)",
+                                step,
+                                filename,
+                                skipped,
+                            )
+                        continue
+                else:
+                    cache_path = logits_dir / filename
+                    if not cache_path.exists():
+                        skipped += 1
+                        if skipped <= 5 or skipped % 50 == 0:
+                            logger.info(
+                                "Step %d skipped (no precomputed logits at %s, total skipped=%d)",
+                                step,
+                                cache_path,
+                                skipped,
+                            )
+                        continue
+                    cached = torch.load(cache_path, map_location="cpu", weights_only=True)
                 answer_start: int = int(cached["answer_start"])
                 seq_len: int = int(cached["seq_len"])
                 logit_start = max(0, answer_start - 1)
+                if "logits" in cached:
+                    teacher_logits = cached["logits"]
+                    del cached
+                else:
+                    tv = cached["top_values"]
+                    ti = cached["top_indices"].long()
+                    vs = int(cached["vocab_size"])
+                    del cached
+                    teacher_logits = torch.full(
+                        (1, tv.shape[0], vs), -1e4, dtype=tv.dtype
+                    )
+                    teacher_logits[0].scatter_(1, ti, tv)
+                    del tv, ti
             else:
                 answer_start = len(
                     tokenizer(
@@ -800,10 +874,12 @@ def main() -> None:  # noqa: C901
                         teacher_logits = teacher_logits[:, logit_start:, :].to("cpu")
                     else:
                         teacher_logits = teacher_logits.to("cpu")
+                    gc.collect()
                     torch.cuda.empty_cache()
                 else:
                     if answer_start < seq_len:
                         teacher_logits = teacher_logits[:, logit_start:, :].clone()
+                    gc.collect()
                     torch.cuda.empty_cache()
 
             # Student forward: base + hypernetwork-generated LoRA
@@ -814,6 +890,7 @@ def main() -> None:  # noqa: C901
                     use_cache=False,
                 ).logits
             del teacher_inputs
+            gc.collect()
             torch.cuda.empty_cache()
 
             # Slice student logits to match the teacher answer span
@@ -855,7 +932,8 @@ def main() -> None:  # noqa: C901
 
             # Free graph-connected tensors to prevent cross-step accumulation
             del features, attn_mask, lora_dict, student_logits
-            del teacher_logits, loss
+            del teacher_logits, loss, metrics
+            gc.collect()
             torch.cuda.empty_cache()
 
             # Checkpoint (atomic write, every step during warmup)
@@ -869,10 +947,16 @@ def main() -> None:  # noqa: C901
                 ckpt_path = ckpt_dir / f"ckpt-{step}.pt"
                 _save_atomic(ckpt_path, _build_ckpt_state(step))
                 logger.info("Checkpoint saved: %s", ckpt_path)
+                gc.collect()
+                torch.cuda.empty_cache()
                 if not in_warmup:
                     _prune_checkpoints()
-                if mlflow_ok:
-                    mlflow.log_artifact(str(ckpt_path))
+                should_upload = (
+                    step % args.checkpoint_every == 0
+                    or step == num_steps
+                )
+                if mlflow_ok and should_upload:
+                    mlflow_log_checkpoint(str(ckpt_path))
 
             if _shutdown[0]:
                 logger.warning("Shutting down after step %d (SIGTERM)", step)
@@ -893,11 +977,14 @@ def main() -> None:  # noqa: C901
         raise
     except Exception as exc:
         logger.error("Training failed at step %d: %s", step, exc)
-        if step > start_step:
+        is_oom = isinstance(exc, torch.cuda.OutOfMemoryError)
+        if step > start_step and not is_oom:
             _save_atomic(
                 ckpt_dir / f"ckpt-{step}-emergency.pt",
                 _build_ckpt_state(step),
             )
+        elif is_oom:
+            logger.warning("Skipping emergency checkpoint (GPU OOM)")
         if mlflow_ok:
             mlflow.log_metrics({"failed_at_step": step}, step=step)
             _log_failure(exc)
@@ -917,7 +1004,8 @@ def main() -> None:  # noqa: C901
     logger.info("Final checkpoint: %s", final_ckpt)
 
     if mlflow_ok:
-        mlflow.log_artifact(str(final_ckpt))
+        mlflow_log_checkpoint(str(final_ckpt))
+        mlflow_log_checkpoint(str(final_ckpt), artifact_path="")
         mlflow.log_metrics(
             {
                 "final_loss": final_loss,
