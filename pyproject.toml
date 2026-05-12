@@ -47,6 +47,9 @@ dependencies = [
     "evaluation",
     "events-py",
     "corpus-producer",
+    "igraph>=1.0.0",
+    "vllm>=0.20.1",
+    "sentence-transformers>=5.4.1",
 ]
 
 [project.optional-dependencies]
@@ -55,6 +58,13 @@ gpu = [
     "trl>=0.16.0",
     "flash-attn>=2.8.0",
     "flash-attn-3>=3.0.0",
+    # Mamba-block fast kernels for Qwen3.5's hybrid linear-attn layers.
+    # Without these, the model falls back to the slow torch implementation
+    # that's 2-5× slower for inference (matters a lot for benchmarking).
+    # These compile from source against our cu130 torch — see
+    # ``no-build-isolation-package`` below for the build-environment fix.
+    "causal-conv1d>=1.6.0",
+    "flash-linear-attention>=0.1.0",
 ]
 eval = [
     "evalplus>=0.3.0",
@@ -69,9 +79,13 @@ dev = [
     "ruff>=0.14.8",
     "aioresponses>=0.7.8",
     "mlflow>=3.8.1",
+    "boto3>=1.35.0",
     "pytest-xdist>=3.8.0",
     "requests-mock>=1.12.1",
     "pandas-stubs>=3.0.0.260204",
+    "code-review-graph>=2.3.2",
+    "codegraph>=1.2.0",
+    "sagemaker>=2.232.0",
 ]
 
 [tool.uv.sources]
@@ -107,7 +121,15 @@ members = [
 ]
 
 [tool.uv]
-no-build-isolation-package = ["setuptools"]
+# Mamba kernels (causal-conv1d, flash-linear-attention) compile from source
+# and would otherwise pull a CUDA-12.8 torch into the build sandbox, hitting
+# the ``CUDA_MISMATCH_MESSAGE`` against our system's CUDA 13. With build
+# isolation off, they compile against our actual cu130 torch and succeed.
+no-build-isolation-package = [
+    "setuptools",
+    "causal-conv1d",
+    "flash-linear-attention",
+]
 
 [tool.ruff]
 target-version = "py312"
@@ -249,11 +271,13 @@ module = [
     "run_training_hpo",
     "pandas",
     "pandas.*",
+    "sagemaker",
+    "sagemaker.*",
 ]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["services", "libs", "tests"]
+testpaths = ["services", "libs", "tests", "scripts/paper"]
 norecursedirs = ["site", "docs", ".venv", "venv", ".uv_cache", "node_modules", ".git"]
 markers = [
     "e2e: end-to-end API workflow tests",
@@ -272,6 +296,7 @@ filterwarnings = [
     "ignore:`torch.jit.script_method` is deprecated:DeprecationWarning",
 ]
 pythonpath = [
+    ".",
     "services/api-service/src",
     "services/evolution-svc/src",
     "services/rune-agent/src",

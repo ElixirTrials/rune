@@ -44,6 +44,10 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
     except ImportError:
         return False
 
+    # sagemaker-mlflow plugin unconditionally claims in_context()=True and
+    # then fails to parse non-ARN tracking URIs → noisy IndexError warnings.
+    logging.getLogger("mlflow.tracking.request_header.registry").setLevel(logging.ERROR)
+
     # If a parent harness (e.g. the HPO wrapper at run_training_hpo.py:701)
     # already started a run, respect the URI it was started against.
     # Re-setting the tracking URI here would orphan that run because MLflow
@@ -61,7 +65,11 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
 
     uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(uri)
-    mlflow.set_experiment(experiment_name)
+    try:
+        mlflow.set_experiment(experiment_name)
+    except Exception as exc:
+        logger.warning("MLflow tracking server unreachable at %s: %s", uri, exc)
+        return False
     logger.info("MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name)
     return True
 
@@ -102,6 +110,82 @@ def mlflow_log_artifact(path: str) -> None:
         logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
 
 
+def mlflow_log_checkpoint(path: str, artifact_path: str = "checkpoints") -> None:
+    """Log a checkpoint file to MLflow under a structured artifact path."""
+    try:
+        import mlflow  # noqa: PLC0415
+
+        mlflow.log_artifact(path, artifact_path=artifact_path)
+    except Exception:  # noqa: BLE001
+        logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
+
+
+def mlflow_download_latest_checkpoint(
+    experiment_name: str, dest_dir: Path
+) -> Path | None:
+    """Download the latest checkpoint from the MLflow experiment's artifact store.
+
+    Searches all finished/running runs in the experiment for checkpoint
+    artifacts, picks the run with the highest step, and downloads the
+    checkpoint to ``dest_dir``.
+
+    Returns the local path to the downloaded checkpoint, or None if no
+    checkpoint was found.
+    """
+    try:
+        import mlflow  # noqa: PLC0415
+        from mlflow.tracking import MlflowClient  # noqa: PLC0415
+
+        client = MlflowClient()
+        experiment = client.get_experiment_by_name(experiment_name)
+        if experiment is None:
+            logger.debug("MLflow experiment %r not found", experiment_name)
+            return None
+
+        runs = client.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            order_by=["attributes.start_time DESC"],
+            max_results=10,
+        )
+
+        for run in runs:
+            artifacts = client.list_artifacts(run.info.run_id, path="checkpoints")
+            ckpt_artifacts = [a for a in artifacts if a.path.endswith(".pt")]
+            if not ckpt_artifacts:
+                continue
+
+            def _step_from_path(a: Any) -> int:
+                name = Path(a.path).stem
+                parts = name.split("-")
+                try:
+                    return int(parts[1]) if len(parts) >= 2 else 0
+                except ValueError:
+                    return 0
+
+            best = sorted(ckpt_artifacts, key=_step_from_path)[-1]
+            local_path = dest_dir / Path(best.path).name
+            logger.info(
+                "Downloading checkpoint from MLflow run %s: %s",
+                run.info.run_id,
+                best.path,
+            )
+            mlflow.artifacts.download_artifacts(
+                run_id=run.info.run_id,
+                artifact_path=best.path,
+                dst_path=str(dest_dir),
+            )
+            downloaded = dest_dir / best.path
+            if downloaded != local_path:
+                downloaded.rename(local_path)
+            return local_path
+
+        logger.debug("No checkpoint artifacts found in experiment %r", experiment_name)
+        return None
+    except Exception:  # noqa: BLE001
+        logger.debug("mlflow_download_latest_checkpoint failed", exc_info=True)
+        return None
+
+
 def mlflow_log_output_artifacts(output_dir: str) -> None:
     """Log the saved adapter's safetensors + config.json to MLflow, if present."""
     adapter_safetensors = Path(output_dir) / "adapter_model.safetensors"
@@ -110,6 +194,24 @@ def mlflow_log_output_artifacts(output_dir: str) -> None:
         mlflow_log_artifact(str(adapter_safetensors))
     if adapter_config.exists():
         mlflow_log_artifact(str(adapter_config))
+
+
+def _log_failure(exc: BaseException) -> None:
+    """Record an exception in the active MLflow run (tags + FAILED status)."""
+    import traceback  # noqa: PLC0415
+
+    try:
+        import mlflow  # noqa: PLC0415
+
+        if mlflow.active_run() is None:
+            return
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        mlflow.set_tag("error_type", type(exc).__qualname__)
+        mlflow.set_tag("error_message", str(exc)[:250])
+        mlflow.log_text(tb, "error_traceback.txt")
+        mlflow.end_run(status="FAILED")
+    except Exception:  # noqa: BLE001
+        logger.debug("_log_failure: could not record error in MLflow", exc_info=True)
 
 
 @contextmanager
@@ -148,5 +250,8 @@ def mlflow_run(
     try:
         mlflow_log_params(params)
         yield
+    except BaseException as exc:
+        _log_failure(exc)
+        raise
     finally:
         mlflow.end_run()

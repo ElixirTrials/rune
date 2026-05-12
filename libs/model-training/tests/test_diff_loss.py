@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -249,28 +249,34 @@ class TestDiffWeightedDataCollator:
         self,
         n: int = 1,
         include_pre_post: bool = True,
-        pre_code: str = "x = 1\n",
-        post_code: str = "x = 2\n",
+        pre_codes: list[str] | None = None,
+        post_codes: list[str] | None = None,
     ) -> list[dict]:
+        if pre_codes is None:
+            pre_codes = ["x = 1\n"]
+        if post_codes is None:
+            post_codes = ["x = 2\n"]
         feats = []
         for _ in range(n):
             f: dict = {"text": "hello"}
             if include_pre_post:
-                f["pre_code"] = pre_code
-                f["post_code"] = post_code
+                f["pre_codes"] = list(pre_codes)
+                f["post_codes"] = list(post_codes)
             feats.append(f)
         return feats
 
-    def test_collator_prefers_hunk_path_when_pre_post_present(self) -> None:
-        """When features have pre/post AND tokenizer is set, hunk path is used."""
-        import torch  # noqa: F401
+    def test_collator_uses_hunk_path_when_per_turn_lists_present(self) -> None:
+        """Per-turn lists + tokenizer → hunk path is used and loss_weights is set."""
+        import torch
         from model_training.diff_loss import DiffWeightedDataCollator
 
+        # Single-turn span: labels mark positions 1-2 as assistant.
         input_ids = [[1, 2, 3]]
         labels = [[IGNORE_INDEX, 2, 3]]
         inner = _make_inner_collator(input_ids, labels)
 
         post_code = "x = 2\n"
+        # Tokenizer returns post_input_ids=[2, 3] which matches positions 1-2.
         tok = _make_mock_tokenizer(
             post_code,
             token_ids=[2, 3],
@@ -278,28 +284,43 @@ class TestDiffWeightedDataCollator:
         )
 
         collator = DiffWeightedDataCollator(inner, tokenizer=tok)
-        features = self._make_features(n=1, pre_code="x = 1\n", post_code=post_code)
+        features = self._make_features(
+            n=1, pre_codes=["x = 1\n"], post_codes=[post_code]
+        )
 
-        with (
-            patch(
-                "model_training.diff_loss.compute_hunk_loss_weights",
-                wraps=__import__(
-                    "model_training.diff_loss", fromlist=["compute_hunk_loss_weights"]
-                ).compute_hunk_loss_weights,
-            ) as mock_hunk,
-            patch(
-                "model_training.diff_loss.compute_diff_loss_weights",
-                wraps=__import__(
-                    "model_training.diff_loss", fromlist=["compute_diff_loss_weights"]
-                ).compute_diff_loss_weights,
-            ) as mock_legacy,
-        ):
-            batch = collator(features)
+        batch = collator(features)
 
-        assert mock_hunk.called, "hunk path should have been used"
-        assert not mock_legacy.called, "legacy path should NOT have been used"
         assert "loss_weights" in batch
         assert batch["loss_weights"].shape == torch.Size([1, 3])
+        weights = batch["loss_weights"][0].tolist()
+        # Position 0: masked → 0.0
+        assert weights[0] == 0.0
+        # Positions 1-2: matched assistant tokens with non-zero offsets →
+        # changed_weight (default 1.0) or unchanged_weight (default 0.3).
+        assert weights[1] > 0.0
+        assert weights[2] > 0.0
+
+    def test_collator_accepts_legacy_singular_keys(self) -> None:
+        """Backward compat: pre_code/post_code strings are wrapped to length-1 lists."""
+        import torch
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        input_ids = [[1, 2, 3]]
+        labels = [[IGNORE_INDEX, 2, 3]]
+        inner = _make_inner_collator(input_ids, labels)
+        tok = _make_mock_tokenizer(
+            "x = 2\n", token_ids=[2, 3], offsets=[(0, 3), (3, 6)]
+        )
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [{"text": "hello", "pre_code": "x = 1\n", "post_code": "x = 2\n"}]
+
+        batch = collator(features)
+
+        assert "loss_weights" in batch
+        assert batch["loss_weights"].shape == torch.Size([1, 3])
+        # Should have produced non-zero gradient signal.
+        assert batch["loss_weights"][0, 1:].sum().item() > 0.0
 
     def test_collator_falls_back_on_missing_pre_post(
         self, caplog: pytest.LogCaptureFixture
@@ -331,9 +352,235 @@ class TestDiffWeightedDataCollator:
         assert weights[1] == 1.0, "labeled token should get 1.0"
         assert weights[2] == 1.0, "labeled token should get 1.0"
         assert any(
-            "pre_code/post_code" in rec.message or "fallback" in rec.message.lower()
+            "pre_codes/post_codes" in rec.message or "fallback" in rec.message.lower()
             for rec in caplog.records
         ), "expected a fallback warning in logs"
+
+    def test_collator_identity_fallback_when_post_too_long_for_span(self) -> None:
+        """RCA-5 H2 regression guard: when post_input_ids is longer than the
+        assistant span (legacy path's `n_post > n_seq` failure mode), the
+        per-turn alignment must fall back to identity weights for that span
+        instead of zeroing every label, otherwise the entire batch's denom
+        collapses to 0 and the next training step has no gradient signal."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # 4-token sequence with a 2-token assistant span at positions 2-3.
+        input_ids = [[1, 2, 9, 9]]
+        labels = [[IGNORE_INDEX, IGNORE_INDEX, 9, 9]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        # Tokenizer returns 5 post_input_ids — longer than the 2-token span,
+        # so subsequence search can't fit. This is the truncation-overflow
+        # case that previously zeroed every weight in the batch.
+        tok = _make_mock_tokenizer(
+            "long post code that overflows the span",
+            token_ids=[100, 101, 102, 103, 104],
+            offsets=[(0, 5), (5, 10), (10, 15), (15, 20), (20, 25)],
+        )
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["before"],
+                "post_codes": ["long post code that overflows the span"],
+            }
+        ]
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        # Span tokens (positions 2-3) must get identity weight, not zero.
+        assert weights[2] == 1.0, "span fallback must give labeled tokens weight 1.0"
+        assert weights[3] == 1.0, "span fallback must give labeled tokens weight 1.0"
+        assert weights[0] == 0.0
+        assert weights[1] == 0.0
+        # Most importantly: denom > 0 so the loss function gets gradient signal.
+        denom = sum(w for w, lab in zip(weights, labels[0]) if lab != IGNORE_INDEX)
+        assert denom > 0.0, "RCA-5 H2: denom must be > 0 even on alignment failure"
+
+    def test_keep_end_alignment_offsets_pre_post_to_surviving_turns(self) -> None:
+        """With ``truncation_mode='keep_end'``, surviving spans are the *last* K turns.
+
+        Regression for Qodo "Truncation mode unvalidated": before the
+        fix, span 0 of the truncated sequence was paired with
+        pre_codes[0] / post_codes[0] regardless of truncation mode, so
+        keep_end runs were aligning the surviving-tail spans against the
+        wrong (front) turns.
+        """
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # Two surviving assistant spans at positions 1-2 and 4-5; three
+        # turns in pre_codes/post_codes — turn 0 was truncated away.
+        input_ids = [[10, 20, 21, 30, 40, 41]]
+        labels = [[IGNORE_INDEX, 20, 21, IGNORE_INDEX, 40, 41]]
+        inner = _make_inner_collator(input_ids, labels)
+        # Mark the inner collator as keep_end so the alignment uses the offset.
+        inner.truncation_mode = "keep_end"
+
+        # Tokenizer behaves differently per call to detect which post_code
+        # the collator pulled. Turn 1 (mid) returns ids matching span 0,
+        # turn 2 (last) returns ids matching span 1. Turn 0 returns
+        # something that would NOT match either span — so if the offset
+        # is wrong (idx=0 reads turn 0) both spans would fall back to
+        # identity and the assertion below would fail.
+        tok = MagicMock()
+        post_for_turn = {
+            "turn0": ([99, 99], [(0, 2), (2, 4)]),
+            "turn1": ([20, 21], [(0, 2), (2, 4)]),
+            "turn2": ([40, 41], [(0, 2), (2, 4)]),
+        }
+
+        def _tok_call(text: str, **_: Any) -> dict[str, Any]:
+            ids, offs = post_for_turn[text]
+            return {"input_ids": ids, "offset_mapping": offs}
+
+        tok.side_effect = _tok_call
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["pre0", "pre1", "pre2"],
+                "post_codes": ["turn0", "turn1", "turn2"],
+            }
+        ]
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        # Both surviving spans matched their *correct* post_code (turn1
+        # and turn2, not turn0): identity fallback would have put 1.0
+        # in but the diff-aware path with hunk_ranges=[] (pre==post for
+        # the test setup is unimportant — what matters is that match_pos
+        # >= 0, so the path proceeds past the bail-out at line 396).
+        # We simply assert the weights are not all-1.0 identity and that
+        # span 0 was matched against turn1's ids.
+        # turn1 is "pre1" -> "turn1" so hunk_ranges is computed; the
+        # token offsets (0,2),(2,4) intersect with the diff range, so
+        # weights default to changed_weight=1.0. Weight 1.0 is the
+        # identity value too — so we assert through the *counter*: the
+        # collator must have logged 2 successful spans aligned.
+        assert collator._spans_aligned == 2
+        assert collator._span_match_failures == 0
+        # Sanity: weights are non-zero in both spans.
+        assert weights[1] > 0.0 and weights[2] > 0.0
+        assert weights[4] > 0.0 and weights[5] > 0.0
+
+    def test_keep_start_alignment_unchanged(self) -> None:
+        """``truncation_mode='keep_start'`` preserves the original front-K pairing."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        input_ids = [[10, 20, 21, 30, 40, 41]]
+        labels = [[IGNORE_INDEX, 20, 21, IGNORE_INDEX, 40, 41]]
+        inner = _make_inner_collator(input_ids, labels)
+        inner.truncation_mode = "keep_start"
+
+        tok = MagicMock()
+        post_for_turn = {
+            "turn0": ([20, 21], [(0, 2), (2, 4)]),
+            "turn1": ([40, 41], [(0, 2), (2, 4)]),
+            "turn2": ([99, 99], [(0, 2), (2, 4)]),
+        }
+
+        def _tok_call(text: str, **_: Any) -> dict[str, Any]:
+            ids, offs = post_for_turn[text]
+            return {"input_ids": ids, "offset_mapping": offs}
+
+        tok.side_effect = _tok_call
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["pre0", "pre1", "pre2"],
+                "post_codes": ["turn0", "turn1", "turn2"],
+            }
+        ]
+        collator(features)
+
+        # Span 0 → turn0, span 1 → turn1 (front-K pairing).
+        assert collator._spans_aligned == 2
+        assert collator._span_match_failures == 0
+
+    def test_collator_per_turn_alignment_walks_multiple_spans(self) -> None:
+        """Multi-turn sequences: each contiguous assistant span is aligned
+        against its own (pre_k, post_k) — earlier turns get weighted, not
+        just the last one (the legacy bug)."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # Sequence: [user1, asst1, asst1, user2, asst2, asst2].
+        # Two assistant spans: positions 1-2 and 4-5.
+        input_ids = [[10, 20, 21, 30, 40, 41]]
+        labels = [[IGNORE_INDEX, 20, 21, IGNORE_INDEX, 40, 41]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        # Tokenizer returns matching 2-token sequences for both turns'
+        # post_codes; we point at the same ids to keep the mock simple but
+        # verify both spans get weighted.
+        tok = MagicMock()
+        tok.return_value = {
+            "input_ids": [20, 21],
+            "offset_mapping": [(0, 2), (2, 4)],
+        }
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=tok)
+        features = [
+            {
+                "pre_codes": ["a", "b"],
+                "post_codes": ["xx", "yy"],
+            }
+        ]
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        # First span (pos 1-2) matches post_input_ids → non-zero weights.
+        assert weights[1] > 0.0, "first assistant span must contribute to loss"
+        assert weights[2] > 0.0, "first assistant span must contribute to loss"
+        # Second span (pos 4-5): post_input_ids [20,21] doesn't match [40,41]
+        # → identity fallback → weight 1.0 (still gradient signal).
+        assert weights[4] == 1.0, "unmatched span falls back to identity"
+        assert weights[5] == 1.0, "unmatched span falls back to identity"
+        # Masked positions stay at 0.
+        assert weights[0] == 0.0
+        assert weights[3] == 0.0
+
+    def test_quality_score_multiplied_into_weights(self) -> None:
+        """quality_score=0.5 produces half the weights of quality_score=1.0."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        # Identity fallback path: no pre_codes/post_codes, no tokenizer.
+        # Labeled tokens get 1.0; quality_score scales them.
+        input_ids = [[10, 20, 30]]
+        labels = [[IGNORE_INDEX, 20, 30]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=None)
+        batch_full = collator([{"quality_score": 1.0}])
+        batch_half = collator([{"quality_score": 0.5}])
+
+        w_full = batch_full["loss_weights"][0].tolist()
+        w_half = batch_half["loss_weights"][0].tolist()
+
+        assert w_full[0] == 0.0  # IGNORE_INDEX → 0
+        assert w_full[1] == 1.0
+        assert w_full[2] == 1.0
+        assert w_half[0] == 0.0  # IGNORE_INDEX stays 0 after scaling
+        assert w_half[1] == pytest.approx(0.5)
+        assert w_half[2] == pytest.approx(0.5)
+
+    def test_quality_score_absent_defaults_to_one(self) -> None:
+        """Missing quality_score leaves weights unchanged."""
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        input_ids = [[10, 20, 30]]
+        labels = [[IGNORE_INDEX, 20, 30]]
+        inner = _make_inner_collator(input_ids, labels)
+
+        collator = DiffWeightedDataCollator(inner, tokenizer=None)
+        batch_explicit = collator([{"quality_score": 1.0}])
+        batch_absent = collator([{}])  # no quality_score key
+
+        assert batch_absent["loss_weights"][0].tolist() == pytest.approx(
+            batch_explicit["loss_weights"][0].tolist()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -661,6 +908,314 @@ class TestBuildDiffAwareSftTrainerIntegration:
         assert isinstance(recorded_kwargs["data_collator"], DiffWeightedDataCollator)
 
 
+# ---------------------------------------------------------------------------
+# _compute_step_metrics — per-step training observability
+# ---------------------------------------------------------------------------
+
+
+class TestComputeStepMetrics:
+    def test_returns_zero_metrics_on_all_masked_batch(self) -> None:
+        """No labeled tokens → all secondary metrics are 0; flag fires."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        logits = torch.randn(1, 4, 8)
+        labels = torch.full((1, 4), IGNORE_INDEX, dtype=torch.long)
+        weights = torch.zeros(1, 4)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        assert m["effective_token_count"] == 0.0
+        assert m["all_masked_batch"] == 1.0
+        assert m["token_accuracy"] == 0.0
+        assert m["entropy"] == 0.0
+        assert m["changed_loss"] == 0.0
+        assert m["context_loss"] == 0.0
+
+    def test_token_accuracy_on_known_logits(self) -> None:
+        """Argmax-correct tokens contribute to accuracy; masked do not."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        # Vocab=3. Set up logits so argmax at each shifted position is
+        # deterministic, then label half correctly and half wrong.
+        logits = torch.zeros(1, 4, 3)
+        logits[0, 0, 1] = 5.0  # predicts label[1]=1 → correct
+        logits[0, 1, 0] = 5.0  # predicts label[2]=0; we set label[2]=2 → wrong
+        logits[0, 2, 2] = 5.0  # predicts label[3]=2 → correct
+        labels = torch.tensor([[IGNORE_INDEX, 1, 2, 2]])
+        weights = torch.ones(1, 4)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        # Three labeled positions after shift; two correct.
+        assert m["token_accuracy"] == pytest.approx(2.0 / 3.0)
+        assert m["all_masked_batch"] == 0.0
+
+    def test_changed_context_split_by_weight_midpoint(self) -> None:
+        """Changed/context per-token loss split by weight midpoint."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        logits = torch.randn(1, 4, 8)
+        labels = torch.tensor([[IGNORE_INDEX, 1, 2, 3]])
+        # weight 1.0 → changed (>= midpoint 0.65); 0.3 → context.
+        weights = torch.tensor([[0.0, 1.0, 0.3, 1.0]])
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        # 2 changed tokens, 1 context token, 3 labeled.
+        assert m["changed_token_frac"] == pytest.approx(2.0 / 3.0)
+        # Both losses should be > 0 (random logits, label != argmax in general).
+        assert m["changed_loss"] > 0.0
+        assert m["context_loss"] > 0.0
+
+    def test_identity_weights_collapse_context_to_zero(self) -> None:
+        """changed == unchanged → all labeled tokens count as changed."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        logits = torch.randn(1, 4, 8)
+        labels = torch.tensor([[IGNORE_INDEX, 1, 2, 3]])
+        weights = torch.ones(1, 4)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=1.0
+        )
+        assert m["changed_token_frac"] == 1.0
+        assert m["context_loss"] == 0.0
+        assert m["context_token_acc"] == 0.0
+        assert m["context_entropy"] == 0.0
+
+    def test_chunked_entropy_matches_single_shot(self) -> None:
+        """Chunked entropy == straight log_softmax entropy on the labeled positions.
+
+        Guards the chunked path against numerical drift: the production
+        loop walks labeled positions in 256-token chunks, but the metric
+        must match what a single-shot ``log_softmax`` would have produced.
+        """
+        import torch
+        import torch.nn.functional as F  # noqa: N812
+        from model_training.diff_loss import _compute_step_metrics
+
+        torch.manual_seed(0)
+        # Small enough to fit a single softmax for the reference.
+        logits = torch.randn(2, 6, 32)
+        labels = torch.tensor(
+            [
+                [IGNORE_INDEX, 1, 2, IGNORE_INDEX, 3, 4],
+                [IGNORE_INDEX, 5, IGNORE_INDEX, 6, 7, 8],
+            ]
+        )
+        weights = torch.ones_like(labels, dtype=torch.float32)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=1.0
+        )
+
+        # Reference: full log_softmax over the whole shifted tensor, then
+        # reduce only the labeled positions (matching the production
+        # semantic).
+        shift_logits = logits[:, :-1, :]
+        shift_labels = labels[:, 1:]
+        ref_lp = F.log_softmax(shift_logits.float(), dim=-1)
+        ref_ent = -(ref_lp.exp() * ref_lp).sum(dim=-1)
+        label_mask = (shift_labels != IGNORE_INDEX).float()
+        n_labeled = label_mask.sum().item()
+        ref_mean = (ref_ent * label_mask).sum().item() / n_labeled
+
+        assert m["entropy"] == pytest.approx(ref_mean, abs=1e-5)
+
+    def test_chunked_entropy_handles_more_than_chunk_size_labeled(self) -> None:
+        """Cross the entropy_chunk_size=256 boundary so the loop iterates ≥2x.
+
+        With 1×400×32 logits and every position labeled, the chunked loop
+        must produce the same mean as a single-shot reduction. This is
+        the regression test for the OOM fix — without chunking this case
+        was fine on CPU but blew up on multi-turn L4 batches at vocab
+        151k. Here we just assert correctness when n_labeled > 256.
+        """
+        import torch
+        import torch.nn.functional as F  # noqa: N812
+        from model_training.diff_loss import _compute_step_metrics
+
+        torch.manual_seed(1)
+        seq_len = 400
+        vocab = 32
+        logits = torch.randn(1, seq_len, vocab)
+        # Label every position so n_labeled (after shift) = seq_len - 1 = 399 > 256.
+        labels = torch.randint(0, vocab, (1, seq_len))
+        # Position 0 is dropped by the shift, so labeling it doesn't matter,
+        # but we make sure the rest are real labels (not IGNORE_INDEX).
+        weights = torch.ones_like(labels, dtype=torch.float32)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=1.0
+        )
+
+        shift_logits = logits[:, :-1, :]
+        ref_lp = F.log_softmax(shift_logits.float(), dim=-1)
+        ref_ent = -(ref_lp.exp() * ref_lp).sum(dim=-1)
+        # All shifted positions are labeled.
+        ref_mean = ref_ent.mean().item()
+
+        # 399 > 256 forces ≥2 chunk iterations.
+        assert seq_len - 1 > 256
+        assert m["entropy"] == pytest.approx(ref_mean, abs=1e-5)
+
+    def test_chunked_entropy_zero_labeled_skips_loop(self) -> None:
+        """No labeled positions → entropy stays 0 without entering the chunk loop."""
+        import torch
+        from model_training.diff_loss import _compute_step_metrics
+
+        # All-IGNORE_INDEX → labeled_indices is empty; the chunk loop must
+        # not run and entropy must be 0.0 (matches the all-masked branch).
+        logits = torch.randn(1, 8, 16)
+        labels = torch.full((1, 8), IGNORE_INDEX, dtype=torch.long)
+        weights = torch.zeros(1, 8)
+
+        m = _compute_step_metrics(
+            logits, labels, weights, changed_weight=1.0, unchanged_weight=0.3
+        )
+        assert m["entropy"] == 0.0
+        assert m["all_masked_batch"] == 1.0
+
+
+class TestDiffAwareTrainerStepMetrics:
+    """Verify metrics are accumulated in compute_loss and flushed via log()."""
+
+    def _stub_trainer(self) -> Any:
+        """Minimal DiffAwareSFTTrainer subclass that bypasses SFTTrainer init."""
+        from model_training.diff_loss import DiffAwareSFTTrainer
+
+        class _Stub(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                self._diff_metric_sums = {}
+                self._diff_metric_count = 0
+                self._diff_changed_weight = 1.0
+                self._diff_unchanged_weight = 0.3
+                self.logged: list[dict[str, float]] = []
+
+            def log(  # type: ignore[override]
+                self,
+                logs: dict[str, float],
+                start_time: float | None = None,
+            ) -> None:
+                # Replay the metric-flush logic without calling parent
+                # (which would need full Trainer state).
+                if self._diff_metric_count > 0:
+                    count = self._diff_metric_count
+                    for key, total in self._diff_metric_sums.items():
+                        logs[f"train/{key}"] = total / count
+                    if "train/all_masked_batch" in logs:
+                        logs["train/all_masked_batch_frac"] = logs.pop(
+                            "train/all_masked_batch"
+                        )
+                    self._diff_metric_sums = {}
+                    self._diff_metric_count = 0
+                self.logged.append(dict(logs))
+
+        return _Stub()
+
+    def test_compute_loss_accumulates_and_log_flushes(self) -> None:
+        """Two micro-batches → log() emits the mean of accumulated metrics."""
+        import torch
+
+        trainer = self._stub_trainer()
+
+        class _Out:
+            def __init__(self, logits: Any) -> None:
+                self.logits = logits
+
+        def _model(**kw: Any) -> Any:
+            return _Out(torch.randn(1, 4, 8))
+
+        for _ in range(2):
+            inputs = {
+                "input_ids": torch.tensor([[1, 2, 3, 4]]),
+                "labels": torch.tensor([[IGNORE_INDEX, 1, 2, 3]]),
+                "loss_weights": torch.tensor([[0.0, 1.0, 0.3, 1.0]]),
+            }
+            trainer.compute_loss(_model, inputs)
+
+        assert trainer._diff_metric_count == 2
+        assert "effective_token_count" in trainer._diff_metric_sums
+
+        trainer.log({"loss": 1.0})
+        # After log, accumulator is reset and emitted dict carries train/* keys.
+        assert trainer._diff_metric_count == 0
+        emitted = trainer.logged[-1]
+        assert "train/token_accuracy" in emitted
+        assert "train/changed_loss" in emitted
+        assert "train/context_loss" in emitted
+        assert "train/effective_token_count" in emitted
+        assert "train/all_masked_batch_frac" in emitted
+        assert emitted["train/all_masked_batch_frac"] == 0.0
+
+    def test_log_emits_all_masked_frac_when_every_batch_is_zero(self) -> None:
+        """When every micro-batch is all-masked, the frac is 1.0."""
+        import torch
+
+        trainer = self._stub_trainer()
+
+        class _Out:
+            def __init__(self, logits: Any) -> None:
+                self.logits = logits
+
+        def _model(**kw: Any) -> Any:
+            return _Out(torch.randn(1, 4, 8))
+
+        # Two all-masked batches.
+        for _ in range(2):
+            inputs = {
+                "input_ids": torch.tensor([[1, 2, 3, 4]]),
+                "labels": torch.full((1, 4), IGNORE_INDEX, dtype=torch.long),
+                "loss_weights": torch.zeros(1, 4),
+            }
+            trainer.compute_loss(_model, inputs)
+
+        trainer.log({"loss": 1.0})
+        emitted = trainer.logged[-1]
+        assert emitted["train/all_masked_batch_frac"] == 1.0
+
+    def test_compute_loss_metrics_failure_does_not_break_training(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bug in metrics computation must not kill the loss path."""
+        import torch
+        from model_training import diff_loss as dl_module
+
+        trainer = self._stub_trainer()
+
+        # Force the metrics helper to raise.
+        def _boom(*a: Any, **kw: Any) -> dict[str, float]:
+            raise RuntimeError("metrics helper exploded")
+
+        monkeypatch.setattr(dl_module, "_compute_step_metrics", _boom)
+
+        class _Out:
+            def __init__(self, logits: Any) -> None:
+                self.logits = logits
+
+        def _model(**kw: Any) -> Any:
+            return _Out(torch.randn(1, 4, 8))
+
+        inputs = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "labels": torch.tensor([[IGNORE_INDEX, 1, 2, 3]]),
+            "loss_weights": torch.ones(1, 4),
+        }
+
+        # Must not raise.
+        loss = trainer.compute_loss(_model, inputs)
+        assert loss is not None
+        # Accumulator stayed empty because the helper raised.
+        assert trainer._diff_metric_count == 0
+
+
 def test_compute_weighted_loss_warns_on_all_masked_batch(caplog) -> None:
     """All-masked batches must emit a WARNING (was DEBUG, RCA-5 visibility gap)."""
     import torch
@@ -680,3 +1235,271 @@ def test_compute_weighted_loss_warns_on_all_masked_batch(caplog) -> None:
         "all-masked batch" in r.getMessage().lower() and r.levelno >= logging.WARNING
         for r in caplog.records
     ), "all-masked-batch warning not emitted at WARNING level"
+
+
+# ---------------------------------------------------------------------------
+# _find_post_in_span_or_suffix tests (Task 10 — suffix-match recovery)
+# ---------------------------------------------------------------------------
+
+
+class TestFindPostInSpanOrSuffix:
+    def test_strict_match_when_post_fits(self) -> None:
+        """post_input_ids fully present in span → returns (offset, 0)."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        # Span: [10, 20, 30, 40, 50], span_start=2, span_end=7
+        # (so span_ids = input_ids[2:7] = [30, 40, 50, 60, 70])
+        input_ids = [10, 20, 30, 40, 50, 60, 70, 80]
+        post_ids = [40, 50, 60]  # matches at local offset 1 inside span
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids, span_start=2, span_end=7, post_input_ids=post_ids
+        )
+        assert match_pos >= 0, "strict match must succeed"
+        assert prefix_truncated == 0
+        # Verify the match is correct: input_ids[2 + match_pos : 2 + match_pos + 3]
+        assert input_ids[2 + match_pos : 2 + match_pos + 3] == post_ids
+
+    def test_suffix_match_on_keep_end_truncation(self) -> None:
+        """keep_end truncation: post[k:] matches span prefix at span_start==0."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        # Simulate: post_ids has 20 tokens, but only the last 15 survived in span.
+        # span = input_ids[0:15]
+        suffix_len = 15
+        k = 5  # tokens truncated from the front
+        post_ids = list(range(100, 120))  # 20 tokens: [100..119]
+        span_ids = post_ids[k:]  # the surviving 15 tokens
+
+        # Build input_ids with span at position 0
+        input_ids = span_ids + [999, 998]  # some extra tokens after span
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids, span_start=0, span_end=suffix_len, post_input_ids=post_ids
+        )
+        assert prefix_truncated == k, (
+            f"expected k={k} truncated, got {prefix_truncated}"
+        )
+        assert match_pos == 0, "suffix match always anchors at span position 0"
+        # Verify the recovered suffix really matches
+        assert input_ids[0:suffix_len] == post_ids[k:]
+
+    def test_suffix_works_when_span_start_nonzero(self) -> None:
+        """Suffix recovery works regardless of span_start position."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        suffix_len = 15
+        k = 5
+        post_ids = list(range(100, 120))
+        span_ids = post_ids[k:]  # last 15 of post_ids
+
+        # Place span at position 3 (non-zero)
+        input_ids = [0, 1, 2] + span_ids + [999]
+        span_start = 3
+        span_end = 3 + suffix_len
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids,
+            span_start=span_start,
+            span_end=span_end,
+            post_input_ids=post_ids,
+        )
+        assert (match_pos, prefix_truncated) == (0, k), (
+            "suffix path should recover truncated post even when span_start != 0"
+        )
+
+    def test_rejects_short_suffix(self) -> None:
+        """Suffix that survives fewer than max(8, n_post // 4) tokens is rejected."""
+        from model_training.diff_loss import _find_post_in_span_or_suffix
+
+        # post has 40 tokens; min_suffix = max(8, 40//4) = 10
+        # Span holds only 5 of the post tokens — below threshold.
+        post_ids = list(range(200, 240))  # 40 tokens
+        surviving = 5  # < 10 = max(8, 40//4)
+        span_ids = post_ids[-surviving:]  # only 5 tokens survive
+
+        input_ids = span_ids + [999, 998]
+
+        match_pos, prefix_truncated = _find_post_in_span_or_suffix(
+            input_ids,
+            span_start=0,
+            span_end=surviving,
+            post_input_ids=post_ids,
+        )
+        assert (match_pos, prefix_truncated) == (-1, 0), (
+            "suffix shorter than min_suffix must not be accepted"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Integration tests through DiffWeightedDataCollator.__call__
+# ---------------------------------------------------------------------------
+
+
+class TestApplySpanWeightsSuffixRecovery:
+    """Tests that exercise the full collator path for suffix-match recovery."""
+
+    def _make_collator_with_span(
+        self,
+        span_token_ids: list[int],
+        post_ids: list[int],
+        post_offsets: list[tuple[int, int]],
+        prefix_len: int = 0,
+        pre_code: str = "before\n",
+        post_code: str = "after\n",
+    ) -> tuple[Any, Any]:
+        """Build a collator and features for a single-span sequence.
+
+        Returns (collator, features_list).
+
+        The sequence is span_token_ids; all positions are labeled (assistant).
+        span_start is always 0 in this helper (front of sequence).
+        """
+        import torch
+        from model_training.diff_loss import DiffWeightedDataCollator
+
+        seq = span_token_ids
+        # All positions are assistant (labeled)
+        labels = list(seq)
+
+        inner_ids = [seq]
+        inner_labels = [labels]
+
+        def _inner(features):
+            return {
+                "input_ids": torch.tensor(inner_ids),
+                "labels": torch.tensor(inner_labels),
+            }
+
+        _inner.truncation_mode = "keep_end"
+
+        tok = MagicMock()
+        tok.return_value = {
+            "input_ids": post_ids,
+            "offset_mapping": post_offsets,
+        }
+
+        collator = DiffWeightedDataCollator(_inner, tokenizer=tok)
+        features = [{"pre_codes": [pre_code], "post_codes": [post_code]}]
+        return collator, features
+
+    def test_recovers_truncated_post_via_suffix(self) -> None:
+        """Collator increments _span_truncated_recovered; weights are diff-based."""
+        # post_ids has 20 tokens; span only holds the last 15 (k=5 truncated).
+        k = 5
+        post_ids = list(range(50, 70))  # [50..69], 20 tokens
+        span_ids = post_ids[k:]  # [55..69], 15 tokens
+
+        # Offsets: make tokens 0..4 in post map to char range (0,10) and
+        # tokens 5..19 map to distinct non-zero ranges so hunk detection works.
+        post_offsets = [(i * 2, i * 2 + 2) for i in range(20)]
+
+        # pre_code / post_code: make a diff so hunk_ranges is non-empty
+        pre_code = "x = 1\n"
+        post_code = "x = 2\n"
+
+        collator, features = self._make_collator_with_span(
+            span_ids, post_ids, post_offsets, k, pre_code, post_code
+        )
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        assert collator._span_truncated_recovered == 1, (
+            "_span_truncated_recovered must be 1 after suffix recovery"
+        )
+        assert collator._span_match_failures == 0, (
+            "_span_match_failures must stay 0 on suffix success"
+        )
+        # At least some weights in the surviving body should be diff-weighted
+        # (not all identity 1.0), because hunk_ranges is non-empty.
+        non_identity = [w for w in weights if w not in (0.0, 1.0)]
+        assert len(non_identity) > 0, (
+            "suffix recovery must produce diff-based weights (not all identity)"
+        )
+
+    def test_genuine_failure_increments_match_failures(self) -> None:
+        """Random tokens with no matching suffix → _span_match_failures == 1."""
+        # span tokens completely different from post tokens — no match possible
+        span_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        post_ids = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111]
+        post_offsets = [(i, i + 1) for i in range(len(post_ids))]
+
+        collator, features = self._make_collator_with_span(
+            span_ids, post_ids, post_offsets
+        )
+
+        batch = collator(features)
+        weights = batch["loss_weights"][0].tolist()
+
+        assert collator._span_match_failures == 1, (
+            "genuine match failure must increment _span_match_failures"
+        )
+        assert collator._span_truncated_recovered == 0
+        # Identity fallback: all span positions get weight 1.0
+        assert all(w == 1.0 for w in weights), (
+            "identity fallback must set all span weights to 1.0"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Trainer log: diff_span_truncated_recovered counter
+# ---------------------------------------------------------------------------
+
+
+class TestLogEmitsTruncatedRecoveredCounter:
+    def _stub_trainer_with_collator(self) -> Any:
+        """DiffAwareSFTTrainer stub wired to a DiffWeightedDataCollator."""
+        from model_training.diff_loss import (
+            DiffAwareSFTTrainer,
+            DiffWeightedDataCollator,
+        )
+
+        # Build a minimal collator (inner collator is irrelevant for log tests)
+        collator = DiffWeightedDataCollator(MagicMock())
+        collator._span_truncated_recovered = 3  # pre-set a non-zero count
+
+        class _Stub(DiffAwareSFTTrainer):
+            def __init__(self) -> None:  # type: ignore[override]
+                self._diff_metric_sums = {}
+                self._diff_metric_count = 0
+                self._diff_changed_weight = 1.0
+                self._diff_unchanged_weight = 0.3
+                self.data_collator = collator
+                self.logged: list[dict[str, float]] = []
+
+            def log(  # type: ignore[override]
+                self,
+                logs: dict[str, float],
+                start_time: float | None = None,
+            ) -> None:
+                # Replicate the collator-counter block from the real log()
+                # without calling super() which needs full Trainer state.
+                c = getattr(self, "data_collator", None)
+                if c is not None and hasattr(c, "_spans_aligned"):
+                    logs["train/diff_spans_aligned"] = float(c._spans_aligned)
+                    logs["train/diff_span_match_failures"] = float(
+                        c._span_match_failures
+                    )
+                    logs["train/diff_span_no_post"] = float(c._span_no_post)
+                    logs["train/diff_span_all_zero_after_match"] = float(
+                        c._span_all_zero_after_match
+                    )
+                    if hasattr(c, "_span_truncated_recovered"):
+                        logs["train/diff_span_truncated_recovered"] = float(
+                            c._span_truncated_recovered
+                        )
+                self.logged.append(dict(logs))
+
+        return _Stub()
+
+    def test_log_emits_truncated_recovered_counter(self) -> None:
+        """log() must emit train/diff_span_truncated_recovered from the collator."""
+        trainer = self._stub_trainer_with_collator()
+        trainer.log({"loss": 0.5})
+        emitted = trainer.logged[-1]
+
+        assert "train/diff_span_truncated_recovered" in emitted, (
+            "train/diff_span_truncated_recovered must appear in log() output"
+        )
+        assert emitted["train/diff_span_truncated_recovered"] == 3.0

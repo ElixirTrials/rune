@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()  # noqa: E402
 
@@ -289,7 +289,7 @@ def test_phased_pipeline(tmpdir: str) -> None:
     print(f"  Base model: {MODEL_NAME}")
     print(f"  Project prompt: {len(project_prompt)} chars")
 
-    from rune_runner import run_phased_pipeline
+    from rune_runner import run_phased_pipeline  # type: ignore[import-not-found]
 
     result = asyncio.run(
         run_phased_pipeline(

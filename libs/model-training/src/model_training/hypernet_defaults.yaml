@@ -1,0 +1,37 @@
+# Default hypernetwork configuration aligned with Sakana D2L findings.
+# Source of truth for both runtime (d2l_config.py) and tests.
+
+# --- LoRA ---
+lora:
+  r: 8
+  alpha_multiplier: 2          # lora_alpha = r * alpha_multiplier
+  target_modules: ["down_proj"]
+  dropout: 0.0
+
+# --- Perceiver / Aggregator ---
+perceiver:
+  latent_size: 512
+  output_size: 512
+  n_latent_queries: 8
+  num_blocks: 1
+  num_self_attn_per_block: 0   # cross-attention only (Sakana D2L)
+  shared_weights: true
+  layer_to_layer: true         # shared perceiver applied per-layer
+  per_rank_gen: true           # produce per-rank output (required when lora r > 1)
+  num_latent_factor: 4
+
+# --- HyperLoRA head ---
+head:
+  num_pre_head_layers: 1
+  dropout_rate: 0.0
+  use_bias: true
+
+# --- Training ---
+training:
+  alpha: 0.999                  # 0.1% CE anchors argmax without distorting KL gradients
+  temperature: 1.0              # T=1.0 sharpens KL; validated in kd-a10-t10 experiment (top1=0.84)
+  lr: 0.0002
+  grad_clip: 1.0
+  warmup_steps: 10
+  max_length: 2048
+  activation_max_length: 512   # shorter context for perceiver activation extraction (output_hidden_states=True is memory-heavy)

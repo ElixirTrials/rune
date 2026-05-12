@@ -138,7 +138,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--max-seq-length",
         dest="max_length",
         type=int,
-        default=2048,
+        default=3072,
         help=(
             "Truncation length for SFT tokenization. Caps activation memory; "
             "the loss-step logits/attention scratch scales with seq_len."
@@ -182,6 +182,22 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="mlflow_tracking_uri",
         default=None,
         help="Overrides MLFLOW_TRACKING_URI env; defaults to sqlite:///./mlflow.db.",
+    )
+
+    # --- Eval ---
+    parser.add_argument(
+        "--eval-dataset",
+        dest="eval_dataset_path",
+        default=None,
+        help=(
+            "Path to a held-out JSONL of mined-pair records (same shape as "
+            "--dataset). When set, the trainer evaluates at the end of every "
+            "epoch and logs eval/loss to MLflow, so you can detect overfitting "
+            "and confirm generalisation rather than just memorisation. "
+            "Use a disjoint split — see scripts/_diag/eval_full.sh for the "
+            "post-hoc evaluator that gives the same numbers without per-epoch "
+            "evals if you forgot to set this at training time."
+        ),
     )
 
     # --- Task metadata + registry ---
@@ -244,6 +260,7 @@ def _resolve_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "override_lora_dropout": args.override_lora_dropout,
         "neftune_noise_alpha": args.neftune_noise_alpha,
         "max_length": args.max_length,
+        "eval_dataset_path": args.eval_dataset_path,
     }
 
 

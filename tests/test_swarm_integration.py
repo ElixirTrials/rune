@@ -11,8 +11,8 @@ from sqlmodel import create_engine
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from swarm import agent_supervisor, load_task_pool
-from swarm_workers import TrainingRequest
+from swarm import agent_supervisor, load_task_pool  # type: ignore[import-not-found]
+from swarm_workers import TrainingRequest  # type: ignore[import-not-found]
 
 SAMPLE_TASKS = [
     {

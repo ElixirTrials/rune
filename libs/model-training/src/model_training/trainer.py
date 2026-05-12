@@ -489,6 +489,8 @@ def _attach_assistant_masks(
     tokenizer: Any,
     *,
     preserve_columns: list[str] | None = None,
+    max_length: int | None = None,
+    truncation_mode: str = "keep_end",
 ) -> Any:
     """Pre-tokenize ``messages`` rows and attach ``assistant_masks``.
 
@@ -500,11 +502,20 @@ def _attach_assistant_masks(
     ``DataCollatorForLanguageModeling`` consumes ``assistant_masks`` from
     the batch at sft_trainer.py:179-180.
 
-    The diff-aware path passes ``preserve_columns=["pre_code", "post_code"]``
-    so :class:`~model_training.diff_loss.DiffWeightedDataCollator` still has
-    its hunk-weighting side-channels after pre-tokenization. Without this
-    preservation the diff path silently loses its weights AND its labels
-    (RCA-5 H2).
+    The diff-aware path passes ``preserve_columns=["pre_codes", "post_codes",
+    "quality_score"]`` so :class:`~model_training.diff_loss.DiffWeightedDataCollator`
+    still has its per-turn hunk-weighting side-channels and quality scaling
+    after pre-tokenization. Without this preservation the diff path silently
+    loses its weights AND its labels (RCA-5 H2).
+
+    When ``max_length`` is set the pre-tokenized ``input_ids`` and
+    ``assistant_masks`` are truncated up-front using ``truncation_mode``
+    (``keep_end`` by default, matching the diff-aware collator). After
+    truncation any row whose ``assistant_masks`` is all zero is dropped
+    rather than passed on to training — a row with no surviving assistant
+    tokens contributes nothing but a zero-grad batch and the
+    ``denom=0.000e+00`` warning from
+    :func:`~model_training.diff_loss._compute_weighted_loss`.
 
     Extracted from ``train_qlora`` to keep that function under the C901
     complexity threshold.
@@ -514,11 +525,37 @@ def _attach_assistant_masks(
     keep = set(preserve_columns or [])
     original_columns = list(dataset.column_names)
     columns_to_remove = [c for c in original_columns if c not in keep]
-    return dataset.map(
-        lambda ex: compute_assistant_masks(tokenizer, ex["messages"]),
+    pretokenized = dataset.map(
+        lambda ex: compute_assistant_masks(
+            tokenizer,
+            ex["messages"],
+            max_length=max_length,
+            truncation_mode=truncation_mode,
+        ),
         remove_columns=columns_to_remove,
         desc="Pre-tokenizing with assistant_masks",
     )
+
+    if max_length is None:
+        return pretokenized
+
+    n_before = len(pretokenized)
+    filtered = pretokenized.filter(
+        lambda ex: any(ex["assistant_masks"]),
+        desc="Dropping rows with no surviving assistant tokens",
+    )
+    dropped = n_before - len(filtered)
+    if dropped:
+        logger.warning(
+            "Dropped %d/%d rows whose assistant turns were entirely truncated "
+            "at max_length=%d (truncation_mode=%s). These rows would have "
+            "produced denom=0 zero-gradient batches.",
+            dropped,
+            n_before,
+            max_length,
+            truncation_mode,
+        )
+    return filtered
 
 
 def _build_training_dataset(
@@ -535,12 +572,13 @@ def _build_training_dataset(
     so this helper stays GPU-import-free at module level while still producing
     a real ``datasets.Dataset`` at call time.
 
-    When ``diff_aware_loss=True`` and ``dataset_path`` is set, ``pre_code`` and
-    ``post_code`` columns are attached alongside ``messages`` so the
-    :class:`~model_training.diff_loss.DiffWeightedDataCollator` hunk path can
-    compute line-level diff weights.  Trajectory-sourced datasets do not carry
-    pre/post context, so the collator will log-warn-once and fall back to the
-    legacy set-based path.
+    When ``diff_aware_loss=True`` and ``dataset_path`` is set, ``pre_codes``
+    and ``post_codes`` columns (one entry per assistant turn) are attached
+    alongside ``messages`` so the diff-aware collator
+    (:class:`~model_training.diff_loss.DiffWeightedDataCollator`) can align
+    hunks per-turn against the chat-templated sequence.
+    Trajectory-sourced datasets do not carry pre/post context, so the
+    collator will log-warn-once and fall back to identity weights.
     """
     from typing import Literal, cast  # noqa: PLC0415
 
@@ -566,8 +604,9 @@ def _build_training_dataset(
                 [
                     {
                         "messages": c,
-                        "pre_code": pp["pre_code"],
-                        "post_code": pp["post_code"],
+                        "pre_codes": pp["pre_codes"],
+                        "post_codes": pp["post_codes"],
+                        "quality_score": pp.get("quality_score", 1.0),
                     }
                     for c, pp in zip(conversations, pre_post)
                 ]
@@ -595,6 +634,7 @@ def _construct_sft_trainer(
     diff_aware_loss: bool,
     diff_changed_weight: float,
     diff_unchanged_weight: float,
+    eval_dataset: Any | None = None,
 ) -> Any:
     """Pick between vanilla SFTTrainer and the diff-aware subclass.
 
@@ -603,15 +643,25 @@ def _construct_sft_trainer(
     ``DiffAwareSFTTrainer`` and wraps its auto-built collator with
     :class:`~model_training.diff_loss.DiffWeightedDataCollator` so each
     batch carries a ``loss_weights`` tensor.
+
+    When ``eval_dataset`` is provided, both SFT branches forward it to the
+    underlying trainer so HF Trainer logs ``eval/loss`` (and friends) at
+    the cadence configured on ``args``. The non-diff path passes it
+    directly to ``SFTTrainer``; the diff-aware path threads it through
+    :func:`build_diff_aware_sft_trainer` so the same ``DiffWeightedDataCollator``
+    handles eval batches.
     """
     if not diff_aware_loss:
-        return sft_trainer_cls(
-            model=model,
-            args=args,
-            train_dataset=dataset,
-            peft_config=lora_config,
-            processing_class=tokenizer,
-        )
+        kwargs = {
+            "model": model,
+            "args": args,
+            "train_dataset": dataset,
+            "peft_config": lora_config,
+            "processing_class": tokenizer,
+        }
+        if eval_dataset is not None:
+            kwargs["eval_dataset"] = eval_dataset
+        return sft_trainer_cls(**kwargs)
 
     from model_training.diff_loss import (  # noqa: PLC0415
         build_diff_aware_sft_trainer,
@@ -626,6 +676,7 @@ def _construct_sft_trainer(
         changed_weight=diff_changed_weight,
         unchanged_weight=diff_unchanged_weight,
         tokenizer=tokenizer,
+        eval_dataset=eval_dataset,
     )
 
 
@@ -643,6 +694,7 @@ def _build_sft_config(
     neftune_noise_alpha: float | None,
     max_length: int | None = None,
     dataset_size: int | None = None,
+    has_eval_dataset: bool = False,
 ) -> Any:
     """Construct an SFTConfig with optional NEFTune support.
 
@@ -664,7 +716,13 @@ def _build_sft_config(
         "save_strategy": "no",
         "logging_steps": 1,
         "report_to": report_to,
-        "eval_strategy": "no",
+        # Eval at end of every epoch when an eval_dataset is provided, so
+        # MLflow records eval/loss per epoch. Otherwise leave at "no" so
+        # SFTTrainer doesn't try to call evaluate() with no dataset.
+        "eval_strategy": "epoch" if has_eval_dataset else "no",
+        # per_device_eval_batch_size is unused when eval_strategy="no" but
+        # explicit is better — same micro-batch size as training.
+        "per_device_eval_batch_size": 1,
         # assistant_only_loss=True triggers TRL's get_training_chat_template
         # pre-flight (sft_trainer.py:925), which requires {% generation %}
         # markers in the chat template. Qwen3.5's bundled template lacks them
@@ -802,7 +860,8 @@ def train_qlora(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
-    max_length: int = 2048,
+    max_length: int = 4096,
+    eval_dataset_path: str | None = None,
 ) -> str:
     """Train a QLoRA adapter from a recorded coding trajectory.
 
@@ -880,7 +939,15 @@ def train_qlora(
         max_length: SFT tokenizer truncation length. Caps activation
             memory; both the cross-entropy logits tensor and (with
             ``attn_implementation="eager"``) the materialised attention
-            matrix scale with this value. Defaults to ``2048``.
+            matrix scale with this value. Defaults to ``4096`` — picked
+            to fit the p75 of the mined-pairs token distribution; lower
+            values silently zero-grad on long-tail examples (RCA-5 H2).
+        eval_dataset_path: Optional path to a held-out JSONL of
+            mined-pair records (same shape as ``dataset_path``). When set,
+            the trainer evaluates at the end of each epoch and logs
+            ``eval/loss`` to MLflow. Use a disjoint split to detect
+            overfitting and confirm generalisation rather than just
+            memorisation.
 
     Returns:
         output_dir path where the adapter was saved.
@@ -957,16 +1024,67 @@ def train_qlora(
 
     if diff_aware_loss:
         # The diff path needs assistant_masks (for label masking via the
-        # inner DataCollatorForLanguageModeling) AND pre_code/post_code
-        # (for DiffWeightedDataCollator.hunk_path). Preserve the latter
-        # so we do not regress to RCA-5 H2 (zero gradient) or to identity
-        # weights (loss collapses to mean CE on assistant tokens only,
-        # ignoring hunks — still functional but defeats the purpose).
+        # inner DataCollatorForLanguageModeling) AND pre_codes/post_codes
+        # per-turn lists (for DiffWeightedDataCollator's per-span alignment).
+        # Preserve the latter so we do not regress to RCA-5 H2 (zero gradient)
+        # or to identity weights (loss collapses to mean CE on assistant
+        # tokens only, ignoring hunks — still functional but defeats the
+        # purpose).
+        #
+        # ``max_length`` is forwarded so we (a) avoid storing 50k-token rows
+        # the inner collator would slice anyway, and (b) drop rows whose
+        # entire assistant span sits past the cap *before* training sees
+        # them. ``keep_end`` matches the diff-aware collator default so the
+        # tail-pinning behaviour is consistent across pre-tokenization and
+        # batch collation.
         dataset = _attach_assistant_masks(
-            dataset, tokenizer, preserve_columns=["pre_code", "post_code"]
+            dataset,
+            tokenizer,
+            preserve_columns=["pre_codes", "post_codes", "quality_score"],
+            max_length=max_length,
+            truncation_mode="keep_end",
         )
     else:
-        dataset = _attach_assistant_masks(dataset, tokenizer)
+        dataset = _attach_assistant_masks(
+            dataset,
+            tokenizer,
+            max_length=max_length,
+            truncation_mode="keep_end",
+        )
+
+    # Build held-out eval dataset, if provided. Uses the same encoding +
+    # masking pipeline as training so loss values are directly comparable
+    # across train/eval. SFTTrainer evaluates at end of every epoch when
+    # eval_strategy="epoch" (set by _build_sft_config when this is non-None).
+    eval_dataset = None
+    if eval_dataset_path is not None:
+        eval_dataset = _build_training_dataset(
+            dataset_cls=Dataset,
+            session_id=None,
+            dataset_path=eval_dataset_path,
+            encoding_mode=encoding_mode,
+            diff_aware_loss=diff_aware_loss,
+        )
+        if diff_aware_loss:
+            eval_dataset = _attach_assistant_masks(
+                eval_dataset,
+                tokenizer,
+                preserve_columns=["pre_codes", "post_codes", "quality_score"],
+                max_length=max_length,
+                truncation_mode="keep_end",
+            )
+        else:
+            eval_dataset = _attach_assistant_masks(
+                eval_dataset,
+                tokenizer,
+                max_length=max_length,
+                truncation_mode="keep_end",
+            )
+        logger.info(
+            "Eval dataset enabled: %d held-out rows from %s; eval_strategy=epoch.",
+            len(eval_dataset),
+            eval_dataset_path,
+        )
 
     model, lora_config = _setup_lora_adapter(
         model=model,
@@ -1000,6 +1118,7 @@ def train_qlora(
         neftune_noise_alpha=neftune_noise_alpha,
         max_length=max_length,
         dataset_size=len(dataset),
+        has_eval_dataset=eval_dataset is not None,
     )
 
     trainer = _construct_sft_trainer(
@@ -1012,6 +1131,7 @@ def train_qlora(
         diff_aware_loss=diff_aware_loss,
         diff_changed_weight=diff_changed_weight,
         diff_unchanged_weight=diff_unchanged_weight,
+        eval_dataset=eval_dataset,
     )
 
     # Log training-run metadata (params streamed as per-step metrics by TRL's
@@ -1120,7 +1240,8 @@ def train_and_register(
     override_lora_dropout: float | None = None,
     warmup_ratio: float | None = None,
     neftune_noise_alpha: float | None = None,
-    max_length: int = 2048,
+    max_length: int = 4096,
+    eval_dataset_path: str | None = None,
 ) -> str:
     """Train a QLoRA adapter and register it in the AdapterRegistry.
 
@@ -1163,7 +1284,10 @@ def train_and_register(
         neftune_noise_alpha: NEFTune noise alpha forwarded to ``train_qlora``.
             When ``None`` (default), NEFTune is disabled.
         max_length: SFT tokenizer truncation length forwarded to
-            ``train_qlora``. Defaults to ``2048``.
+            ``train_qlora``. Defaults to ``4096``.
+        eval_dataset_path: Optional held-out JSONL forwarded to
+            ``train_qlora`` for end-of-epoch evaluation. See that
+            function's docstring.
 
     Returns:
         adapter_id of the registered adapter.
@@ -1232,6 +1356,7 @@ def train_and_register(
         warmup_ratio=warmup_ratio,
         neftune_noise_alpha=neftune_noise_alpha,
         max_length=max_length,
+        eval_dataset_path=eval_dataset_path,
     )
 
     # Compute file hash and size from the saved safetensors file

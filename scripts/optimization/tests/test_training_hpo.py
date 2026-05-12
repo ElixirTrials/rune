@@ -22,6 +22,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from run_training_hpo import (  # noqa: E402
     FitnessConfig,
     HPORunArgs,
+    _all_masked_batch_frac_from_trainer_state,
     _build_parser,
     _build_trial_kwargs,
     _compute_fitness,
@@ -526,3 +527,393 @@ def test_flush_gpu_helper_invokes_gc_collect(monkeypatch: pytest.MonkeyPatch) ->
 
     hpo._flush_gpu_between_phases()
     assert len(collect_calls) >= 2, "expected at least two gc.collect passes"
+
+
+def test_all_masked_batch_frac_averages_log_history(tmp_path: Path) -> None:
+    """The HPO helper must average ``train/all_masked_batch_frac`` entries.
+
+    Trials whose adapter looks fine on hunk metrics but trained against
+    largely empty gradients should be discounted; the per-trial mean is
+    the signal that flips the operator's confidence.
+    """
+    state = {
+        "log_history": [
+            {"loss": 1.0, "train/all_masked_batch_frac": 0.0},
+            {"loss": 0.9, "train/all_masked_batch_frac": 0.4},
+            {"loss": 0.8},  # entries without the metric must not break
+        ]
+    }
+    (tmp_path / "trainer_state.json").write_text(json.dumps(state))
+    assert _all_masked_batch_frac_from_trainer_state(str(tmp_path)) == pytest.approx(
+        0.2
+    )
+
+
+def test_all_masked_batch_frac_returns_zero_when_state_absent(
+    tmp_path: Path,
+) -> None:
+    """Missing trainer_state.json → 0.0 (vanilla SFTTrainer trials, etc.)."""
+    assert _all_masked_batch_frac_from_trainer_state(str(tmp_path)) == 0.0
+
+
+def test_upload_adapter_uses_mlflow_and_removes_local(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Successful upload removes the local adapter dir; failure preserves it.
+
+    The MLflow server in this stack is started with ``--serve-artifacts``
+    and an S3 ``--default-artifact-root`` (see infra/docker-compose.yml),
+    so ``mlflow.log_artifacts`` from the client streams into S3 with no
+    additional configuration. We assert the call goes to MLflow exactly
+    once per trial and that the local copy is cleaned up only after
+    success — both halves of the "don't store twice / don't fill up our
+    HD" contract.
+    """
+    import run_training_hpo as hpo
+
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    calls: list[tuple[str, str]] = []
+
+    class _FakeMlflow:
+        @staticmethod
+        def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
+            calls.append((local_dir, artifact_path))
+
+    monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
+
+    result = hpo._upload_adapter_and_cleanup(
+        str(adapter_dir), upload=True, cleanup=True
+    )
+    assert result is True
+    assert calls == [(str(adapter_dir), "adapter")]
+    assert not adapter_dir.exists(), "local copy must be removed after upload"
+
+
+def test_upload_adapter_keeps_local_when_upload_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed upload must NOT delete the local adapter — that would lose data."""
+    import run_training_hpo as hpo
+
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    class _FakeMlflow:
+        @staticmethod
+        def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
+            raise RuntimeError("S3 unreachable")
+
+    monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
+
+    result = hpo._upload_adapter_and_cleanup(
+        str(adapter_dir), upload=True, cleanup=True
+    )
+    assert result is False
+    assert adapter_dir.exists()
+    assert (adapter_dir / "adapter_model.safetensors").exists()
+
+
+def test_running_topk_admits_first_entries_until_full() -> None:
+    """The first ``k`` offers fill the slate without displacing anyone."""
+    import run_training_hpo as hpo
+
+    top_k = hpo._RunningTopK(k=3)
+    assert top_k.offer(0.5, trial_number=0, run_id="r0") == (True, None)
+    assert top_k.offer(0.7, trial_number=1, run_id="r1") == (True, None)
+    assert top_k.offer(0.6, trial_number=2, run_id="r2") == (True, None)
+
+
+def test_running_topk_rejects_below_worst_when_full() -> None:
+    """Once full, an offer below the worst-of-top-K is rejected verbatim."""
+    import run_training_hpo as hpo
+
+    top_k = hpo._RunningTopK(k=3)
+    for f, n in [(0.5, 0), (0.7, 1), (0.6, 2)]:
+        top_k.offer(f, trial_number=n, run_id=f"r{n}")
+    # 0.4 < worst (0.5): rejected, nobody displaced.
+    assert top_k.offer(0.4, trial_number=3, run_id="r3") == (False, None)
+
+
+def test_running_topk_displaces_worst_when_full_and_better_offered() -> None:
+    """A higher-fitness offer displaces the lowest entry and returns its run id."""
+    import run_training_hpo as hpo
+
+    top_k = hpo._RunningTopK(k=3)
+    for f, n in [(0.5, 0), (0.7, 1), (0.6, 2)]:
+        top_k.offer(f, trial_number=n, run_id=f"r{n}")
+    # 0.55 > worst (0.5) → displaces trial 0 (run r0).
+    accepted, displaced = top_k.offer(0.55, trial_number=3, run_id="r3")
+    assert accepted is True
+    assert displaced == "r0"
+
+
+def test_running_topk_zero_k_never_admits() -> None:
+    """``--keep-top-k 0`` must short-circuit: no uploads, no displacements."""
+    import run_training_hpo as hpo
+
+    top_k = hpo._RunningTopK(k=0)
+    assert top_k.offer(99.0, trial_number=0, run_id="r0") == (False, None)
+
+
+def test_running_topk_rejects_negative_k() -> None:
+    """Negative k is a programming error — surface it loudly."""
+    import run_training_hpo as hpo
+
+    with pytest.raises(ValueError, match="k must be >= 0"):
+        hpo._RunningTopK(k=-1)
+
+
+def test_gate_uploads_when_trial_enters_top_k(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """First trial fills an empty slot → upload happens, no displacement."""
+    import run_training_hpo as hpo
+
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    log_calls: list[tuple[str, str]] = []
+    delete_calls: list[str] = []
+
+    class _FakeMlflow:
+        @staticmethod
+        def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
+            log_calls.append((local_dir, artifact_path))
+
+        @staticmethod
+        def set_tag(key: str, value: str) -> None:  # for displaced tag (no-op here)
+            pass
+
+    monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
+
+    class _FakeMlflowTracking:
+        class MlflowClient:
+            def delete_run(self, run_id: str) -> None:  # noqa: D401
+                delete_calls.append(run_id)
+
+    monkeypatch.setitem(sys.modules, "mlflow.tracking", _FakeMlflowTracking)
+
+    run_args = HPORunArgs(
+        dataset="/tmp/x",
+        adapter_id_prefix="test",
+        model_config_name="qwen3.5-9b",
+        warm_start=None,
+        subsample=10,
+        output_root=tmp_path,
+        experiment_name="exp",
+        keep_top_k=3,
+        upload_adapters_to_mlflow=True,
+        cleanup_local_adapters=True,
+    )
+    top_k = hpo._RunningTopK(k=3)
+    status = hpo._gate_and_upload_adapter(
+        str(adapter_dir),
+        run_id="r0",
+        trial_number=0,
+        fitness=0.5,
+        run_args=run_args,
+        top_k=top_k,
+    )
+    assert status == "true"
+    assert log_calls == [(str(adapter_dir), "adapter")]
+    assert delete_calls == []
+
+
+def test_gate_skips_upload_when_trial_below_top_k(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A trial below the worst-of-top-K never touches MLflow.
+
+    This is the bound that keeps S3 at ≤ K adapters per study.
+    """
+    import run_training_hpo as hpo
+
+    log_calls: list[tuple[str, str]] = []
+
+    class _ExplodingMlflow:
+        @staticmethod
+        def log_artifacts(*_a: Any, **_kw: Any) -> None:
+            log_calls.append(("WROTE", "WROTE"))
+            raise AssertionError(
+                "mlflow.log_artifacts must not run for non-top-K trials"
+            )
+
+        @staticmethod
+        def set_tag(key: str, value: str) -> None:
+            pass
+
+    monkeypatch.setitem(sys.modules, "mlflow", _ExplodingMlflow)
+
+    run_args = HPORunArgs(
+        dataset="/tmp/x",
+        adapter_id_prefix="test",
+        model_config_name="qwen3.5-9b",
+        warm_start=None,
+        subsample=10,
+        output_root=tmp_path,
+        experiment_name="exp",
+        keep_top_k=1,
+        upload_adapters_to_mlflow=True,
+        cleanup_local_adapters=True,
+    )
+    top_k = hpo._RunningTopK(k=1)
+    # Seed the slot with a very high fitness.
+    top_k.offer(fitness=0.95, trial_number=0, run_id="r0")
+
+    adapter_dir = tmp_path / "adapter_t1"
+    adapter_dir.mkdir()
+    status = hpo._gate_and_upload_adapter(
+        str(adapter_dir),
+        run_id="r1",
+        trial_number=1,
+        fitness=0.10,
+        run_args=run_args,
+        top_k=top_k,
+    )
+    assert status == "skipped_not_top_k"
+    assert log_calls == []
+    # Local copy was cleaned up because cleanup_local_adapters=True.
+    assert not adapter_dir.exists()
+
+
+def test_gate_displaces_and_deletes_old_run_when_full_and_improved(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An improving trial displaces the worst slot AND deletes its MLflow run."""
+    import run_training_hpo as hpo
+
+    log_calls: list[tuple[str, str]] = []
+    delete_calls: list[str] = []
+    set_tag_calls: list[tuple[str, str]] = []
+
+    class _FakeMlflow:
+        @staticmethod
+        def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
+            log_calls.append((local_dir, artifact_path))
+
+        @staticmethod
+        def set_tag(key: str, value: str) -> None:
+            set_tag_calls.append((key, value))
+
+    class _FakeMlflowTracking:
+        class MlflowClient:
+            def delete_run(self, run_id: str) -> None:
+                delete_calls.append(run_id)
+
+    monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
+    monkeypatch.setitem(sys.modules, "mlflow.tracking", _FakeMlflowTracking)
+
+    run_args = HPORunArgs(
+        dataset="/tmp/x",
+        adapter_id_prefix="test",
+        model_config_name="qwen3.5-9b",
+        warm_start=None,
+        subsample=10,
+        output_root=tmp_path,
+        experiment_name="exp",
+        keep_top_k=1,
+        upload_adapters_to_mlflow=True,
+        cleanup_local_adapters=False,  # don't try to rm the seeded fake dir
+    )
+    top_k = hpo._RunningTopK(k=1)
+    top_k.offer(fitness=0.20, trial_number=0, run_id="r0")  # fills the slot
+
+    adapter_dir = tmp_path / "adapter_t1"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    status = hpo._gate_and_upload_adapter(
+        str(adapter_dir),
+        run_id="r1",
+        trial_number=1,
+        fitness=0.80,
+        run_args=run_args,
+        top_k=top_k,
+    )
+    assert status == "true"
+    assert log_calls == [(str(adapter_dir), "adapter")]
+    assert delete_calls == ["r0"]
+    assert ("hpo.displaced_run_id", "r0") in set_tag_calls
+
+
+def test_gate_disabled_short_circuits(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``--no-upload-adapters-to-mlflow`` returns ``disabled`` and never uploads."""
+    import run_training_hpo as hpo
+
+    class _ExplodingMlflow:
+        @staticmethod
+        def log_artifacts(*_a: Any, **_kw: Any) -> None:
+            raise AssertionError("mlflow must not be called when upload disabled")
+
+        @staticmethod
+        def set_tag(*_a: Any, **_kw: Any) -> None:
+            raise AssertionError("mlflow must not be called when upload disabled")
+
+    monkeypatch.setitem(sys.modules, "mlflow", _ExplodingMlflow)
+
+    run_args = HPORunArgs(
+        dataset="/tmp/x",
+        adapter_id_prefix="test",
+        model_config_name="qwen3.5-9b",
+        warm_start=None,
+        subsample=10,
+        output_root=tmp_path,
+        experiment_name="exp",
+        keep_top_k=3,
+        upload_adapters_to_mlflow=False,
+        cleanup_local_adapters=True,  # must be ignored on the disabled path
+    )
+    top_k = hpo._RunningTopK(k=3)
+    adapter_dir = tmp_path / "adapter_t0"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    status = hpo._gate_and_upload_adapter(
+        str(adapter_dir),
+        run_id="r0",
+        trial_number=0,
+        fitness=0.99,
+        run_args=run_args,
+        top_k=top_k,
+    )
+    assert status == "disabled"
+    # Local copy preserved because deleting it without an upload would
+    # be data loss.
+    assert adapter_dir.exists()
+
+
+def test_upload_adapter_noop_when_upload_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``upload=False`` short-circuits BEFORE any cleanup attempt.
+
+    Operators using ``--no-upload-adapters-to-mlflow`` keep adapters
+    local-only; deleting the local copy in that path would lose the
+    adapter outright.
+    """
+    import run_training_hpo as hpo
+
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00" * 16)
+
+    # Sentinel that fails loudly if mlflow is touched.
+    class _ExplodingMlflow:
+        @staticmethod
+        def log_artifacts(*_a: Any, **_kw: Any) -> None:
+            raise AssertionError("mlflow must not be called when upload=False")
+
+    monkeypatch.setitem(sys.modules, "mlflow", _ExplodingMlflow)
+
+    result = hpo._upload_adapter_and_cleanup(
+        str(adapter_dir), upload=False, cleanup=True
+    )
+    assert result is False
+    assert adapter_dir.exists()

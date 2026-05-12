@@ -87,7 +87,9 @@ def _patch_flash_attention() -> None:  # noqa: C901
         Idefics2Perceiver,
         Idefics2PerceiverAttention,
         Idefics2PerceiverConfig,
+        Idefics2PerceiverLayer,
         Idefics2PerceiverResampler,
+        Idefics2RMSNorm,
     )
 
     # Map both eager and flash_attention_2 to the eager attention class
@@ -145,8 +147,50 @@ def _patch_flash_attention() -> None:  # noqa: C901
     _orig_resampler_init = Idefics2PerceiverResampler.__init__
 
     def _patched_resampler_init(self: Any, config: Any) -> None:
+        # Bypass PreTrainedModel.__init__ entirely — it validates flash
+        # attention support which fails on transformers 5.x. Rebuild the
+        # resampler layers directly using eager attention.
+        import torch.nn as nn  # noqa: PLC0415
+
         config._attn_implementation = "eager"
-        _orig_resampler_init(self, config)
+        config._attn_implementation_internal = "eager"
+        nn.Module.__init__(self)
+        self.config = config
+
+        self.num_blocks = config.num_blocks
+        self.num_self_attn_per_block = config.num_self_attn_per_block
+        self.shared_weights = config.shared_weights
+        self.hidden_size = config.hidden_size
+        self.hidden_act = config.hidden_act
+        self.n_latents = config.n_latents
+        self.rms_norm_eps = config.rms_norm_eps
+
+        self.latents_q = nn.Parameter(torch.randn(self.n_latents, self.hidden_size))
+
+        first_x_attn = [Idefics2PerceiverLayer(config, is_cross_attn=True)]
+        first_self_attn_block = [
+            Idefics2PerceiverLayer(config, is_cross_attn=False)
+            for _ in range(config.num_self_attn_per_block)
+        ]
+        self.layers = nn.ModuleList(first_x_attn + first_self_attn_block)
+
+        for layer_idx in range(1, config.num_blocks):
+            if self.shared_weights:
+                if layer_idx == 1:
+                    second_x_attn = Idefics2PerceiverLayer(config, is_cross_attn=True)
+                x_attn = second_x_attn
+            else:
+                x_attn = Idefics2PerceiverLayer(config, is_cross_attn=True)
+            self.layers.append(x_attn)
+
+            for i in range(config.num_self_attn_per_block):
+                if self.shared_weights:
+                    self_attn = first_self_attn_block[i]
+                else:
+                    self_attn = Idefics2PerceiverLayer(config, is_cross_attn=False)
+                self.layers.append(self_attn)
+
+        self.layernorm = Idefics2RMSNorm(self.hidden_size, eps=self.rms_norm_eps)
         self._use_flash_attention_2 = False
 
     Idefics2PerceiverResampler.__init__ = _patched_resampler_init
@@ -277,13 +321,14 @@ def load_sakana_checkpoint(
             ac.torch_dtype = hypernet_dtype
     hypernet = HyperLoRA(hc).to(hypernet_dtype)
 
-    # Load ALL hypernet weights from checkpoint (not just a prefix subset).
-    # The checkpoint contains aggregator.*, head.*, scaler_{A,B}.*,
-    # bias_{A,B}.*, and layers.0.* — all are required for correct
-    # adapter generation.  scaler_B in particular defaults to zeros,
-    # so skipping it zeroes out every lora_B matrix.
+    # Load hypernet weights. Our from-scratch checkpoints store weights
+    # under a "hypernet_state_dict" key; Sakana checkpoints store them
+    # as flat top-level tensors.
     model_keys = set(hypernet.state_dict().keys())
-    hypernet_sd = {k: v for k, v in sd.items() if k in model_keys}
+    if "hypernet_state_dict" in sd:
+        hypernet_sd = sd["hypernet_state_dict"]
+    else:
+        hypernet_sd = {k: v for k, v in sd.items() if k in model_keys}
 
     loaded = hypernet.load_state_dict(hypernet_sd, strict=False)
     logger.info(

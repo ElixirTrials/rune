@@ -1,8 +1,23 @@
-# Documentation Makefile for monorepo
+# Rune Makefile — workspace-aware. Targets iterate services/* / libs/* and
+# no-op cleanly when those directories are empty.
 SHELL := /bin/bash
 
-.PHONY: help docs-build docs-serve clean create-component create-service docs-openapi kill-processes db-migrate db-revision check check-fix check-with-docs lint lint-fix typecheck test
+.PHONY: help \
+        create-component create-service \
+        infra-up infra-down \
+        docs-components-gen docs-nav-update docs-build docs-serve docs-openapi \
+        kill-processes db-migrate db-revision \
+        check check-fix check-with-docs lint lint-fix typecheck test clean
 
+# ----- Discovery helpers (workspace-aware) ---------------------------------
+PY_SERVICES   := $(shell find services -mindepth 1 -maxdepth 1 -type d -not -name '.gitkeep' 2>/dev/null)
+PY_LIBS       := $(shell find libs     -mindepth 1 -maxdepth 1 -type d -not -name '.gitkeep' 2>/dev/null)
+PY_PACKAGES   := $(PY_SERVICES) $(PY_LIBS)
+ALEMBIC_DIRS  := $(shell find services -mindepth 2 -maxdepth 2 -type d -name alembic 2>/dev/null)
+PY_SRC_DIRS   := $(foreach pkg,$(PY_PACKAGES),$(wildcard $(pkg)/src))
+PY_TEST_DIRS  := $(foreach pkg,$(PY_PACKAGES),$(wildcard $(pkg)/tests))
+
+# ----- Scaffolding ---------------------------------------------------------
 create-component:
 	@read -p "Enter component name: " COMPONENT_NAME; \
 	./scripts/create-service.sh --lang py "$$COMPONENT_NAME"
@@ -11,6 +26,14 @@ create-service:
 	@read -p "Enter service name: " NAME; read -p "Language (py|ts) [py]: " LANG; LANG=$${LANG:-py}; \
 	./scripts/create-service.sh --lang "$$LANG" "$$NAME"
 
+# ----- Local infra (Postgres, MLflow, litestream) -------------------------
+infra-up:
+	@docker-compose -f infra/docker-compose.yml up -d
+
+infra-down:
+	@docker-compose -f infra/docker-compose.yml down
+
+# ----- Docs ---------------------------------------------------------------
 docs-components-gen:
 	@echo "Generating components overview page..."
 	uv run python scripts/generate_components_overview.py
@@ -24,85 +47,88 @@ docs-build: docs-nav-update docs-components-gen docs-openapi
 	uv run python scripts/build_docs.py build -f mkdocs.yml
 
 docs-serve:
-	@echo "Serving built documentation site..."
-	@if [ ! -d "site" ]; then \
-		echo "No built site found. Run 'make docs-build' first."; \
-		exit 1; \
-	fi
-	@echo "Serving from: $(PWD)/site"
-	@echo "Available at: http://localhost:8000"
-	@echo "Press Ctrl+C to stop"
+	@if [ ! -d "site" ]; then echo "No built site. Run 'make docs-build' first."; exit 1; fi
+	@echo "Serving from $(PWD)/site at http://localhost:8000"
 	@cd site && uv run python -m http.server 8000
 
+# Iterate over any service that defines scripts/export_openapi.py.
 docs-openapi:
-	@echo "Exporting OpenAPI spec..."
-	uv run --project services/api-service python services/api-service/scripts/export_openapi.py
+	@for svc in $(PY_SERVICES); do \
+		if [ -f "$$svc/scripts/export_openapi.py" ]; then \
+			echo "→ OpenAPI for $$svc"; \
+			uv run --project "$$svc" python "$$svc/scripts/export_openapi.py" || exit $$?; \
+		fi; \
+	done
 
-kill-processes:
-	@echo "Killing running processes..."
-	@./scripts/kill-running-processes.sh
-
+# ----- Database (Alembic per-service) -------------------------------------
+# Iterates every services/<name>/alembic. Migrations are USER-RUN; Claude is
+# hook-blocked from db-migrate.
 db-revision:
-	@echo "Creating new Alembic revision..."
-	uv run alembic revision --autogenerate -m "$(msg)"
+	@if [ -z "$(msg)" ]; then echo "Usage: make db-revision msg=\"...\""; exit 1; fi
+	@for svc in $(ALEMBIC_DIRS); do \
+		echo "→ revision in $$svc"; \
+		(cd "$$(dirname $$svc)" && uv run alembic revision --autogenerate -m "$(msg)") || exit $$?; \
+	done
 
 db-migrate:
-	@echo "Applying database migrations..."
-	uv run alembic upgrade head
+	@for svc in $(ALEMBIC_DIRS); do \
+		echo "→ upgrade head in $$svc"; \
+		(cd "$$(dirname $$svc)" && uv run alembic upgrade head) || exit $$?; \
+	done
 
-clean:
-	@echo "Cleaning build artifacts..."
-	rm -rf site/
-	rm -rf .cache/
-	rm -rf docs/.uv_cache/
-
-# Code Quality Commands
+# ----- Code quality (workspace-aware) -------------------------------------
 check:
-	@echo "Running all checks..."
 	@./scripts/check-all.sh
 
 check-fix:
-	@echo "Running all checks with auto-fix..."
 	@./scripts/check-all.sh --fix
 
 check-with-docs:
-	@echo "Running all checks including documentation..."
 	@./scripts/check-all.sh --with-docs
 
 lint:
-	@echo "Running linters..."
-	uv run ruff check .
+	@uv run ruff check .
 
 lint-fix:
-	@echo "Running linters with auto-fix..."
-	uv run ruff check . --fix
-	uv run ruff format .
+	@uv run ruff check . --fix
+	@uv run ruff format .
 
 typecheck:
-	@echo "Running type checkers..."
-	@PY_DIRS=$$(for d in services/*/src libs/*/src; do find "$$d" -name '*.py' -print -quit 2>/dev/null | grep -q . && echo "$$d"; done); \
-	uv run mypy $$PY_DIRS
+	@if [ -n "$(PY_SRC_DIRS)" ]; then uv run mypy $(PY_SRC_DIRS); else echo "(no python src dirs)"; fi
 
 test:
-	@echo "Running tests..."
-	uv run pytest services/api-service/tests libs/events-py/tests -q
+	@if [ -n "$(PY_TEST_DIRS)" ]; then uv run pytest $(PY_TEST_DIRS) -q; else echo "(no python test dirs)"; fi
+
+# ----- Misc ---------------------------------------------------------------
+kill-processes:
+	@./scripts/kill-running-processes.sh
+
+clean:
+	@rm -rf site/ .cache/ docs/.uv_cache/
 
 help:
-	@echo "Rune - Makefile Commands"
+	@echo "Rune — Makefile"
 	@echo ""
-	@echo "Code Quality:"
-	@echo "  make check           - Run linters, type checkers, and tests"
-	@echo "  make check-with-docs - Run all checks including doc build"
-	@echo "  make check-fix       - Run all checks with auto-fix"
-	@echo "  make lint       - Run ruff"
-	@echo "  make lint-fix   - Run linters with auto-fix"
-	@echo "  make typecheck  - Run mypy"
-	@echo "  make test       - Run pytest"
+	@echo "Bootstrap / scaffold:"
+	@echo "  make create-service          Scaffold a new Python or TypeScript package"
+	@echo "  make create-component        Same, Python-only convenience"
+	@echo "  make infra-up / infra-down   Local stack (Postgres, MLflow, litestream)"
 	@echo ""
-	@echo "Documentation:"
-	@echo "  make docs-build - Build documentation site"
-	@echo "  make docs-serve - Serve documentation locally"
+	@echo "Code quality:"
+	@echo "  make check / check-fix       Run all checks (auto-fix variant available)"
+	@echo "  make check-with-docs         Run all checks including doc build"
+	@echo "  make lint / lint-fix         Ruff (Python)"
+	@echo "  make typecheck               mypy"
+	@echo "  make test                    pytest"
 	@echo ""
-	@echo "Database:"
-	@echo "  make db-migrate        - Apply database migrations"
-	@echo "  make db-revision msg=X - Create new migration"
+	@echo "Docs (mkdocs):"
+	@echo "  make docs-build / docs-serve   Build / serve the doc site"
+	@echo "  make docs-openapi              Export OpenAPI from each FastAPI service"
+	@echo ""
+	@echo "Database (Alembic, USER-RUN):"
+	@echo "  make db-revision msg=\"...\"   Generate migration for each services/*/alembic"
+	@echo "  make db-migrate                Apply migrations (Claude is hook-blocked from this)"
+	@echo ""
+	@echo "Misc:"
+	@echo "  make kill-processes           Kill rune dev/swarm processes"
+	@echo "  make clean                    Remove site/, .cache/, docs/.uv_cache/"

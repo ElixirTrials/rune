@@ -28,6 +28,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "faiss-cpu>=1.13.2",
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
 ]

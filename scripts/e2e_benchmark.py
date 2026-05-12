@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 
@@ -130,7 +130,7 @@ def run_single_task(
 ) -> dict:
     """Run the pipeline on a single task and collect results."""
     from inference.factory import _clear_cache
-    from rune_runner import run_phased_pipeline
+    from rune_runner import run_phased_pipeline  # type: ignore[import-not-found]
 
     _clear_cache()
 

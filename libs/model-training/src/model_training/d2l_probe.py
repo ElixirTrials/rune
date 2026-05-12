@@ -247,12 +247,18 @@ def extract_activations_with_model(
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
-        outputs = model(**inputs, output_hidden_states=True)
+        outputs = model(**inputs, output_hidden_states=True, use_cache=False)
 
     hidden_states = outputs.hidden_states
     # Stack selected layers: (batch, num_layers, seq_len, hidden_dim)
     selected = torch.stack([hidden_states[i] for i in layer_indices], dim=1)
     attention_mask = inputs["attention_mask"]
+
+    # Free non-selected hidden states, logits, and model outputs immediately.
+    # BaseModelOutputWithPast inherits OrderedDict which has internal reference
+    # cycles — without explicit deletion, these ~300 MB of GPU tensors persist
+    # until Python's cycle collector runs.
+    del outputs, hidden_states
 
     logger.info(
         "Extracted activations: %s from %d layers", selected.shape, len(layer_indices)

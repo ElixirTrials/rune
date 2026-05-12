@@ -32,6 +32,18 @@ logger = logging.getLogger(__name__)
 __all__ = ["train_d2l_qwen3", "D2LTrainConfig", "compute_kl_ce_loss"]
 
 
+def _train_dfl() -> dict[str, Any]:
+    from model_training.d2l_config import load_hypernet_defaults  # noqa: PLC0415
+
+    return load_hypernet_defaults()["training"]
+
+
+def _lora_dfl() -> dict[str, Any]:
+    from model_training.d2l_config import load_hypernet_defaults  # noqa: PLC0415
+
+    return load_hypernet_defaults()["lora"]
+
+
 def _require_probe_cache(model_name: str) -> None:
     """Raise RuntimeError if probe cache is absent for *model_name*.
 
@@ -92,9 +104,9 @@ class D2LTrainConfig(BaseModel):
     base_model_name: str = Field(default="")
     sakana_checkpoint_path: str
     num_steps: int = Field(default=100)
-    lr: float = Field(default=2e-4)
-    alpha: float = Field(default=0.5)
-    temperature: float = Field(default=2.0)
+    lr: float = Field(default_factory=lambda: _train_dfl()["lr"])
+    alpha: float = Field(default_factory=lambda: _train_dfl()["alpha"])
+    temperature: float = Field(default_factory=lambda: _train_dfl()["temperature"])
     checkpoint_every: int = Field(default=100)
     full_checkpoint_every: int = Field(default=500)
     checkpoint_dir: str = Field(default="./checkpoints")
@@ -102,10 +114,10 @@ class D2LTrainConfig(BaseModel):
     dry_run: bool = Field(default=False)
     smoke_test: bool = Field(default=False)
     dataset_path: str | None = Field(default=None)
-    grad_clip: float = Field(default=1.0)
-    warmup_steps: int = Field(default=10)
-    lora_r: int = Field(default=8)
-    max_length: int = Field(default=512)
+    grad_clip: float = Field(default_factory=lambda: _train_dfl()["grad_clip"])
+    warmup_steps: int = Field(default_factory=lambda: _train_dfl()["warmup_steps"])
+    lora_r: int = Field(default_factory=lambda: _lora_dfl()["r"])
+    max_length: int = Field(default_factory=lambda: _train_dfl()["max_length"])
     # Kill-switch: halt training when Pass@1 regresses vs baseline (Plan A follow-up).
     # Disabled by default so existing callers/tests are unaffected.
     kill_switch_enabled: bool = Field(default=False)
@@ -779,14 +791,19 @@ compute_kl_ce_loss = _compute_kl_ce_loss
 if __name__ == "__main__":
     import argparse  # noqa: PLC0415
 
+    from model_training.d2l_config import load_hypernet_defaults  # noqa: PLC0415
+
     parser = argparse.ArgumentParser(description="D2L distillation training")
+    _dfl = load_hypernet_defaults()
+    _t = _dfl["training"]
+    _l = _dfl["lora"]
     parser.add_argument("--model-config-name", default="qwen3.5-9b")
     parser.add_argument("--base-model-name", default="")
     parser.add_argument("--sakana-checkpoint-path", required=True)
     parser.add_argument("--num-steps", type=int, default=100)
-    parser.add_argument("--lr", type=float, default=2e-4)
-    parser.add_argument("--alpha", type=float, default=0.5)
-    parser.add_argument("--temperature", type=float, default=2.0)
+    parser.add_argument("--lr", type=float, default=_t["lr"])
+    parser.add_argument("--alpha", type=float, default=_t["alpha"])
+    parser.add_argument("--temperature", type=float, default=_t["temperature"])
     parser.add_argument("--checkpoint-every", type=int, default=100)
     parser.add_argument("--full-checkpoint-every", type=int, default=500)
     parser.add_argument("--checkpoint-dir", default="./checkpoints")
@@ -794,10 +811,10 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--dataset", dest="dataset_path", default=None)
-    parser.add_argument("--grad-clip", type=float, default=1.0)
-    parser.add_argument("--warmup-steps", type=int, default=10)
-    parser.add_argument("--lora-r", type=int, default=8)
-    parser.add_argument("--max-length", type=int, default=512)
+    parser.add_argument("--grad-clip", type=float, default=_t["grad_clip"])
+    parser.add_argument("--warmup-steps", type=int, default=_t["warmup_steps"])
+    parser.add_argument("--lora-r", type=int, default=_l["r"])
+    parser.add_argument("--max-length", type=int, default=_t["max_length"])
     args = parser.parse_args()
 
     cfg = D2LTrainConfig(

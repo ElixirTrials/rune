@@ -11,7 +11,7 @@ from shared.hardware import HardwareBudget
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from swarm_workers import (
+from swarm_workers import (  # type: ignore[import-not-found]
     TrainingRequest,
     _drain_queue,
     _train_in_subprocess,

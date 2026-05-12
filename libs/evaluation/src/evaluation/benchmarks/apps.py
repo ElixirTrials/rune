@@ -199,11 +199,20 @@ class APPSAdapter:
             return self._load_from_fixture()
 
     def _load_from_hf(self) -> list[dict[str, Any]]:
-        """Load from HuggingFace datasets."""
-        import datasets as hf_datasets  # deferred
+        """Load from HuggingFace hub JSONL (datasets 4.x dropped script support)."""
+        from huggingface_hub import hf_hub_download  # noqa: PLC0415
 
-        ds = hf_datasets.load_dataset("codeparrot/apps", "all", split="train")
-        return list(ds)
+        path = hf_hub_download(
+            "codeparrot/apps",
+            "train.jsonl",
+            repo_type="dataset",
+        )
+        rows: list[dict[str, Any]] = []
+        with open(path) as f:
+            for line in f:
+                if line.strip():
+                    rows.append(json.loads(line))
+        return rows
 
     def _load_from_fixture(self) -> list[dict[str, Any]]:
         """Load from local parquet fixture."""

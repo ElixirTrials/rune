@@ -147,6 +147,38 @@ class ModelRegistry:
             )
         )
 
+        registry.register(
+            ModelConfig(
+                canonical_name="llama-3.2-3b",
+                model_id="meta-llama/Llama-3.2-3B",
+                warm_start_adapter_id=None,
+                default_lora_rank=16,
+                default_lora_alpha=32,
+                attn_implementation=None,
+                expected_num_layers=28,
+                expected_hidden_size=3072,
+                gradient_accumulation_steps=8,
+                lr_scheduler_type="cosine",
+                epochs=3,
+            )
+        )
+
+        registry.register(
+            ModelConfig(
+                canonical_name="phi-3.5-mini",
+                model_id="microsoft/Phi-3.5-mini-instruct",
+                warm_start_adapter_id=None,
+                default_lora_rank=16,
+                default_lora_alpha=32,
+                attn_implementation=None,
+                expected_num_layers=32,
+                expected_hidden_size=3072,
+                gradient_accumulation_steps=8,
+                lr_scheduler_type="cosine",
+                epochs=3,
+            )
+        )
+
         cls._default_instance = registry
         return registry
 

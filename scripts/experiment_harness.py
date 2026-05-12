@@ -20,7 +20,7 @@ os.environ.setdefault("INFERENCE_PROVIDER", "transformers")
 os.environ.setdefault("TRANSFORMERS_MODEL_NAME", "google/gemma-2-2b-it")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bootstrap import setup_path
+from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 

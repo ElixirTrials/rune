@@ -227,6 +227,7 @@ class _FakeTokenizer:
         tokenize: bool,
         add_generation_prompt: bool,
         return_dict: bool = True,
+        enable_thinking: bool | None = None,
     ) -> list[int]:
         ids: list[int] = []
         for msg in messages:
@@ -298,6 +299,7 @@ def test_compute_assistant_masks_truncated_tail_marks_to_eos() -> None:
             tokenize: bool,
             add_generation_prompt: bool,
             return_dict: bool = True,
+            **kwargs: Any,
         ) -> list[int]:
             ids = super().apply_chat_template(
                 messages,
@@ -339,6 +341,7 @@ def test_compute_assistant_masks_raises_when_markers_missing() -> None:
             tokenize: bool,
             add_generation_prompt: bool,
             return_dict: bool = True,
+            **kwargs: Any,
         ) -> list[int]:
             return [1, 2, 3]
 
@@ -367,6 +370,7 @@ def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> N
             tokenize: bool,
             add_generation_prompt: bool,
             return_dict: bool = True,
+            **kwargs: Any,
         ) -> Any:
             ids = super().apply_chat_template(
                 messages,
@@ -399,3 +403,107 @@ def test_compute_assistant_masks_returns_int_lists_not_batchencoding_keys() -> N
     assert all(isinstance(t, int) for t in result["input_ids"]), (
         f"expected list[int], got {[type(t).__name__ for t in result['input_ids']]}"
     )
+
+
+def test_compute_assistant_masks_keep_end_truncation_preserves_assistant_tail() -> None:
+    """``max_length`` + ``truncation_mode='keep_end'`` keeps the last assistant span.
+
+    A long user turn followed by a short assistant turn would, under the
+    legacy untruncated behaviour, balloon the dataset row size. Under the
+    ``keep_start`` slice in the inner collator, the assistant tail would
+    be discarded and ``denom = 0`` would fire every step (RCA-5 H2). The
+    new ``keep_end`` truncation here mirrors the diff-aware collator and
+    keeps the assistant span intact.
+    """
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "padding " * 100},  # long
+        {"role": "assistant", "content": "answer"},
+    ]
+    result = compute_assistant_masks(
+        tok, messages, max_length=20, truncation_mode="keep_end"
+    )
+    assert len(result["input_ids"]) == 20
+    assert len(result["assistant_masks"]) == 20
+    # The assistant span sits at the tail; at least one mask bit must survive.
+    assert sum(result["assistant_masks"]) >= 1
+
+
+def test_compute_assistant_masks_keep_start_drops_assistant_when_user_long() -> None:
+    """``keep_start`` reproduces the bug we are fixing — useful as a guard rail.
+
+    This documents the failure mode: with ``keep_start`` and a user turn
+    longer than ``max_length``, the assistant span is shifted past the cap
+    and gets sliced away — leaving an all-zero ``assistant_masks``. The
+    upstream fix is to use ``keep_end`` (the new default).
+    """
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "padding " * 100},
+        {"role": "assistant", "content": "answer"},
+    ]
+    result = compute_assistant_masks(
+        tok, messages, max_length=20, truncation_mode="keep_start"
+    )
+    assert len(result["input_ids"]) == 20
+    assert sum(result["assistant_masks"]) == 0
+
+
+def test_compute_assistant_masks_keep_user_end_preserves_user_and_assistant_tail() -> (
+    None
+):
+    """``keep_user_end`` keeps user prompt + assistant tail within budget.
+
+    With _FakeTokenizer each char is one token, plus 4 overhead tokens per
+    turn (im_start, role, newline, im_end) and 2 trailing newlines.
+    User "hi" → 7 tokens prefix.  Assistant "x"*200 → 206 tokens.
+    Total = 213. At max_length=20, keep_user_end keeps the 7-token user
+    prefix + 13 tokens of assistant tail.
+    """
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "x" * 200},
+    ]
+    result = compute_assistant_masks(tok, messages, max_length=20)
+    assert len(result["input_ids"]) == 20
+    assert len(result["assistant_masks"]) == 20
+    # User tokens (non-assistant prefix) should be present at the start
+    assert result["assistant_masks"][0] == 0
+    # Assistant tokens should survive at the tail
+    assert sum(result["assistant_masks"]) >= 1
+    # Both user and assistant content present
+    n_user = sum(1 for m in result["assistant_masks"] if m == 0)
+    n_asst = sum(result["assistant_masks"])
+    assert n_user >= 1
+    assert n_asst >= 1
+
+
+def test_compute_assistant_masks_keep_user_end_long_user_exceeds_budget() -> None:
+    """When user alone exceeds max_length, keep_user_end truncates user only."""
+    tok = _FakeTokenizer()
+    messages = [
+        {"role": "user", "content": "padding " * 100},  # ~805 tokens
+        {"role": "assistant", "content": "answer"},
+    ]
+    result = compute_assistant_masks(tok, messages, max_length=20)
+    assert len(result["input_ids"]) == 20
+    # All budget consumed by user prefix — no assistant tokens survive
+    assert sum(result["assistant_masks"]) == 0
+
+
+def test_compute_assistant_masks_unknown_truncation_mode_raises() -> None:
+    """Bogus ``truncation_mode`` must raise — silent fallback is worse."""
+    import pytest
+
+    tok = _FakeTokenizer()
+    with pytest.raises(ValueError, match="unsupported truncation_mode"):
+        compute_assistant_masks(
+            tok,
+            [
+                {"role": "user", "content": "u"},
+                {"role": "assistant", "content": "a" * 100},
+            ],
+            max_length=4,
+            truncation_mode="middle",  # type: ignore[arg-type]
+        )

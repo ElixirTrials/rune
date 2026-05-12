@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import logging
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 from evaluation.benchmarks.adapter_stack import AdapterStack
@@ -25,6 +29,21 @@ from evaluation.benchmarks.protocol import (
 )
 
 logger = logging.getLogger(__name__)
+
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_S = 2.0
+
+try:
+    from openai import APIConnectionError, APITimeoutError
+
+    _RETRYABLE_ERRORS: tuple[type[Exception], ...] = (
+        ConnectionError,
+        OSError,
+        APIConnectionError,
+        APITimeoutError,
+    )
+except ImportError:
+    _RETRYABLE_ERRORS = (ConnectionError, OSError)
 
 # Registry of benchmark_id -> dotted adapter class path (lazy import)
 _ADAPTER_REGISTRY: dict[str, str] = {
@@ -61,10 +80,9 @@ def _generate_completion(
 ) -> str:
     """Synchronously call provider.generate() from a thread.
 
-    Creates a new event loop per thread. ThreadPoolExecutor threads have
-    no running loop by default, so we create one per call. This works
-    with any InferenceProvider that is not bound to a specific loop at
-    construction time (open question #4 from plan).
+    When adapter_generator is set on the stack, generates a per-problem
+    adapter via the hypernetwork, loads it into the provider, generates,
+    then unloads it. Otherwise uses the first static adapter_id.
 
     Args:
         adapter_stack: AdapterStack with provider and model config.
@@ -74,12 +92,102 @@ def _generate_completion(
     Returns:
         Generated text string.
     """
-    adapter_id = adapter_stack.adapter_ids[0] if adapter_stack.adapter_ids else None
+    if adapter_stack.completion_override is not None:
+        prompt = problem.prompt
+        if adapter_stack.prompt_augmenter is not None:
+            prompt = adapter_stack.prompt_augmenter(prompt)
+        return adapter_stack.completion_override(prompt, max_tokens)
+
     loop = asyncio.new_event_loop()
     try:
+        if adapter_stack.adapter_generator is not None:
+            return _generate_with_hypernet(adapter_stack, problem, max_tokens, loop)
+
+        effective_prompt = problem.prompt
+        if adapter_stack.prompt_augmenter is not None:
+            effective_prompt = adapter_stack.prompt_augmenter(effective_prompt)
+
+        adapter_id = None
+        for aid in adapter_stack.adapter_ids:
+            if aid in adapter_stack.adapter_paths:
+                adapter_id = aid
+                break
+
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                result = loop.run_until_complete(
+                    adapter_stack.provider.complete_text(
+                        prompt=effective_prompt,
+                        model=adapter_stack.base_model,
+                        adapter_id=adapter_id,
+                        max_tokens=max_tokens,
+                    )
+                )
+                return str(result.text)
+            except _RETRYABLE_ERRORS as exc:
+                last_exc = exc
+                wait = _RETRY_BACKOFF_S * (2**attempt)
+                logger.warning(
+                    "Connection error on %s (attempt %d/%d), retrying in %.1fs: %s",
+                    problem.problem_id,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    wait,
+                    exc,
+                )
+                time.sleep(wait)
+        raise last_exc  # type: ignore[misc]
+    finally:
+        loop.close()
+
+
+def _generate_with_hypernet(
+    adapter_stack: AdapterStack,
+    problem: Problem,
+    max_tokens: int,
+    loop: asyncio.AbstractEventLoop,
+) -> str:
+    """Generate a completion using a per-problem hypernetwork adapter.
+
+    Args:
+        adapter_stack: AdapterStack with adapter_generator set.
+        problem: Problem whose prompt drives adapter generation.
+        max_tokens: Generation token cap.
+        loop: Event loop for async provider calls.
+
+    Returns:
+        Generated text string.
+    """
+    assert adapter_stack.adapter_generator is not None
+
+    effective_prompt = problem.prompt
+    if adapter_stack.prompt_augmenter is not None:
+        effective_prompt = adapter_stack.prompt_augmenter(effective_prompt)
+
+    adapter_path = adapter_stack.adapter_generator(effective_prompt)
+    if adapter_path is None:
+        logger.warning(
+            "adapter_generator returned None for %s, using base",
+            problem.problem_id,
+        )
         result = loop.run_until_complete(
-            adapter_stack.provider.generate(
-                prompt=problem.prompt,
+            adapter_stack.provider.complete_text(
+                prompt=effective_prompt,
+                model=adapter_stack.base_model,
+                max_tokens=max_tokens,
+            )
+        )
+        return str(result.text)
+
+    adapter_id = f"hypernet_{problem.problem_id}"
+    try:
+        loop.run_until_complete(
+            adapter_stack.provider.load_adapter(adapter_id, adapter_path)
+        )
+        result = loop.run_until_complete(
+            adapter_stack.provider.complete_text(
+                prompt=effective_prompt,
                 model=adapter_stack.base_model,
                 adapter_id=adapter_id,
                 max_tokens=max_tokens,
@@ -87,7 +195,14 @@ def _generate_completion(
         )
         return str(result.text)
     finally:
-        loop.close()
+        try:
+            loop.run_until_complete(adapter_stack.provider.unload_adapter(adapter_id))
+        except Exception:
+            logger.warning(
+                "Failed to unload adapter %s; GPU memory may leak",
+                adapter_id,
+                exc_info=True,
+            )
 
 
 def _evaluate_one(
@@ -121,12 +236,53 @@ def _evaluate_one(
         )
 
 
-def run_benchmark(
+def _load_checkpoint(path: Path) -> list[PassVerdict]:
+    """Load previously saved verdicts from a JSONL checkpoint file."""
+    if not path.exists():
+        return []
+    verdicts: list[PassVerdict] = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        d = json.loads(line)
+        verdicts.append(
+            PassVerdict(
+                problem_id=d["problem_id"],
+                passed=d["passed"],
+                generation=d["generation"],
+                error=d.get("error"),
+                timed_out=d["timed_out"],
+            )
+        )
+    return verdicts
+
+
+_checkpoint_lock = threading.Lock()
+
+
+def _append_checkpoint(path: Path, verdict: PassVerdict) -> None:
+    """Append a single verdict to the JSONL checkpoint file (thread-safe)."""
+    line = json.dumps(
+        {
+            "problem_id": verdict.problem_id,
+            "passed": verdict.passed,
+            "generation": verdict.generation,
+            "error": verdict.error,
+            "timed_out": verdict.timed_out,
+        }
+    )
+    with _checkpoint_lock:
+        with path.open("a") as f:
+            f.write(line + "\n")
+
+
+def run_benchmark(  # noqa: C901
     adapter_stack: AdapterStack,
     benchmark_id: str,
     problem_ids: list[str] | None = None,
     max_samples: int | None = None,
     config: BenchmarkConfig | None = None,
+    checkpoint_dir: Path | str | None = None,
 ) -> BenchmarkResult:
     """Run a full benchmark evaluation pass and return aggregate Pass@1.
 
@@ -144,6 +300,9 @@ def run_benchmark(
             evaluation to a subset. If None, evaluates all loaded problems.
         max_samples: Cap on total problems evaluated.
         config: BenchmarkConfig overriding defaults (timeout, workers, seed).
+        checkpoint_dir: Directory for per-problem JSONL checkpoints. When set,
+            completed verdicts are appended incrementally and subsequent runs
+            resume from the checkpoint.
 
     Returns:
         BenchmarkResult with per-problem verdicts and aggregate pass_at_1.
@@ -174,6 +333,23 @@ def run_benchmark(
             seed=cfg.seed,
         )
 
+    # Checkpoint setup: resume from prior run if checkpoint_dir is set
+    ckpt_path: Path | None = None
+    cached_verdicts: list[PassVerdict] = []
+    cached_ids: set[str] = set()
+    if checkpoint_dir is not None:
+        ckpt_dir = Path(checkpoint_dir)
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        ckpt_path = ckpt_dir / f"{benchmark_id}.jsonl"
+        cached_verdicts = _load_checkpoint(ckpt_path)
+        cached_ids = {v.problem_id for v in cached_verdicts}
+        if cached_ids:
+            logger.info(
+                "Resumed %d cached verdicts for %s",
+                len(cached_ids),
+                benchmark_id,
+            )
+
     adapter = _import_adapter(_ADAPTER_REGISTRY[benchmark_id])
     problems: list[Problem] = adapter.load_problems(
         max_samples=cfg.max_samples,
@@ -185,21 +361,43 @@ def run_benchmark(
         id_set = set(problem_ids)
         problems = [p for p in problems if p.problem_id in id_set]
 
+    remaining = [p for p in problems if p.problem_id not in cached_ids]
+
     if not problems:
         return BenchmarkResult(benchmark_id=benchmark_id, verdicts=[])
 
+    if not remaining:
+        logger.info(
+            "All %d problems already cached for %s",
+            len(problems),
+            benchmark_id,
+        )
+        id_order = {p.problem_id: i for i, p in enumerate(problems)}
+        cached_verdicts.sort(key=lambda v: id_order.get(v.problem_id, 9999))
+        return BenchmarkResult(benchmark_id=benchmark_id, verdicts=cached_verdicts)
+
     logger.info(
-        "run_benchmark: benchmark=%s n_problems=%d max_workers=%d",
+        "run_benchmark: benchmark=%s n_problems=%d remaining=%d max_workers=%d",
         benchmark_id,
         len(problems),
+        len(remaining),
         cfg.max_workers,
     )
 
-    verdicts: list[PassVerdict] = []
+    def _evaluate_and_checkpoint(problem: Problem) -> PassVerdict:
+        verdict = _evaluate_one(adapter, adapter_stack, problem, cfg)
+        if ckpt_path is not None:
+            _append_checkpoint(ckpt_path, verdict)
+        return verdict
+
+    # Warm up the provider connection with the first problem (single-threaded)
+    # before fanning out.
+    first_verdict = _evaluate_and_checkpoint(remaining[0])
+
+    verdicts: list[PassVerdict] = list(cached_verdicts) + [first_verdict]
     with ThreadPoolExecutor(max_workers=cfg.max_workers) as executor:
         futures = {
-            executor.submit(_evaluate_one, adapter, adapter_stack, p, cfg): p
-            for p in problems
+            executor.submit(_evaluate_and_checkpoint, p): p for p in remaining[1:]
         }
         for future in as_completed(futures):
             verdict = future.result()

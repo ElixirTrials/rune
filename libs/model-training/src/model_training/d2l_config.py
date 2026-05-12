@@ -6,19 +6,38 @@ and probe cache to support any registered model.
 
 All heavy imports (transformers, ctx_to_lora, peft) are deferred to function
 bodies per project convention (INFRA-05) to avoid GPU imports at module level.
+
+Default hyperparameters live in ``hypernet_defaults.yaml`` (same directory).
+Use :func:`load_hypernet_defaults` to access them.
 """
 
 from __future__ import annotations
 
+import functools
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_DEFAULTS_PATH = Path(__file__).parent / "hypernet_defaults.yaml"
+
+
+@functools.lru_cache(maxsize=1)
+def load_hypernet_defaults() -> dict[str, Any]:
+    """Load default hypernetwork config from ``hypernet_defaults.yaml``."""
+    import yaml  # noqa: PLC0415
+
+    with open(_DEFAULTS_PATH) as f:
+        return yaml.safe_load(f)
+
 
 __all__ = [
     "get_d2l_qwen3_config",
     "build_qwen3_hypernet_config",
     "build_hypernet_config",
+    "build_from_scratch_hypernet_config",
+    "load_hypernet_defaults",
 ]
 
 
@@ -258,4 +277,146 @@ def build_hypernet_config(
         layer_indices=layer_indices,
         feature_sizes=feature_sizes,
         aggregator_config=aggregator_config,
+    )
+
+
+def build_from_scratch_hypernet_config(
+    model_name: str = "qwen3.5-9b",
+    lora_r: int | None = None,
+    target_modules: list[str] | None = None,
+    n_latent_queries: int | None = None,
+) -> Any:
+    """Build HypernetConfig + AggregatorConfig from scratch (no Sakana checkpoint).
+
+    Reads architecture dimensions from the HuggingFace model config directly.
+    All tuneable defaults (LoRA rank, target modules, perceiver shape, training
+    params) are loaded from ``hypernet_defaults.yaml`` and can be overridden
+    via function arguments.
+
+    Args:
+        model_name: Registry model name.
+        lora_r: LoRA rank (default from YAML).
+        target_modules: Projection modules to target (default from YAML).
+        n_latent_queries: Number of perceiver latent queries (default from YAML).
+
+    Returns:
+        HypernetConfig with a fully populated AggregatorConfig.
+    """
+    from ctx_to_lora.modeling.aggregator import (  # noqa: PLC0415
+        AGGREGATOR_TYPE,
+        POOL_FN,
+        AggregatorConfig,
+    )
+    from ctx_to_lora.modeling.hypernet import HypernetConfig  # noqa: PLC0415
+    from peft import LoraConfig  # noqa: PLC0415
+    from transformers import AutoConfig  # noqa: PLC0415
+
+    from model_training.model_configs import ModelRegistry  # noqa: PLC0415
+
+    dfl = load_hypernet_defaults()
+    lora_dfl = dfl["lora"]
+    perc_dfl = dfl["perceiver"]
+    head_dfl = dfl["head"]
+
+    if lora_r is None:
+        lora_r = lora_dfl["r"]
+    if target_modules is None:
+        target_modules = list(lora_dfl["target_modules"])
+    if n_latent_queries is None:
+        n_latent_queries = perc_dfl["n_latent_queries"]
+
+    mc = ModelRegistry.default().get(model_name)
+    hf_cfg = AutoConfig.from_pretrained(mc.model_id)
+
+    # Qwen3.5 wraps text config inside a VL config
+    text_cfg = getattr(hf_cfg, "text_config", hf_cfg)
+
+    hidden_size: int = text_cfg.hidden_size
+    num_hidden_layers: int = text_cfg.num_hidden_layers
+    layer_indices = list(range(num_hidden_layers))
+
+    num_heads: int = text_cfg.num_attention_heads
+    num_kv_heads: int = text_cfg.num_key_value_heads
+    head_dim: int = getattr(text_cfg, "head_dim", hidden_size // num_heads)
+
+    # Linear-attention config (Qwen3.5 hybrid architecture)
+    lin_num_k_heads: int = getattr(text_cfg, "linear_num_key_heads", 0)
+    lin_k_head_dim: int = getattr(text_cfg, "linear_key_head_dim", 0)
+    lin_num_v_heads: int = getattr(text_cfg, "linear_num_value_heads", 0)
+    lin_v_head_dim: int = getattr(text_cfg, "linear_value_head_dim", 0)
+    key_dim = lin_num_k_heads * lin_k_head_dim
+    value_dim = lin_num_v_heads * lin_v_head_dim
+
+    # Per-projection in/out dimensions for both attention types.
+    # Qwen3.5 q_proj outputs 2x (gated attention): num_heads * head_dim * 2.
+    _proj_dims: dict[str, tuple[int, int]] = {
+        # Full-attention modules (layers where layer_type == "full_attention")
+        "q_proj": (hidden_size, num_heads * head_dim * 2),
+        "k_proj": (hidden_size, num_kv_heads * head_dim),
+        "v_proj": (hidden_size, num_kv_heads * head_dim),
+        "o_proj": (num_heads * head_dim, hidden_size),
+        # Linear-attention modules (layers where layer_type == "linear_attention")
+        "in_proj_qkv": (hidden_size, key_dim * 2 + value_dim),
+        "in_proj_z": (hidden_size, value_dim),
+        "in_proj_a": (hidden_size, lin_num_v_heads),
+        "in_proj_b": (hidden_size, lin_num_v_heads),
+        "out_proj": (value_dim, hidden_size),
+        # MLP modules (all layers)
+        "gate_proj": (hidden_size, text_cfg.intermediate_size),
+        "up_proj": (hidden_size, text_cfg.intermediate_size),
+        "down_proj": (text_cfg.intermediate_size, hidden_size),
+    }
+
+    _default = (hidden_size, hidden_size)
+    in_sizes = {m: _proj_dims.get(m, _default)[0] for m in target_modules}
+    out_sizes = {m: _proj_dims.get(m, _default)[1] for m in target_modules}
+    feature_sizes: tuple[dict[str, int], dict[str, int]] = (in_sizes, out_sizes)
+
+    lora_config = LoraConfig(
+        r=lora_r,
+        lora_alpha=lora_r * lora_dfl["alpha_multiplier"],
+        target_modules=target_modules,
+        lora_dropout=lora_dfl["dropout"],
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    latent_size = perc_dfl["latent_size"]
+    per_rank_gen: bool = perc_dfl.get("per_rank_gen", True)
+
+    agg_config = AggregatorConfig(
+        aggregator_type=AGGREGATOR_TYPE.PERCEIVER,
+        num_layers=len(layer_indices),
+        num_modules=len(target_modules),
+        num_extra_modules=0,
+        output_size=perc_dfl["output_size"],
+        feature_size=hidden_size,
+        pooling_type=POOL_FN.MEAN,
+        num_latent_factor=perc_dfl["num_latent_factor"],
+        lora_r=lora_r,
+        per_rank_gen=per_rank_gen,
+        n_latent_queries=n_latent_queries,
+        num_blocks=perc_dfl["num_blocks"],
+        num_self_attn_per_block=perc_dfl["num_self_attn_per_block"],
+        shared_weights=perc_dfl["shared_weights"],
+        layer_to_layer_ctx_encoder=perc_dfl["layer_to_layer"],
+    )
+
+    return HypernetConfig(
+        latent_size=latent_size,
+        use_light_weight_lora=False,
+        light_weight_latent_size=128,
+        per_rank_gen=per_rank_gen,
+        use_per_rank_bias=False,
+        use_bias=head_dfl["use_bias"],
+        per_layer_processing=False,
+        use_token_mixing=False,
+        num_pre_head_layers=head_dfl["num_pre_head_layers"],
+        dropout_rate=head_dfl["dropout_rate"],
+        lora_config=lora_config,
+        extra_modules=None,
+        base_hidden_size=hidden_size,
+        layer_indices=layer_indices,
+        feature_sizes=feature_sizes,
+        aggregator_config=agg_config,
     )

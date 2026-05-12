@@ -7,9 +7,16 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from model_training.d2l_models import (
+    Episode,
+    Feedback,
+    FeedbackKind,
+    Provenance,
+    Trajectory,
+)
+
 
 def _make_config(tmp_path: Path, repos: list[dict[str, Any]] | None = None) -> Path:
-    """Write a minimal repos config and return its path."""
     config = {
         "defaults": {"max_prs": 5, "quality": False},
         "repos": repos
@@ -23,31 +30,49 @@ def _make_config(tmp_path: Path, repos: list[dict[str, Any]] | None = None) -> P
     return config_path
 
 
-def _make_trajectory(repo: str, number: int) -> dict[str, Any]:
-    """Create a minimal mined trajectory."""
-    return {
-        "task_id": f"pr_{repo}_{number}",
-        "task_description": f"PR #{number}",
-        "steps": [
-            {"type": "commit", "description": "Init", "content": f"+code_{number}"},
-            {"type": "review", "description": "R", "content": "Fix it"},
-            {"type": "commit", "description": "Fix", "content": f"+fixed_{number}"},
+def _make_trajectory(repo: str, number: int) -> Trajectory:
+    from datetime import datetime, timezone
+
+    return Trajectory(
+        task_id=f"pr_{repo}_{number}",
+        task_description=f"PR #{number}",
+        episodes=[
+            Episode(
+                round=0,
+                prior_diff="",
+                feedback=Feedback(kind=FeedbackKind.task_description, body="goal"),
+                action_diff="d0",
+            ),
+            Episode(
+                round=1,
+                prior_diff="d0",
+                feedback=Feedback(
+                    kind=FeedbackKind.review_comment, body="fix it", author="rev"
+                ),
+                action_diff="d1",
+            ),
         ],
-        "outcome": "merged",
-    }
+        metadata={"outcome": "merged"},
+        provenance=Provenance(
+            repo=repo,
+            pr_number=number,
+            license="MIT",
+            head_sha="a" * 40,
+            base_sha="b" * 40,
+            mined_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        ),
+    )
 
 
-@patch("model_training.d2l_mining.mine_pr_diff_chains")
+@patch("model_training.d2l_mining.mine_pr_trajectories")
 def test_run_batch_produces_per_repo_jsonl(
     mock_mine: MagicMock, tmp_path: Path
 ) -> None:
-    """Batch mode produces one JSONL file per repo."""
     config_path = _make_config(tmp_path)
     output_dir = tmp_path / "output"
 
     mock_mine.side_effect = lambda repo, **kw: [_make_trajectory(repo, 1)]
 
-    # Import the batch function from the script
     import importlib.util
     import sys
 
@@ -62,30 +87,25 @@ def test_run_batch_produces_per_repo_jsonl(
         config_path=config_path,
         output_dir=output_dir,
         token="fake-token",
-        compress=True,
-        max_diff_lines=500,
     )
 
-    # Check output files
-    assert (output_dir / "test_alpha.jsonl").exists()
-    assert (output_dir / "test_beta.jsonl").exists()
+    assert (output_dir / "test_alpha.trajectories.jsonl").exists()
+    assert (output_dir / "test_beta.trajectories.jsonl").exists()
+    assert (output_dir / "test_alpha.unrolled.jsonl").exists()
 
-    # Verify JSONL content
     from model_training.d2l_data import load_jsonl
 
-    alpha_records = load_jsonl(output_dir / "test_alpha.jsonl")
-    assert len(alpha_records) == 2  # step_0 + step_1 from one trajectory
-    assert alpha_records[0]["task_id"] == "pr_test/alpha_1"
-    assert "metadata" in alpha_records[0]
+    pairs = load_jsonl(output_dir / "test_alpha.unrolled.jsonl")
+    assert len(pairs) == 2
+    assert pairs[0]["task_id"] == "pr_test/alpha_1_r0"
 
 
 def test_mining_repos_config_is_valid_json() -> None:
-    """The committed repos config parses without error."""
     config_path = (
         Path(__file__).resolve().parents[3] / "instructions" / "mining_repos.json"
     )
     if not config_path.exists():
-        return  # skip if not yet created
+        return
     config = json.loads(config_path.read_text())
     assert "repos" in config
     assert len(config["repos"]) > 0

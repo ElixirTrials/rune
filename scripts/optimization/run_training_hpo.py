@@ -46,10 +46,21 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# Local fallback for adapters when the MLflow/S3 upload fails. Picked under
+# ~/.rune/ so it shares the volume already mounted into the dev container and
+# isn't on the trial's ephemeral output dir.
+_LOCAL_FALLBACK_ROOT = Path.home() / ".rune" / "hpo-adapter-fallback"
+
+# Free-space safety margin we refuse to consume when copying an adapter to the
+# local fallback. ~1 GiB leaves headroom for OS / log writes / next trial's
+# trainer_state.json so a fallback save can't be the thing that fills the disk.
+_FALLBACK_FREE_SPACE_MARGIN_BYTES = 1 * 1024 * 1024 * 1024
 
 logging.basicConfig(
     level=logging.INFO,
@@ -124,7 +135,12 @@ class HPORunArgs:
     heldout_strategy: str = "step_index"
     compute_adapter_delta: bool = True
     seed: int = 42
+    upload_adapters_to_mlflow: bool = True
+    cleanup_local_adapters: bool = True
+    encoding_mode: str = "multi_turn"
     extra_train_kwargs: dict[str, Any] = field(default_factory=dict)
+    proxy_epochs: int = 3
+    force_diff_aware_loss: bool | None = None
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -135,6 +151,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset", required=True, help="JSONL of mined pairs.")
     parser.add_argument("--n-trials", type=int, default=10)
+    parser.add_argument(
+        "--proxy-epochs",
+        dest="proxy_epochs",
+        type=int,
+        default=3,
+        help=(
+            "Epochs per HPO trial. Was hardcoded to 1 historically; "
+            "the 2026-05-03 deep-dive established 1 epoch is below the "
+            "visibility threshold for code-edit fine-tunes against a "
+            "warm-start prior, so the historical HPO winners were tuned "
+            "under near-zero signal. Default 3 matches the canonical "
+            "Magicoder-style recipe."
+        ),
+    )
     parser.add_argument("--study-name", dest="study_name", default="rune-training-v1")
     parser.add_argument(
         "--db", default="sqlite:///./optuna_training.db", help="Optuna storage URI"
@@ -174,6 +204,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--smoke",
         action="store_true",
         help="2-trial × 1-step smoke test for CI; ignores --n-trials.",
+    )
+    parser.add_argument(
+        "--encoding-mode",
+        dest="encoding_mode",
+        choices=["multi_turn", "single_turn"],
+        default="multi_turn",
+        help="Chat encoding mode passed to train_and_register.",
     )
     parser.add_argument(
         "--hunk-loss-weight",
@@ -236,10 +273,51 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Resolve args and print the study plan; do not run any trials.",
     )
+    parser.add_argument(
+        "--upload-adapters-to-mlflow",
+        dest="upload_adapters_to_mlflow",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "After eval, upload each trial's adapter as an MLflow artifact. "
+            "When the MLflow server is configured with --serve-artifacts and "
+            "--default-artifact-root s3://… (the in-pod default), the upload "
+            "lands in S3 transparently — no boto3 calls from the client. "
+            "Disable to keep adapters local-only."
+        ),
+    )
+    parser.add_argument(
+        "--cleanup-local-adapters",
+        dest="cleanup_local_adapters",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Delete each trial's local adapter directory immediately after "
+            "the MLflow upload succeeds. Avoids letting hundreds of trial "
+            "adapters fill the host disk during long studies. Has no effect "
+            "when --no-upload-adapters-to-mlflow is set, since dropping the "
+            "only copy would lose the adapter entirely."
+        ),
+    )
+    parser.add_argument(
+        "--force-diff-aware-loss",
+        dest="force_diff_aware_loss",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Force diff_aware_loss to True (or False with --no-). "
+            "Removes it from the search space so every trial uses the "
+            "fixed value. Useful for A/B comparison across studies."
+        ),
+    )
     return parser
 
 
-def _suggest_trial_params(trial: Any) -> dict[str, Any]:
+def _suggest_trial_params(
+    trial: Any,
+    *,
+    force_diff_aware_loss: bool | None = None,
+) -> dict[str, Any]:
     """Sample one trial's hyperparameters from the warm-start-aware search space."""
     lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
     alpha = trial.suggest_categorical("alpha_override", [16, 32, 64, 128])
@@ -247,7 +325,13 @@ def _suggest_trial_params(trial: Any) -> dict[str, Any]:
     warmup = trial.suggest_float("warmup_ratio", 0.0, 0.1)
     grad_accum = trial.suggest_categorical("grad_accum", [8, 16, 32])
     scheduler = trial.suggest_categorical("lr_scheduler", ["constant", "cosine"])
-    diff_aware = trial.suggest_categorical("diff_aware_loss", [False, True])
+    if force_diff_aware_loss is not None:
+        diff_aware = trial.suggest_categorical(
+            "diff_aware_loss",
+            [force_diff_aware_loss],
+        )
+    else:
+        diff_aware = trial.suggest_categorical("diff_aware_loss", [False, True])
     neftune = trial.suggest_categorical("neftune_noise_alpha", [None, 5.0, 10.0])
     return {
         "lr": lr,
@@ -318,10 +402,10 @@ def _build_trial_kwargs(
         "session_id": None,
         "adapter_id": adapter_id,
         "dataset_path": trial_dataset_path,
-        "encoding_mode": "multi_turn",
+        "encoding_mode": run_args.encoding_mode,
         "model_config_name": run_args.model_config_name,
         "warm_start_adapter_id": _resolve_warm_start(run_args.warm_start),
-        "epochs": 1,  # proxy mode; operators choose final epochs on the winner
+        "epochs": run_args.proxy_epochs,
         "learning_rate": sampled["lr"],
         "gradient_accumulation_steps": sampled["grad_accum"],
         "lr_scheduler_type": sampled["lr_scheduler"],
@@ -352,6 +436,281 @@ def _eval_loss_from_trainer_state(output_dir: str) -> float:
     history = state.get("log_history", [])
     losses = [float(entry["loss"]) for entry in history if "loss" in entry]
     return losses[-1] if losses else float("inf")
+
+
+class _RunningTopK:
+    """Track the running top-K trials by fitness for selective S3 uploads.
+
+    The HPO study can run 30+ trials. Uploading every adapter to S3 would
+    persist 30× as many checkpoints as the operator actually wants
+    ("save a few" in the original ask), and waste S3 lifecycle later.
+    Instead we mirror the post-study ``--keep-top-k`` semantics inline:
+    only adapters that currently rank in the top-K get uploaded; when a
+    new trial displaces an older top-K member, the displaced run's
+    artifacts are dropped from MLflow so the bucket converges to ≤ K
+    adapters per study.
+
+    The set is small (K ≤ 10 in practice), so a sorted list with a linear
+    scan is faster and clearer than a heap.
+    """
+
+    def __init__(self, k: int) -> None:
+        if k < 0:
+            raise ValueError(f"_RunningTopK: k must be >= 0, got {k}")
+        self.k = k
+        # Entries sorted by fitness ascending — entries[0] is the worst-of-top-K.
+        self._entries: list[tuple[float, int, str]] = []
+
+    def offer(
+        self, fitness: float, trial_number: int, run_id: str
+    ) -> tuple[bool, str | None]:
+        """Decide whether ``trial_number`` enters the top-K.
+
+        Returns:
+            ``(should_upload, displaced_run_id)``:
+              * ``should_upload`` is ``True`` when this trial should be
+                pushed to S3.
+              * ``displaced_run_id`` is the MLflow run id of the trial
+                that just got knocked out of the top-K (caller cleans
+                up its artifacts), or ``None`` when nothing was
+                displaced.
+        """
+        if self.k == 0:
+            return False, None
+        if len(self._entries) < self.k:
+            self._entries.append((fitness, trial_number, run_id))
+            self._entries.sort(key=lambda e: e[0])
+            return True, None
+        worst_fitness, _, worst_run_id = self._entries[0]
+        if fitness <= worst_fitness:
+            return False, None
+        self._entries[0] = (fitness, trial_number, run_id)
+        self._entries.sort(key=lambda e: e[0])
+        return True, worst_run_id
+
+
+def _delete_mlflow_run(run_id: str) -> bool:
+    """Best-effort delete of a displaced MLflow run.
+
+    Marks the run as ``deleted`` in the tracking store and instructs the
+    server to delete its artifacts; on the in-pod stack the artifact
+    store is S3, so this clears the S3 prefix for the run. Returns
+    ``False`` (and logs) on any failure rather than aborting the trial —
+    a leftover orphaned run is annoying but recoverable, while a thrown
+    exception here would mask the actual training-side outcome of the
+    new trial.
+
+    Note: stale orphans (e.g. from earlier studies) are not addressed
+    here — operators should periodically run ``mlflow gc --tracking-uri
+    …`` to physically purge artifacts of runs marked deleted long ago.
+    """
+    try:
+        from mlflow.tracking import MlflowClient  # noqa: PLC0415
+
+        MlflowClient().delete_run(run_id)
+    except Exception:  # noqa: BLE001 — never break HPO on cleanup
+        logger.exception(
+            "Failed to delete displaced MLflow run %s; "
+            "artifact will linger until `mlflow gc` runs.",
+            run_id,
+        )
+        return False
+    return True
+
+
+def _dir_size_bytes(path: Path) -> int:
+    """Sum of regular-file sizes under *path*. Unreadable entries are skipped."""
+    total = 0
+    for child in path.rglob("*"):
+        try:
+            if child.is_file():
+                total += child.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _save_to_local_fallback(
+    adapter_path: Path,
+    *,
+    run_id: str,
+    artifact_path: str,
+    fallback_root: Path = _LOCAL_FALLBACK_ROOT,
+    margin_bytes: int = _FALLBACK_FREE_SPACE_MARGIN_BYTES,
+) -> Path | None:
+    """Copy an adapter to a stable local location, gated on free disk.
+
+    Used when ``mlflow.log_artifacts`` fails so the adapter survives even if
+    the trial's output dir is later cleaned up. Returns the destination path
+    on success, ``None`` if the disk is too full to absorb the copy without
+    breaching ``margin_bytes`` of headroom (or if the copy itself errored).
+    The caller is responsible for tagging the MLflow run with the outcome.
+    """
+    adapter_size = _dir_size_bytes(adapter_path)
+    # Probe disk usage on whichever ancestor of fallback_root currently exists,
+    # so the check works on a fresh install where the root has never been made.
+    probe = fallback_root
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        usage = shutil.disk_usage(probe)
+    except OSError:
+        logger.exception(
+            "Could not stat disk usage at %s — skipping local fallback.", probe
+        )
+        return None
+    required = adapter_size + margin_bytes
+    if usage.free < required:
+        logger.error(
+            "Local fallback skipped: free=%d B at %s, need %d B "
+            "(adapter=%d B + %d B safety margin). Adapter remains at %s.",
+            usage.free,
+            probe,
+            required,
+            adapter_size,
+            margin_bytes,
+            adapter_path,
+        )
+        return None
+    dest = fallback_root / run_id / artifact_path
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(adapter_path, dest)
+    except OSError:
+        logger.exception("Local fallback copy %s -> %s failed.", adapter_path, dest)
+        return None
+    logger.warning(
+        "MLflow upload failed; adapter copied to local fallback %s "
+        "(size=%d B, free_after=%d B).",
+        dest,
+        adapter_size,
+        usage.free - adapter_size,
+    )
+    return dest
+
+
+def _upload_adapter_and_cleanup(
+    adapter_dir: str,
+    *,
+    upload: bool,
+    cleanup: bool,
+    artifact_path: str = "adapter",
+) -> bool:
+    """Log ``adapter_dir`` to the active MLflow run, then optionally delete it.
+
+    Why MLflow over a direct ``boto3`` upload: the in-pod MLflow server is
+    started with ``--serve-artifacts`` and ``--default-artifact-root
+    s3://…/mlflow/artifacts/`` (see ``infra/docker-compose.yml``), so any
+    ``mlflow.log_artifacts`` call from the HPO host streams through the
+    server and lands in the team S3 bucket *exactly once*, scoped to the
+    current run id. The client never holds AWS credentials and the run's
+    ``artifact_uri`` is the canonical pointer — no second copy elsewhere.
+
+    Returns ``True`` when the upload (and optional cleanup) succeeded so
+    the caller can record an MLflow tag for observability. Returns
+    ``False`` on any failure path; the local copy is preserved in that
+    case so the trial is not lost.
+
+    The ``cleanup=True`` path is gated on ``upload=True``: we never delete
+    the only existing copy.
+    """
+    if not upload:
+        return False
+
+    import mlflow  # noqa: PLC0415
+
+    adapter_path = Path(adapter_dir)
+    if not adapter_path.exists():
+        logger.warning("Adapter dir %s missing — skipping MLflow upload.", adapter_dir)
+        return False
+
+    active_run = mlflow.active_run()
+    run_id = active_run.info.run_id if active_run else "<no-active-run>"
+    artifact_uri = active_run.info.artifact_uri if active_run else "<unknown>"
+    target_uri = f"{artifact_uri.rstrip('/')}/{artifact_path}"
+
+    try:
+        file_count = sum(1 for _ in adapter_path.rglob("*") if _.is_file())
+    except OSError:
+        file_count = -1
+
+    try:
+        mlflow.log_artifacts(str(adapter_path), artifact_path=artifact_path)
+    except Exception as exc:  # noqa: BLE001 — never let the upload kill the trial
+        logger.exception(
+            "MLflow log_artifacts failed: src=%s (%d files) -> dst=%s "
+            "(run_id=%s, error=%s: %s); keeping local copy at %s. "
+            "If the tracking server is configured with --serve-artifacts, "
+            "verify its IAM role has s3:PutObject AND s3:ListBucket on the "
+            "artifact bucket prefix.",
+            adapter_dir,
+            file_count,
+            target_uri,
+            run_id,
+            type(exc).__name__,
+            exc,
+            adapter_dir,
+        )
+        fallback_dest = _save_to_local_fallback(
+            adapter_path, run_id=run_id, artifact_path=artifact_path
+        )
+        # Tag the run so failed uploads show up in the MLflow UI without
+        # needing to grep logs.
+        try:
+            mlflow.set_tag("hpo.adapter_upload_error", f"{type(exc).__name__}: {exc}")
+            mlflow.set_tag("hpo.adapter_upload_target", target_uri)
+            if fallback_dest is not None:
+                mlflow.set_tag("hpo.adapter_local_fallback_path", str(fallback_dest))
+            else:
+                mlflow.set_tag("hpo.adapter_local_fallback", "skipped_no_disk")
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to set MLflow upload-error tag.", exc_info=True)
+        return False
+
+    if cleanup:
+        try:
+            shutil.rmtree(adapter_path, ignore_errors=False)
+        except Exception:  # noqa: BLE001 — local cleanup is best-effort
+            logger.exception(
+                "Failed to remove local adapter dir %s after MLflow upload "
+                "(adapter is safely persisted in S3 via MLflow).",
+                adapter_dir,
+            )
+    return True
+
+
+def _all_masked_batch_frac_from_trainer_state(output_dir: str) -> float:
+    """Mean ``train/all_masked_batch_frac`` across this trial's log_history.
+
+    Surfaces the RCA-5 H2 zero-gradient-batch frequency to the HPO scoreboard.
+    A trial whose adapter looks "good" on hunk metrics but trained against
+    largely empty gradients should be discounted; this number is what tells
+    the operator whether to trust the result. ``0.0`` is healthy; ``>0.05``
+    means at least 5 % of micro-batches contributed nothing to the loss
+    (almost always a dataset/truncation issue, not a hyperparameter issue).
+
+    Returns ``0.0`` when the metric was never logged (non-diff-aware trials,
+    older trainer versions, or a missing trainer_state.json) — those trials
+    should not be ranked-against the diff-aware ones on this dimension.
+    """
+    state_file = Path(output_dir) / "trainer_state.json"
+    if not state_file.exists():
+        return 0.0
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return 0.0
+    history = state.get("log_history", [])
+    fracs = [
+        float(entry["train/all_masked_batch_frac"])
+        for entry in history
+        if "train/all_masked_batch_frac" in entry
+    ]
+    if not fracs:
+        return 0.0
+    return sum(fracs) / len(fracs)
 
 
 def _load_pairs_jsonl(path: str) -> list[dict[str, Any]]:
@@ -606,25 +965,38 @@ def _evaluate_adapter_on_heldout(
                 ).logits[0]
                 shift_logits = logits[:-1]
                 shift_ids = input_ids[0][1:]
-                log_probs = torch.log_softmax(shift_logits, dim=-1)
-                probs = log_probs.exp()
 
+                # Gather hunk-token positions first, then run log_softmax
+                # only on those rows. Materialising the full ``[L-1, V]``
+                # log_probs + probs would peak at ~2.5 GB at L=2048,
+                # V=151k — tight on the L4 with the adapter+base resident
+                # (mirrors the training-side fix in diff_loss.py).
+                hunk_idx: list[int] = []
                 for i in range(shift_logits.size(0)):
-                    tok_offset = offsets[i + 1]
-                    ts, te = tok_offset
+                    ts, te = offsets[i + 1]
                     if ts == 0 and te == 0:
                         continue
-                    in_hunk = any(ts < he and te > hs for hs, he in shifted)
-                    if not in_hunk:
-                        continue
-                    tgt = int(shift_ids[i].item())
-                    nll = -float(log_probs[i, tgt].item())
-                    pred = int(shift_logits[i].argmax().item())
-                    ent = float(-(probs[i] * log_probs[i]).sum().item())
-                    total_loss += nll
-                    total_acc += 1.0 if pred == tgt else 0.0
-                    total_ent += ent
-                    total_tok += 1
+                    if any(ts < he and te > hs for hs, he in shifted):
+                        hunk_idx.append(i)
+                if not hunk_idx:
+                    continue
+                idx_tensor = torch.tensor(
+                    hunk_idx, device=shift_logits.device, dtype=torch.long
+                )
+                hunk_logits = shift_logits.index_select(0, idx_tensor)
+                hunk_targets = shift_ids.index_select(0, idx_tensor)
+                hunk_log_probs = torch.log_softmax(hunk_logits.float(), dim=-1)
+                nll_per_token = -hunk_log_probs.gather(
+                    1, hunk_targets.unsqueeze(1)
+                ).squeeze(1)
+                hunk_preds = hunk_logits.argmax(dim=-1)
+                entropy_per_token = -(hunk_log_probs.exp() * hunk_log_probs).sum(dim=-1)
+
+                total_loss += float(nll_per_token.sum().item())
+                total_acc += float((hunk_preds == hunk_targets).sum().item())
+                total_ent += float(entropy_per_token.sum().item())
+                total_tok += len(hunk_idx)
+                del hunk_logits, hunk_log_probs, nll_per_token, entropy_per_token
         if total_tok == 0:
             return 0.0, 0.0, 0.0, 0
         return (
@@ -726,15 +1098,86 @@ def _compute_fitness(
     )
 
 
+def _gate_and_upload_adapter(
+    adapter_output_dir: str,
+    *,
+    run_id: str,
+    trial_number: int,
+    fitness: float,
+    run_args: HPORunArgs,
+    top_k: _RunningTopK,
+) -> str:
+    """Decide whether this trial's adapter goes to S3, and act on it.
+
+    Three exit states, returned as the string the caller writes to the
+    ``hpo.adapter_uploaded_to_mlflow`` MLflow tag:
+
+    - ``"disabled"``: ``--no-upload-adapters-to-mlflow`` was passed; the
+      adapter stays local untouched.
+    - ``"true"``: trial entered the running top-K and the adapter was
+      uploaded successfully (local copy removed when
+      ``--cleanup-local-adapters`` is on).
+    - ``"skipped_not_top_k"``: trial did not earn a slot; the adapter is
+      cleaned up locally (when cleanup is on) without ever being
+      uploaded — this is what bounds total S3 checkpoints to ≤ K per
+      study.
+    - ``"upload_failed"``: top-K slot was earned but the upload itself
+      failed; the local copy is preserved so the operator can recover.
+
+    Side effects: when the top-K offer displaces an older trial, that
+    trial's MLflow run is deleted via :func:`_delete_mlflow_run` so the
+    bucket converges to ≤ K live runs per study.
+    """
+    import shutil  # noqa: PLC0415
+
+    if not run_args.upload_adapters_to_mlflow:
+        return "disabled"
+
+    should_upload, displaced_run_id = top_k.offer(fitness, trial_number, run_id)
+    if displaced_run_id:
+        _delete_mlflow_run(displaced_run_id)
+        # Best-effort tag — the displaced run is in a different MLflow run
+        # context, so we annotate the new (current) run for traceability.
+        import mlflow  # noqa: PLC0415
+
+        mlflow.set_tag("hpo.displaced_run_id", displaced_run_id)
+
+    if should_upload:
+        ok = _upload_adapter_and_cleanup(
+            adapter_output_dir,
+            upload=True,
+            cleanup=run_args.cleanup_local_adapters,
+        )
+        return "true" if ok else "upload_failed"
+
+    # Trial did not earn a top-K slot. Remove the local copy if cleanup is
+    # enabled — keeping it would defeat the "don't fill up our HD" goal,
+    # and the trial's metrics are already in MLflow even though its
+    # weights aren't.
+    if run_args.cleanup_local_adapters:
+        shutil.rmtree(adapter_output_dir, ignore_errors=True)
+    return "skipped_not_top_k"
+
+
 def _run_single_trial(
     trial: Any,
     *,
     run_args: HPORunArgs,
     fitness_cfg: FitnessConfig,
     prior_losses: list[float],
+    top_k: _RunningTopK,
 ) -> float:
-    """Objective function body for one Optuna trial."""
-    sampled = _suggest_trial_params(trial)
+    """Objective function body for one Optuna trial.
+
+    ``top_k`` is mutated in place: when this trial earns a slot, its
+    adapter is uploaded to MLflow (S3 in the in-pod config) and any
+    displaced trial's run is deleted so the bucket converges to ≤ K
+    adapters per study.
+    """
+    sampled = _suggest_trial_params(
+        trial,
+        force_diff_aware_loss=run_args.force_diff_aware_loss,
+    )
     logger.info("Trial %d sampled params: %s", trial.number, sampled)
 
     trial_dir = run_args.output_root / f"trial_{trial.number:03d}"
@@ -799,7 +1242,9 @@ def _run_single_trial(
         kwargs.get("mlflow_tracking_uri")
         or os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     )
-    mlflow.set_experiment(kwargs.get("mlflow_experiment") or run_args.experiment_name)
+    _ensure_experiment_active(
+        kwargs.get("mlflow_experiment") or run_args.experiment_name
+    )
     mlflow.start_run(
         run_name=f"{run_args.adapter_id_prefix}-t{trial.number:03d}",
     )
@@ -839,31 +1284,62 @@ def _run_single_trial(
             base_model_id=base_model_id,
             compute_adapter_delta=run_args.compute_adapter_delta,
         )
+        # Surface the per-trial fraction of zero-gradient micro-batches so the
+        # MLflow scoreboard exposes degenerate trials even when their hunk
+        # metrics happen to look fine. trainer_state lives next to the saved
+        # adapter (RUNE_ADAPTER_DIR/<adapter_id>/trainer_state.json). Logged
+        # under the ``train/`` prefix because it is a training-time metric,
+        # not an eval-time one — keeping the namespacing honest avoids the
+        # MLflow scoreboard treating it as part of the held-out signal.
+        all_masked_frac = _all_masked_batch_frac_from_trainer_state(adapter_output_dir)
         mlflow.log_metrics(
             {f"eval/{k}": v for k, v in eval_metrics.items()},
             step=trial.number,
         )
+        mlflow.log_metric(
+            "train/all_masked_batch_frac_mean", all_masked_frac, step=trial.number
+        )
+        mlflow.set_tag("hpo.train_all_masked_batch_frac", f"{all_masked_frac:.4f}")
+        eval_metrics["all_masked_batch_frac"] = all_masked_frac
+
+        # Compute fitness up-front so we can gate the S3 upload on top-K
+        # membership: trials that don't earn a slot never touch the
+        # bucket, keeping persisted checkpoint count ≤ keep_top_k per
+        # study even on long ``--n-trials`` runs.
+        fitness = _compute_fitness(
+            eval_metrics["hunk_loss"],
+            eval_metrics["hunk_accuracy"],
+            eval_metrics["adapter_improvement"],
+            prior_losses=prior_losses,
+            cfg=fitness_cfg,
+        )
+
+        active_run = mlflow.active_run()
+        assert active_run is not None
+        run_id = active_run.info.run_id
+        upload_status = _gate_and_upload_adapter(
+            adapter_output_dir,
+            run_id=run_id,
+            trial_number=trial.number,
+            fitness=fitness,
+            run_args=run_args,
+            top_k=top_k,
+        )
+        mlflow.set_tag("hpo.adapter_uploaded_to_mlflow", upload_status)
     except BaseException:
         mlflow.end_run(status="FAILED")
         raise
     else:
         mlflow.end_run(status="FINISHED")
-
-    fitness = _compute_fitness(
-        eval_metrics["hunk_loss"],
-        eval_metrics["hunk_accuracy"],
-        eval_metrics["adapter_improvement"],
-        prior_losses=prior_losses,
-        cfg=fitness_cfg,
-    )
     logger.info(
         "Trial %d hunk_loss=%.4f hunk_acc=%.3f"
-        " adapter_imp=%.3f entropy=%.3f fitness=%.4f",
+        " adapter_imp=%.3f entropy=%.3f all_masked_frac=%.3f fitness=%.4f",
         trial.number,
         eval_metrics["hunk_loss"],
         eval_metrics["hunk_accuracy"],
         eval_metrics["adapter_improvement"],
         eval_metrics["hunk_entropy"],
+        eval_metrics["all_masked_batch_frac"],
         fitness,
     )
     prior_losses.append(eval_metrics["hunk_loss"])
@@ -930,6 +1406,11 @@ def main(argv: list[str] | None = None) -> int:
         heldout_strategy=args.heldout_strategy,
         compute_adapter_delta=args.adapter_improvement_eval,
         seed=args.seed,
+        upload_adapters_to_mlflow=args.upload_adapters_to_mlflow,
+        cleanup_local_adapters=args.cleanup_local_adapters,
+        proxy_epochs=args.proxy_epochs,
+        encoding_mode=args.encoding_mode,
+        force_diff_aware_loss=args.force_diff_aware_loss,
     )
     fitness_cfg = FitnessConfig(
         hunk_loss_weight=args.hunk_loss_weight,
@@ -988,6 +1469,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     prior_losses: list[float] = []
+    # Bound persisted S3 checkpoints to the same ``--keep-top-k`` budget the
+    # post-study local pruner uses; without this every successful trial
+    # would push another adapter to the bucket.
+    top_k = _RunningTopK(k=run_args.keep_top_k)
 
     def _objective(trial: optuna.Trial) -> float:
         return _run_single_trial(
@@ -995,6 +1480,7 @@ def main(argv: list[str] | None = None) -> int:
             run_args=run_args,
             fitness_cfg=fitness_cfg,
             prior_losses=prior_losses,
+            top_k=top_k,
         )
 
     # Tell Optuna that a per-trial exception is a *failed trial*, not a
@@ -1053,6 +1539,63 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _ensure_experiment_active(experiment_name: str) -> None:
+    """Restore a soft-deleted MLflow experiment so ``set_experiment`` works.
+
+    MLflow refuses ``set_experiment`` on a soft-deleted experiment with
+    *"Cannot set a deleted experiment ... as the active experiment."* —
+    typically triggered when an operator hits "Delete" in the UI between
+    HPO runs. Restoring the experiment is the documented recovery path
+    and preserves prior runs / artifact lineage.
+
+    Implemented as try-set / catch-deleted / restore / retry rather than
+    a pre-flight ``get_experiment_by_name`` lookup because that method
+    only returns *active* experiments against the REST tracking server
+    (and a few other backends) — soft-deleted ones come back as
+    ``None``, so a pre-flight check would never see them. The
+    catch-restore-retry path is backend-agnostic.
+    """
+    import mlflow  # noqa: PLC0415
+    from mlflow.entities import ViewType  # noqa: PLC0415
+    from mlflow.exceptions import MlflowException  # noqa: PLC0415
+    from mlflow.tracking import MlflowClient  # noqa: PLC0415
+
+    try:
+        mlflow.set_experiment(experiment_name)
+        return
+    except MlflowException as exc:
+        if "deleted experiment" not in str(exc).lower():
+            raise
+
+    # Locate the soft-deleted experiment via search_experiments, which
+    # honours ViewType.ALL on every backend. Filter in Python to avoid
+    # quoting edge cases in the filter_string DSL.
+    client = MlflowClient()
+    page_token: str | None = None
+    match = None
+    while True:
+        page = client.search_experiments(view_type=ViewType.ALL, page_token=page_token)
+        match = next((e for e in page if e.name == experiment_name), None)
+        if match is not None:
+            break
+        page_token = getattr(page, "token", None)
+        if not page_token:
+            break
+
+    if match is None:
+        raise RuntimeError(
+            f"MLflow rejected experiment {experiment_name!r} as deleted but "
+            "search_experiments(view_type=ALL) could not locate it."
+        )
+    client.restore_experiment(match.experiment_id)
+    logger.warning(
+        "Restored soft-deleted MLflow experiment %r (id=%s) so HPO can write to it.",
+        experiment_name,
+        match.experiment_id,
+    )
+    mlflow.set_experiment(experiment_name)
+
+
 def _log_study_summary_to_mlflow(
     *,
     experiment_name: str,
@@ -1067,7 +1610,7 @@ def _log_study_summary_to_mlflow(
     mlflow.set_tracking_uri(
         os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
     )
-    mlflow.set_experiment(experiment_name)
+    _ensure_experiment_active(experiment_name)
     with mlflow.start_run(run_name=f"study-{args.study_name}"):
         mlflow.set_tags(
             {

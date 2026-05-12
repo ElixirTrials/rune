@@ -33,6 +33,9 @@ class BenchmarkName(str, Enum):
     MBPP = "mbpp"
     BIGCODEBENCH_COMPLETE = "bigcodebench-complete"
     BIGCODEBENCH_INSTRUCT = "bigcodebench-instruct"
+    APPS = "apps"
+    DS_1000 = "ds_1000"
+    LIVECODEBENCH = "livecodebench"
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,21 @@ TIER_CONFIGS: dict[Tier, list[BenchmarkConfig]] = {
         ),
         BenchmarkConfig(
             name=BenchmarkName.BIGCODEBENCH_INSTRUCT,
+            n_problems=None,
+            pass_k=[PASS_AT_1],
+        ),
+        BenchmarkConfig(
+            name=BenchmarkName.APPS,
+            n_problems=500,
+            pass_k=[PASS_AT_1],
+        ),
+        BenchmarkConfig(
+            name=BenchmarkName.DS_1000,
+            n_problems=None,
+            pass_k=[PASS_AT_1],
+        ),
+        BenchmarkConfig(
+            name=BenchmarkName.LIVECODEBENCH,
             n_problems=None,
             pass_k=[PASS_AT_1],
         ),

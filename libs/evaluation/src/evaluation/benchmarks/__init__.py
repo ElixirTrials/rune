@@ -16,6 +16,8 @@ Public API re-exported for convenience:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from evaluation.benchmarks.protocol import (
     BenchmarkAdapter,
     BenchmarkConfig,
@@ -23,6 +25,12 @@ from evaluation.benchmarks.protocol import (
     PassVerdict,
     Problem,
 )
+
+if TYPE_CHECKING:
+    from evaluation.benchmarks.adapter_stack import (
+        load_adapter_stack as load_adapter_stack,
+    )
+    from evaluation.benchmarks.runner import run_benchmark as run_benchmark
 
 __all__ = [
     "BenchmarkAdapter",

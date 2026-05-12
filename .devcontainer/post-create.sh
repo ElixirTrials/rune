@@ -133,6 +133,15 @@ alias eclaude='claude --dangerously-skip-permissions'
 ALIASES
 fi
 
+# Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl,
+# plus causal-conv1d + flash-linear-attention for the Mamba fast-path).
+#
+# The Mamba kernels compile from source against our cu130 torch (not the cu128
+# torch the build sandbox would otherwise pull in — see ``[tool.uv]
+# no-build-isolation-package`` in pyproject.toml). We narrow the compile to the
+# actual host GPU's compute capability via TORCH_CUDA_ARCH_LIST: a default
+# install builds for ~9 archs and takes 30-45 min; a single-arch build takes
+# 5-10. Falls back to a portable arch list if no GPU is detected (CPU-only CI).
 # Persistent shell history — flush after every command, 100k line ring.
 # devcontainer.json bind-mounts /home/vscode/.bash_history from the host's
 # /home/ubuntu/.bash_history (which is in restic's backup paths), so commands
@@ -159,6 +168,20 @@ fi
 # Install rune dependencies (including GPU extras: flash-attn, bitsandbytes, trl)
 if [ -f pyproject.toml ]; then
   echo "Installing rune dependencies (with GPU extras)..."
+  if command -v nvidia-smi &>/dev/null; then
+    GPU_CAP="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d ' ')"
+    GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1 | tr -d '\n')"
+    if [ -n "$GPU_CAP" ]; then
+      export TORCH_CUDA_ARCH_LIST="$GPU_CAP"
+      echo "Detected $GPU_NAME (compute capability $GPU_CAP) — TORCH_CUDA_ARCH_LIST=$GPU_CAP"
+      # Persist so future shells (and any post-install rebuilds) get the same.
+      echo "export TORCH_CUDA_ARCH_LIST=\"$GPU_CAP\"" >> ~/.bashrc
+    else
+      echo "nvidia-smi present but compute_cap empty — leaving TORCH_CUDA_ARCH_LIST unset (slow multi-arch fallback)."
+    fi
+  else
+    echo "No nvidia-smi (CPU-only environment) — Mamba kernels will be skipped if torch can't find a CUDA toolkit."
+  fi
   uv sync --extra gpu || { echo "ERROR: uv sync --extra gpu failed"; exit 1; }
 
   # Verify GPU stack works
@@ -169,5 +192,11 @@ assert torch.cuda.is_available(), 'CUDA not available'
 print(f'GPU OK: {torch.cuda.get_device_name(0)}')
 print(f'CUDA: {torch.version.cuda}')
 print(f'PyTorch: {torch.__version__}')
+try:
+    import causal_conv1d_cuda  # noqa: F401
+    import fla  # noqa: F401
+    print('Mamba fast-path kernels: causal-conv1d + flash-linear-attention loaded')
+except ImportError as e:
+    print(f'Mamba fast-path NOT available — slow torch fallback will be used: {e}')
 " || { echo "WARNING: GPU verification failed — check CUDA drivers and torch installation"; }
 fi

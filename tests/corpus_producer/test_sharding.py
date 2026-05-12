@@ -21,25 +21,25 @@ class TestParseShard:
     """``_parse_shard('N/M')`` returns (idx, total)."""
 
     def test_valid_shard(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         assert pcp._parse_shard("0/4") == (0, 4)
         assert pcp._parse_shard("3/4") == (3, 4)
 
     def test_missing_slash_raises(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         with pytest.raises(ValueError):
             pcp._parse_shard("0-4")
 
     def test_non_integer_raises(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         with pytest.raises(ValueError):
             pcp._parse_shard("a/b")
 
     def test_index_out_of_range_raises(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         with pytest.raises(ValueError):
             pcp._parse_shard("4/4")  # idx must be < total
@@ -47,7 +47,7 @@ class TestParseShard:
             pcp._parse_shard("-1/4")
 
     def test_total_zero_raises(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         with pytest.raises(ValueError):
             pcp._parse_shard("0/0")
@@ -57,13 +57,13 @@ class TestApplyShard:
     """``apply_shard(problems, idx, total)`` round-robin slice."""
 
     def test_single_shard_identity(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         problems = [("p", "prompt")] * 10
         assert pcp.apply_shard(problems, 0, 1) == problems
 
     def test_two_shards_split_even_and_odd(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         problems = [(f"p{i}", f"prompt{i}") for i in range(6)]
         shard_0 = pcp.apply_shard(problems, 0, 2)
@@ -72,7 +72,7 @@ class TestApplyShard:
         assert [p[0] for p in shard_1] == ["p1", "p3", "p5"]
 
     def test_shard_union_is_full_list(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         problems = [(f"p{i}", f"prompt{i}") for i in range(11)]
         recovered: list[tuple[str, str]] = []
@@ -82,7 +82,7 @@ class TestApplyShard:
         assert len(recovered) == len(problems)
 
     def test_shard_never_overlaps(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         problems = [(f"p{i}", f"prompt{i}") for i in range(20)]
         seen: set[str] = set()
@@ -94,7 +94,7 @@ class TestApplyShard:
 
     def test_shard_more_workers_than_problems(self) -> None:
         """When total > len(problems), each shard gets at most 1 problem."""
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         problems = [(f"p{i}", f"prompt{i}") for i in range(3)]
         for idx in range(3):
@@ -103,6 +103,6 @@ class TestApplyShard:
             assert pcp.apply_shard(problems, idx, 10) == []
 
     def test_empty_problems(self) -> None:
-        import phase_corpus_producer as pcp
+        import phase_corpus_producer as pcp  # type: ignore[import-not-found]
 
         assert pcp.apply_shard([], 0, 4) == []

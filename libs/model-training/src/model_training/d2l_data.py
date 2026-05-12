@@ -13,9 +13,10 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from model_training.d2l_diff import compress_diff
+if TYPE_CHECKING:
+    from model_training.d2l_models import Feedback, Trajectory
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +24,14 @@ SYSTEM_PROMPT = "You are a Python code generator. Output only code, no explanati
 
 __all__ = [
     "format_for_distillation",
-    "normalize_mined_trajectory",
     "generate_needle_dataset",
     "generate_trajectory_dataset",
     "augment_trajectories",
     "save_jsonl",
     "load_jsonl",
     "split_by_task_id",
-    "normalize_mined_pairs",
     "pairs_to_chat_messages",
+    "unroll_trajectory_to_pairs",
 ]
 
 # ---------------------------------------------------------------------------
@@ -344,86 +344,6 @@ def format_for_distillation(trajectory: dict[str, Any]) -> list[dict[str, str]]:
     return records
 
 
-def normalize_mined_trajectory(mined: dict[str, Any]) -> dict[str, Any]:
-    """Convert a GitHub-mined trajectory dict into distillation-ready format.
-
-    Maps the mining pipeline's output (PR/issue metadata with commit and review
-    steps) into the schema expected by ``format_for_distillation``.
-
-    Outcome mapping:
-        - ``pr_*`` task_ids: ``"merged"`` -> ``"success"``, else ``"failure"``
-        - ``issue_*`` task_ids: ``"closed"`` -> ``"success"``, else ``"failure"``
-        - Fallback: ``"merged"`` or ``"closed"`` -> ``"success"``, else ``"failure"``
-
-    Step mapping:
-        - Commit steps get ``[Commit]`` prefix in description and their content
-          as ``generated_code``.
-        - Review steps get ``[Review]`` prefix with content inlined into
-          description and empty ``generated_code``.
-        - Only the **last** commit step receives ``tests_passed=True`` and
-          ``canonical_solution`` (and only when the overall outcome is success).
-
-    Args:
-        mined: Dict from the GitHub mining pipeline with keys ``task_id``,
-            ``task_description``, ``outcome``, and ``steps`` (list of dicts
-            with ``type``, ``description``, and ``content`` fields).
-
-    Returns:
-        Trajectory dict ready for ``format_for_distillation``.
-    """
-    task_id: str = mined.get("task_id", "")
-    raw_outcome: str = mined.get("outcome", "")
-    raw_steps: list[dict[str, Any]] = mined.get("steps", [])
-
-    # --- Determine normalized outcome ---
-    if task_id.startswith("pr_"):
-        normalized_outcome = "success" if raw_outcome == "merged" else "failure"
-    elif task_id.startswith("issue_"):
-        normalized_outcome = "success" if raw_outcome == "closed" else "failure"
-    else:
-        normalized_outcome = (
-            "success" if raw_outcome in ("merged", "closed") else "failure"
-        )
-
-    # --- Identify commit steps to find the last one ---
-    commit_steps = [s for s in raw_steps if s.get("type") == "commit"]
-
-    # --- Normalize steps ---
-    normalized_steps: list[dict[str, Any]] = []
-    for step in raw_steps:
-        step_type = step.get("type", "")
-        step_description = step.get("description", "")
-        step_content = step.get("content", "")
-
-        if step_type == "commit":
-            is_last_commit = commit_steps and step is commit_steps[-1]
-            tests_passed = is_last_commit and normalized_outcome == "success"
-            entry: dict[str, Any] = {
-                "description": f"[Commit] {step_description}",
-                "generated_code": step_content,
-                "tests_passed": tests_passed,
-            }
-            if is_last_commit and normalized_outcome == "success":
-                entry["canonical_solution"] = step_content
-            normalized_steps.append(entry)
-        elif step_type == "review":
-            normalized_steps.append(
-                {
-                    "description": f"[Review] {step_content}",
-                    "generated_code": "",
-                    "tests_passed": False,
-                }
-            )
-
-    return {
-        "task_id": task_id,
-        "session_id": task_id,
-        "task_description": mined.get("task_description", ""),
-        "steps": normalized_steps,
-        "outcome": normalized_outcome,
-    }
-
-
 def generate_needle_dataset(n: int = 20) -> list[dict[str, str]]:
     """Generate needle-in-haystack records for CI smoke testing.
 
@@ -449,7 +369,7 @@ def generate_needle_dataset(n: int = 20) -> list[dict[str, str]]:
             trajectory = template["trajectory_template"].format(**slots)
             query = template["query_template"].format(**slots)
             answer = template["answer_template"].format(**slots)
-        except KeyError:
+        except (KeyError, ValueError):
             # If template has a slot not in _SLOT_VALUES, use a safe fallback
             trajectory = (
                 f"# code fact {i}\ndef func_{i}(x: int) -> int:\n    return {i}"
@@ -658,140 +578,6 @@ def split_by_task_id(
     return train, test
 
 
-def _group_steps_into_blocks(
-    steps: list[dict[str, Any]],
-) -> list[tuple[str, list[dict[str, Any]]]]:
-    """Group contiguous steps of the same type into (type, steps) blocks."""
-    blocks: list[tuple[str, list[dict[str, Any]]]] = []
-    cur_type: str | None = None
-    cur_block: list[dict[str, Any]] = []
-    for step in steps:
-        stype = step.get("type", "")
-        if stype != cur_type:
-            if cur_block:
-                blocks.append((cur_type or "", cur_block))
-            cur_type = stype
-            cur_block = [step]
-        else:
-            cur_block.append(step)
-    if cur_block:
-        blocks.append((cur_type or "", cur_block))
-    return blocks
-
-
-def _make_pair_record(
-    task_id: str,
-    outcome: str,
-    language: str | None,
-    idx: int,
-    activation: str,
-    teacher: str,
-    task_description: str = "",
-) -> dict[str, Any]:
-    """Build a single training pair record."""
-    return {
-        "task_id": task_id,
-        "task_description": task_description,
-        "activation_text": activation,
-        "teacher_text": teacher,
-        "metadata": {
-            "outcome": outcome,
-            "step_index": idx,
-            "language": language,
-            "source_task_id": task_id,
-        },
-    }
-
-
-def normalize_mined_pairs(
-    trajectory: dict[str, Any],
-    compress: bool = True,
-    max_diff_lines: int = 500,
-    language: str | None = None,
-) -> list[dict[str, Any]]:
-    """Convert a mined PR trajectory into per-step training pairs.
-
-    Each review-to-revision cycle becomes one training record with
-    activation_text (task + current code + review feedback) and
-    teacher_text (activation + revision diff). Compatible with
-    ``augment_trajectories``, ``split_by_task_id``, and ``save_jsonl``.
-
-    The algorithm groups contiguous commits and reviews into blocks,
-    then pairs each reviews-block with the following commits-block.
-    Multiple commits in a block: the last commit is used (the state
-    the reviewer actually saw). Multiple reviews: concatenated.
-
-    Args:
-        trajectory: Raw mined trajectory from ``mine_pr_diff_chains``.
-        compress: Apply diff compression via ``compress_diff``.
-        max_diff_lines: Max lines per compressed diff.
-        language: Language tag for metadata (from repos config).
-
-    Returns:
-        List of training pair records with task_id, activation_text,
-        teacher_text, and metadata fields.
-    """
-    task_id: str = trajectory.get("task_id", "")
-    task_desc: str = trajectory.get("task_description", "")
-    raw_steps: list[dict[str, Any]] = trajectory.get("steps", [])
-    outcome: str = trajectory.get("outcome", "")
-
-    if not raw_steps:
-        return []
-
-    blocks = _group_steps_into_blocks(raw_steps)
-
-    def _diff(step: dict[str, Any]) -> str:
-        raw = step.get("content", "")
-        return compress_diff(raw, max_lines=max_diff_lines) if compress else raw
-
-    def _record(idx: int, activation: str, teacher: str) -> dict[str, Any]:
-        return _make_pair_record(
-            task_id,
-            outcome,
-            language,
-            idx,
-            activation,
-            teacher,
-            task_description=task_desc,
-        )
-
-    records: list[dict[str, Any]] = []
-    step_idx = 0
-    prev_diff = ""
-    bi = 0  # block index
-
-    # --- Step 0: initial commits block ---
-    if blocks[0][0] == "commit":
-        last_commit = blocks[0][1][-1]
-        diff = _diff(last_commit)
-        activation = f"## Task\n{task_desc}"
-        teacher = f"{activation}\n\n## Implementation\n{diff}"
-        records.append(_record(step_idx, activation, teacher))
-        prev_diff = diff
-        step_idx += 1
-        bi = 1
-
-    # --- Subsequent (reviews, commits) pairs ---
-    while bi < len(blocks) - 1:
-        if blocks[bi][0] == "review" and blocks[bi + 1][0] == "commit":
-            review_text = "\n\n".join(r.get("content", "") for r in blocks[bi][1])
-            revision = _diff(blocks[bi + 1][1][-1])
-            activation = f"## Task\n{task_desc}"
-            if prev_diff:
-                activation += f"\n\n## Current Code\n{prev_diff}"
-            activation += f"\n\n## Review Feedback\n{review_text}"
-            teacher = f"{activation}\n\n## Revision\n{revision}"
-            records.append(_record(step_idx, activation, teacher))
-            prev_diff = revision
-            step_idx += 1
-            bi += 2
-        else:
-            bi += 1
-
-    return records
-
-
 # ---------------------------------------------------------------------------
 # SFT chat-message converter (consumed by trainer.py for mined-pair training)
 # ---------------------------------------------------------------------------
@@ -854,6 +640,46 @@ def _extract_pre_revision(activation_text: str) -> str:
     return activation_text[body_start:next_heading].rstrip("\n")
 
 
+_CURRENT_CODE_ELIDED = (
+    "(omitted — see the previous assistant turn for the up-to-date code)"
+)
+
+
+def _strip_current_code_section(activation_text: str) -> str:
+    """Replace the ``## Current Code`` body with an elision sentinel.
+
+    Only used for non-first turns of a multi-turn conversation: the
+    previous assistant turn already contains the latest revision, so
+    repeating the full file under ``## Current Code`` is pure padding.
+    The model still sees the surrounding ``## Task`` / ``## Review
+    Feedback`` framing — only the redundant code body is replaced — so
+    review feedback stays grounded.
+
+    Returns the activation text unchanged when the marker is absent
+    (e.g. an initial-commit pair that slipped into a non-first slot).
+
+    Args:
+        activation_text: The original activation text for one mined pair.
+
+    Returns:
+        The activation text with the ``## Current Code`` body replaced
+        by :data:`_CURRENT_CODE_ELIDED`.
+    """
+    marker = "## Current Code\n"
+    start = activation_text.find(marker)
+    if start == -1:
+        return activation_text
+    body_start = start + len(marker)
+    next_heading = activation_text.find("\n## ", body_start)
+    if next_heading == -1:
+        return activation_text[:body_start] + _CURRENT_CODE_ELIDED + "\n"
+    return (
+        activation_text[:body_start]
+        + _CURRENT_CODE_ELIDED
+        + activation_text[next_heading:]
+    )
+
+
 def _extract_post_revision(activation_text: str, teacher_text: str) -> str:
     """Extract the code body from the assistant-side section of a pair.
 
@@ -883,15 +709,17 @@ def _extract_post_revision(activation_text: str, teacher_text: str) -> str:
 
 def _pairs_to_single_turn(
     pairs: list[dict[str, Any]], system_prompt: str
-) -> tuple[list[list[dict[str, str]]], list[dict[str, str]]]:
+) -> tuple[list[list[dict[str, str]]], list[dict[str, Any]]]:
     """single_turn helper: one [system, user, assistant] per pair.
 
     Returns:
         Tuple of (conversations, pre_post_records) where each element of
-        pre_post_records is aligned 1:1 with the corresponding conversation.
+        pre_post_records carries per-turn ``pre_codes`` / ``post_codes`` lists
+        (length 1 for single-turn) so the downstream collator can align
+        hunks per assistant turn rather than against a joined blob.
     """
     conversations: list[list[dict[str, str]]] = []
-    pre_post_records: list[dict[str, str]] = []
+    pre_post_records: list[dict[str, Any]] = []
     for pair in pairs:
         user = pair.get("activation_text", "")
         teacher = pair.get("teacher_text", "")
@@ -907,8 +735,9 @@ def _pairs_to_single_turn(
         )
         pre_post_records.append(
             {
-                "pre_code": _extract_pre_revision(user),
-                "post_code": _extract_post_revision(user, teacher),
+                "pre_codes": [_extract_pre_revision(user)],
+                "post_codes": [_extract_post_revision(user, teacher)],
+                "quality_score": float(pair.get("quality_score", 1.0)),
             }
         )
     return conversations, pre_post_records
@@ -938,7 +767,7 @@ def pairs_to_chat_messages(
     *,
     mode: Literal["multi_turn", "single_turn"] = "multi_turn",
     system_prompt: str = SYSTEM_PROMPT,
-) -> tuple[list[list[dict[str, str]]], list[dict[str, str]]]:
+) -> tuple[list[list[dict[str, str]]], list[dict[str, Any]]]:
     r"""Convert mined pair records into SFT chat conversations.
 
     ``multi_turn`` (preferred when pairs share a ``source_task_id``): emits
@@ -972,10 +801,12 @@ def pairs_to_chat_messages(
         ``datasets.Dataset.from_list([{"messages": m} for m in convs])`` and
         TRL's ``SFTTrainer`` with ``assistant_only_loss=True``.
 
-        ``pre_post_records`` is a list of ``{"pre_code": str, "post_code":
-        str}`` dicts aligned 1:1 with ``conversations``. For multi-turn
-        conversations the pre/post codes are the concatenation (joined by
-        ``"\\n\\n"``) of each individual turn's pre/post code.
+        ``pre_post_records`` is a list of ``{"pre_codes": list[str],
+        "post_codes": list[str]}`` dicts aligned 1:1 with ``conversations``.
+        Each list has one entry per assistant turn — preserved as a list (not
+        joined) so the diff-aware collator can align hunks against each
+        turn's own pre/post pair instead of a concatenated blob whose token
+        layout no longer matches the chat-templated sequence.
 
         Invalid or missing fields are handled gracefully: missing
         ``activation_text`` / ``teacher_text`` produce empty strings, and
@@ -994,7 +825,7 @@ def pairs_to_chat_messages(
     # multi_turn: cluster by source_task_id (or task_id), sort by step_index.
     groups, group_order = _group_pairs_by_task(pairs)
     conversations: list[list[dict[str, str]]] = []
-    pre_post_records: list[dict[str, str]] = []
+    pre_post_records: list[dict[str, Any]] = []
     for key in group_order:
         group = sorted(
             groups[key],
@@ -1003,23 +834,151 @@ def pairs_to_chat_messages(
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         turn_pre_codes: list[str] = []
         turn_post_codes: list[str] = []
+        turn_quality_scores: list[float] = []
+        accepted_turns = 0
         for pair in group:
             user = pair.get("activation_text", "")
             teacher = pair.get("teacher_text", "")
             assistant = _extract_revision(user, teacher)
             if not assistant:
                 continue
-            messages.append({"role": "user", "content": user})
+            # In non-first turns the previous assistant message already
+            # carries the up-to-date code, so re-pasting the full
+            # ``## Current Code`` body in every subsequent user turn
+            # quadruples the conversation length on long-tail PRs and is
+            # the dominant driver of the ``denom=0`` zero-grad batches
+            # under ``keep_start`` truncation (RCA-5 H2). Keep ``pre_codes``
+            # populated from the original body so the diff collator still
+            # sees the correct hunk boundaries.
+            user_for_chat = (
+                _strip_current_code_section(user) if accepted_turns > 0 else user
+            )
+            messages.append({"role": "user", "content": user_for_chat})
             messages.append({"role": "assistant", "content": assistant})
             turn_pre_codes.append(_extract_pre_revision(user))
             turn_post_codes.append(_extract_post_revision(user, teacher))
+            turn_quality_scores.append(float(pair.get("quality_score", 1.0)))
+            accepted_turns += 1
         # A valid SFT conversation needs at least one user/assistant turn.
         if len(messages) >= 3:
             conversations.append(messages)
+            mean_q = (
+                sum(turn_quality_scores) / len(turn_quality_scores)
+                if turn_quality_scores
+                else 1.0
+            )
             pre_post_records.append(
                 {
-                    "pre_code": "\n\n".join(turn_pre_codes),
-                    "post_code": "\n\n".join(turn_post_codes),
+                    "pre_codes": turn_pre_codes,
+                    "post_codes": turn_post_codes,
+                    "quality_score": mean_q,
                 }
             )
     return conversations, pre_post_records
+
+
+def unroll_trajectory_to_pairs(
+    traj: "Trajectory",
+    *,
+    quality_config: Any | None = None,
+) -> list[dict[str, Any]]:
+    r"""Unroll one trajectory into per-episode SFT pairs.
+
+    Each pair uses the ``activation_text`` / ``teacher_text`` schema
+    consumed by :func:`pairs_to_chat_messages` and carries ``pre_code``
+    / ``post_code`` side-channels for :class:`DiffWeightedDataCollator`.
+
+    ``metadata.source_task_id`` and ``metadata.step_index`` are set so
+    :func:`pairs_to_chat_messages` can cluster episodes into multi-turn
+    conversations.
+
+    When ``quality_config`` is provided (or left as ``None`` for defaults),
+    each pair receives a ``quality_score`` float in ``[0.05, 1.0]`` computed
+    by :func:`~model_training.d2l_quality.score_episode_quality`.
+
+    Layout per pair::
+
+        activation_text =
+            ## Task\n<task_description>
+            ## Current Code\n<prior_diff>   (omitted for ep0)
+            ## Review Feedback\n<feedback>
+
+        teacher_text = activation_text + "\\n\\n## Revision\\n" + action_diff
+    """
+    from model_training.d2l_quality import (  # noqa: PLC0415
+        QualityWeightConfig,
+        score_episode_quality,
+    )
+
+    q_cfg = (
+        quality_config
+        if isinstance(quality_config, QualityWeightConfig)
+        else QualityWeightConfig()
+    )
+
+    kind_header = {
+        "task_description": "Task",
+        "review_comment": "Review Feedback",
+        "ci_failure": "CI Failure",
+        "test_failure": "Test Failure",
+        "lint": "Lint",
+        "build_failure": "Build Failure",
+    }
+
+    pairs: list[dict[str, Any]] = []
+    for ep in traj.episodes:
+        feedback_text = _format_feedback(ep.feedback)
+        kind_val = (
+            ep.feedback.kind.value
+            if hasattr(ep.feedback.kind, "value")
+            else ep.feedback.kind
+        )
+        header = kind_header.get(kind_val, "Feedback")
+
+        parts: list[str] = [f"## Task\n{traj.task_description}"]
+        if ep.prior_diff:
+            parts.append(f"## Current Code\n{ep.prior_diff}")
+        parts.append(f"## {header}\n{feedback_text}")
+        activation_text = "\n\n".join(parts)
+
+        teacher_text = f"{activation_text}\n\n## Revision\n{ep.action_diff}"
+
+        q_score = score_episode_quality(
+            feedback_body=ep.feedback.body,
+            action_diff=ep.action_diff,
+            is_ep0=(ep.round == 0),
+            config=q_cfg,
+        )
+
+        pairs.append(
+            {
+                "task_id": f"{traj.task_id}_r{ep.round}",
+                "activation_text": activation_text,
+                "teacher_text": teacher_text,
+                "pre_code": ep.prior_diff,
+                "post_code": ep.action_diff,
+                "quality_score": q_score,
+                "metadata": {
+                    "source_task_id": traj.task_id,
+                    "step_index": ep.round,
+                    "feedback_kind": kind_val,
+                    "quality_score": q_score,
+                },
+            }
+        )
+    return pairs
+
+
+def _format_feedback(fb: "Feedback") -> str:
+    """One human-readable string per Feedback, prioritising the summary."""
+    if fb.summary:
+        head = fb.summary
+    else:
+        head = fb.body
+    parts = [head]
+    if fb.anchor and (fb.anchor.file or fb.anchor.test):
+        loc = fb.anchor.test or (
+            f"{fb.anchor.file}:{fb.anchor.line}" if fb.anchor.line else fb.anchor.file
+        )
+        parts.append(f"[at {loc}]")
+    return " ".join(p for p in parts if p)

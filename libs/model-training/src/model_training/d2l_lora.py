@@ -50,21 +50,22 @@ def _extract_layer_idx(module_path: str, layer_indices: list[int]) -> int | None
 
 
 def _make_lora_forward(
-    weight: Any, bias: Any, lora_a: Any, lora_b: Any, scale: float
+    original_fn: Callable[..., Any], lora_a: Any, lora_b: Any, scale: float
 ) -> Callable[..., Any]:
     """Create a patched forward function that adds LoRA to the base linear.
 
     The returned closure computes:
-        base_out = F.linear(x, w_frozen, bias_frozen)
+        base_out = original_fn(x)
         lora_out = F.linear(F.linear(x, lora_a), lora_b.t()) * scale
         return base_out + lora_out
 
-    weight and bias are detached so that base model parameters do not receive
-    gradients. lora_a and lora_b remain live graph nodes.
+    Delegates base computation to the original module forward so it works
+    with any Linear variant (nn.Linear, bnb.nn.Linear4bit, etc.). The caller
+    must freeze base model weights (requires_grad=False) to prevent useless
+    gradient accumulation.
 
     Args:
-        weight: Original weight tensor (will be detached).
-        bias: Original bias tensor or None (will be detached if present).
+        original_fn: The module's original forward method (bound).
         lora_a: LoRA down-projection tensor, shape (r, d_in). Must have grad enabled.
         lora_b: LoRA up-projection tensor, shape (r, d_out). Must have grad enabled.
         scale: LoRA scaling factor (lora_alpha / r).
@@ -74,13 +75,12 @@ def _make_lora_forward(
     """
     import torch.nn.functional as func  # noqa: PLC0415
 
-    w_frozen = weight.detach()
-    bias_frozen = bias.detach() if bias is not None else None
-
     def patched_forward(x: Any) -> Any:
-        base_out = func.linear(x, w_frozen, bias_frozen)
-        lora_ax = func.linear(x, lora_a)
-        lora_out = func.linear(lora_ax, lora_b.t()) * scale
+        base_out = original_fn(x)
+        a = lora_a.to(x.dtype)
+        b = lora_b.to(x.dtype)
+        lora_ax = func.linear(x, a)
+        lora_out = func.linear(lora_ax, b.t()) * scale
         return base_out + lora_out
 
     return patched_forward
@@ -122,41 +122,46 @@ class _FunctionalLoRAContext:
             lora_a = self._lora_dict[short_name]["A"][0, layer_pos]  # (r, d_in)
             lora_b = self._lora_dict[short_name]["B"][0, layer_pos]  # (r, d_out)
 
-            weight = module.weight
+            # Shape validation (skipped for quantized weights like bnb Params4bit
+            # whose packed shape doesn't reflect true dimensions)
+            weight = getattr(module, "weight", None)
+            is_quantized = hasattr(weight, "quant_state")
+            if weight is not None and not is_quantized:
+                if lora_a.shape[1] != weight.shape[1]:
+                    msg = (
+                        f"Shape mismatch at '{module_path}': "
+                        f"A.shape[1]={lora_a.shape[1]} != "
+                        f"W.shape[1]={weight.shape[1]}"
+                    )
+                    raise RuntimeError(msg)
+                if lora_b.shape[1] != weight.shape[0]:
+                    msg = (
+                        f"Shape mismatch at '{module_path}': "
+                        f"B.shape[1]={lora_b.shape[1]} != "
+                        f"W.shape[0]={weight.shape[0]}"
+                    )
+                    raise RuntimeError(msg)
 
-            # Shape validation
-            if lora_a.shape[1] != weight.shape[1]:
-                msg = (
-                    f"Shape mismatch at '{module_path}': "
-                    f"A.shape[1]={lora_a.shape[1]} != W.shape[1]={weight.shape[1]}"
-                )
-                raise RuntimeError(msg)
-            if lora_b.shape[1] != weight.shape[0]:
-                msg = (
-                    f"Shape mismatch at '{module_path}': "
-                    f"B.shape[1]={lora_b.shape[1]} != W.shape[0]={weight.shape[0]}"
-                )
-                raise RuntimeError(msg)
-
-            bias = getattr(module, "bias", None)
-
-            # Track module for restoration (we'll delete the instance override)
+            # Capture original forward before patching
+            original_fn = module.forward
             self._patched_modules.append((module_path, module))
-            module.forward = _make_lora_forward(weight, bias, lora_a, lora_b, scale)  # type: ignore[method-assign]
+            module.forward = _make_lora_forward(original_fn, lora_a, lora_b, scale)  # type: ignore[method-assign]
 
             logger.debug("Patched %s (layer_pos=%d)", module_path, layer_pos)
 
-        expected_count = len(layer_indices_list) * len(target_modules)
-        if len(self._patched_modules) != expected_count:
+        if not self._patched_modules:
             logger.warning(
-                "Functional LoRA patched %d modules, expected %d "
-                "(layers=%d x targets=%d). Some target modules may be missing.",
-                len(self._patched_modules),
-                expected_count,
+                "Functional LoRA patched 0 modules "
+                "(layers=%d, targets=%s). Check target_modules and layer_indices.",
                 len(layer_indices_list),
-                len(target_modules),
+                target_modules,
             )
-        logger.info("Functional LoRA applied to %d modules", len(self._patched_modules))
+        else:
+            logger.info(
+                "Functional LoRA applied to %d modules across %d layers",
+                len(self._patched_modules),
+                len(layer_indices_list),
+            )
         return self
 
     def __exit__(self, *args: Any) -> None:
