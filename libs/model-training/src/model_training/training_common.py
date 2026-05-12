@@ -106,18 +106,14 @@ def mlflow_log_artifact(path: str) -> None:
         logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
 
 
-def mlflow_log_checkpoint(
-    path: str, artifact_path: str = "checkpoints"
-) -> None:
+def mlflow_log_checkpoint(path: str, artifact_path: str = "checkpoints") -> None:
     """Log a checkpoint file to MLflow under a structured artifact path."""
     try:
         import mlflow  # noqa: PLC0415
 
         mlflow.log_artifact(path, artifact_path=artifact_path)
     except Exception:  # noqa: BLE001
-        logger.debug(
-            "mlflow.log_artifact skipped for %s", path, exc_info=True
-        )
+        logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
 
 
 def mlflow_download_latest_checkpoint(
@@ -150,9 +146,7 @@ def mlflow_download_latest_checkpoint(
 
         for run in runs:
             artifacts = client.list_artifacts(run.info.run_id, path="checkpoints")
-            ckpt_artifacts = [
-                a for a in artifacts if a.path.endswith(".pt")
-            ]
+            ckpt_artifacts = [a for a in artifacts if a.path.endswith(".pt")]
             if not ckpt_artifacts:
                 continue
 
@@ -184,9 +178,7 @@ def mlflow_download_latest_checkpoint(
         logger.debug("No checkpoint artifacts found in experiment %r", experiment_name)
         return None
     except Exception:  # noqa: BLE001
-        logger.debug(
-            "mlflow_download_latest_checkpoint failed", exc_info=True
-        )
+        logger.debug("mlflow_download_latest_checkpoint failed", exc_info=True)
         return None
 
 

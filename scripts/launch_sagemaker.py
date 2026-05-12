@@ -81,7 +81,9 @@ def _build_hyperparameters(args: argparse.Namespace) -> dict[str, str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Launch HyperLoRA training on SageMaker")
+    parser = argparse.ArgumentParser(
+        description="Launch HyperLoRA training on SageMaker"
+    )
 
     parser.add_argument(
         "--instance-type",
@@ -126,7 +128,9 @@ def main() -> None:
     parser.add_argument("--base-model", type=str, default="Qwen/Qwen3.5-9B")
     parser.add_argument("--num-steps", type=int, default=500)
     parser.add_argument("--experiment-name", type=str, default="hypernet-hpo-sm")
-    parser.add_argument("--vram-tier", type=str, default=None, choices=["low", "mid", "high"])
+    parser.add_argument(
+        "--vram-tier", type=str, default=None, choices=["low", "mid", "high"]
+    )
     parser.add_argument("--mlflow-tracking-uri", type=str, default=None)
     parser.add_argument("--smoke", action="store_true")
 
@@ -190,7 +194,12 @@ def main() -> None:
     estimator = PyTorch(**estimator_kwargs)
 
     logger.info("Job name:       %s", job_name)
-    logger.info("Instance:       %s (fleet=%s, spot=%s)", args.instance_type, args.fleet, args.spot)
+    logger.info(
+        "Instance:       %s (fleet=%s, spot=%s)",
+        args.instance_type,
+        args.fleet,
+        args.spot,
+    )
     logger.info("Checkpoints:    %s", checkpoint_s3)
     logger.info("Output:         %s", output_s3)
     logger.info("Hyperparams:    %s", json.dumps(hyperparameters, indent=2))
@@ -201,7 +210,9 @@ def main() -> None:
 
     estimator.fit(job_name=job_name, wait=False)
     logger.info("Job submitted: %s", job_name)
-    logger.info("Monitor: aws sagemaker describe-training-job --training-job-name %s", job_name)
+    logger.info(
+        "Monitor: aws sagemaker describe-training-job --training-job-name %s", job_name
+    )
 
 
 if __name__ == "__main__":

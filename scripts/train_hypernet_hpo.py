@@ -625,7 +625,9 @@ def main() -> None:  # noqa: C901
         raise ValueError("No training records loaded.")
 
     # --- MLflow ---
-    mlflow_ok = setup_mlflow(args.experiment_name, tracking_uri=args.mlflow_tracking_uri)
+    mlflow_ok = setup_mlflow(
+        args.experiment_name, tracking_uri=args.mlflow_tracking_uri
+    )
     if mlflow_ok:
         import mlflow  # noqa: PLC0415
 
@@ -698,9 +700,7 @@ def main() -> None:  # noqa: C901
 
     def _handle_sigterm(signum: int, frame: Any) -> None:
         _shutdown[0] = True
-        logger.warning(
-            "SIGTERM received — will checkpoint and exit after current step"
-        )
+        logger.warning("SIGTERM received — will checkpoint and exit after current step")
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
@@ -715,9 +715,7 @@ def main() -> None:  # noqa: C901
         key=lambda p: int(p.stem.split("-")[1]),
     )
     if not ckpt_files and not args.smoke_test and mlflow_ok:
-        mlflow_ckpt = mlflow_download_latest_checkpoint(
-            args.experiment_name, ckpt_dir
-        )
+        mlflow_ckpt = mlflow_download_latest_checkpoint(args.experiment_name, ckpt_dir)
         if mlflow_ckpt is not None:
             ckpt_files = [mlflow_ckpt]
             logger.info("Downloaded checkpoint from MLflow: %s", mlflow_ckpt)
@@ -783,7 +781,9 @@ def main() -> None:  # noqa: C901
                                 skipped,
                             )
                         continue
-                    cached = torch.load(cache_path, map_location="cpu", weights_only=True)
+                    cached = torch.load(
+                        cache_path, map_location="cpu", weights_only=True
+                    )
                 answer_start: int = int(cached["answer_start"])
                 seq_len: int = int(cached["seq_len"])
                 logit_start = max(0, answer_start - 1)
@@ -944,9 +944,7 @@ def main() -> None:  # noqa: C901
             # Checkpoint (atomic write, every step during warmup)
             in_warmup = step <= args.warmup_steps
             should_ckpt = (
-                step % args.checkpoint_every == 0
-                or step == num_steps
-                or in_warmup
+                step % args.checkpoint_every == 0 or step == num_steps or in_warmup
             )
             if should_ckpt:
                 ckpt_path = ckpt_dir / f"ckpt-{step}.pt"
@@ -956,10 +954,7 @@ def main() -> None:  # noqa: C901
                 torch.cuda.empty_cache()
                 if not in_warmup:
                     _prune_checkpoints()
-                should_upload = (
-                    step % args.checkpoint_every == 0
-                    or step == num_steps
-                )
+                should_upload = step % args.checkpoint_every == 0 or step == num_steps
                 if mlflow_ok and should_upload:
                     mlflow_log_checkpoint(str(ckpt_path))
 

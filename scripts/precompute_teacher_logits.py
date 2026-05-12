@@ -237,7 +237,9 @@ def main() -> None:
             tokenizer.save_pretrained(str(nf4_cache))
             logger.info("Cached NF4 model to %s", nf4_cache)
         except Exception:
-            logger.warning("Failed to cache NF4 model — will re-quantize next run", exc_info=True)
+            logger.warning(
+                "Failed to cache NF4 model — will re-quantize next run", exc_info=True
+            )
 
     device = torch.device(get_best_device())
 
@@ -375,7 +377,11 @@ def main() -> None:
 
     pending.sort(key=lambda x: x[2])
 
-    batch_size = args.batch_size if args.batch_size > 0 else _estimate_batch_size(args.max_length)
+    batch_size = (
+        args.batch_size
+        if args.batch_size > 0
+        else _estimate_batch_size(args.max_length)
+    )
     logger.info(
         "%d records to process (batch_size=%d, resumed=%d, skipped=%d)",
         len(pending),
@@ -415,8 +421,9 @@ def main() -> None:
 
     vocab_size: int = 0
 
-    with torch.inference_mode(), apply_functional_lora(
-        base_model, teacher_lora_dict, teacher_hc
+    with (
+        torch.inference_mode(),
+        apply_functional_lora(base_model, teacher_lora_dict, teacher_hc),
     ):
         for batch_start in range(0, len(pending), batch_size):
             batch = pending[batch_start : batch_start + batch_size]
@@ -535,7 +542,9 @@ def main() -> None:
     if use_s3:
         assert s3_client is not None  # noqa: S101
         manifest_bytes = json.dumps(manifest, indent=2).encode()
-        _s3_upload_bytes(s3_client, s3_bucket, f"{s3_prefix}/manifest.json", manifest_bytes)
+        _s3_upload_bytes(
+            s3_client, s3_bucket, f"{s3_prefix}/manifest.json", manifest_bytes
+        )
         dest = f"s3://{s3_bucket}/{s3_prefix}/"
     else:
         assert out_dir is not None  # noqa: S101

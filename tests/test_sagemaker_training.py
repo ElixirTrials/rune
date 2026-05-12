@@ -197,10 +197,13 @@ class TestMlflowCheckpointDownload:
         mock_client = mock_client_cls.return_value
         mock_client.get_experiment_by_name.return_value = None
 
-        with patch.dict("sys.modules", {
-            "mlflow": mock_mlflow,
-            "mlflow.tracking": MagicMock(MlflowClient=mock_client_cls),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": mock_mlflow,
+                "mlflow.tracking": MagicMock(MlflowClient=mock_client_cls),
+            },
+        ):
             result = mlflow_download_latest_checkpoint("nonexistent", Path("/tmp/d"))
         assert result is None
 
@@ -217,10 +220,13 @@ class TestMlflowCheckpointDownload:
         mock_client.search_runs.return_value = [mock_run]
         mock_client.list_artifacts.return_value = []
 
-        with patch.dict("sys.modules", {
-            "mlflow": mock_mlflow,
-            "mlflow.tracking": MagicMock(MlflowClient=mock_client_cls),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": mock_mlflow,
+                "mlflow.tracking": MagicMock(MlflowClient=mock_client_cls),
+            },
+        ):
             result = mlflow_download_latest_checkpoint("exp", tmp_path)
         assert result is None
 
@@ -247,10 +253,13 @@ class TestMlflowCheckpointDownload:
 
         mock_mlflow.artifacts.download_artifacts.side_effect = fake_download
 
-        with patch.dict("sys.modules", {
-            "mlflow": mock_mlflow,
-            "mlflow.tracking": MagicMock(MlflowClient=mock_client_cls),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": mock_mlflow,
+                "mlflow.tracking": MagicMock(MlflowClient=mock_client_cls),
+            },
+        ):
             result = mlflow_download_latest_checkpoint("exp", tmp_path)
 
         assert result is not None
@@ -263,10 +272,13 @@ class TestMlflowCheckpointDownload:
         mock_mlflow.tracking = MagicMock()
         mock_mlflow.tracking.MlflowClient.side_effect = RuntimeError("no server")
 
-        with patch.dict("sys.modules", {
-            "mlflow": mock_mlflow,
-            "mlflow.tracking": mock_mlflow.tracking,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": mock_mlflow,
+                "mlflow.tracking": mock_mlflow.tracking,
+            },
+        ):
             result = mlflow_download_latest_checkpoint("exp", tmp_path)
         assert result is None
 
@@ -312,15 +324,8 @@ class TestCheckpointUploadFrequency:
         checkpoint_every = 100
         num_steps = 500
         in_warmup = step <= warmup_steps
-        should_ckpt = (
-            step % checkpoint_every == 0
-            or step == num_steps
-            or in_warmup
-        )
-        should_upload = (
-            step % checkpoint_every == 0
-            or step == num_steps
-        )
+        should_ckpt = step % checkpoint_every == 0 or step == num_steps or in_warmup
+        should_upload = step % checkpoint_every == 0 or step == num_steps
         assert should_ckpt is True
         assert should_upload is False
 
@@ -329,18 +334,12 @@ class TestCheckpointUploadFrequency:
         step = 100
         checkpoint_every = 100
         num_steps = 500
-        should_upload = (
-            step % checkpoint_every == 0
-            or step == num_steps
-        )
+        should_upload = step % checkpoint_every == 0 or step == num_steps
         assert should_upload is True
 
     def test_final_step_uploaded(self) -> None:
         step = 500
         checkpoint_every = 100
         num_steps = 500
-        should_upload = (
-            step % checkpoint_every == 0
-            or step == num_steps
-        )
+        should_upload = step % checkpoint_every == 0 or step == num_steps
         assert should_upload is True
