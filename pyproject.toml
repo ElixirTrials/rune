@@ -84,6 +84,8 @@ dev = [
     "requests-mock>=1.12.1",
     "pandas-stubs>=3.0.0.260204",
     "code-review-graph>=2.3.2",
+    "codegraph>=1.2.0",
+    "sagemaker>=2.232.0",
 ]
 
 [tool.uv.sources]
@@ -128,6 +130,10 @@ no-build-isolation-package = [
     "causal-conv1d",
     "flash-linear-attention",
 ]
+
+[tool.uv.extra-build-dependencies]
+causal-conv1d = ["setuptools"]
+flash-linear-attention = ["setuptools"]
 
 [tool.ruff]
 target-version = "py312"
@@ -269,6 +275,8 @@ module = [
     "run_training_hpo",
     "pandas",
     "pandas.*",
+    "sagemaker",
+    "sagemaker.*",
 ]
 ignore_missing_imports = true
 

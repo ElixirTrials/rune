@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import math
 import os
 from typing import Any
 
@@ -660,7 +661,7 @@ class DiffWeightedDataCollator:
             legacy_pre = feat.pop("pre_code", None)
             legacy_post = feat.pop("post_code", None)
             raw_q = float(feat.pop("quality_score", 1.0))
-            if not (0.0 < raw_q <= 10.0) or raw_q != raw_q:  # NaN != NaN
+            if not (0.0 < raw_q <= 10.0) or math.isnan(raw_q):
                 logger.warning(
                     "Invalid quality_score=%r at index %d, clamping to 1.0",
                     raw_q,
