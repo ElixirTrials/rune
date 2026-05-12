@@ -450,9 +450,14 @@ def main() -> None:  # noqa: C901
     if args.gradient_checkpointing:
         # use_reentrant=False: functional LoRA injects closure-captured tensors
         # (A, B weights) that require grad but aren't checkpoint-function inputs.
-        # Reentrant mode miscounts saved tensors; non-reentrant handles this.
+        # determinism_check="none": NF4 dequant caches weights after first call,
+        # so recomputation creates fewer tensors (41 vs 37) — harmless since
+        # base params have requires_grad=False.
         base_model.gradient_checkpointing_enable(
-            gradient_checkpointing_kwargs={"use_reentrant": False}
+            gradient_checkpointing_kwargs={
+                "use_reentrant": False,
+                "determinism_check": "none",
+            }
         )
         # gradient_checkpointing activates only when self.training is True
         # (transformers checks `self.gradient_checkpointing and self.training`).
