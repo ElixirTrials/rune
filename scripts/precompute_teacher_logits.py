@@ -85,23 +85,9 @@ def _s3_list_existing(bucket: str, prefix: str) -> set[str]:
     return existing
 
 
-def _s3_upload_bytes(bucket: str, key: str, data: bytes) -> None:
-    """Upload raw bytes to S3."""
-    import boto3  # noqa: PLC0415
-
-    s3 = boto3.client("s3")
-    s3.put_object(Bucket=bucket, Key=key, Body=data)
-
-
-def _s3_upload_tensor_dict(
-    bucket: str, prefix: str, filename: str, tensor_dict: dict
-) -> None:
-    """Serialize a dict via torch.save into memory and upload to S3."""
-    import torch  # noqa: PLC0415
-
-    buf = io.BytesIO()
-    torch.save(tensor_dict, buf)
-    _s3_upload_bytes(bucket, f"{prefix}/{filename}", buf.getvalue())
+def _s3_upload_bytes(s3_client: object, bucket: str, key: str, data: bytes) -> None:
+    """Upload raw bytes to S3 using a shared client."""
+    s3_client.put_object(Bucket=bucket, Key=key, Body=data)  # type: ignore[union-attr]
 
 
 def _estimate_batch_size(max_length: int) -> int:
@@ -166,6 +152,13 @@ def main() -> None:
         help="nf4 (~5 GB) or bf16 (~18 GB, better quality teacher signal).",
     )
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=64,
+        help="Save only top-k logits per token (0 = full vocab). "
+        "k=64 reduces per-token storage ~3880x with negligible KL error.",
+    )
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -393,10 +386,18 @@ def main() -> None:
 
     # --- Batched inference under a single LoRA context ---
     pad_id = tokenizer.pad_token_id or 0
+    top_k = args.top_k
     io_workers = 16 if use_s3 else 2
     max_pending = io_workers * 3
     io_pool = ThreadPoolExecutor(max_workers=io_workers)
     pending_futures: list[Future[None]] = []
+
+    # Shared S3 client — thread-safe, avoids per-upload client creation
+    s3_client: object | None = None
+    if use_s3:
+        import boto3  # noqa: PLC0415
+
+        s3_client = boto3.client("s3")
 
     def _drain_futures(force: bool = False) -> None:
         """Check completed futures for exceptions; block if *force*."""
@@ -411,6 +412,8 @@ def main() -> None:
         if not force and len(pending_futures) >= max_pending:
             pending_futures[0].result()
             pending_futures = pending_futures[1:]
+
+    vocab_size: int = 0
 
     with torch.inference_mode(), apply_functional_lora(
         base_model, teacher_lora_dict, teacher_hc
@@ -436,39 +439,64 @@ def main() -> None:
                 use_cache=False,
             ).logits
 
+            if not vocab_size:
+                vocab_size = logits.shape[-1]
+
             for i, (orig_idx, answer_start, seq_len, _) in enumerate(batch):
                 filename = f"{orig_idx:06d}.pt"
                 logit_start = max(0, answer_start - 1)
-                span_logits = (
-                    logits[i : i + 1, logit_start:seq_len, :]
-                    .to(torch.bfloat16)
-                    .cpu()
-                )
+                raw_span = logits[i, logit_start:seq_len, :]  # (span, vocab)
 
-                payload = {
-                    "logits": span_logits,
-                    "answer_start": answer_start,
-                    "seq_len": seq_len,
-                }
+                if top_k > 0:
+                    vals, idxs = raw_span.to(torch.bfloat16).topk(
+                        min(top_k, raw_span.shape[-1]), dim=-1
+                    )
+                    payload: dict = {
+                        "top_values": vals.cpu(),
+                        "top_indices": idxs.cpu().to(torch.int32),
+                        "answer_start": answer_start,
+                        "seq_len": seq_len,
+                        "vocab_size": vocab_size,
+                        "top_k": top_k,
+                    }
+                    span_tokens = raw_span.shape[0]
+                else:
+                    span_logits = raw_span.to(torch.bfloat16).cpu()
+                    payload = {
+                        "logits": span_logits.unsqueeze(0),
+                        "answer_start": answer_start,
+                        "seq_len": seq_len,
+                    }
+                    span_tokens = span_logits.shape[0]
+
+                # Serialize on main thread — avoids 3x copy amplification in workers
+                buf = io.BytesIO()
+                torch.save(payload, buf)
+                payload_bytes = buf.getvalue()
+                del payload, buf
 
                 if use_s3:
+                    assert s3_client is not None  # noqa: S101
                     pending_futures.append(
                         io_pool.submit(
-                            _s3_upload_tensor_dict,
+                            _s3_upload_bytes,
+                            s3_client,
                             s3_bucket,
-                            s3_prefix,
-                            filename,
-                            payload,
+                            f"{s3_prefix}/{filename}",
+                            payload_bytes,
                         )
                     )
                 else:
                     assert out_dir is not None  # noqa: S101
                     pending_futures.append(
-                        io_pool.submit(torch.save, payload, out_dir / filename)
+                        io_pool.submit(
+                            (out_dir / filename).write_bytes,
+                            payload_bytes,
+                        )
                     )
 
                 n_valid += 1
-                total_logit_tokens += span_logits.shape[1]
+                total_logit_tokens += span_tokens
 
             del logits, input_ids, attention_mask
             _drain_futures()
@@ -500,11 +528,14 @@ def main() -> None:
         "n_resumed": n_resumed,
         "total_logit_tokens": total_logit_tokens,
         "storage_dtype": "bfloat16",
+        "top_k": top_k,
+        "vocab_size": vocab_size,
     }
 
     if use_s3:
+        assert s3_client is not None  # noqa: S101
         manifest_bytes = json.dumps(manifest, indent=2).encode()
-        _s3_upload_bytes(s3_bucket, f"{s3_prefix}/manifest.json", manifest_bytes)
+        _s3_upload_bytes(s3_client, s3_bucket, f"{s3_prefix}/manifest.json", manifest_bytes)
         dest = f"s3://{s3_bucket}/{s3_prefix}/"
     else:
         assert out_dir is not None  # noqa: S101

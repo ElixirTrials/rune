@@ -188,6 +188,10 @@ if (( SKIP_PRECOMPUTE )); then
 elif [[ -z "$S3_URI" ]] && [[ -f "$MANIFEST" ]] && ! (( SMOKE )); then
     N_VALID=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['n_valid'])" 2>/dev/null || echo "?")
     echo "── Stage 1: CACHED (${N_VALID} records in ${LOGITS_DIR}) ──"
+elif [[ -n "$S3_URI" ]] && ! (( SMOKE )) && aws s3 ls "${S3_URI%/}/manifest.json" >/dev/null 2>&1; then
+    N_VALID=$(aws s3 cp "${S3_URI%/}/manifest.json" - 2>/dev/null \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['n_valid'])" 2>/dev/null || echo "?")
+    echo "── Stage 1: CACHED (${N_VALID} records in ${S3_URI}) ──"
 else
     PRECOMPUTE_DEST="${S3_URI:-$LOGITS_DIR}"
     echo "── Stage 1: precompute teacher logits ────────────"
@@ -223,10 +227,11 @@ fi
 echo ""
 
 # ── Stage 2: train hypernetwork ───────────────────────────────────────────
+TEACHER_LOGITS_SRC="${S3_URI:-$LOGITS_DIR}"
 echo "── Stage 2: train hypernetwork ───────────────────"
 echo "  steps:     ${NUM_STEPS}"
 echo "  tier:      ${VRAM_TIER}"
-echo "  logits:    ${LOGITS_DIR}"
+echo "  logits:    ${TEACHER_LOGITS_SRC}"
 echo "  ckpt:      ${CHECKPOINT_DIR}"
 echo ""
 
@@ -235,7 +240,7 @@ TRAIN_CMD=(
     --teacher-adapter "$TEACHER_ADAPTER"
     --dataset "$DATASET"
     --base-model "$BASE_MODEL"
-    --teacher-logits-dir "$LOGITS_DIR"
+    --teacher-logits-dir "$TEACHER_LOGITS_SRC"
     --checkpoint-dir "$CHECKPOINT_DIR"
     --num-steps "$NUM_STEPS"
     --experiment-name "$EXPERIMENT"

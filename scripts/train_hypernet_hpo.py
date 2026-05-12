@@ -449,6 +449,11 @@ def main() -> None:  # noqa: C901
     base_model.requires_grad_(False)
     if args.gradient_checkpointing:
         base_model.gradient_checkpointing_enable()
+        # gradient_checkpointing activates only when self.training is True
+        # (transformers checks `self.gradient_checkpointing and self.training`).
+        # .eval() above set training=False. Safe to re-enable: all params have
+        # requires_grad=False, Qwen3 uses 0 dropout, no batch norm.
+        base_model.train()
 
     # --- Load teacher adapter (skip if using precomputed logits) ---
     teacher_lora_dict: dict[str, dict[str, torch.Tensor]] | None = None
