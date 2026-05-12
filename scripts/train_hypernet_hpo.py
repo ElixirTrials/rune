@@ -448,7 +448,12 @@ def main() -> None:  # noqa: C901
         ).eval()
     base_model.requires_grad_(False)
     if args.gradient_checkpointing:
-        base_model.gradient_checkpointing_enable()
+        # use_reentrant=False: functional LoRA injects closure-captured tensors
+        # (A, B weights) that require grad but aren't checkpoint-function inputs.
+        # Reentrant mode miscounts saved tensors; non-reentrant handles this.
+        base_model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
         # gradient_checkpointing activates only when self.training is True
         # (transformers checks `self.gradient_checkpointing and self.training`).
         # .eval() above set training=False. Safe to re-enable: all params have
