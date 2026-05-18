@@ -160,10 +160,8 @@ class ModelPool:
     def hypernetwork(self) -> tuple[Any, Any]:
         """Return the resident hypernetwork and its config, loading on first call.
 
-        Uses ``load_sakana_checkpoint`` from ``model_training.sakana_d2l``
-        (Task 2 will rename this to ``load_hypernetwork`` in hypernetwork.py;
-        the import will be updated then).  Subsequent calls return the
-        cached objects without re-loading.
+        Uses ``load_hypernetwork`` from ``model_training.hypernetwork``.
+        Subsequent calls return the cached objects without re-loading.
 
         Returns:
             Tuple of ``(hypernet, hypernet_config)``.
@@ -171,10 +169,10 @@ class ModelPool:
         if self._hypernet is not None:
             return self._hypernet, self._hypernet_config
 
-        from model_training.sakana_d2l import load_sakana_checkpoint  # noqa: PLC0415
+        from model_training.hypernetwork import load_hypernetwork  # noqa: PLC0415
 
         logger.info("ModelPool: loading hypernetwork on %s", self._device)
-        hypernet, hc = load_sakana_checkpoint(
+        hypernet, hc = load_hypernetwork(
             checkpoint_path=self._hypernet_checkpoint_path,
             variant=self._hypernet_variant,
             device=self._device,

@@ -105,7 +105,7 @@ def test_hypernetwork_lazy_loading(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_hypernet = MagicMock()
     fake_hc = MagicMock()
 
-    import model_training.sakana_d2l as _sakana
+    import model_training.hypernetwork as _hn_mod
 
     load_calls: list[dict[str, Any]] = []
 
@@ -119,7 +119,7 @@ def test_hypernetwork_lazy_loading(monkeypatch: pytest.MonkeyPatch) -> None:
         )
         return fake_hypernet, fake_hc
 
-    monkeypatch.setattr(_sakana, "load_sakana_checkpoint", _fake_load)
+    monkeypatch.setattr(_hn_mod, "load_hypernetwork", _fake_load)
 
     pool = ModelPool.create(
         model_name="test-model",
@@ -182,7 +182,7 @@ def test_release_clears_hypernetwork_cache(monkeypatch: pytest.MonkeyPatch) -> N
     fake_hypernet = MagicMock()
     fake_hc = MagicMock()
 
-    import model_training.sakana_d2l as _sakana
+    import model_training.hypernetwork as _hn_mod
 
     load_calls: list[int] = []
 
@@ -190,7 +190,7 @@ def test_release_clears_hypernetwork_cache(monkeypatch: pytest.MonkeyPatch) -> N
         load_calls.append(1)
         return fake_hypernet, fake_hc
 
-    monkeypatch.setattr(_sakana, "load_sakana_checkpoint", _fake_load)
+    monkeypatch.setattr(_hn_mod, "load_hypernetwork", _fake_load)
 
     pool = ModelPool.create(model_name="test-model", device="cpu")
     pool.hypernetwork()
