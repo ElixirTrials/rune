@@ -16,8 +16,6 @@ Local-first coding agent that encodes coding trajectories into LoRA adapters, bu
 
 ## Hard rules
 
-**Git** — never run mutating git (`commit`, `push`, `merge`, `rebase`, `reset`, `checkout`, `branch`, `stash`, `tag`, `cherry-pick`, `revert`). Hook-enforced. Read-only git only when asked.
-
 **Long-running ops** — never execute (hook-blocked). Ask the user to run and log. See `long-run-fallback` skill for the exact protocol.
 
 **Deploy / install** — never. Hook-enforced. Includes installers, migrators, deployers — all user-managed.

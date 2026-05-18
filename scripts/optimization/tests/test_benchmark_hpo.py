@@ -504,6 +504,12 @@ class TestBuildParser:
         assert args.device == "cuda"
         assert args.study_name.startswith("mbpp-hpo-")
         assert args.db is None
+        assert args.smoke is False
+
+    def test_smoke_flag(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["--hypernet-checkpoint", "ckpt.pt", "--smoke"])
+        assert args.smoke is True
 
     def test_overrides(self) -> None:
         parser = _build_parser()

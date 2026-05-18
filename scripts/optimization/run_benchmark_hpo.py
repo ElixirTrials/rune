@@ -653,6 +653,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optuna storage URI (default: sqlite:///<output-dir>/study.db)",
     )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Smoke test: shrink to 1 trial x 2 problems for a fast "
+        "end-to-end check of the pipeline + MLflow wiring",
+    )
     return parser
 
 
@@ -663,6 +669,10 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     args = _build_parser().parse_args()
+    if args.smoke:
+        args.n_trials = 1
+        args.problems_per_trial = 2
+        logger.info("Smoke mode: n_trials=1, problems_per_trial=2")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     db_uri = args.db or f"sqlite:///{args.output_dir / 'study.db'}"
     work_dir = args.output_dir / "trials"
@@ -694,8 +704,31 @@ def main() -> None:
         len(validation),
     )
 
+    from model_training.training_common import setup_mlflow
+
     mlflow = _mlflow()
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    # setup_mlflow resolves MLFLOW_TRACKING_URI (default http://localhost:5000,
+    # the in-pod server), sets the experiment, and returns False if the server
+    # is unreachable. This study logs every trial/metric/JSONL artifact to
+    # MLflow, so a missing server is fatal rather than a silent local fallback.
+    if not setup_mlflow(EXPERIMENT_NAME, tracking_uri=None):
+        raise SystemExit(
+            "MLflow is unavailable (tracking server unreachable or "
+            "RUNE_DISABLE_MLFLOW=1). Start the stack first: "
+            "docker compose -f infra/docker-compose.yml up -d mlflow"
+        )
+    # The in-pod server runs with --serve-artifacts, so get_artifact_uri()
+    # returns a proxied mlflow-artifacts:/ URI (never s3://) and the server
+    # streams artifacts to its S3 --artifacts-destination. The only way
+    # artifacts land on local disk instead is a non-http tracking URI.
+    tracking_uri = mlflow.get_tracking_uri()
+    if not tracking_uri.startswith(("http://", "https://")):
+        logger.warning(
+            "MLflow tracking URI is %s - not an http(s) server. Artifacts "
+            "(per-problem JSONL, study.db) will land on local disk, not S3. "
+            "Set MLFLOW_TRACKING_URI=http://localhost:5000.",
+            tracking_uri,
+        )
 
     study = optuna.create_study(
         direction="maximize",
@@ -727,14 +760,6 @@ def main() -> None:
                 "seed": args.seed,
             }
         )
-        artifact_uri = mlflow.get_artifact_uri()
-        if not artifact_uri.startswith("s3://"):
-            logger.warning(
-                "MLflow artifact store is %s (not s3://). Per-problem JSONL "
-                "artifacts will be written to local disk, not S3. Point "
-                "MLFLOW_TRACKING_URI at the S3-backed tracking server.",
-                artifact_uri,
-            )
         # catch=(Exception,) marks a failed trial FAILED in Optuna (excluded
         # from best-trial selection) rather than scoring it 0.0.
         study.optimize(objective, n_trials=args.n_trials, catch=(Exception,))
