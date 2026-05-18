@@ -173,6 +173,7 @@ class TestTrialConfig:
             "RUNE_TEMPERATURE",
             "RUNE_REPETITION_PENALTY",
             "RUNE_MAX_PHASE_ITERATIONS",
+            "RUNE_MAX_TOKENS",
         ):
             monkeypatch.delenv(var, raising=False)
 
@@ -182,13 +183,16 @@ class TestTrialConfig:
             repetition_penalty=1.07,
             max_phase_iterations=4,
             config_dir=tmp_path,
+            max_tokens=2048,
         )
         assert os.environ["RUNE_TEMPERATURE"] == "0.45"
         assert os.environ["RUNE_REPETITION_PENALTY"] == "1.07"
         assert os.environ["RUNE_MAX_PHASE_ITERATIONS"] == "4"
+        assert os.environ["RUNE_MAX_TOKENS"] == "2048"
         # RUNE_PIPELINE_CONFIG must point at a config carrying the scaling.
         loaded = load_config(Path(os.environ["RUNE_PIPELINE_CONFIG"]))
         assert loaded.adapter.scaling == pytest.approx(0.2)
+        assert loaded.generation.max_tokens == 2048
 
 
 class TestScorePipelineResult:
@@ -431,6 +435,7 @@ def _study_with_two_trials():
         trial.suggest_float("scaling_factor", 0.02, 0.5, log=True)
         trial.suggest_float("temperature", 0.1, 0.7)
         trial.suggest_float("repetition_penalty", 1.0, 1.3)
+        trial.suggest_categorical("max_tokens", [1024, 2048, 4096])
         trial.suggest_int("max_phase_iterations", 2, 6)
         return 0.5 + 0.1 * trial.number
 
@@ -454,11 +459,13 @@ class TestArtifactWriters:
             "scaling_factor",
             "temperature",
             "repetition_penalty",
+            "max_tokens",
             "max_phase_iterations",
         }
         loaded = load_config(config_path)
         assert loaded.adapter.scaling == pytest.approx(best["scaling_factor"])
         assert loaded.generation.temperature == pytest.approx(best["temperature"])
+        assert loaded.generation.max_tokens == best["max_tokens"]
 
     def test_write_validation_results(self, tmp_path: Path) -> None:
         from run_benchmark_hpo import write_validation_results

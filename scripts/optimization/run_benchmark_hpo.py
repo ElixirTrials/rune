@@ -178,7 +178,9 @@ def extract_phase_metrics(result: dict[str, Any]) -> dict[str, float]:
     }
 
 
-def write_trial_pipeline_config(scaling_factor: float, dest_dir: Path) -> Path:
+def write_trial_pipeline_config(
+    scaling_factor: float, dest_dir: Path, *, max_tokens: int | None = None
+) -> Path:
     """Write a temp ``PipelineConfig`` JSON carrying the trial's adapter scaling.
 
     ``run_phased_pipeline()`` reads ``adapter.scaling`` from the PipelineConfig
@@ -189,6 +191,9 @@ def write_trial_pipeline_config(scaling_factor: float, dest_dir: Path) -> Path:
     Args:
         scaling_factor: Adapter scaling value for this trial.
         dest_dir: Directory the config file is written into (created if absent).
+        max_tokens: Generation token cap for this trial. Written into the
+            PipelineConfig so ``rune_runner.py`` picks it up via
+            ``os.environ.setdefault("RUNE_MAX_TOKENS", ...)``.
 
     Returns:
         Path to the written ``pipeline_config.json``.
@@ -196,7 +201,10 @@ def write_trial_pipeline_config(scaling_factor: float, dest_dir: Path) -> Path:
     from shared.pipeline_config import PipelineConfig
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    cfg = PipelineConfig().override(**{"adapter.scaling": scaling_factor})
+    overrides: dict[str, object] = {"adapter.scaling": scaling_factor}
+    if max_tokens is not None:
+        overrides["generation.max_tokens"] = max_tokens
+    cfg = PipelineConfig().override(**overrides)
     return cfg.save(dest_dir / "pipeline_config.json")
 
 
@@ -206,6 +214,8 @@ def apply_trial_env(
     repetition_penalty: float,
     max_phase_iterations: int,
     config_dir: Path,
+    *,
+    max_tokens: int | None = None,
 ) -> None:
     """Set env vars + temp PipelineConfig so ``run_phased_pipeline()`` sees the trial params.
 
@@ -213,6 +223,7 @@ def apply_trial_env(
     - ``temperature`` -> ``RUNE_TEMPERATURE``
     - ``repetition_penalty`` -> ``RUNE_REPETITION_PENALTY``
     - ``max_phase_iterations`` -> ``RUNE_MAX_PHASE_ITERATIONS``
+    - ``max_tokens`` -> ``RUNE_MAX_TOKENS`` + PipelineConfig
 
     Env vars are set unconditionally (overwriting any prior trial's values);
     ``run_phased_pipeline()`` uses ``os.environ.setdefault`` so values set here
@@ -224,12 +235,18 @@ def apply_trial_env(
         repetition_penalty: Generation repetition penalty.
         max_phase_iterations: Per-phase iteration cap.
         config_dir: Directory for the trial's temp PipelineConfig.
+        max_tokens: Generation token cap. Also written to
+            ``RUNE_MAX_TOKENS`` so ``rune-agent`` nodes pick it up.
     """
-    cfg_path = write_trial_pipeline_config(scaling_factor, config_dir)
+    cfg_path = write_trial_pipeline_config(
+        scaling_factor, config_dir, max_tokens=max_tokens
+    )
     os.environ["RUNE_PIPELINE_CONFIG"] = str(cfg_path)
     os.environ["RUNE_TEMPERATURE"] = str(temperature)
     os.environ["RUNE_REPETITION_PENALTY"] = str(repetition_penalty)
     os.environ["RUNE_MAX_PHASE_ITERATIONS"] = str(max_phase_iterations)
+    if max_tokens is not None:
+        os.environ["RUNE_MAX_TOKENS"] = str(max_tokens)
 
 
 def score_pipeline_result(
@@ -511,6 +528,7 @@ def make_objective(
         scaling_factor = trial.suggest_float("scaling_factor", 0.02, 0.50, log=True)
         temperature = trial.suggest_float("temperature", 0.1, 0.7)
         repetition_penalty = trial.suggest_float("repetition_penalty", 1.0, 1.3)
+        max_tokens = trial.suggest_categorical("max_tokens", [1024, 2048, 4096])
         max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
 
         n = min(problems_per_trial, len(tuning_problems))
@@ -523,6 +541,7 @@ def make_objective(
             repetition_penalty=repetition_penalty,
             max_phase_iterations=max_phase_iterations,
             config_dir=work_dir / f"trial_{trial.number}",
+            max_tokens=max_tokens,
         )
 
         start = time.time()
@@ -533,6 +552,7 @@ def make_objective(
                     "scaling_factor": scaling_factor,
                     "temperature": temperature,
                     "repetition_penalty": repetition_penalty,
+                    "max_tokens": max_tokens,
                     "max_phase_iterations": max_phase_iterations,
                 }
             )
@@ -588,6 +608,7 @@ def save_best_params(
             "adapter.scaling": best["scaling_factor"],
             "generation.temperature": best["temperature"],
             "generation.repetition_penalty": best["repetition_penalty"],
+            "generation.max_tokens": best["max_tokens"],
         }
     )
     config.save(config_path)
@@ -639,6 +660,7 @@ def write_trial_summary(study: optuna.Study, path: Path) -> None:
                 "scaling_factor",
                 "temperature",
                 "repetition_penalty",
+                "max_tokens",
                 "max_phase_iterations",
             ]
         )
@@ -651,6 +673,7 @@ def write_trial_summary(study: optuna.Study, path: Path) -> None:
                     t.params.get("scaling_factor", ""),
                     t.params.get("temperature", ""),
                     t.params.get("repetition_penalty", ""),
+                    t.params.get("max_tokens", ""),
                     t.params.get("max_phase_iterations", ""),
                 ]
             )
@@ -842,6 +865,7 @@ def main() -> None:
             repetition_penalty=best["repetition_penalty"],
             max_phase_iterations=best["max_phase_iterations"],
             config_dir=work_dir / "validation",
+            max_tokens=best["max_tokens"],
         )
         val_verdicts = evaluate_problem_set(
             validation, args.hypernet_checkpoint, args.base_model, args.device,
