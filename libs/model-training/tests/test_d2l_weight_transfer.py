@@ -1,4 +1,4 @@
-"""Tests for partial weight transfer functions in model_training.sakana_d2l.
+"""Tests for partial weight transfer functions in model_training.hypernetwork.
 
 CPU-only tests covering:
 - transfer_aggregator_weights() freezes aggregator params (requires_grad=False)

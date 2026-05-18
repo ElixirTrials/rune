@@ -258,7 +258,7 @@ def _setup_training(config: Any) -> dict[str, Any]:
 
     from model_training.d2l_config import build_hypernet_config  # noqa: PLC0415
     from model_training.d2l_train import _require_probe_cache  # noqa: PLC0415
-    from model_training.sakana_d2l import (  # noqa: PLC0415
+    from model_training.hypernetwork import (  # noqa: PLC0415
         get_aggregator_config,
         transfer_aggregator_weights,
     )

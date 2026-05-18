@@ -113,8 +113,9 @@ def _pregenerate_ood_adapters(
     import ctx_to_lora.modeling.hypernet as _hypernet_mod
     import torch
     from ctx_to_lora.modeling.lora_merger import combine_lora as _combine_lora
+    from model_training.adapter_generator import _save_adapter
     from model_training.d2l_probe import extract_activations_with_model
-    from model_training.sakana_d2l import _save_sakana_adapter, load_sakana_checkpoint
+    from model_training.hypernetwork import load_hypernetwork
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     def _device_safe_forward(self, features, attn_mask=None, position_ids=None, n_ctx_chunks=None):
@@ -142,7 +143,7 @@ def _pregenerate_ood_adapters(
 
     _hypernet_mod.HyperLoRA.forward = _device_safe_forward
 
-    hypernet, hc = load_sakana_checkpoint(hypernet_checkpoint, device=device)
+    hypernet, hc = load_hypernetwork(hypernet_checkpoint, device=device)
     layer_indices = list(hc.layer_indices)
 
     bnb_cfg = BitsAndBytesConfig(
@@ -177,7 +178,7 @@ def _pregenerate_ood_adapters(
         lora_bias = hypernet.get_head_bias() if hypernet.config.use_bias else None
         lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
 
-        _save_sakana_adapter(
+        _save_adapter(
             lora_dict=lora_dict, output_dir=task_dir,
             base_model_name=model, hc=hc, scaling_factor=0.16,
         )

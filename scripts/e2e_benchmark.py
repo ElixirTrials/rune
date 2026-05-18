@@ -318,7 +318,7 @@ def main() -> None:
     )
 
     # Download checkpoint once
-    from model_training.sakana_d2l import download_checkpoint
+    from model_training.hypernetwork import download_checkpoint
 
     print("\n  Downloading Sakana checkpoint...")
     checkpoint_path = str(download_checkpoint(variant="gemma_demo"))

@@ -1,9 +1,9 @@
 """End-to-end test: Pretrained Sakana Doc-to-LoRA through Rune stack.
 
 Exercises every component with a REAL pretrained hypernetwork checkpoint:
-  1. sakana_d2l: Download checkpoint from HF, load HyperLoRA perceiver
-  2. sakana_d2l: Extract per-layer activations from gemma-2-2b-it base model
-  3. sakana_d2l: Generate PEFT adapter via pretrained perceiver
+  1. hypernetwork: Download checkpoint from HF, load HyperLoRA perceiver
+  2. adapter_generator: Extract per-layer activations from base model
+  3. adapter_generator: Generate PEFT adapter via pretrained perceiver
   4. TransformersProvider: Load base model, apply adapter, generate text
   5. adapter_registry: Store and query adapter records
   6. evaluation.metrics: Score adapter quality
@@ -57,8 +57,8 @@ def step(n: int, msg: str) -> None:
 
 def test_sakana_hypernetwork(tmpdir: str) -> str:
     """Steps 1-3: Download checkpoint, extract activations, generate adapter."""
-    from model_training.sakana_d2l import (
-        generate_adapter_from_sakana,
+    from model_training.adapter_generator import (
+        generate_adapter,
     )
 
     step(1, "Sakana D2L: Download checkpoint + generate adapter")
@@ -80,7 +80,7 @@ def test_sakana_hypernetwork(tmpdir: str) -> str:
     print("  Checkpoint: SakanaAI/doc-to-lora (gemma_demo, 80k steps)")
     print(f"  Trajectory text: {len(trajectory_text)} chars")
 
-    adapter_path = generate_adapter_from_sakana(
+    adapter_path = generate_adapter(
         text=trajectory_text,
         output_dir=adapter_dir,
         variant="gemma_demo",
@@ -189,7 +189,7 @@ def test_adapter_registry(adapter_path: str) -> None:
             file_path=adapter_path,
             file_hash="e2e-test-hash",
             file_size_bytes=0,
-            source="sakana_d2l",
+            source="adapter_generator",
             session_id="e2e-test",
         )
         registry.store(record)
@@ -249,7 +249,7 @@ def test_phased_pipeline(tmpdir: str) -> None:
     """Step 5: Full 4-phase pipeline with template-driven adapters."""
     step(5, "Phased Pipeline: decompose → plan → code → integrate")
 
-    from model_training.sakana_d2l import download_checkpoint
+    from model_training.hypernetwork import download_checkpoint
 
     checkpoint_path = str(download_checkpoint(variant="gemma_demo"))
     print(f"  Sakana checkpoint: {checkpoint_path}")

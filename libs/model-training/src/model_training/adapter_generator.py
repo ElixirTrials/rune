@@ -1,12 +1,10 @@
 """Adapter generation with optional ModelPool support.
 
-Replaces the public API of sakana_d2l.py for adapter generation.
 Supports two modes:
 
 - Pool mode (fast): borrows resident models from a ModelPool — no load/unload
   per call.  Pass ``pool=<ModelPool instance>``.
-- Standalone mode (backwards compat): loads/unloads per call, exactly like
-  generate_adapter_from_sakana() in sakana_d2l.py.  Omit ``pool``.
+- Standalone mode (backwards compat): loads/unloads per call.  Omit ``pool``.
 
 GPU imports are deferred inside function bodies per INFRA-05 pattern.
 """

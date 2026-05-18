@@ -416,7 +416,7 @@ def main() -> None:  # noqa: C901
     from model_training.d2l_data import load_jsonl, split_by_task_id  # noqa: PLC0415
     from model_training.d2l_lora import apply_functional_lora  # noqa: PLC0415
     from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
-    from model_training.sakana_d2l import _patch_flash_attention  # noqa: PLC0415
+    from model_training.hypernetwork import _patch_flash_attention  # noqa: PLC0415
     from model_training.training_common import (  # noqa: PLC0415
         _log_failure,
         mlflow_download_latest_checkpoint,

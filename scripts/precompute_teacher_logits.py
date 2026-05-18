@@ -184,7 +184,7 @@ def main() -> None:
 
     import torch  # noqa: PLC0415
     from model_training.d2l_lora import apply_functional_lora  # noqa: PLC0415
-    from model_training.sakana_d2l import _patch_flash_attention  # noqa: PLC0415
+    from model_training.hypernetwork import _patch_flash_attention  # noqa: PLC0415
     from safetensors.torch import load_file  # noqa: PLC0415
     from shared.hardware import get_best_device  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415

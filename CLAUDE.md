@@ -84,8 +84,8 @@ The scripts layer is the primary execution path. Services provide REST APIs but 
 - `libs/shared/src/shared/blackboard.py` — Typed blackboard for DAG-ordered code phase (SubtaskArtifact, interface extraction, topological sort)
 - `libs/shared/src/shared/rune_models.py` — Cross-service data contracts (CodingSession, SwarmConfig, PipelinePhase, etc.)
 - `libs/shared/src/shared/templates/*.j2` — Jinja2 templates for each pipeline phase
-- `libs/model-training/src/model_training/sakana_d2l.py` — Sakana Doc-to-LoRA adapter generation (HyperLoRA perceiver → PEFT adapter)
-- `libs/model-training/src/model_training/hypernetwork.py` — DocToLoraHypernetwork (Perceiver-based)
+- `libs/model-training/src/model_training/adapter_generator.py` — Adapter generation (extract activations, generate PEFT adapter via HyperLoRA)
+- `libs/model-training/src/model_training/hypernetwork.py` — HyperLoRA checkpoint loading, flash-attention patching, aggregator weight transfer
 - `libs/model-training/src/model_training/merging.py` — TIES/DARE adapter merging
 - `libs/model-training/src/model_training/diff_loss.py` — `DiffAwareSFTTrainer` + `DiffWeightedDataCollator` (hunk-weighted token loss, identity fallback)
 - `libs/model-training/src/model_training/kill_switch.py` — Kill-switch wiring (≥5% HumanEval Pass@1 regression trigger, k=5, 20–30 held-out tasks)

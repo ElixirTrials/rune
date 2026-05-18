@@ -526,8 +526,9 @@ def pregenerate_rune_adapters(
     import torch
     from ctx_to_lora.modeling.lora_merger import combine_lora as _combine_lora
     from evaluation.benchmarks.runner import _ADAPTER_REGISTRY, _import_adapter
+    from model_training.adapter_generator import _save_adapter
     from model_training.d2l_probe import extract_activations_with_model
-    from model_training.sakana_d2l import _save_sakana_adapter, load_sakana_checkpoint
+    from model_training.hypernetwork import load_hypernetwork
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     # HyperLoRA.forward hardcodes torch.autocast(device_type="cuda").
@@ -561,7 +562,7 @@ def pregenerate_rune_adapters(
     _hypernet_mod.HyperLoRA.forward = _device_safe_forward
 
     logger.info("Pre-loading HyperLoRA perceiver from %s", hypernet_checkpoint)
-    hypernet, hc = load_sakana_checkpoint(hypernet_checkpoint, device=device)
+    hypernet, hc = load_hypernetwork(hypernet_checkpoint, device=device)
     layer_indices = list(hc.layer_indices)
     scaling_factor = 0.16
 
@@ -607,7 +608,7 @@ def pregenerate_rune_adapters(
             lora_bias = hypernet.get_head_bias() if hypernet.config.use_bias else None
             lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
 
-            _save_sakana_adapter(
+            _save_adapter(
                 lora_dict=lora_dict,
                 output_dir=problem_dir,
                 base_model_name=model,

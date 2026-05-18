@@ -38,10 +38,8 @@ import shutil
 
 import optuna
 import torch
-from model_training.sakana_d2l import (
-    download_checkpoint,
-    generate_adapter_from_sakana,
-)
+from model_training.adapter_generator import generate_adapter
+from model_training.hypernetwork import download_checkpoint
 from peft import PeftModel
 from shared.hardware import get_best_device
 from shared.pipeline_config import PipelineConfig
@@ -127,7 +125,7 @@ def _generate_with_adapter(
         # Generate adapter
         gc.collect()
         torch.cuda.empty_cache()
-        adapter_path = generate_adapter_from_sakana(
+        adapter_path = generate_adapter(
             text=trajectory,
             output_dir=adapter_dir,
             checkpoint_path=_checkpoint_path,
