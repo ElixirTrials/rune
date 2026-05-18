@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from model_training.model_pool import ModelPool, get_pool, set_pool
 
 
@@ -48,9 +47,6 @@ def test_base_model_lazy_loading(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_model.to.return_value = fake_model
     fake_tokenizer = MagicMock()
     fake_tokenizer.pad_token = "pad"
-
-    fake_automodel_cls = MagicMock(return_value=fake_model)
-    fake_autotokenizer_cls = MagicMock(return_value=fake_tokenizer)
 
     fake_dtype = MagicMock()
 

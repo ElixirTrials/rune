@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -117,7 +115,7 @@ def test_save_adapter_produces_peft_files(tmp_path: Path) -> None:
 
 
 def test_generate_adapter_pool_mode(tmp_path: Path) -> None:
-    """Pool mode: borrows model/hypernet from pool, saves adapter, returns output_dir."""
+    """Pool mode: borrows from pool, saves adapter, returns output_dir."""
     from model_training.adapter_generator import generate_adapter
 
     target_modules = ["q_proj", "v_proj"]
@@ -164,7 +162,13 @@ def test_generate_adapter_pool_mode(tmp_path: Path) -> None:
             return_value=lora_dict,
         ),
         patch("safetensors.torch.save_file", side_effect=fake_save_file),
-        patch("torch.no_grad", return_value=MagicMock(__enter__=lambda s: None, __exit__=lambda s, *a: None)),
+        patch(
+            "torch.no_grad",
+            return_value=MagicMock(
+                __enter__=lambda s: None,
+                __exit__=lambda s, *a: None,
+            ),
+        ),
         patch("torch.ones", return_value=MagicMock()),
     ):
         result = generate_adapter(
@@ -248,13 +252,23 @@ def test_generate_adapter_standalone_mode(tmp_path: Path) -> None:
     import model_training.adapter_generator as ag_mod
 
     with (
-        patch.object(ag_mod, "extract_activations", side_effect=fake_extract_activations),
+        patch.object(
+            ag_mod,
+            "extract_activations",
+            side_effect=fake_extract_activations,
+        ),
         patch(
             "model_training.adapter_generator._generate_adapter_standalone",
             wraps=ag_mod._generate_adapter_standalone,
         ),
         patch("safetensors.torch.save_file", side_effect=fake_save_file),
-        patch("torch.no_grad", return_value=MagicMock(__enter__=lambda s: None, __exit__=lambda s, *a: None)),
+        patch(
+            "torch.no_grad",
+            return_value=MagicMock(
+                __enter__=lambda s: None,
+                __exit__=lambda s, *a: None,
+            ),
+        ),
         patch("torch.ones", return_value=MagicMock()),
         patch(
             "ctx_to_lora.modeling.lora_merger.combine_lora",
@@ -262,7 +276,11 @@ def test_generate_adapter_standalone_mode(tmp_path: Path) -> None:
         ),
     ):
         import model_training.hypernetwork as _hn_mod
-        with patch.object(_hn_mod, "load_hypernetwork", side_effect=fake_load_hypernetwork):
+        with patch.object(
+            _hn_mod,
+            "load_hypernetwork",
+            side_effect=fake_load_hypernetwork,
+        ):
             result = generate_adapter(
                 text="test trajectory",
                 output_dir=str(tmp_path),
