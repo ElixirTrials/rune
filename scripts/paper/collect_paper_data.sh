@@ -87,7 +87,6 @@ cat > "${RESULTS_DIR}/metadata.json" <<METAEOF
   "ttt_mlp_fraction": ${TTT_MLP_FRACTION},
   "rag_top_k": ${RAG_TOP_K},
   "vllm_max_model_len": ${VLLM_MAX_MODEL_LEN},
-  "rune_max_attempts": ${RUNE_MAX_ATTEMPTS:-3},
   "vllm_gpu_util": ${VLLM_GPU_UTIL},
   "cuda_visible_devices": "${CUDA_VISIBLE_DEVICES:-all}",
   "python_version": "$(python3 --version 2>&1)"
@@ -400,14 +399,12 @@ if [[ ${#RUNE_CONDITIONS[@]} -gt 0 ]]; then
         log "Condition (v) already done: ${TABLE2_RUNE}"
     else
         _stop_vllm_for_exclusive_gpu
-        RUNE_MAX_ATTEMPTS="${RUNE_MAX_ATTEMPTS:-3}"
         run_eval "table2_rune" scripts/paper/run_all_conditions.py \
             --conditions v \
             --benchmarks ${BENCHMARKS} \
             --model "${MODEL}" \
             --warm-start-adapter "${WARM_START}" \
             --hypernet-checkpoint "${HYPERNET_CHECKPOINT}" \
-            --rune-max-attempts ${RUNE_MAX_ATTEMPTS} \
             --output "${TABLE2_RUNE}" || true
         if [[ -f "${TABLE2_RUNE}" ]]; then
             log "Condition (v) written to ${TABLE2_RUNE}"

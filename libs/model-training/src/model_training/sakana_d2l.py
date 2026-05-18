@@ -620,6 +620,8 @@ def generate_adapter_from_sakana(
         # Load checkpoint just to read base_model_name_or_path
         if checkpoint_path is None:
             checkpoint_path = download_checkpoint(variant)
+        from model_training.hypernetwork import _open_checkpoint  # noqa: PLC0415
+
         sd = _open_checkpoint(str(checkpoint_path))
         base_model_name = sd["base_model_name_or_path"]
         del sd

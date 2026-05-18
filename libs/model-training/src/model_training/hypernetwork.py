@@ -26,7 +26,7 @@ def _open_checkpoint(path: str) -> Any:
     """
     import torch  # noqa: PLC0415
 
-    # weights_only=False: checkpoints contain HypernetConfig dataclass (not just tensors)
+    # weights_only=False: checkpoints contain a HypernetConfig dataclass, not tensors
     if path.startswith("s3://"):
         import fsspec  # type: ignore[import-untyped]  # noqa: PLC0415
 

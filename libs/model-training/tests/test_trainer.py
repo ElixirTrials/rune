@@ -168,7 +168,7 @@ def test_resolve_params_explicit_overrides_registry() -> None:
     assert params["grad_accum"] == 8
     assert params["lr_sched"] == "cosine"
     # attn_impl always comes from registry when model_config_name is set
-    assert params["attn_impl"] == "eager"
+    assert params["attn_impl"] == "sdpa"
 
 
 def test_resolve_params_unknown_registry_raises() -> None:

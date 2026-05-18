@@ -270,6 +270,7 @@ module = [
     "evalplus",
     "evalplus.*",
     "run_training_hpo",
+    "run_benchmark_hpo",
     "pandas",
     "pandas.*",
     "sagemaker",
