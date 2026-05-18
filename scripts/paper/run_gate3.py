@@ -4,9 +4,13 @@ Evaluates 15 OOD functions × 8 held-out inputs via exact-match output
 comparison. Compares substrate baseline vs Rune (substrate + hypernetwork
 adapter). Applies paired McNemar + Bonferroni.
 
+Supports two modes for the Rune condition:
+  --rune-adapter-dir  Use pre-generated adapters (two-phase GPU sharing).
+  --hypernet-checkpoint  Live hypernetwork (requires exclusive GPU).
+
 Usage:
     uv run python scripts/paper/run_gate3.py \
-        --hypernet-checkpoint path/to/checkpoint.bin \
+        --rune-adapter-dir evaluation_results/paper/rune_adapters_ood \
         --output evaluation_results/gate3.json
 """
 
@@ -17,16 +21,16 @@ import asyncio
 import json
 import logging
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()
 
-from scripts.paper.statistical_tests import (
+from statistical_tests import (  # type: ignore[import-not-found]
     bonferroni_correct,
     mcnemar_test,
     wilson_score_ci,
@@ -98,6 +102,97 @@ def _generate_completions(
     return completions
 
 
+def _pregenerate_ood_adapters(
+    tasks: list[dict[str, str]],
+    model: str,
+    hypernet_checkpoint: str,
+    device: str,
+    output_dir: str,
+) -> None:
+    """Pre-generate adapters for OOD tasks (GPU-exclusive phase)."""
+    import ctx_to_lora.modeling.hypernet as _hypernet_mod
+    import torch
+    from ctx_to_lora.modeling.lora_merger import combine_lora as _combine_lora
+    from model_training.d2l_probe import extract_activations_with_model
+    from model_training.sakana_d2l import _save_sakana_adapter, load_sakana_checkpoint
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+    def _device_safe_forward(self, features, attn_mask=None, position_ids=None, n_ctx_chunks=None):
+        dev = "cuda" if features.is_cuda else "cpu"
+        with torch.autocast(device_type=dev, dtype=torch.bfloat16):
+            if self.aggregator.layer_to_layer and self.iterative_mode:
+                bs, n_layers = features.shape[0:2]
+                lora_emb = torch.empty(
+                    (bs, n_layers, self.num_modules, self.r, self.config.latent_size),
+                    device=features.device,
+                )
+                for i in range(n_layers):
+                    lora_emb[:, i], _ = self.aggregator(
+                        features[:, i], attn_mask, position_ids
+                    )
+            else:
+                lora_emb, _ = self.aggregator(features, attn_mask, position_ids)
+        flat_loras = None
+        if self.target_modules:
+            lora_emb = self.layers(lora_emb)
+            norm = torch.norm(lora_emb, dim=-1, keepdim=True)
+            norm_lora_emb = lora_emb / norm
+            flat_loras = self.head(norm_lora_emb)
+        return flat_loras, None
+
+    _hypernet_mod.HyperLoRA.forward = _device_safe_forward
+
+    hypernet, hc = load_sakana_checkpoint(hypernet_checkpoint, device=device)
+    layer_indices = list(hc.layer_indices)
+
+    bnb_cfg = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model, quantization_config=bnb_cfg, device_map="auto"
+    )
+    base_model.eval()
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, str] = {}
+
+    for task in tasks:
+        task_id = task["task_id"]
+        prompt = task["prompt"]
+        task_dir = str(out / task_id)
+        Path(task_dir).mkdir(parents=True, exist_ok=True)
+
+        features, attn_mask = extract_activations_with_model(
+            text=prompt, model=base_model, tokenizer=tokenizer,
+            layer_indices=layer_indices,
+        )
+        with torch.no_grad():
+            lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
+
+        n_chunks = torch.ones(1, dtype=torch.int32)
+        lora_bias = hypernet.get_head_bias() if hypernet.config.use_bias else None
+        lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
+
+        _save_sakana_adapter(
+            lora_dict=lora_dict, output_dir=task_dir,
+            base_model_name=model, hc=hc, scaling_factor=0.16,
+        )
+        manifest[task_id] = task_dir
+        logger.info("  OOD adapter: %s", task_id)
+
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    logger.info("Wrote %d OOD adapters to %s", len(manifest), output_dir)
+
+    del hypernet, base_model
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Gate 3: OOD procedural encoding")
     parser.add_argument("--model", type=str, default=DEFAULT_BASE_MODEL)
@@ -109,8 +204,19 @@ def main() -> None:
     parser.add_argument(
         "--hypernet-checkpoint",
         type=str,
-        required=True,
-        help="Path to trained hypernetwork checkpoint",
+        default=None,
+        help="Path to trained hypernetwork checkpoint (live mode)",
+    )
+    parser.add_argument(
+        "--rune-adapter-dir",
+        type=str,
+        default=None,
+        help="Path to pre-generated OOD adapter dir (with manifest.json)",
+    )
+    parser.add_argument(
+        "--pregenerate",
+        action="store_true",
+        help="Pre-generate OOD adapters (GPU phase) and exit",
     )
     parser.add_argument("--n-inputs", type=int, default=8)
     parser.add_argument("--device", default="cuda")
@@ -118,6 +224,26 @@ def main() -> None:
         "--output", type=Path, default=Path("evaluation_results/gate3.json")
     )
     args = parser.parse_args()
+
+    ood_data_path = Path("libs/evaluation/src/evaluation/data/ood_tasks.json")
+    with ood_data_path.open() as f:
+        all_tasks: list[dict[str, str]] = json.load(f)
+
+    if args.pregenerate:
+        if not args.hypernet_checkpoint:
+            parser.error("--pregenerate requires --hypernet-checkpoint")
+        adapter_out = args.rune_adapter_dir or str(
+            args.output.parent / "rune_adapters_ood"
+        )
+        _pregenerate_ood_adapters(
+            all_tasks, args.model, args.hypernet_checkpoint,
+            args.device, adapter_out,
+        )
+        print(f"OOD adapters written to {adapter_out}")
+        return
+
+    if not args.rune_adapter_dir and not args.hypernet_checkpoint:
+        parser.error("Either --rune-adapter-dir or --hypernet-checkpoint is required")
 
     import subprocess
 
@@ -128,7 +254,6 @@ def main() -> None:
         mlflow_log_params,
         setup_mlflow,
     )
-    from rune_runner import run_hypernetwork  # type: ignore[import-not-found]
 
     mlflow_ok = setup_mlflow("paper-gate3", tracking_uri=None)
     if mlflow_ok:
@@ -139,7 +264,8 @@ def main() -> None:
             {
                 "model": args.model,
                 "warm_start_adapter": args.warm_start_adapter,
-                "hypernet_checkpoint": args.hypernet_checkpoint,
+                "hypernet_checkpoint": args.hypernet_checkpoint or "pregenerated",
+                "rune_adapter_dir": args.rune_adapter_dir or "",
                 "n_inputs": args.n_inputs,
                 "git_commit": subprocess.check_output(
                     ["git", "rev-parse", "HEAD"],
@@ -148,14 +274,9 @@ def main() -> None:
             }
         )
 
-    ood_data_path = Path("libs/evaluation/src/evaluation/data/ood_tasks.json")
-    with ood_data_path.open() as f:
-        all_tasks: list[dict[str, str]] = json.load(f)
-
     print(f"Gate 3: {len(all_tasks)} OOD tasks × {args.n_inputs} inputs")
     print(f"Model: {args.model}")
     print(f"Substrate: {args.warm_start_adapter}")
-    print(f"Hypernetwork: {args.hypernet_checkpoint}")
 
     provider = get_provider()
 
@@ -176,16 +297,32 @@ def main() -> None:
     )
 
     print("\n=== Rune (substrate + hypernetwork adapter) ===")
-    tmp_dir = tempfile.mkdtemp(prefix="rune_gate3_")
 
-    def adapter_generator(prompt: str) -> str | None:
-        return run_hypernetwork(
-            trajectory_text=prompt,
-            output_dir=tmp_dir,
-            base_model_id=args.model,
-            checkpoint_path=args.hypernet_checkpoint,
-            device=args.device,
-        )
+    if args.rune_adapter_dir:
+        manifest_path = Path(args.rune_adapter_dir) / "manifest.json"
+        task_to_adapter = json.loads(manifest_path.read_text())
+        prompt_to_adapter: dict[str, str] = {}
+        for task in all_tasks:
+            if task["task_id"] in task_to_adapter:
+                prompt_to_adapter[task["prompt"]] = task_to_adapter[task["task_id"]]
+
+        def adapter_generator(prompt: str) -> str | None:
+            return prompt_to_adapter.get(prompt)
+    else:
+        import tempfile
+
+        from rune_runner import run_hypernetwork  # type: ignore[import-not-found]
+
+        tmp_dir = tempfile.mkdtemp(prefix="rune_gate3_")
+
+        def adapter_generator(prompt: str) -> str | None:
+            return run_hypernetwork(
+                trajectory_text=prompt,
+                output_dir=tmp_dir,
+                base_model_id=args.model,
+                checkpoint_path=args.hypernet_checkpoint,
+                device=args.device,
+            )
 
     rune_completions = _generate_completions(
         all_tasks,
@@ -228,7 +365,8 @@ def main() -> None:
         "n_inputs_per_task": args.n_inputs,
         "model": args.model,
         "warm_start_adapter": args.warm_start_adapter,
-        "hypernet_checkpoint": args.hypernet_checkpoint,
+        "hypernet_checkpoint": args.hypernet_checkpoint or "pregenerated",
+        "rune_adapter_dir": args.rune_adapter_dir,
         "substrate": {
             "pass_rate": substrate_result["ood_pass_rate"],
             "pass_count": substrate_result["pass_count"],

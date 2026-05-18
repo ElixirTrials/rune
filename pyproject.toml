@@ -50,6 +50,7 @@ dependencies = [
     "igraph>=1.0.0",
     "vllm>=0.20.1",
     "sentence-transformers>=5.4.1",
+    "faiss-cpu>=1.13.2",
 ]
 
 [project.optional-dependencies]

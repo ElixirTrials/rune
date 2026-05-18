@@ -319,15 +319,6 @@ async def run_iteration(
 # ---------------------------------------------------------------------------
 
 
-def _is_sakana_checkpoint(checkpoint_path: str) -> bool:
-    """Detect whether a checkpoint is a Sakana HyperLoRA checkpoint."""
-    import torch  # noqa: PLC0415
-
-    sd = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    hc = sd.get("hypernet_config")
-    return hc is not None and not isinstance(hc, dict)
-
-
 def run_hypernetwork(
     trajectory_text: str,
     output_dir: str,
@@ -336,11 +327,7 @@ def run_hypernetwork(
     device: str = "cpu",
     scaling_factor: float = 0.16,
 ) -> str | None:
-    """Run the hypernetwork to produce a new adapter from trajectory.
-
-    Supports two checkpoint formats:
-      - Sakana Doc-to-LoRA (ctx_to_lora HyperLoRA perceiver)
-      - Rune DocToLoraHypernetwork (token-embedding perceiver)
+    """Run the HyperLoRA perceiver to produce a PEFT adapter from trajectory.
 
     If no checkpoint is available, logs a warning and returns None
     (the system falls back to base model inference).
@@ -351,21 +338,21 @@ def run_hypernetwork(
         base_model_id: Base model identifier.
         checkpoint_path: Path to pretrained hypernetwork checkpoint.
         device: Device for computation ('cpu', 'mps', 'cuda').
+        scaling_factor: Adapter influence multiplier (0-1).
 
     Returns:
         Path to saved adapter directory, or None if no checkpoint provided.
-
-    Raises:
-        RuntimeError: If a checkpoint is provided but adapter generation fails.
     """
-    if not checkpoint_path or not Path(checkpoint_path).exists():
+    if not checkpoint_path:
+        logger.warning("No hypernetwork checkpoint provided — skipping adapter generation")
+        return None
+    if not checkpoint_path.startswith("s3://") and not Path(checkpoint_path).exists():
         logger.warning(
             "No hypernetwork checkpoint at %s — skipping adapter generation",
             checkpoint_path,
         )
         return None
 
-    # Free fragmented GPU memory before loading hypernetwork
     import torch  # noqa: PLC0415
 
     if device != "cpu" and torch.cuda.is_available():
@@ -374,31 +361,16 @@ def run_hypernetwork(
         gc.collect()
         torch.cuda.empty_cache()
 
-    if _is_sakana_checkpoint(checkpoint_path):
-        from model_training.sakana_d2l import generate_adapter_from_sakana
+    from model_training.sakana_d2l import generate_adapter_from_sakana
 
-        return generate_adapter_from_sakana(
-            text=trajectory_text,
-            output_dir=output_dir,
-            checkpoint_path=checkpoint_path,
-            base_model_name=base_model_id,
-            device=device,
-            scaling_factor=scaling_factor,
-        )
-    else:
-        from model_training.hypernetwork import (
-            generate_adapter,
-            load_pretrained,
-        )
-
-        hypernetwork = load_pretrained(checkpoint_path, device=device)
-        return generate_adapter(
-            hypernetwork=hypernetwork,
-            trajectory_text=trajectory_text,
-            output_dir=output_dir,
-            base_model_id=base_model_id,
-            device=device,
-        )
+    return generate_adapter_from_sakana(
+        text=trajectory_text,
+        output_dir=output_dir,
+        checkpoint_path=checkpoint_path,
+        base_model_name=base_model_id,
+        device=device,
+        scaling_factor=scaling_factor,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 #   bash scripts/paper/collect_paper_data.sh             # phase 1 only (i-iv)
 #   bash scripts/paper/collect_paper_data.sh --phase 2   # phase 2 (v + gates)
 #   bash scripts/paper/collect_paper_data.sh --phase all  # everything
+#   bash scripts/paper/collect_paper_data.sh --fresh --phase all  # wipe results + checkpoints first
 set -euo pipefail
 
 # ── Logging ─────────────────────────────────────────────────────────
@@ -33,8 +34,8 @@ TTT_LR=1e-4
 TTT_STEPS=5
 TTT_MLP_FRACTION=0.25
 
-# Hypernetwork checkpoint (required for phase 2)
-HYPERNET_CHECKPOINT="${HYPERNET_CHECKPOINT:-checkpoints/hypernet_hpo/hypernet-full-t10/checkpoint.pt}"
+# Hypernetwork checkpoint — S3 URI consumed directly (no local download needed)
+HYPERNET_CHECKPOINT="${HYPERNET_CHECKPOINT:-s3://elixirtrials-949678234935-eu-west-2-artifacts/checkpoints/hypernet_hpo/checkpoint.pt}"
 
 # vLLM health check: 200 attempts × 5s = 1000s (~16 min) to cover slow overlay FS loads
 MAX_TRIES=200
@@ -86,6 +87,7 @@ cat > "${RESULTS_DIR}/metadata.json" <<METAEOF
   "ttt_mlp_fraction": ${TTT_MLP_FRACTION},
   "rag_top_k": ${RAG_TOP_K},
   "vllm_max_model_len": ${VLLM_MAX_MODEL_LEN},
+  "rune_max_attempts": ${RUNE_MAX_ATTEMPTS:-3},
   "vllm_gpu_util": ${VLLM_GPU_UTIL},
   "cuda_visible_devices": "${CUDA_VISIBLE_DEVICES:-all}",
   "python_version": "$(python3 --version 2>&1)"
@@ -142,11 +144,34 @@ if pgrep -f "run_training_hpo\|run_optimization" > /dev/null 2>&1; then
     [[ $REPLY =~ ^[Yy]$ ]] || exit 1
 fi
 
-PHASE="${1:-}"
-if [[ "${PHASE}" == "--phase" ]]; then
-    PHASE="${2:-1}"
-else
-    PHASE="1"
+# ── Parse flags ─────────────────────────────────────────────────────
+FRESH=false
+PHASE="1"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fresh) FRESH=true; shift ;;
+        --phase) PHASE="${2:-1}"; shift 2 ;;
+        *) log "Unknown flag: $1"; exit 1 ;;
+    esac
+done
+
+_kill_all_gpu_processes() {
+    local pids
+    pids=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | tr -d ' ')
+    if [[ -n "${pids}" ]]; then
+        log "  Killing GPU processes: ${pids}"
+        echo "${pids}" | xargs -r kill -9 2>/dev/null || true
+        sleep 3
+    fi
+    pkill -9 -f "vllm" 2>/dev/null || true
+}
+
+if [[ "${FRESH}" == "true" ]]; then
+    log "──── FRESH MODE: wiping previous results and checkpoints ────"
+    rm -f "${RESULTS_DIR}"/table2*.json "${RESULTS_DIR}"/gate*.json
+    rm -rf "${RESULTS_DIR}"/checkpoints "${RESULTS_DIR}"/rune_adapters_gate2 "${RESULTS_DIR}"/rune_adapters_ood
+    log "  Removed result JSONs and checkpoint dir from ${RESULTS_DIR}/"
+    _kill_all_gpu_processes
 fi
 log "Phase: ${PHASE}"
 
@@ -156,7 +181,7 @@ if [[ "${PHASE}" == "1" || "${PHASE}" == "all" ]]; then
     [[ -f "${RESULTS_DIR}/table2_phase1.json" ]] || NEEDS_WORK=true
 fi
 if [[ "${PHASE}" == "2" || "${PHASE}" == "all" ]]; then
-    [[ -f "${RESULTS_DIR}/table2_condition_v.json" ]] || NEEDS_WORK=true
+    [[ -f "${RESULTS_DIR}/table2_rune.json" ]] || NEEDS_WORK=true
     [[ -f "${RESULTS_DIR}/gate2.json" ]] || NEEDS_WORK=true
     [[ -f "${RESULTS_DIR}/gate3.json" ]] || NEEDS_WORK=true
 fi
@@ -166,12 +191,8 @@ if [[ "${NEEDS_WORK}" == "false" ]]; then
     exit 0
 fi
 
-# Kill any existing vLLM to avoid port conflicts / OOM
-if pgrep -f "vllm.entrypoints" > /dev/null 2>&1; then
-    log "Killing existing vLLM processes..."
-    pkill -9 -f "vllm" 2>/dev/null || true
-    sleep 3
-fi
+# Kill any existing GPU processes to avoid port conflicts / OOM
+_kill_all_gpu_processes
 
 # ── start_vllm helper ──────────────────────────────────────────────
 start_vllm() {
@@ -223,22 +244,23 @@ start_vllm() {
     log "  vLLM ready. Startup took ~$((tries * HEALTH_SLEEP))s."
 }
 
-# ── Launch vLLM ──────────────────────────────────────────────────────
-start_vllm "vllm"
-
-# ── Smoke test: verify completions API returns code, not chat ────────
-log "Running smoke test (1 completion)..."
-SMOKE_RESULT=$(curl -sf http://localhost:${VLLM_PORT}/v1/completions \
-    -H "Content-Type: application/json" \
-    -d "{\"model\": \"${MODEL}\", \"prompt\": \"def add(a, b):\\n    return\", \"max_tokens\": 16}" \
-    2>&1) || { log "SMOKE TEST FAILED: completions endpoint not responding"; log "${SMOKE_RESULT}"; exit 1; }
-SMOKE_TEXT=$(echo "${SMOKE_RESULT}" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['text'][:80])" 2>/dev/null)
-log "Smoke test output: '${SMOKE_TEXT}'"
-if echo "${SMOKE_TEXT}" | grep -qiE 'sorry|cannot|I am|assist|help you|Hello'; then
-    log "SMOKE TEST FAILED: model responding conversationally, not completing code"
-    exit 1
-fi
-log "Smoke test passed."
+# ── Launch vLLM (only if vLLM conditions exist) ──────────────────────
+smoke_test_vllm() {
+    log "Running smoke test (1 completion)..."
+    local smoke_result
+    smoke_result=$(curl -sf http://localhost:${VLLM_PORT}/v1/completions \
+        -H "Content-Type: application/json" \
+        -d "{\"model\": \"${MODEL}\", \"prompt\": \"def add(a, b):\\n    return\", \"max_tokens\": 16}" \
+        2>&1) || { log "SMOKE TEST FAILED: completions endpoint not responding"; log "${smoke_result}"; exit 1; }
+    local smoke_text
+    smoke_text=$(echo "${smoke_result}" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['text'][:80])" 2>/dev/null)
+    log "Smoke test output: '${smoke_text}'"
+    if echo "${smoke_text}" | grep -qiE 'sorry|cannot|I am|assist|help you|Hello'; then
+        log "SMOKE TEST FAILED: model responding conversationally, not completing code"
+        exit 1
+    fi
+    log "Smoke test passed."
+}
 
 # ── run_eval helper ─────────────────────────────────────────────────
 run_eval() {
@@ -267,24 +289,59 @@ run_eval() {
     return ${exit_code}
 }
 
-# ── Phase 1: Conditions (i)-(iv) — no hypernetwork needed ───────────
-if [[ "${PHASE}" == "1" || "${PHASE}" == "all" ]]; then
-    log_section "PHASE 1: Conditions (i)-(iv)"
+# ── Resolve conditions to run ──────────────────────────────────────
+# vLLM conditions (i, ii, iii) run first. Then exclusive-GPU conditions:
+# TTT (iv) and Rune iterative (v) both need the full GPU.
+VLLM_CONDITIONS=()
+TTT_CONDITIONS=()
+RUNE_CONDITIONS=()
 
-    TABLE2_OUT="${RESULTS_DIR}/table2_phase1.json"
-    TABLE2_VLLM="${RESULTS_DIR}/table2_vllm.json"
-    TABLE2_TTT="${RESULTS_DIR}/table2_ttt.json"
+resolve_conditions() {
+    local phase="$1"
+    if [[ "${phase}" == "1" || "${phase}" == "all" ]]; then
+        VLLM_CONDITIONS+=(i ii iii)
+        TTT_CONDITIONS+=(iv)
+    fi
+    if [[ "${phase}" == "2" || "${phase}" == "all" ]]; then
+        RUNE_CONDITIONS+=(v)
+    fi
+}
+resolve_conditions "${PHASE}"
 
-    if [[ -f "${TABLE2_OUT}" ]]; then
-        log "Phase 1 results already exist: ${TABLE2_OUT} — skipping."
-    else
+TABLE2_OUT="${RESULTS_DIR}/table2.json"
+TABLE2_VLLM="${RESULTS_DIR}/table2_vllm.json"
+TABLE2_RUNE="${RESULTS_DIR}/table2_rune.json"
+TABLE2_TTT="${RESULTS_DIR}/table2_ttt.json"
 
+ADAPTER_III_FLAG=""
+if [[ -d "${ADAPTER_III}" ]] || [[ "${ADAPTER_III}" == s3://* ]]; then
     ADAPTER_III_FLAG="--adapter-iii ${ADAPTER_III}"
+fi
 
-    # Step 1: Conditions (i)-(iii) via vLLM
-    if [[ ! -f "${TABLE2_VLLM}" ]]; then
+# ── Validate hypernet checkpoint for Rune condition ─────────────────
+if [[ ${#RUNE_CONDITIONS[@]} -gt 0 ]]; then
+    if [[ -z "${HYPERNET_CHECKPOINT}" ]]; then
+        log "ERROR: HYPERNET_CHECKPOINT not set."
+        exit 1
+    fi
+    if [[ "${HYPERNET_CHECKPOINT}" != s3://* ]] && [[ ! -f "${HYPERNET_CHECKPOINT}" ]]; then
+        log "ERROR: Hypernetwork checkpoint not found: ${HYPERNET_CHECKPOINT}"
+        exit 1
+    fi
+    log "Hypernetwork checkpoint: ${HYPERNET_CHECKPOINT}"
+fi
+
+# ── Step 1: vLLM-served conditions (i, ii, iii) ───────────────────
+if [[ ${#VLLM_CONDITIONS[@]} -gt 0 ]]; then
+    log_section "vLLM conditions: ${VLLM_CONDITIONS[*]}"
+
+    if [[ -f "${TABLE2_VLLM}" ]]; then
+        log "Conditions ${VLLM_CONDITIONS[*]} already done: ${TABLE2_VLLM}"
+    else
+        start_vllm "vllm"
+        smoke_test_vllm
         run_eval "table2_vllm" scripts/paper/run_all_conditions.py \
-            --conditions i ii iii \
+            --conditions ${VLLM_CONDITIONS[*]} \
             --benchmarks ${BENCHMARKS} \
             --model "${MODEL}" \
             --warm-start-adapter "${WARM_START}" \
@@ -293,28 +350,32 @@ if [[ "${PHASE}" == "1" || "${PHASE}" == "all" ]]; then
             ${ADAPTER_III_FLAG} \
             --output "${TABLE2_VLLM}" || true
         if [[ -f "${TABLE2_VLLM}" ]]; then
-            log "Conditions i-iii results written to ${TABLE2_VLLM}"
-            log "  Contents: $(python3 -c "import json; d=json.load(open('${TABLE2_VLLM}')); [print(f'    {c}: {s}') for c,v in d.get('conditions',{}).items() for s in [v.get('scores',{})]]" 2>/dev/null)"
+            log "Conditions ${VLLM_CONDITIONS[*]} written to ${TABLE2_VLLM}"
         else
-            log "WARNING: Conditions i-iii produced no output file"
+            log "WARNING: Conditions ${VLLM_CONDITIONS[*]} produced no output file"
         fi
-    else
-        log "Conditions i-iii already done: ${TABLE2_VLLM}"
     fi
+fi
 
-    # Step 2: Kill vLLM to free GPU for TTT
+# ── Step 2: Kill vLLM, run exclusive-GPU conditions (TTT + Rune iterative) ──
+_stop_vllm_for_exclusive_gpu() {
     if [[ -n "${VLLM_PID}" ]]; then
-        log "Stopping vLLM for TTT condition (need exclusive GPU)..."
+        log "Stopping vLLM for exclusive GPU access..."
         kill "${VLLM_PID}" 2>/dev/null || true
         wait "${VLLM_PID}" 2>/dev/null || true
         VLLM_PID=""
         sleep 3
-        log "vLLM stopped. GPU memory freed."
-        log "  GPU mem: $(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
     fi
+    _kill_all_gpu_processes
+    log "GPU memory freed."
+    log "  GPU mem: $(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
+}
 
-    # Step 3: Condition (iv) TTT — needs exclusive GPU
-    if [[ ! -f "${TABLE2_TTT}" ]]; then
+if [[ ${#TTT_CONDITIONS[@]} -gt 0 ]]; then
+    if [[ -f "${TABLE2_TTT}" ]]; then
+        log "Condition (iv) already done: ${TABLE2_TTT}"
+    else
+        _stop_vllm_for_exclusive_gpu
         run_eval "table2_ttt" scripts/paper/run_all_conditions.py \
             --conditions iv \
             --benchmarks ${BENCHMARKS} \
@@ -325,31 +386,52 @@ if [[ "${PHASE}" == "1" || "${PHASE}" == "all" ]]; then
             --ttt-mlp-fraction ${TTT_MLP_FRACTION} \
             --output "${TABLE2_TTT}" || true
         if [[ -f "${TABLE2_TTT}" ]]; then
-            log "Condition iv results written to ${TABLE2_TTT}"
+            log "Condition iv written to ${TABLE2_TTT}"
         else
             log "WARNING: Condition iv produced no output file"
         fi
-    else
-        log "Condition iv already done: ${TABLE2_TTT}"
     fi
+fi
 
-    # Step 4: Merge vLLM + TTT results into final phase 1 output
-    log "Merging phase 1 results..."
-    uv run python -c "
+# Condition (v): Rune iterative — needs exclusive GPU for hypernetwork
+# + base model (4-bit NF4) loaded together for the retry loop.
+if [[ ${#RUNE_CONDITIONS[@]} -gt 0 ]]; then
+    if [[ -f "${TABLE2_RUNE}" ]]; then
+        log "Condition (v) already done: ${TABLE2_RUNE}"
+    else
+        _stop_vllm_for_exclusive_gpu
+        RUNE_MAX_ATTEMPTS="${RUNE_MAX_ATTEMPTS:-3}"
+        run_eval "table2_rune" scripts/paper/run_all_conditions.py \
+            --conditions v \
+            --benchmarks ${BENCHMARKS} \
+            --model "${MODEL}" \
+            --warm-start-adapter "${WARM_START}" \
+            --hypernet-checkpoint "${HYPERNET_CHECKPOINT}" \
+            --rune-max-attempts ${RUNE_MAX_ATTEMPTS} \
+            --output "${TABLE2_RUNE}" || true
+        if [[ -f "${TABLE2_RUNE}" ]]; then
+            log "Condition (v) written to ${TABLE2_RUNE}"
+        else
+            log "WARNING: Condition (v) produced no output file"
+        fi
+    fi
+fi
+
+# ── Step 3: Merge all partial results into final table ──────────────
+log "Merging results..."
+uv run python -c "
 import json, sys, os
-vllm_path = '${TABLE2_VLLM}'
-ttt_path = '${TABLE2_TTT}'
+partials = ['${TABLE2_VLLM}', '${TABLE2_RUNE}', '${TABLE2_TTT}']
 out_path = '${TABLE2_OUT}'
 merged = {}
-if os.path.exists(vllm_path):
-    merged = json.load(open(vllm_path))
-if os.path.exists(ttt_path):
-    ttt = json.load(open(ttt_path))
-    for k, v in ttt.items():
-        if k == 'conditions':
-            merged.setdefault('conditions', {}).update(v)
-        else:
-            merged[k] = v
+for path in partials:
+    if os.path.exists(path):
+        data = json.load(open(path))
+        for k, v in data.items():
+            if k == 'conditions':
+                merged.setdefault('conditions', {}).update(v)
+            else:
+                merged[k] = v
 if merged:
     json.dump(merged, open(out_path, 'w'), indent=2)
     n = len(merged.get('conditions', {}))
@@ -360,71 +442,76 @@ else:
     print('WARNING: No results to merge', file=sys.stderr)
 "
 
-    log "Phase 1 complete. Results: ${TABLE2_OUT}"
-
-    fi  # end skip-if-done
-fi
-
-# ── Restart vLLM if it was killed for TTT ───────────────────────────
-if [[ -z "${VLLM_PID}" ]] && [[ "${PHASE}" == "2" || "${PHASE}" == "all" ]]; then
-    log "Restarting vLLM for phase 2..."
-    start_vllm "vllm_phase2"
-fi
-
-# ── Phase 2: Condition (v) + Gate 2 + Gate 3 — hypernetwork required ─
+# ── Gates (phase 2 only, need vLLM) ────────────────────────────────
 if [[ "${PHASE}" == "2" || "${PHASE}" == "all" ]]; then
-    log_section "PHASE 2: Condition (v) + Gates 2 & 3"
+    GATE2_OUT="${RESULTS_DIR}/gate2.json"
+    GATE3_OUT="${RESULTS_DIR}/gate3.json"
+    GATE2_ADAPTER_DIR="${RESULTS_DIR}/rune_adapters_gate2"
+    GATE3_ADAPTER_DIR="${RESULTS_DIR}/rune_adapters_ood"
 
-    if [[ -z "${HYPERNET_CHECKPOINT}" ]]; then
-        log "ERROR: HYPERNET_CHECKPOINT not set."
-        exit 1
-    fi
+    # Pre-generate adapters for gate2 (all 6 benchmarks) and gate3 (OOD tasks).
+    # Needs exclusive GPU — stop vLLM first.
+    if [[ ! -f "${GATE2_OUT}" && ! -f "${GATE2_ADAPTER_DIR}/manifest.json" ]]; then
+        log "Stopping vLLM for gate2 adapter pre-generation..."
+        if [[ -n "${VLLM_PID}" ]]; then
+            kill "${VLLM_PID}" 2>/dev/null || true
+            wait "${VLLM_PID}" 2>/dev/null || true
+            VLLM_PID=""
+            sleep 3
+        fi
+        log "  GPU mem: $(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
 
-    if [[ ! -f "${HYPERNET_CHECKPOINT}" ]]; then
-        log "ERROR: Hypernetwork checkpoint not found: ${HYPERNET_CHECKPOINT}"
-        exit 1
-    fi
-    log "Hypernetwork checkpoint: ${HYPERNET_CHECKPOINT}"
-
-    # Condition (v) for Table 2
-    TABLE2_V_OUT="${RESULTS_DIR}/table2_condition_v.json"
-    if [[ -f "${TABLE2_V_OUT}" ]]; then
-        log "Condition (v) already done: ${TABLE2_V_OUT} — skipping."
-    else
-        run_eval "table2_v" scripts/paper/run_all_conditions.py \
-            --conditions v \
-            --benchmarks ${BENCHMARKS} \
+        run_eval "gate2_pregenerate" scripts/paper/run_all_conditions.py \
+            --pregenerate \
+            --benchmarks humaneval mbpp apps bigcodebench ds_1000 livecodebench \
             --model "${MODEL}" \
-            --warm-start-adapter "${WARM_START}" \
             --hypernet-checkpoint "${HYPERNET_CHECKPOINT}" \
-            --output "${TABLE2_V_OUT}" || true
+            --rune-adapter-dir "${GATE2_ADAPTER_DIR}" || true
+    fi
+
+    if [[ ! -f "${GATE3_OUT}" && ! -f "${GATE3_ADAPTER_DIR}/manifest.json" ]]; then
+        if [[ -n "${VLLM_PID}" ]]; then
+            log "Stopping vLLM for gate3 adapter pre-generation..."
+            kill "${VLLM_PID}" 2>/dev/null || true
+            wait "${VLLM_PID}" 2>/dev/null || true
+            VLLM_PID=""
+            sleep 3
+        fi
+        log "  GPU mem: $(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader 2>/dev/null || echo 'N/A')"
+
+        run_eval "gate3_pregenerate" scripts/paper/run_gate3.py \
+            --pregenerate \
+            --model "${MODEL}" \
+            --hypernet-checkpoint "${HYPERNET_CHECKPOINT}" \
+            --rune-adapter-dir "${GATE3_ADAPTER_DIR}" || true
+    fi
+
+    # Restart vLLM for evaluation
+    if ! pgrep -f "vllm.entrypoints" > /dev/null 2>&1; then
+        start_vllm "vllm_gates"
     fi
 
     # Gate 2: Multi-benchmark robustness
-    GATE2_OUT="${RESULTS_DIR}/gate2.json"
     if [[ -f "${GATE2_OUT}" ]]; then
         log "Gate 2 already done: ${GATE2_OUT} — skipping."
     else
         run_eval "gate2" scripts/paper/run_gate2.py \
             --model "${MODEL}" \
             --warm-start-adapter "${WARM_START}" \
-            --hypernet-checkpoint "${HYPERNET_CHECKPOINT}" \
+            --rune-adapter-dir "${GATE2_ADAPTER_DIR}" \
             --output "${GATE2_OUT}" || true
     fi
 
     # Gate 3: OOD procedural encoding
-    GATE3_OUT="${RESULTS_DIR}/gate3.json"
     if [[ -f "${GATE3_OUT}" ]]; then
         log "Gate 3 already done: ${GATE3_OUT} — skipping."
     else
         run_eval "gate3" scripts/paper/run_gate3.py \
             --model "${MODEL}" \
             --warm-start-adapter "${WARM_START}" \
-            --hypernet-checkpoint "${HYPERNET_CHECKPOINT}" \
+            --rune-adapter-dir "${GATE3_ADAPTER_DIR}" \
             --output "${GATE3_OUT}" || true
     fi
-
-    log "Phase 2 complete."
 fi
 
 log_section "Collection Complete"

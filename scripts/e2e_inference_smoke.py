@@ -292,54 +292,6 @@ try:
 except ValueError:
     check("validate_config catches bad rank", True)
 
-# Hypernetwork (requires torch)
-try:
-    import torch
-    from model_training.hypernetwork import (
-        DocToLoraHypernetwork,
-        save_hypernetwork_adapter,
-    )
-
-    # Small model for CPU test
-    hyper = DocToLoraHypernetwork(input_dim=1000, hidden_dim=32, num_layers=1, rank=4)
-    check("DocToLoraHypernetwork instantiates", True)
-
-    token_ids = torch.randint(0, 1000, (1, 16))
-    weights = hyper(token_ids)
-    check("hypernetwork forward returns dict", isinstance(weights, dict))
-
-    # Check PEFT key format
-    expected_key = "base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight"
-    check("output has PEFT-compatible keys", expected_key in weights)
-
-    lora_a = weights[expected_key]
-    check("lora_A shape is (rank, hidden_dim)", lora_a.shape == (4, 32))
-
-    # Save adapter
-    with tempfile.TemporaryDirectory() as tmpdir:
-        save_hypernetwork_adapter(
-            weights=weights,
-            output_dir=tmpdir,
-            base_model_id="test-model",
-            rank=4,
-        )
-        check(
-            "adapter_model.safetensors written",
-            (Path(tmpdir) / "adapter_model.safetensors").exists(),
-        )
-        check(
-            "adapter_config.json written",
-            (Path(tmpdir) / "adapter_config.json").exists(),
-        )
-
-        cfg = json.loads((Path(tmpdir) / "adapter_config.json").read_text())
-        check("adapter config peft_type is LORA", cfg["peft_type"] == "LORA")
-        check("adapter config modules_to_save is None", cfg["modules_to_save"] is None)
-
-except ImportError:
-    print("  [SKIP] torch not installed — skipping hypernetwork tests")
-
-
 # =========================================================================
 #  5. EVALUATION — pass@k, kill-switch, HumanEval
 # =========================================================================
@@ -443,35 +395,11 @@ with mock_patch("training_svc.storage.engine", svc_engine):
         resp3 = client.get("/jobs/nonexistent")
         check("GET /jobs/nonexistent returns 404", resp3.status_code == 404)
 
-        # POST /train/hypernetwork
-        JOB_STORE.clear()
-        with mock_patch("training_svc.routers.training._run_hypernetwork_job"):
-            resp4 = client.post(
-                "/train/hypernetwork",
-                json={"task_type": "gen", "trajectory_ids": ["t-1"]},
-            )
-        check("POST /train/hypernetwork returns 200", resp4.status_code == 200)
-        check(
-            "hypernetwork job status queued",
-            resp4.json()["status"] == "queued",
-        )
-
-        # Poll hypernetwork job
-        hn_job_id = resp4.json()["job_id"]
-        resp5 = client.get(f"/jobs/{hn_job_id}")
-        check("hypernetwork job pollable", resp5.status_code == 200)
-
         # Validation errors
         resp6 = client.post("/train/lora", json={"task_type": "code-gen"})
         check(
             "POST /train/lora without session_id returns 422",
             resp6.status_code == 422,
-        )
-
-        resp7 = client.post("/train/hypernetwork", json={"task_type": "gen"})
-        check(
-            "POST /train/hypernetwork without trajectory_ids returns 422",
-            resp7.status_code == 422,
         )
 
         # Health check

@@ -14,13 +14,6 @@ class LoraTrainingRequest(BaseModel):
     learning_rate: float = 2e-4  # optional override
 
 
-class HypernetworkTrainingRequest(BaseModel):
-    """Request to train via hypernetwork forward pass."""
-
-    task_type: str
-    trajectory_ids: list[str]
-
-
 class JobStatusResponse(BaseModel):
     """Response for training job status."""
 

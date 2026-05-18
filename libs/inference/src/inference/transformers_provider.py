@@ -268,7 +268,7 @@ class TransformersProvider(InferenceProvider):
         """Register a PEFT adapter directory for use during generation.
 
         The adapter directory must contain adapter_model.safetensors and
-        adapter_config.json as output by save_hypernetwork_adapter().
+        adapter_config.json in standard PEFT format.
 
         Args:
             adapter_id: Unique name for the adapter.

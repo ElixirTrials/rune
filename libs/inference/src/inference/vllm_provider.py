@@ -122,6 +122,7 @@ class VLLMProvider(InferenceProvider):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        stop: list[str] | None = None,
     ) -> GenerationResult:
         """Generate a raw text completion via the vLLM completions endpoint."""
         effective_model = adapter_id if adapter_id is not None else model
@@ -136,6 +137,7 @@ class VLLMProvider(InferenceProvider):
             model=effective_model,
             prompt=prompt,
             max_tokens=max_tokens,
+            stop=stop,
         )
 
         choice = response.choices[0]

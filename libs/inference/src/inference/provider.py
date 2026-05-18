@@ -96,6 +96,7 @@ class InferenceProvider(ABC):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        stop: list[str] | None = None,
     ) -> GenerationResult:
         """Generate a text completion (no chat template).
 

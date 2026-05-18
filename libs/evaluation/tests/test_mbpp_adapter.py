@@ -60,3 +60,52 @@ def test_score_timeout() -> None:
     verdict = adapter.score(p, infinite, timeout_s=2)
     assert verdict.timed_out is True
     assert verdict.passed is False
+
+
+def test_prompt_is_docstring_format() -> None:
+    """Prompt wraps description in triple-quoted docstring for completions API."""
+    adapter = MBPPAdapter()
+    p = adapter.load_problems()[0]
+    assert p.prompt.startswith('"""\n')
+    assert p.prompt.endswith('"""\n')
+
+
+def test_entry_point_extracted() -> None:
+    """entry_point is extracted from the first assert in test_code."""
+    adapter = MBPPAdapter()
+    for p in adapter.load_problems():
+        assert p.entry_point is not None, f"{p.problem_id}: entry_point is None"
+        assert p.entry_point in p.test_code, (
+            f"{p.problem_id}: entry_point {p.entry_point!r} not in test_code"
+        )
+
+
+def test_test_code_valid_python_from_parquet() -> None:
+    """test_code from parquet fixture is valid newline-separated Python."""
+    adapter = MBPPAdapter()
+    for p in adapter.load_problems():
+        lines = p.test_code.split("\n")
+        assert len(lines) >= 1
+        for line in lines:
+            assert not line.startswith("["), (
+                f"{p.problem_id}: test_code looks like numpy repr: {line[:60]}"
+            )
+
+
+def test_score_correct_solution() -> None:
+    """Scoring a known-correct generation passes (task 602: first_repeated_char)."""
+    adapter = MBPPAdapter()
+    problems = adapter.load_problems()
+    # task 602: first_repeated_char
+    p602 = next((p for p in problems if "602" in p.problem_id), None)
+    if p602 is None:
+        pytest.skip("task 602 not in fixture")
+    correct = (
+        'def first_repeated_char(str1):\n'
+        '    for index, c in enumerate(str1):\n'
+        '        if str1[:index].count(c) > 0:\n'
+        '            return c\n'
+        '    return "None"\n'
+    )
+    verdict = adapter.score(p602, correct, timeout_s=10)
+    assert verdict.passed is True, f"Expected pass, got error: {verdict.error}"
