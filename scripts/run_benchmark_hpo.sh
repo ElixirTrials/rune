@@ -57,6 +57,14 @@ fi
 # run_benchmark_hpo.py treats an unreachable server as fatal.
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://localhost:5000}"
 export RUNE_DATABASE_URL="${RUNE_DATABASE_URL:-sqlite:///${HOME}/.rune/rune.db}"
+export INFERENCE_PROVIDER="${INFERENCE_PROVIDER:-transformers}"
+export TRANSFORMERS_MODEL_NAME="${TRANSFORMERS_MODEL_NAME:-Qwen/Qwen3.5-9B}"
+# Skip HF Hub HTTP checks when the model snapshot is already cached.
+# Saves ~20 HEAD requests per from_pretrained() call (~1s each).
+_HF_MODEL_DIR="${HOME}/.cache/huggingface/hub/models--${TRANSFORMERS_MODEL_NAME//\//$'--'}"
+if [[ -z "${HF_HUB_OFFLINE:-}" && -d "$_HF_MODEL_DIR/snapshots" ]]; then
+    export HF_HUB_OFFLINE=1
+fi
 
 if [[ "$MLFLOW_TRACKING_URI" =~ ^https?:// ]]; then
     if ! curl -fsS --max-time 3 "${MLFLOW_TRACKING_URI%/}/health" >/dev/null; then
@@ -85,6 +93,7 @@ LOG=".claude/runs/benchmark-hpo-$(date +%Y%m%d-%H%M%S).log"
 
 echo "Checkpoint:   $HYPERNET_CHECKPOINT"
 echo "MLflow URI:   $MLFLOW_TRACKING_URI"
+echo "Inference:    $INFERENCE_PROVIDER ($TRANSFORMERS_MODEL_NAME)"
 echo "Alloc conf:   $PYTORCH_CUDA_ALLOC_CONF"
 echo "Log:          $LOG"
 echo
