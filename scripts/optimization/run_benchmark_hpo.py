@@ -273,6 +273,11 @@ def run_pipeline_on_problem(
 ) -> ProblemVerdict:
     """Run the full 5-phase pipeline on one problem and return its verdict.
 
+    Each problem run is wrapped in an ``mlflow.start_span`` so the full
+    pipeline execution (LangGraph nodes, adapter generation, scoring) appears
+    as a trace in the MLflow Traces tab with the problem ID, pass/fail
+    verdict, and timing.
+
     Any pipeline exception is caught and converted into a failed verdict so a
     single bad problem cannot abort an Optuna trial. The per-session adapter
     directory is removed afterwards to bound disk usage.
@@ -288,35 +293,53 @@ def run_pipeline_on_problem(
     """
     from rune_runner import run_phased_pipeline  # type: ignore[import-not-found]
 
+    mlflow = _mlflow()
     start = time.time()
     adapter_dir: str | None = None
-    try:
-        result = asyncio.run(
-            run_phased_pipeline(
-                project_prompt=problem.prompt,
-                checkpoint_path=hypernet_checkpoint,
-                base_model_id=base_model,
-                device=device,
+    with mlflow.start_span(name=f"problem/{problem.problem_id}") as span:
+        span.set_inputs({
+            "problem_id": problem.problem_id,
+            "prompt": problem.prompt[:300],
+        })
+        try:
+            result = asyncio.run(
+                run_phased_pipeline(
+                    project_prompt=problem.prompt,
+                    checkpoint_path=hypernet_checkpoint,
+                    base_model_id=base_model,
+                    device=device,
+                )
             )
-        )
-        adapter_dir = result.get("adapter_dir")
-        return score_pipeline_result(problem, result, time.time() - start)
-    except Exception as exc:  # noqa: BLE001 - pipeline failure -> failed verdict
-        logger.warning("Pipeline failed on %s: %s", problem.problem_id, exc)
-        return ProblemVerdict(
-            problem_id=problem.problem_id,
-            passed=False,
-            code_attempts=0,
-            diagnose_fired=False,
-            n_subtasks=0,
-            wall_time_s=time.time() - start,
-            accumulated_code_len=0,
-            error=str(exc),
-            generation="",
-        )
-    finally:
-        if adapter_dir:
-            shutil.rmtree(adapter_dir, ignore_errors=True)
+            adapter_dir = result.get("adapter_dir")
+            verdict = score_pipeline_result(
+                problem, result, time.time() - start
+            )
+        except Exception as exc:  # noqa: BLE001 - pipeline failure -> failed verdict
+            logger.warning(
+                "Pipeline failed on %s: %s", problem.problem_id, exc
+            )
+            verdict = ProblemVerdict(
+                problem_id=problem.problem_id,
+                passed=False,
+                code_attempts=0,
+                diagnose_fired=False,
+                n_subtasks=0,
+                wall_time_s=time.time() - start,
+                accumulated_code_len=0,
+                error=str(exc),
+                generation="",
+            )
+        finally:
+            if adapter_dir:
+                shutil.rmtree(adapter_dir, ignore_errors=True)
+        span.set_outputs({
+            "passed": verdict.passed,
+            "code_attempts": verdict.code_attempts,
+            "n_subtasks": verdict.n_subtasks,
+            "wall_time_s": round(verdict.wall_time_s, 1),
+            "error": verdict.error[:200] if verdict.error else "",
+        })
+        return verdict
 
 
 def evaluate_problem_set(
@@ -717,6 +740,7 @@ def main() -> None:
             "RUNE_DISABLE_MLFLOW=1). Start the stack first: "
             "docker compose -f infra/docker-compose.yml up -d mlflow"
         )
+    mlflow.langchain.autolog(run_tracer_inline=True)
     # The in-pod server runs with --serve-artifacts, so get_artifact_uri()
     # returns a proxied mlflow-artifacts:/ URI (never s3://) and the server
     # streams artifacts to its S3 --artifacts-destination. The only way
