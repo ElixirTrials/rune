@@ -99,6 +99,23 @@ def _get_phase_iterations(phase: str, cli_override: int | None = None) -> int:
 # MLflow real-time tracing — logs into caller's active run (INFRA-05 deferred)
 # ---------------------------------------------------------------------------
 
+_MLFLOW_AUTOLOG_ENABLED = False
+
+
+def _enable_mlflow_autolog() -> None:
+    """Enable MLflow LangChain/LangGraph autologging (once per process)."""
+    global _MLFLOW_AUTOLOG_ENABLED  # noqa: PLW0603
+    if _MLFLOW_AUTOLOG_ENABLED:
+        return
+    try:
+        import mlflow  # noqa: PLC0415
+
+        mlflow.langchain.autolog(run_tracer_inline=True)
+        _MLFLOW_AUTOLOG_ENABLED = True
+        logger.info("MLflow LangChain autolog enabled")
+    except Exception:
+        pass
+
 
 def _mlflow_tag(key: str, value: str) -> None:
     """Set an MLflow tag if an active run exists."""
@@ -135,48 +152,6 @@ def _mlflow_metrics(metrics: dict[str, float], step: int | None = None) -> None:
                 mlflow.log_metrics(metrics, step=step)
             else:
                 mlflow.log_metrics(metrics)
-    except Exception:
-        pass
-
-
-def _mlflow_start_span(
-    name: str,
-    parent: Any = None,
-    inputs: dict[str, Any] | None = None,
-    attributes: dict[str, str] | None = None,
-) -> Any:
-    """Start an MLflow trace span, returning the LiveSpan or None."""
-    try:
-        import mlflow  # noqa: PLC0415
-
-        return mlflow.start_span_no_context(
-            name,
-            parent_span=parent,
-            inputs=inputs,
-            attributes=attributes,
-        )
-    except Exception:
-        return None
-
-
-def _mlflow_end_span(span: Any, outputs: dict[str, Any] | None = None) -> None:
-    """End an MLflow trace span, setting outputs if provided."""
-    if span is None:
-        return
-    try:
-        if outputs:
-            span.set_outputs(outputs)
-        span.end()
-    except Exception:
-        pass
-
-
-def _mlflow_flush() -> None:
-    """Flush any pending async trace exports."""
-    try:
-        import mlflow  # noqa: PLC0415
-
-        mlflow.flush_trace_async_logging()
     except Exception:
         pass
 
@@ -397,7 +372,22 @@ async def run_iteration(
         "outcome": None,
     }
 
-    return await graph.ainvoke(initial_state)
+    try:
+        import mlflow  # noqa: PLC0415
+
+        with mlflow.start_span(
+            name=f"run_iteration/{phase or 'unknown'}",
+        ) as span:
+            span.set_inputs({"phase": phase, "adapter_id": adapter_id, "iteration": iteration})
+            result = await graph.ainvoke(initial_state)
+            span.set_outputs({
+                "tests_passed": result.get("tests_passed"),
+                "exit_code": result.get("exit_code"),
+                "finish_reason": result.get("finish_reason"),
+            })
+            return result
+    except Exception:
+        return await graph.ainvoke(initial_state)
 
 
 # ---------------------------------------------------------------------------
@@ -614,20 +604,12 @@ async def run_phased_pipeline(
         iters_repair,
     )
 
-    # MLflow: tag pipeline entry + start root trace span
+    # MLflow: enable LangGraph autologging + tag pipeline entry
+    _enable_mlflow_autolog()
     _mlflow_tag("pipeline.session_id", session_id)
     _mlflow_tag("pipeline.base_model", base_model_id)
     _mlflow_tag("pipeline.device", device)
     _mlflow_tag("pipeline.prompt", project_prompt[:250])
-    _trace_root = _mlflow_start_span(
-        "run_phased_pipeline",
-        inputs={
-            "project_prompt": project_prompt[:500],
-            "base_model_id": base_model_id,
-            "device": device,
-            "session_id": session_id,
-        },
-    )
 
     phase_results: dict[str, Any] = {}
     registered_adapters: list[dict[str, str]] = []
@@ -679,11 +661,6 @@ async def run_phased_pipeline(
         # ---------------------------------------------------------------
         logger.info("=== Phase 1: DECOMPOSE ===")
         _mlflow_tag("pipeline.phase", "decompose")
-        _trace_decompose = _mlflow_start_span(
-            "phase/decompose",
-            parent=_trace_root,
-            inputs={"max_iterations": str(iters_decompose)},
-        )
         best_decompose_state: dict[str, Any] | None = None
         best_decompose_adapter_id: str | None = None
         best_decompose_score: float = -1.0
@@ -915,25 +892,12 @@ async def run_phased_pipeline(
             "pipeline/decompose/n_subtasks_final": float(len(subtasks)),
         })
         _mlflow_tag("pipeline.decompose.status", "complete")
-        _mlflow_end_span(_trace_decompose, {
-            "subtasks": [s["name"] for s in subtasks],
-            "iterations": evo_iter + 1,
-            "best_score": best_decompose_score,
-        })
 
         # ---------------------------------------------------------------
         # Phase 2: PLAN (parallel swarm, with evolution)
         # ---------------------------------------------------------------
         logger.info("=== Phase 2: PLAN ===")
         _mlflow_tag("pipeline.phase", "plan")
-        _trace_plan = _mlflow_start_span(
-            "phase/plan",
-            parent=_trace_root,
-            inputs={
-                "max_iterations": str(iters_plan),
-                "n_subtasks": str(len(subtasks)),
-            },
-        )
         best_plans: dict[str, str] = {}
         best_plan_score: float = -1.0
         best_plan_adapter_ids: list[str] = []
@@ -1076,11 +1040,6 @@ async def run_phased_pipeline(
             "pipeline/plan/best_score": best_plan_score,
         })
         _mlflow_tag("pipeline.plan.status", "complete")
-        _mlflow_end_span(_trace_plan, {
-            "iterations": evo_iter + 1,
-            "best_score": best_plan_score,
-            "plans": list(plans.keys()),
-        })
 
         # ---------------------------------------------------------------
         # Phase 3: CODE (parallel swarm, with evolutionary retries via H())
@@ -1089,14 +1048,6 @@ async def run_phased_pipeline(
         # ---------------------------------------------------------------
         logger.info("=== Phase 3: CODE ===")
         _mlflow_tag("pipeline.phase", "code")
-        _trace_code = _mlflow_start_span(
-            "phase/code",
-            parent=_trace_root,
-            inputs={
-                "max_iterations": str(iters_code),
-                "n_subtasks": str(len(subtasks)),
-            },
-        )
         code_outputs: dict[str, str] = {}
         code_subtask_results: dict[str, dict[str, Any]] = {}
 
@@ -1520,25 +1471,12 @@ async def run_phased_pipeline(
             "pipeline/code/max_attempts": float(max_code_attempts),
         })
         _mlflow_tag("pipeline.code.status", "complete")
-        _mlflow_end_span(_trace_code, {
-            "passed": code_passed_count,
-            "total": len(code_outputs),
-            "pass_rate": (
-                code_passed_count / len(code_outputs) if code_outputs else 0.0
-            ),
-            "max_attempts": max_code_attempts,
-        })
 
         # ---------------------------------------------------------------
         # Phase 4: INTEGRATE (single agent, with evolution)
         # ---------------------------------------------------------------
         logger.info("=== Phase 4: INTEGRATE ===")
         _mlflow_tag("pipeline.phase", "integrate")
-        _trace_integrate = _mlflow_start_span(
-            "phase/integrate",
-            parent=_trace_root,
-            inputs={"max_iterations": str(iters_integrate)},
-        )
         skeletons = {
             name: _extract_code_skeleton(code) for name, code in code_outputs.items()
         }
@@ -1723,11 +1661,6 @@ async def run_phased_pipeline(
             "pipeline/integrate/final_passed": float(final_passed),
         })
         _mlflow_tag("pipeline.integrate.status", "complete")
-        _mlflow_end_span(_trace_integrate, {
-            "iterations": evo_iter + 1,
-            "best_score": best_integrate_score,
-            "tests_passed": final_passed,
-        })
 
         # ---------------------------------------------------------------
         # Phase 5: DIAGNOSE → REPAIR → RE-INTEGRATE loop
@@ -1735,11 +1668,6 @@ async def run_phased_pipeline(
         # fix them with targeted adapters, and re-integrate.
         # ---------------------------------------------------------------
         repair_history: list[dict[str, Any]] = []
-        _trace_repair = _mlflow_start_span(
-            "phase/repair",
-            parent=_trace_root,
-            inputs={"max_iterations": str(iters_repair)},
-        ) if not final_passed else None
 
         for repair_iter in range(iters_repair):
             if final_passed:
@@ -1999,12 +1927,6 @@ async def run_phased_pipeline(
                 "pipeline/repair/best_score": best_integrate_score,
             })
             _mlflow_tag("pipeline.repair.status", "complete")
-            _mlflow_end_span(_trace_repair, {
-                "iterations": len(repair_history),
-                "best_score": best_integrate_score,
-                "final_passed": final_passed,
-            })
-            _trace_repair = None
 
         # Final evolution sweep
         final_sweep = evolution_sweep(registry)
@@ -2054,15 +1976,12 @@ async def run_phased_pipeline(
             "pipeline/n_subtasks": float(len(subtasks)),
             "pipeline/n_adapters": float(len(registered_adapters)),
         })
-        # End any unclosed repair span, then close root trace
-        _mlflow_end_span(_trace_repair)
-        _mlflow_end_span(_trace_root, {
-            "final_passed": final_passed,
-            "total_iterations": iteration_counter,
-            "n_subtasks": len(subtasks),
-            "n_adapters": len(registered_adapters),
-        })
-        _mlflow_flush()
+        try:
+            import mlflow  # noqa: PLC0415
+
+            mlflow.flush_trace_async_logging()
+        except Exception:
+            pass
 
         return {
             "session_id": session_id,
