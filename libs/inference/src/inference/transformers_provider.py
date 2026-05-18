@@ -102,10 +102,17 @@ class TransformersProvider(InferenceProvider):
             config = AutoConfig.from_pretrained(self._model_name)
             param_count = getattr(config, "num_parameters", None)
             if param_count is None:
-                # Estimate from config fields
-                h = getattr(config, "hidden_size", 2048)
-                v = getattr(config, "vocab_size", 32000)
-                n = getattr(config, "num_hidden_layers", 24)
+                # Multimodal configs (e.g. Qwen3.5) nest dims under text_config
+                text_cfg = getattr(config, "text_config", config)
+                h = getattr(text_cfg, "hidden_size", None) or getattr(
+                    config, "hidden_size", 2048
+                )
+                v = getattr(text_cfg, "vocab_size", None) or getattr(
+                    config, "vocab_size", 32000
+                )
+                n = getattr(text_cfg, "num_hidden_layers", None) or getattr(
+                    config, "num_hidden_layers", 24
+                )
                 param_count = v * h + n * 12 * h * h
             resolved_dtype = resolve_model_dtype(  # type: ignore[assignment]
                 param_count=param_count, device=self._device
