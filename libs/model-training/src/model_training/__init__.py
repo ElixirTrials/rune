@@ -18,7 +18,7 @@ __all__ = [
 #   from model_training.peft_utils import build_qlora_config
 #   from model_training.config import get_training_config
 #   from model_training.trainer import train_qlora
-#   from model_training.hypernetwork import _open_checkpoint  # S3-aware loader
+#   from model_training.hypernetwork import _open_checkpoint, load_hypernetwork  # S3-aware loader, checkpoint loading
 #   from model_training.merging import ties_merge, dare_merge  # deferred GPU import
 #
 # Distillation config/data modules (transformers, peft, ctx_to_lora deferred):

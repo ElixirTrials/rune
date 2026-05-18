@@ -14,7 +14,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _patch_flash() -> None:
-    from model_training.sakana_d2l import _patch_flash_attention
+    from model_training.hypernetwork import _patch_flash_attention
 
     _patch_flash_attention()
 
@@ -112,7 +112,7 @@ def test_checkpoint_format_detected_as_sakana() -> None:
 
 
 def test_load_sakana_checkpoint_reads_hypernet_state_dict() -> None:
-    """load_sakana_checkpoint loads weights from hypernet_state_dict key."""
+    """load_hypernetwork loads weights from hypernet_state_dict key."""
     import tempfile
 
     import torch
@@ -132,9 +132,9 @@ def test_load_sakana_checkpoint_reads_hypernet_state_dict() -> None:
             f.name,
         )
 
-        from model_training.sakana_d2l import load_sakana_checkpoint
+        from model_training.hypernetwork import load_hypernetwork
 
-        loaded_hypernet, loaded_hc = load_sakana_checkpoint(
+        loaded_hypernet, loaded_hc = load_hypernetwork(
             checkpoint_path=f.name,
             device="cpu",
         )
