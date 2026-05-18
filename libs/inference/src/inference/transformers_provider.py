@@ -75,6 +75,15 @@ class TransformersProvider(InferenceProvider):
 
         if self._pool is not None:
             model, tokenizer = self._pool.base_model()
+            # Clean residual PEFT state left by a previous pipeline run
+            if hasattr(model, "peft_config"):
+                from peft import PeftModel as _PeftModel  # noqa: PLC0415
+
+                if isinstance(model, _PeftModel):
+                    model = model.base_model.unload()
+                elif hasattr(model, "peft_config"):
+                    del model.peft_config
+                logger.info("Cleaned residual PEFT state from pooled model")
             self._model = model
             self._tokenizer = tokenizer
             self._base_model = model
@@ -317,11 +326,13 @@ class TransformersProvider(InferenceProvider):
             if self._is_peft_wrapped and adapter_id in self._model.peft_config:
                 self._model.delete_adapter(adapter_id)
             del self._loaded_adapters[adapter_id]
-            # If no adapters remain, revert to base model
+            # If no adapters remain, fully unwrap PEFT layers from the base model
             if not self._loaded_adapters and self._is_peft_wrapped:
-                self._model = self._base_model
+                clean_model = self._model.base_model.unload()
+                self._model = clean_model
+                self._base_model = clean_model
                 self._is_peft_wrapped = False
-                logger.info("All adapters removed, reverted to base model")
+                logger.info("All adapters removed, PEFT layers unwrapped")
             else:
                 logger.info("Unloaded adapter %s", adapter_id)
 

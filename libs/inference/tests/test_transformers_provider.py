@@ -143,11 +143,12 @@ def test_unload_last_adapter_reverts_to_base(
 
     provider._activate_adapter("a1")
 
-    base = provider._base_model
     asyncio.run(provider.unload_adapter("a1"))
 
     assert provider._is_peft_wrapped is False
-    assert provider._model is base
+    # After unload(), model is the clean unwrapped result, not the original ref
+    wrapped.base_model.unload.assert_called_once()
+    assert provider._model is wrapped.base_model.unload()
 
 
 def test_full_lifecycle_no_accumulation(

@@ -1,9 +1,10 @@
 """Benchmark HPO: Optuna over Rune pipeline parameters on failed MBPP problems.
 
-Tunes ``scaling_factor``, ``temperature``, ``repetition_penalty``, and
-``max_phase_iterations`` by running the real ``run_phased_pipeline()`` from
-``rune_runner.py`` per problem and measuring MBPP pass rate. Best params are
-validated once on a held-out set and saved to the ``PipelineConfig``.
+Tunes ``scaling_factor``, ``temperature``, ``repetition_penalty``,
+``max_tokens``, and ``max_phase_iterations`` by running the real
+``run_phased_pipeline()`` from ``rune_runner.py`` per problem and measuring
+MBPP pass rate. Best params are validated once on a held-out set and saved
+to the ``PipelineConfig``.
 
 Usage:
     uv run python scripts/optimization/run_benchmark_hpo.py \\
@@ -344,7 +345,9 @@ def run_pipeline_on_problem(
             "wall_time_s": round(verdict.wall_time_s, 1),
             "error": verdict.error[:200] if verdict.error else "",
         })
-        return verdict
+    # Flush traces eagerly so each problem appears in the UI immediately
+    mlflow.flush_trace_async_logging()
+    return verdict
 
 
 def evaluate_problem_set(
