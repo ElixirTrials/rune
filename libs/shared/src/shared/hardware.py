@@ -205,13 +205,24 @@ def resolve_model_dtype(
         return torch.float32
 
     # 3. Auto-detect VRAM if not provided
-    if available_vram_bytes <= 0 and device == "cuda" and torch.cuda.is_available():
-        props = torch.cuda.get_device_properties(0)
-        allocated = torch.cuda.memory_allocated(0)
+    is_cuda = device.startswith("cuda")
+    if available_vram_bytes <= 0 and is_cuda and torch.cuda.is_available():
+        dev_idx = 0
+        if ":" in device:
+            dev_idx = int(device.split(":")[1])
+        props = torch.cuda.get_device_properties(dev_idx)
+        allocated = torch.cuda.memory_allocated(dev_idx)
         available_vram_bytes = props.total_memory - allocated
 
     usable_vram = int((available_vram_bytes - overhead_bytes) * _VRAM_MARGIN)
     fp32_bytes = param_count * _BYTES_PER_PARAM["float32"]
+
+    logger.debug(
+        "resolve_model_dtype: params=%.1fB, fp32=%.1fGB, usable=%.1fGB",
+        param_count / 1e9,
+        fp32_bytes / 1e9,
+        usable_vram / 1e9,
+    )
 
     if fp32_bytes <= usable_vram:
         return torch.float32

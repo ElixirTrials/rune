@@ -125,7 +125,7 @@ class ModelPool:
 
         model: Any = AutoModelForCausalLM.from_pretrained(
             self._model_name,
-            torch_dtype=dtype,
+            dtype=dtype,
         )
         model.to(self._device)
         model.eval()
@@ -147,12 +147,19 @@ class ModelPool:
 
         config = AutoConfig.from_pretrained(self._model_name)
         param_count = getattr(config, "num_parameters", None)
+        if callable(param_count):
+            param_count = None
         if param_count is None:
             h = getattr(config, "hidden_size", 2048)
             v = getattr(config, "vocab_size", 32000)
             n = getattr(config, "num_hidden_layers", 24)
             param_count = v * h + n * 12 * h * h
 
+        logger.info(
+            "ModelPool: estimated param_count=%s (%.1fB)",
+            param_count,
+            param_count / 1e9,
+        )
         dtype = resolve_model_dtype(param_count=param_count, device=self._device)
         logger.info("ModelPool: resolved dtype=%s", dtype)
         return dtype
