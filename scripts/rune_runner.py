@@ -96,6 +96,50 @@ def _get_phase_iterations(phase: str, cli_override: int | None = None) -> int:
 
 
 # ---------------------------------------------------------------------------
+# MLflow real-time tracing — logs into caller's active run (INFRA-05 deferred)
+# ---------------------------------------------------------------------------
+
+
+def _mlflow_tag(key: str, value: str) -> None:
+    """Set an MLflow tag if an active run exists."""
+    try:
+        import mlflow  # noqa: PLC0415
+
+        if mlflow.active_run() is not None:
+            mlflow.set_tag(key, value)
+    except Exception:
+        pass
+
+
+def _mlflow_metric(key: str, value: float, step: int | None = None) -> None:
+    """Log an MLflow metric if an active run exists."""
+    try:
+        import mlflow  # noqa: PLC0415
+
+        if mlflow.active_run() is not None:
+            if step is not None:
+                mlflow.log_metric(key, value, step=step)
+            else:
+                mlflow.log_metric(key, value)
+    except Exception:
+        pass
+
+
+def _mlflow_metrics(metrics: dict[str, float], step: int | None = None) -> None:
+    """Log multiple MLflow metrics if an active run exists."""
+    try:
+        import mlflow  # noqa: PLC0415
+
+        if mlflow.active_run() is not None:
+            if step is not None:
+                mlflow.log_metrics(metrics, step=step)
+            else:
+                mlflow.log_metrics(metrics)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Helpers — kept from original (used by template variable preparation)
 # ---------------------------------------------------------------------------
 
@@ -528,6 +572,12 @@ async def run_phased_pipeline(
         iters_repair,
     )
 
+    # MLflow: tag pipeline entry
+    _mlflow_tag("pipeline.session_id", session_id)
+    _mlflow_tag("pipeline.base_model", base_model_id)
+    _mlflow_tag("pipeline.device", device)
+    _mlflow_tag("pipeline.prompt", project_prompt[:250])
+
     phase_results: dict[str, Any] = {}
     registered_adapters: list[dict[str, str]] = []
     iteration_counter = 0
@@ -577,6 +627,7 @@ async def run_phased_pipeline(
         # Phase 1: DECOMPOSE (single agent, with evolution)
         # ---------------------------------------------------------------
         logger.info("=== Phase 1: DECOMPOSE ===")
+        _mlflow_tag("pipeline.phase", "decompose")
         best_decompose_state: dict[str, Any] | None = None
         best_decompose_adapter_id: str | None = None
         best_decompose_score: float = -1.0
@@ -670,6 +721,13 @@ async def run_phased_pipeline(
                 best_decompose_state = state
                 best_decompose_adapter_id = adapter_id
 
+            _mlflow_metrics(
+                {
+                    "pipeline/decompose/score": score,
+                    "pipeline/decompose/n_subtasks": float(n_unique),
+                },
+                step=evo_iter,
+            )
             logger.info(
                 "  Decompose v%d: %d subtasks (%d unique), score=%.2f%s",
                 evo_iter,
@@ -795,11 +853,18 @@ async def run_phased_pipeline(
             "iterations": evo_iter + 1,
             "best_score": best_decompose_score,
         }
+        _mlflow_metrics({
+            "pipeline/decompose/iterations": float(evo_iter + 1),
+            "pipeline/decompose/best_score": best_decompose_score,
+            "pipeline/decompose/n_subtasks_final": float(len(subtasks)),
+        })
+        _mlflow_tag("pipeline.decompose.status", "complete")
 
         # ---------------------------------------------------------------
         # Phase 2: PLAN (parallel swarm, with evolution)
         # ---------------------------------------------------------------
         logger.info("=== Phase 2: PLAN ===")
+        _mlflow_tag("pipeline.phase", "plan")
         best_plans: dict[str, str] = {}
         best_plan_score: float = -1.0
         best_plan_adapter_ids: list[str] = []
@@ -900,6 +965,13 @@ async def run_phased_pipeline(
                 best_plans = dict(iter_plans)
                 best_plan_adapter_ids = iter_adapter_ids
 
+            _mlflow_metrics(
+                {
+                    "pipeline/plan/score": score,
+                    "pipeline/plan/good_plans": float(good_plans),
+                },
+                step=evo_iter,
+            )
             logger.info(
                 "  Plan v%d: %d/%d good plans, score=%.2f",
                 evo_iter,
@@ -930,6 +1002,11 @@ async def run_phased_pipeline(
             "iterations": evo_iter + 1,
             "best_score": best_plan_score,
         }
+        _mlflow_metrics({
+            "pipeline/plan/iterations": float(evo_iter + 1),
+            "pipeline/plan/best_score": best_plan_score,
+        })
+        _mlflow_tag("pipeline.plan.status", "complete")
 
         # ---------------------------------------------------------------
         # Phase 3: CODE (parallel swarm, with evolutionary retries via H())
@@ -937,6 +1014,7 @@ async def run_phased_pipeline(
         # generates a fresh adapter, and evolution sweeps run between attempts.
         # ---------------------------------------------------------------
         logger.info("=== Phase 3: CODE ===")
+        _mlflow_tag("pipeline.phase", "code")
         code_outputs: dict[str, str] = {}
         code_subtask_results: dict[str, dict[str, Any]] = {}
 
@@ -1213,6 +1291,14 @@ async def run_phased_pipeline(
                     )
 
                 if code_passed:
+                    _mlflow_metric(
+                        f"pipeline/code/{_safe_adapter_id(subtask['name'])}/passed",
+                        1.0,
+                    )
+                    _mlflow_metric(
+                        f"pipeline/code/{_safe_adapter_id(subtask['name'])}/attempts",
+                        float(attempt + 1),
+                    )
                     logger.info(
                         "  Subtask '%s' PASSED on attempt %d",
                         subtask["name"],
@@ -1236,6 +1322,14 @@ async def run_phased_pipeline(
                     evolution_sweep(registry)
 
             # Exhausted retries — return last attempt's code
+            _mlflow_metric(
+                f"pipeline/code/{_safe_adapter_id(subtask['name'])}/passed",
+                0.0,
+            )
+            _mlflow_metric(
+                f"pipeline/code/{_safe_adapter_id(subtask['name'])}/attempts",
+                float(iters_code),
+            )
             logger.warning(
                 "Subtask '%s' failed after %d attempts",
                 subtask["name"],
@@ -1335,11 +1429,21 @@ async def run_phased_pipeline(
             "passed": code_passed_count,
             "total": len(code_outputs),
         }
+        _mlflow_metrics({
+            "pipeline/code/passed": float(code_passed_count),
+            "pipeline/code/total": float(len(code_outputs)),
+            "pipeline/code/pass_rate": (
+                code_passed_count / len(code_outputs) if code_outputs else 0.0
+            ),
+            "pipeline/code/max_attempts": float(max_code_attempts),
+        })
+        _mlflow_tag("pipeline.code.status", "complete")
 
         # ---------------------------------------------------------------
         # Phase 4: INTEGRATE (single agent, with evolution)
         # ---------------------------------------------------------------
         logger.info("=== Phase 4: INTEGRATE ===")
+        _mlflow_tag("pipeline.phase", "integrate")
         skeletons = {
             name: _extract_code_skeleton(code) for name, code in code_outputs.items()
         }
@@ -1480,6 +1584,13 @@ async def run_phased_pipeline(
                 best_integrate_state = integrate_state
                 best_integrate_adapter_id = integrate_aid
 
+            _mlflow_metrics(
+                {
+                    "pipeline/integrate/score": score,
+                    "pipeline/integrate/tests_passed": float(tests_passed),
+                },
+                step=evo_iter,
+            )
             logger.info(
                 "  Integrate v%d: tests_passed=%s, score=%.2f%s",
                 evo_iter,
@@ -1511,6 +1622,12 @@ async def run_phased_pipeline(
             "iterations": evo_iter + 1,
             "best_score": best_integrate_score,
         }
+        _mlflow_metrics({
+            "pipeline/integrate/iterations": float(evo_iter + 1),
+            "pipeline/integrate/best_score": best_integrate_score,
+            "pipeline/integrate/final_passed": float(final_passed),
+        })
+        _mlflow_tag("pipeline.integrate.status", "complete")
 
         # ---------------------------------------------------------------
         # Phase 5: DIAGNOSE → REPAIR → RE-INTEGRATE loop
@@ -1523,6 +1640,7 @@ async def run_phased_pipeline(
             if final_passed:
                 break
 
+            _mlflow_tag("pipeline.phase", "repair")
             logger.info(
                 "=== Phase 5: REPAIR iteration %d/%d ===",
                 repair_iter + 1,
@@ -1724,6 +1842,14 @@ async def run_phased_pipeline(
             ri_score = ri_passed / ri_total if ri_total > 0 else 0.0
             final_passed = reintegrate_state.get("tests_passed", False)
 
+            _mlflow_metrics(
+                {
+                    "pipeline/repair/score": ri_score,
+                    "pipeline/repair/tests_passed": float(final_passed),
+                    "pipeline/repair/diagnosed": float(len(diagnosed)),
+                },
+                step=repair_iter,
+            )
             logger.info(
                 "  Re-integrate: %d/%d tests, score=%.2f, passed=%s",
                 ri_passed,
@@ -1763,6 +1889,11 @@ async def run_phased_pipeline(
                 "best_score": best_integrate_score,
                 "diagnosed_total": sum(len(h["diagnosed"]) for h in repair_history),
             }
+            _mlflow_metrics({
+                "pipeline/repair/iterations": float(len(repair_history)),
+                "pipeline/repair/best_score": best_integrate_score,
+            })
+            _mlflow_tag("pipeline.repair.status", "complete")
 
         # Final evolution sweep
         final_sweep = evolution_sweep(registry)
@@ -1804,6 +1935,14 @@ async def run_phased_pipeline(
         logger.info("Code artifacts saved to %s", output_dir)
         logger.info("=== Pipeline Complete ===")
         logger.info("Final tests passed: %s", final_passed)
+
+        _mlflow_tag("pipeline.phase", "complete")
+        _mlflow_metrics({
+            "pipeline/final_passed": float(final_passed),
+            "pipeline/total_iterations": float(iteration_counter),
+            "pipeline/n_subtasks": float(len(subtasks)),
+            "pipeline/n_adapters": float(len(registered_adapters)),
+        })
 
         return {
             "session_id": session_id,
