@@ -41,6 +41,7 @@ class TransformersProvider(InferenceProvider):
         model_name: str = "",
         device: str = "cpu",
         torch_dtype: str = "auto",
+        pool: Any = None,
     ) -> None:
         """Initialize TransformersProvider.
 
@@ -48,10 +49,14 @@ class TransformersProvider(InferenceProvider):
             model_name: HuggingFace model ID or local path.
             device: Device to load model onto.
             torch_dtype: Model dtype string.
+            pool: Optional ModelPool instance. When provided, the base model
+                and tokenizer are borrowed from the pool instead of loaded
+                independently, avoiding a second copy in VRAM.
         """
         self._model_name = model_name
         self._device = device
         self._torch_dtype = torch_dtype
+        self._pool = pool
         self._model: Any = None
         self._tokenizer: Any = None
         self._base_model: Any = None
@@ -60,8 +65,23 @@ class TransformersProvider(InferenceProvider):
         self._is_peft_wrapped: bool = False
 
     def _load_model_if_needed(self) -> None:
-        """Load the base model and tokenizer if not already loaded."""
+        """Load the base model and tokenizer if not already loaded.
+
+        When a pool is available, borrows the model and tokenizer from it
+        instead of loading a second copy into VRAM.
+        """
         if self._model is not None:
+            return
+
+        if self._pool is not None:
+            model, tokenizer = self._pool.base_model()
+            self._model = model
+            self._tokenizer = tokenizer
+            self._base_model = model
+            self._device = self._pool.device
+            logger.info(
+                "Borrowed base model from pool (device=%s)", self._device
+            )
             return
 
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
