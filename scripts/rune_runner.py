@@ -545,6 +545,7 @@ async def run_phased_pipeline(
     device: str = "cpu",
     population_size: int = 2,
     max_phase_iterations: int | None = None,
+    pool: Any = None,
 ) -> dict[str, Any]:
     """Run the 4-phase pipeline with template-driven adapters and evolution.
 
@@ -572,6 +573,10 @@ async def run_phased_pipeline(
         device: Device for hypernetwork computation.
         population_size: Number of parallel agents for swarm phases.
         max_phase_iterations: Default max iterations per phase (env vars override).
+        pool: Pre-built ModelPool to reuse. When provided, the pipeline
+            skips model loading and does not release the pool on exit —
+            the caller owns the lifecycle. Avoids per-call model reload
+            overhead in loops (e.g. HPO).
 
     Returns:
         Summary dict with phase results, adapters, evolution stats, and final code.
@@ -640,11 +645,13 @@ async def run_phased_pipeline(
     # Create resident model pool for base model + hypernetwork
     from model_training.model_pool import ModelPool, set_pool  # noqa: PLC0415
 
-    pool = ModelPool.create(
-        model_name=base_model_id,
-        device=device,
-        hypernet_checkpoint_path=checkpoint_path,
-    )
+    owns_pool = pool is None
+    if owns_pool:
+        pool = ModelPool.create(
+            model_name=base_model_id,
+            device=device,
+            hypernet_checkpoint_path=checkpoint_path,
+        )
     set_pool(pool)
 
     try:
@@ -1996,7 +2003,8 @@ async def run_phased_pipeline(
             "evolution": evolution_stats,
         }
     finally:
-        pool.release()
+        if owns_pool:
+            pool.release()
 
 
 # ---------------------------------------------------------------------------

@@ -270,6 +270,7 @@ def run_pipeline_on_problem(
     hypernet_checkpoint: str,
     base_model: str,
     device: str,
+    pool: Any = None,
 ) -> ProblemVerdict:
     """Run the full 5-phase pipeline on one problem and return its verdict.
 
@@ -287,6 +288,8 @@ def run_pipeline_on_problem(
         hypernet_checkpoint: Path (local or ``s3://``) to the hypernetwork.
         base_model: Base model HuggingFace ID.
         device: Device for pipeline computation (e.g. ``"cuda"``).
+        pool: Shared ModelPool to reuse across problems. Avoids
+            reloading the base model on every call.
 
     Returns:
         A ProblemVerdict for the run.
@@ -308,6 +311,7 @@ def run_pipeline_on_problem(
                     checkpoint_path=hypernet_checkpoint,
                     base_model_id=base_model,
                     device=device,
+                    pool=pool,
                 )
             )
             adapter_dir = result.get("adapter_dir")
@@ -332,6 +336,7 @@ def run_pipeline_on_problem(
         finally:
             if adapter_dir:
                 shutil.rmtree(adapter_dir, ignore_errors=True)
+            _flush_gpu()
         span.set_outputs({
             "passed": verdict.passed,
             "code_attempts": verdict.code_attempts,
@@ -347,6 +352,7 @@ def evaluate_problem_set(
     hypernet_checkpoint: str,
     base_model: str,
     device: str,
+    pool: Any = None,
 ) -> list[ProblemVerdict]:
     """Run the pipeline on every problem, returning verdicts in input order.
 
@@ -355,14 +361,28 @@ def evaluate_problem_set(
         hypernet_checkpoint: Path to the hypernetwork checkpoint.
         base_model: Base model HuggingFace ID.
         device: Device for pipeline computation.
+        pool: Shared ModelPool to reuse across problems.
 
     Returns:
         A list of ProblemVerdict, one per input problem.
     """
     return [
-        run_pipeline_on_problem(p, hypernet_checkpoint, base_model, device)
+        run_pipeline_on_problem(p, hypernet_checkpoint, base_model, device, pool=pool)
         for p in problems
     ]
+
+
+def _flush_gpu() -> None:
+    """Free cached CUDA memory between pipeline runs."""
+    import gc  # noqa: PLC0415
+
+    gc.collect()
+    try:
+        import torch  # noqa: PLC0415
+
+        torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _mlflow() -> Any:
@@ -465,6 +485,7 @@ def make_objective(
     problems_per_trial: int,
     seed: int,
     work_dir: Path,
+    pool: Any = None,
 ) -> Callable[[optuna.Trial], float]:
     """Build the Optuna objective: sample params, run the pipeline, log, score.
 
@@ -476,6 +497,8 @@ def make_objective(
         problems_per_trial: Problems sampled (without replacement) per trial.
         seed: Base seed; trial ``k`` samples with ``Random(seed + k)``.
         work_dir: Directory for per-trial temp PipelineConfig files.
+        pool: Shared ModelPool kept resident across trials. Created by
+            ``main()`` so the base model is loaded once per study.
 
     Returns:
         An objective callable returning the trial's MBPP pass rate.
@@ -511,7 +534,8 @@ def make_objective(
                 }
             )
             verdicts = evaluate_problem_set(
-                trial_problems, hypernet_checkpoint, base_model, device
+                trial_problems, hypernet_checkpoint, base_model, device,
+                pool=pool,
             )
             log_trial_metrics(verdicts, time.time() - start)
             log_verdicts_artifact(verdicts, f"trial-{trial.number:03d}")
@@ -761,6 +785,15 @@ def main() -> None:
         load_if_exists=True,
         sampler=optuna.samplers.TPESampler(seed=args.seed),
     )
+
+    from model_training.model_pool import ModelPool  # noqa: PLC0415
+
+    pool = ModelPool.create(
+        model_name=args.base_model,
+        device=args.device,
+        hypernet_checkpoint_path=args.hypernet_checkpoint,
+    )
+
     objective = make_objective(
         tuning,
         hypernet_checkpoint=args.hypernet_checkpoint,
@@ -769,6 +802,7 @@ def main() -> None:
         problems_per_trial=args.problems_per_trial,
         seed=args.seed,
         work_dir=work_dir,
+        pool=pool,
     )
 
     t0 = time.time()
@@ -807,7 +841,8 @@ def main() -> None:
             config_dir=work_dir / "validation",
         )
         val_verdicts = evaluate_problem_set(
-            validation, args.hypernet_checkpoint, args.base_model, args.device
+            validation, args.hypernet_checkpoint, args.base_model, args.device,
+            pool=pool,
         )
         val_pass_rate = (
             sum(v.passed for v in val_verdicts) / len(val_verdicts)
@@ -838,6 +873,9 @@ def main() -> None:
         db_file = db_uri.replace("sqlite:///", "")
         if Path(db_file).exists():
             mlflow.log_artifact(db_file)
+
+    pool.release()
+    _flush_gpu()
 
     logger.info(
         "HPO complete: best_pass_rate=%.3f validation_pass_rate=%.3f",
