@@ -193,13 +193,13 @@ class Subtask(BaseModel):
     """A single decomposed coding subtask.
 
     Represents one unit of work produced by the decompose phase. Dependency
-    indices refer to the 0-based position of other subtasks in the parent
-    ``DecomposeResult.subtasks`` list.
+    names refer to other subtasks in the parent ``DecomposeResult.subtasks``
+    list, resolved by ``parse_dependencies()`` in the blackboard module.
 
     Attributes:
         name: Short identifier for the subtask. Must be non-empty.
         description: Human-readable description of the work to be done.
-        depends_on: Indices of subtasks that must complete before this one.
+        depends_on: Names of subtasks that must complete before this one.
 
     Example:
         >>> st = Subtask(name="write_tests", description="Add pytest coverage")
@@ -209,7 +209,7 @@ class Subtask(BaseModel):
 
     name: str = Field(min_length=1)
     description: str = ""
-    depends_on: list[int] = []
+    depends_on: list[str] = []
 
 
 class DecomposeResult(BaseModel):

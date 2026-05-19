@@ -289,8 +289,8 @@ def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
             }
         )
     try:
-        DecomposeResult(subtasks=[Subtask(name=s["name"]) for s in subtasks])
-        return subtasks
+        result = DecomposeResult(subtasks=[Subtask(**s) for s in subtasks])
+        return [s.model_dump() for s in result.subtasks]
     except ValidationError:
         return [{"name": "implementation", "description": model_output[:200].strip(), "depends_on": []}]
 

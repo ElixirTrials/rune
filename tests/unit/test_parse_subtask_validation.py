@@ -78,25 +78,18 @@ def test_two_items_passthrough() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Name-based depends_on is preserved (regression: Subtask(**s) would corrupt)
+# Name-based depends_on is preserved through Pydantic round-trip
 # ---------------------------------------------------------------------------
 
 
 def test_name_based_deps_preserved() -> None:
-    """depends_on strings are preserved through validation unchanged.
-
-    This verifies we do NOT round-trip through Subtask.model_dump(), which
-    would convert list[str] deps to list[int] and break downstream consumers.
-    """
+    """depends_on strings survive the Subtask(**s) / model_dump() round-trip."""
     output = _numbered_list_with_deps(["parse_input", "transform", "write_output"])
     result = _parse_subtask_list(output)
-    # Item at index 1 depends on "parse_input" (name string, not integer)
     dep = result[1]["depends_on"]
     assert isinstance(dep, list)
     assert len(dep) > 0
-    assert isinstance(dep[0], str), (
-        "depends_on must remain a list of strings; Subtask round-trip must not have occurred"
-    )
+    assert isinstance(dep[0], str)
     assert dep[0] == "parse_input"
 
 

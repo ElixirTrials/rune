@@ -26,9 +26,9 @@ def test_subtask_valid_creation() -> None:
 
 def test_subtask_all_fields() -> None:
     """Subtask accepts all fields when explicitly provided."""
-    st = Subtask(name="write_output", description="Emit JSON to stdout", depends_on=[0])
+    st = Subtask(name="write_output", description="Emit JSON to stdout", depends_on=["parse_input"])
     assert st.description == "Emit JSON to stdout"
-    assert st.depends_on == [0]
+    assert st.depends_on == ["parse_input"]
 
 
 def test_subtask_name_min_length_enforced() -> None:
@@ -49,7 +49,7 @@ def test_subtask_depends_on_independent_default_per_instance() -> None:
     """Each Subtask instance gets its own depends_on list (no shared mutable default)."""
     a = Subtask(name="a")
     b = Subtask(name="b")
-    a.depends_on.append(99)
+    a.depends_on.append("extra")
     assert b.depends_on == []
 
 
@@ -119,10 +119,10 @@ def test_decompose_result_round_trip_serialization() -> None:
     original = DecomposeResult(
         subtasks=[
             Subtask(name="parse", description="Parse input", depends_on=[]),
-            Subtask(name="emit", description="Emit output", depends_on=[0]),
+            Subtask(name="emit", description="Emit output", depends_on=["parse"]),
         ]
     )
     data = original.model_dump()
     restored = DecomposeResult(**data)
     assert len(restored.subtasks) == 2
-    assert restored.subtasks[1].depends_on == [0]
+    assert restored.subtasks[1].depends_on == ["parse"]
