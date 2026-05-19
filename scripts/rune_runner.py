@@ -235,11 +235,19 @@ def _safe_adapter_id(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
+def _parse_subtask_list(
+    model_output: str, *, validate: bool = True
+) -> list[dict[str, Any]]:
     """Parse Phase 1 output into [{name, description, depends_on}, ...].
 
     Expects numbered list format: ``1. name — description [depends: none]``
     Also accepts lines without dependency declarations (backward compatible).
+
+    Args:
+        model_output: Raw text from the decompose phase.
+        validate: When True, enforce 2-8 subtask range via DecomposeResult.
+            Set to False when reusing the parser for non-decompose output
+            (e.g. diagnose phase).
     """
     # TODO: Replace regex parsing with structured JSON output from the model,
     # validated directly against DecomposeResult. Requires adding JSON mode
@@ -288,6 +296,8 @@ def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
                 "depends_on": deps,
             }
         )
+    if not validate:
+        return subtasks
     try:
         result = DecomposeResult(subtasks=[Subtask(**s) for s in subtasks])
         return [s.model_dump() for s in result.subtasks]
@@ -309,7 +319,7 @@ def _parse_diagnose_output(
     Matches diagnosed subtask names against known subtask names using
     substring matching (the model may abbreviate or rephrase names).
     """
-    raw = _parse_subtask_list(model_output)
+    raw = _parse_subtask_list(model_output, validate=False)
     known_lower = {k.lower().strip(): k for k in known_subtasks}
 
     matched: list[dict[str, str]] = []

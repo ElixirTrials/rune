@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import re
 
-
 # ---------------------------------------------------------------------------
 # Helpers — mirror the exact regexes in transformers_provider.py
 # ---------------------------------------------------------------------------

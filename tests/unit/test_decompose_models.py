@@ -7,9 +7,7 @@ degenerate single-subtask results.
 
 import pytest
 from pydantic import ValidationError
-
 from shared.rune_models import DecomposeResult, Subtask
-
 
 # ---------------------------------------------------------------------------
 # Subtask tests
@@ -26,7 +24,11 @@ def test_subtask_valid_creation() -> None:
 
 def test_subtask_all_fields() -> None:
     """Subtask accepts all fields when explicitly provided."""
-    st = Subtask(name="write_output", description="Emit JSON to stdout", depends_on=["parse_input"])
+    st = Subtask(
+        name="write_output",
+        description="Emit JSON to stdout",
+        depends_on=["parse_input"],
+    )
     assert st.description == "Emit JSON to stdout"
     assert st.depends_on == ["parse_input"]
 
@@ -46,7 +48,7 @@ def test_subtask_depends_on_defaults_to_empty_list() -> None:
 
 
 def test_subtask_depends_on_independent_default_per_instance() -> None:
-    """Each Subtask instance gets its own depends_on list (no shared mutable default)."""
+    """Each Subtask gets its own depends_on list (no shared mutable)."""
     a = Subtask(name="a")
     b = Subtask(name="b")
     a.depends_on.append("extra")

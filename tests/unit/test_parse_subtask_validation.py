@@ -12,9 +12,6 @@ Covers:
 
 import sys
 from pathlib import Path
-from typing import Any
-
-import pytest
 
 # Bootstrap path so rune_runner imports work without a full install
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -23,7 +20,6 @@ from bootstrap import setup_path  # type: ignore[import-not-found]
 setup_path()
 
 from scripts.rune_runner import _parse_subtask_list  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -144,7 +140,8 @@ def test_empty_output_fallback() -> None:
 
 def test_non_list_output_fallback() -> None:
     """Prose output with no numbered lines: same empty-match fallback."""
-    result = _parse_subtask_list("Here is my analysis of the problem.\nNo structure at all.")
+    text = "Here is my analysis of the problem.\nNo structure."
+    result = _parse_subtask_list(text)
     assert len(result) == 1
     assert result[0]["name"] == "implementation"
 
@@ -170,3 +167,27 @@ def test_hard_cap_eight_items_in_pipeline_dedup() -> None:
     parsed_names = [r["name"] for r in result]
     for n in names:
         assert n in parsed_names
+
+
+# ----------------------------------------------------------
+# validate=False bypasses DecomposeResult (diagnose path)
+# ----------------------------------------------------------
+
+
+def test_validate_false_single_item_passes_through() -> None:
+    """validate=False lets single-item output through (diagnose)."""
+    result = _parse_subtask_list(
+        "1. parse_input - NameError on line 5",
+        validate=False,
+    )
+    assert len(result) == 1
+    assert result[0]["name"] == "parse_input"
+
+
+def test_validate_false_many_items_passes_through() -> None:
+    """validate=False lets >8 items through (no cap at parse)."""
+    names = [f"diag_{i}" for i in range(12)]
+    result = _parse_subtask_list(
+        _numbered_list(names), validate=False
+    )
+    assert len(result) == 12
