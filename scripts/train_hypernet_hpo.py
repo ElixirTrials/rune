@@ -466,7 +466,7 @@ def main() -> None:  # noqa: C901
         base_model = AutoModelForCausalLM.from_pretrained(
             args.base_model,
             output_hidden_states=True,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             device_map="auto",
         ).eval()
     else:

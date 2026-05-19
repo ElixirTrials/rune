@@ -20,7 +20,7 @@ bnb = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 model = AutoModelForCausalLM.from_pretrained(
-    MODEL_ID, quantization_config=bnb, torch_dtype=torch.bfloat16
+    MODEL_ID, quantization_config=bnb, dtype=torch.bfloat16
 )
 print(f"Loading adapter {ADAPTER} ...")
 model = PeftModel.from_pretrained(model, ADAPTER)  # type: ignore[assignment]

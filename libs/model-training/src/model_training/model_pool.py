@@ -131,7 +131,7 @@ class ModelPool:
 
             model: Any = AutoModelForCausalLM.from_pretrained(
                 self._model_name,
-                torch_dtype=dtype,
+                dtype=dtype,
             )
             model.to(self._device)
             model.eval()

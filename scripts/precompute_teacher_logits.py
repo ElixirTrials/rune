@@ -207,7 +207,7 @@ def main() -> None:
         logger.info("Loading base model: %s (bf16)", args.base_model)
         base_model = AutoModelForCausalLM.from_pretrained(
             args.base_model,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             device_map="auto",
         ).eval()
     elif nf4_cache.exists():

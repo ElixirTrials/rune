@@ -94,7 +94,7 @@ def _setup() -> None:
     param_count = v * h + n * 12 * h * h
     dtype = resolve_model_dtype(param_count=param_count, device=DEVICE)
 
-    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=dtype)
+    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=dtype)
     _model.to(DEVICE)  # type: ignore[arg-type]
     _model.eval()
     logger.info("Model loaded (dtype=%s)", dtype)
