@@ -48,7 +48,9 @@ from bootstrap import setup_path  # type: ignore[import-not-found]
 
 setup_path()  # noqa: E402
 
+from pydantic import ValidationError  # noqa: E402
 from shared.hardware import get_best_device  # noqa: E402
+from shared.rune_models import DecomposeResult, Subtask  # noqa: E402
 from shared.sandbox import count_test_results, extract_failed_tests  # noqa: E402
 from shared.template_loader import render_trajectory  # noqa: E402
 
@@ -239,6 +241,9 @@ def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
     Expects numbered list format: ``1. name — description [depends: none]``
     Also accepts lines without dependency declarations (backward compatible).
     """
+    # TODO: Replace regex parsing with structured JSON output from the model,
+    # validated directly against DecomposeResult. Requires adding JSON mode
+    # to TransformersProvider.generate() and updating decompose templates.
     from shared.blackboard import parse_dependencies
 
     raw_lines: list[tuple[str, str, str]] = []  # (name, desc, original_line)
@@ -283,7 +288,11 @@ def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
                 "depends_on": deps,
             }
         )
-    return subtasks
+    try:
+        DecomposeResult(subtasks=[Subtask(name=s["name"]) for s in subtasks])
+        return subtasks
+    except ValidationError:
+        return [{"name": "implementation", "description": model_output[:200].strip(), "depends_on": []}]
 
 
 def _parse_plan(model_output: str) -> str:
@@ -823,6 +832,8 @@ async def run_phased_pipeline(
             if key not in seen:
                 seen.add(key)
                 subtasks.append(st)
+
+        subtasks = subtasks[:8]
 
         # Validate dependency graph is acyclic; retry decompose if not
         from graphlib import CycleError
