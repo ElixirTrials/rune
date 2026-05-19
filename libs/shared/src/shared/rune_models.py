@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(str, Enum):
@@ -187,3 +187,48 @@ class SwarmCheckpoint(BaseModel):
     outcome: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+
+
+class Subtask(BaseModel):
+    """A single decomposed coding subtask.
+
+    Represents one unit of work produced by the decompose phase. Dependency
+    indices refer to the 0-based position of other subtasks in the parent
+    ``DecomposeResult.subtasks`` list.
+
+    Attributes:
+        name: Short identifier for the subtask. Must be non-empty.
+        description: Human-readable description of the work to be done.
+        depends_on: Indices of subtasks that must complete before this one.
+
+    Example:
+        >>> st = Subtask(name="write_tests", description="Add pytest coverage")
+        >>> st.depends_on
+        []
+    """
+
+    name: str = Field(min_length=1)
+    description: str = ""
+    depends_on: list[int] = []
+
+
+class DecomposeResult(BaseModel):
+    """Validated output of the decompose pipeline phase.
+
+    Enforces the 2–8 subtask range: fewer than 2 subtasks indicates a
+    degenerate decomposition and triggers fallback; more than 8 indicates
+    the model's thinking block leaked into output and is rejected.
+
+    Attributes:
+        subtasks: Ordered list of subtasks, between 2 and 8 inclusive.
+
+    Example:
+        >>> result = DecomposeResult(subtasks=[
+        ...     Subtask(name="parse_input"),
+        ...     Subtask(name="write_output"),
+        ... ])
+        >>> len(result.subtasks)
+        2
+    """
+
+    subtasks: list[Subtask] = Field(min_length=2, max_length=8)
