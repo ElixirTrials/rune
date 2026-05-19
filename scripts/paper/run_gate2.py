@@ -155,8 +155,6 @@ def main() -> None:
         result = run_benchmark(baseline_stack, bench, on_verdict=_on_verdict)
         baseline_scores[bench] = result.pass_at_1
         print(f"  [substrate] {bench}: {result.pass_at_1:.2%}")
-        if mlflow_ok:
-            mlflow.log_metric(f"substrate_{bench}", baseline_scores[bench])
 
     print("\n=== Gate 2: Rune (substrate + hypernetwork adapter) ===")
 

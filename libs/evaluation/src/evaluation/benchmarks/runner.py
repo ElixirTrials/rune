@@ -185,7 +185,7 @@ def _generate_completion(
                     exc,
                 )
                 time.sleep(wait)
-        raise last_exc  # type: ignore[misc]
+        raise last_exc  # type: ignore[misc]  # noqa: PLE0704 — always bound after ≥1 iteration
     finally:
         loop.close()
 

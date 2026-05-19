@@ -324,6 +324,7 @@ def run_pipeline_on_problem(
                 "prompt": problem.prompt[:300],
             }
         )
+        verdict = None
         try:
             result = asyncio.run(
                 run_phased_pipeline(
@@ -340,15 +341,16 @@ def run_pipeline_on_problem(
             if adapter_dir:
                 shutil.rmtree(adapter_dir, ignore_errors=True)
             _flush_gpu()
-        span.set_outputs(
-            {
-                "passed": verdict.passed,
-                "code_attempts": verdict.code_attempts,
-                "n_subtasks": verdict.n_subtasks,
-                "wall_time_s": round(verdict.wall_time_s, 1),
-                "error": verdict.error[:200] if verdict.error else "",
-            }
-        )
+        if verdict is not None:
+            span.set_outputs(
+                {
+                    "passed": verdict.passed,
+                    "code_attempts": verdict.code_attempts,
+                    "n_subtasks": verdict.n_subtasks,
+                    "wall_time_s": round(verdict.wall_time_s, 1),
+                    "error": verdict.error[:200] if verdict.error else "",
+                }
+            )
     # Flush traces eagerly so each problem appears in the UI immediately
     mlflow.flush_trace_async_logging()
     return verdict
@@ -519,7 +521,7 @@ def make_objective(
         max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
 
         n = min(problems_per_trial, len(tuning_problems))
-        trial_problems = random.Random(seed + trial.number).sample(tuning_problems, n)
+        trial_problems = random.Random(seed + trial.number + 1).sample(tuning_problems, n)
         apply_trial_env(
             scaling_factor=scaling_factor,
             temperature=temperature,
@@ -888,9 +890,10 @@ def main() -> None:
             mlflow.log_param(f"best/{key}", val)
         for artifact in (params_path, validation_path, summary_path):
             mlflow.log_artifact(str(artifact))
-        db_file = db_uri.replace("sqlite:///", "")
-        if Path(db_file).exists():
-            mlflow.log_artifact(db_file)
+        if db_uri.startswith("sqlite:///"):
+            db_file = db_uri.replace("sqlite:///", "")
+            if Path(db_file).exists():
+                mlflow.log_artifact(db_file)
 
     pool.release()
     _flush_gpu()

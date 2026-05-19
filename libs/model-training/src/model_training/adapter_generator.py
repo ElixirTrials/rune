@@ -89,7 +89,7 @@ def extract_activations(
 
     model: Any = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        dtype=activation_dtype,
+        torch_dtype=activation_dtype,
     )
     model = model.to(device)  # type: ignore[assignment]
     model.eval()
@@ -136,6 +136,8 @@ def _save_adapter(
     layer_indices = list(hc.layer_indices)
     target_modules = list(hc.lora_config.target_modules)
 
+    if not lora_dict:
+        raise ValueError("generate_weights returned empty lora_dict — cannot save adapter")
     first_mod = next(iter(lora_dict))
     actual_rank = lora_dict[first_mod]["A"].shape[-2]
 

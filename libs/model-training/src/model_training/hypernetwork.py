@@ -68,10 +68,14 @@ def _ensure_local_s3_cache(s3_uri: str) -> str:
 
     logger.info("Downloading %s → %s ...", s3_uri, cached)
     tmp = cached.with_suffix(".tmp")
-    with fsspec.open(s3_uri, "rb") as src, open(tmp, "wb") as dst:
-        while chunk := src.read(8 * 1024 * 1024):
-            dst.write(chunk)
-    tmp.rename(cached)
+    try:
+        with fsspec.open(s3_uri, "rb") as src, open(tmp, "wb") as dst:
+            while chunk := src.read(8 * 1024 * 1024):
+                dst.write(chunk)
+        tmp.rename(cached)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return str(cached)
 
 

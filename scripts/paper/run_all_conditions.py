@@ -464,16 +464,22 @@ def run_condition_rune_phased(
 
         logger.info("Rune phased: %s — %d problems", bench_id, len(problems))
         for pi, problem in enumerate(problems):
-            result = asyncio.run(
-                run_phased_pipeline(
-                    project_prompt=problem.prompt,
-                    checkpoint_path=hypernet_checkpoint,
-                    base_model_id=model,
-                    device=device,
+            try:
+                result = asyncio.run(
+                    run_phased_pipeline(
+                        project_prompt=problem.prompt,
+                        checkpoint_path=hypernet_checkpoint,
+                        base_model_id=model,
+                        device=device,
+                    )
                 )
-            )
-            verdict = adapter.score(problem, result.get("accumulated_code", ""))
-            shutil.rmtree(result.get("adapter_dir", ""), ignore_errors=True)
+                verdict = adapter.score(problem, result.get("accumulated_code", ""))
+                shutil.rmtree(result.get("adapter_dir", ""), ignore_errors=True)
+            except Exception:
+                logger.error(
+                    "Pipeline crashed on %s problem %d", bench_id, pi, exc_info=True
+                )
+                verdict = PassVerdict(passed=False, reason="pipeline_crash")
             verdicts.append(verdict)
             if verdict.passed:
                 n_passed += 1

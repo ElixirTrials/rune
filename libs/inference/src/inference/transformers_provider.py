@@ -82,6 +82,7 @@ class TransformersProvider(InferenceProvider):
 
                 if isinstance(model, _PeftModel):
                     model = model.base_model.unload()
+                    self._pool._model = model
                 elif hasattr(model, "peft_config"):
                     del model.peft_config
                 logger.info("Cleaned residual PEFT state from pooled model")
@@ -129,7 +130,7 @@ class TransformersProvider(InferenceProvider):
 
         self._model = AutoModelForCausalLM.from_pretrained(
             self._model_name,
-            dtype=resolved_dtype,
+            torch_dtype=resolved_dtype,
         )
         self._model.to(self._device)
         self._model.eval()

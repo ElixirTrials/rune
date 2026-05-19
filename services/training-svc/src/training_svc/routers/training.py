@@ -25,7 +25,7 @@ def _validate_adapter_id(adapter_id: str) -> None:
     Raises:
         HTTPException: 422 if adapter_id contains ``/``, ``\\``, ``.``, or null.
     """
-    if any(c in adapter_id for c in _PATH_UNSAFE_CHARS) or ".." in adapter_id:
+    if any(c in adapter_id for c in _PATH_UNSAFE_CHARS):
         raise HTTPException(
             status_code=422,
             detail=(

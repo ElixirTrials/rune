@@ -215,12 +215,12 @@ class Subtask(BaseModel):
 class DecomposeResult(BaseModel):
     """Validated output of the decompose pipeline phase.
 
-    Enforces the 2–8 subtask range: fewer than 2 subtasks indicates a
-    degenerate decomposition and triggers fallback; more than 8 indicates
-    the model's thinking block leaked into output and is rejected.
+    Enforces 1–8 subtask range: a single subtask is valid (used by the
+    skip-decompose path for simple tasks); more than 8 indicates the
+    model's thinking block leaked into output and is rejected.
 
     Attributes:
-        subtasks: Ordered list of subtasks, between 2 and 8 inclusive.
+        subtasks: Ordered list of subtasks, between 1 and 8 inclusive.
 
     Example:
         >>> result = DecomposeResult(subtasks=[
@@ -231,4 +231,4 @@ class DecomposeResult(BaseModel):
         2
     """
 
-    subtasks: list[Subtask] = Field(min_length=2, max_length=8)
+    subtasks: list[Subtask] = Field(min_length=1, max_length=8)

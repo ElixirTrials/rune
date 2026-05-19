@@ -14,6 +14,7 @@ inside method bodies per INFRA-05 — this module is importable in CPU-only CI.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ class ModelPool:
         self._tokenizer: Any = None
         self._hypernet: Any = None
         self._hypernet_config: Any = None
+        self._lock = threading.Lock()
 
     @classmethod
     def create(
@@ -111,28 +113,32 @@ class ModelPool:
         if self._model is not None:
             return self._model, self._tokenizer
 
-        from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+        with self._lock:
+            if self._model is not None:
+                return self._model, self._tokenizer
 
-        logger.info(
-            "ModelPool: loading base model %s on %s", self._model_name, self._device
-        )
+            from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
-        tokenizer = AutoTokenizer.from_pretrained(self._model_name)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+            logger.info(
+                "ModelPool: loading base model %s on %s", self._model_name, self._device
+            )
 
-        dtype = self._resolve_dtype()
+            tokenizer = AutoTokenizer.from_pretrained(self._model_name)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
 
-        model: Any = AutoModelForCausalLM.from_pretrained(
-            self._model_name,
-            dtype=dtype,
-        )
-        model.to(self._device)
-        model.eval()
+            dtype = self._resolve_dtype()
 
-        self._model = model
-        self._tokenizer = tokenizer
-        logger.info("ModelPool: base model loaded")
+            model: Any = AutoModelForCausalLM.from_pretrained(
+                self._model_name,
+                torch_dtype=dtype,
+            )
+            model.to(self._device)
+            model.eval()
+
+            self._model = model
+            self._tokenizer = tokenizer
+            logger.info("ModelPool: base model loaded")
         return self._model, self._tokenizer
 
     def _resolve_dtype(self) -> Any:
@@ -192,17 +198,21 @@ class ModelPool:
         if self._hypernet is not None:
             return self._hypernet, self._hypernet_config
 
-        from model_training.hypernetwork import load_hypernetwork  # noqa: PLC0415
+        with self._lock:
+            if self._hypernet is not None:
+                return self._hypernet, self._hypernet_config
 
-        logger.info("ModelPool: loading hypernetwork on %s", self._device)
-        hypernet, hc = load_hypernetwork(
-            checkpoint_path=self._hypernet_checkpoint_path,
-            variant=self._hypernet_variant,
-            device=self._device,
-        )
-        self._hypernet = hypernet
-        self._hypernet_config = hc
-        logger.info("ModelPool: hypernetwork loaded")
+            from model_training.hypernetwork import load_hypernetwork  # noqa: PLC0415
+
+            logger.info("ModelPool: loading hypernetwork on %s", self._device)
+            hypernet, hc = load_hypernetwork(
+                checkpoint_path=self._hypernet_checkpoint_path,
+                variant=self._hypernet_variant,
+                device=self._device,
+            )
+            self._hypernet = hypernet
+            self._hypernet_config = hc
+            logger.info("ModelPool: hypernetwork loaded")
         return self._hypernet, self._hypernet_config
 
     def release(self) -> None:
@@ -237,8 +247,12 @@ def get_pool() -> ModelPool:
 def set_pool(pool: ModelPool) -> None:
     """Register a ModelPool as the process-wide singleton.
 
+    Releases the previous pool (if any) before replacing it.
+
     Args:
         pool: The ModelPool instance to register.
     """
     global _POOL  # noqa: PLW0603
+    if _POOL is not None:
+        _POOL.release()
     _POOL = pool

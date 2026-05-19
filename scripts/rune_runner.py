@@ -251,9 +251,14 @@ def _should_skip_decompose(project_prompt: str, threshold: int = 200) -> bool:
         "write a method",
         "implement a method",
         "create a function",
-        "def ",
     ]
-    return any(s in project_prompt.lower() for s in single_fn_signals)
+    lower = project_prompt.lower()
+    if any(s in lower for s in single_fn_signals):
+        return True
+    # "def " at start of a line indicates a single-function task
+    return any(
+        line.lstrip().startswith("def ") for line in project_prompt.splitlines()
+    )
 
 
 def _parse_subtask_list(
@@ -794,6 +799,7 @@ async def run_phased_pipeline(
                 "iterations": 0,
                 "best_score": 1.0,
             }
+            evolution_stats["best_adapters"]["decompose"] = None
             _mlflow_tag("pipeline.decompose.status", "skipped")
             _decompose_skipped = True
         else:

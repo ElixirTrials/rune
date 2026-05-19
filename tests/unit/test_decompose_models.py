@@ -82,12 +82,10 @@ def test_decompose_result_valid_mid_range() -> None:
     assert len(result.subtasks) == 4
 
 
-def test_decompose_result_rejects_single_subtask() -> None:
-    """DecomposeResult rejects a single subtask (min_length=2 not met)."""
-    with pytest.raises(ValidationError) as exc_info:
-        DecomposeResult(subtasks=_make_subtasks(1))
-    errors = exc_info.value.errors()
-    assert any(e["loc"] == ("subtasks",) for e in errors)
+def test_decompose_result_accepts_single_subtask() -> None:
+    """DecomposeResult accepts a single subtask (skip-decompose path)."""
+    result = DecomposeResult(subtasks=_make_subtasks(1))
+    assert len(result.subtasks) == 1
 
 
 def test_decompose_result_rejects_empty_list() -> None:
