@@ -197,7 +197,7 @@ def extract_activations_with_model(
 
     Runs text through the model with output_hidden_states=True and stacks
     activations from the specified layer indices. Uses hidden_states[i] directly
-    (no +1 offset) — consistent with existing sakana_d2l.py convention.
+    (no +1 offset) — consistent with existing hypernetwork.py convention.
 
     Args:
         text: Input text to tokenize and process.

@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from inference import GenerationResult
 from rune_agent.nodes import (
+    _extract_code,
+    _syntax_ok,
     execute_node,
     generate_node,
     reflect_node,
@@ -110,6 +112,96 @@ async def test_generate_node_no_code_block_fallback() -> None:
         result = await generate_node(state)
 
     assert result["generated_code"] == raw_text.strip()
+
+
+def test_extract_code_strips_preamble_with_leading_zeros() -> None:
+    """_extract_code: explanatory text with leading-zero literals is stripped."""
+    text = (
+        "Let me work through this:\n"
+        "* Index 1: 4 & 2 = ? Binary: 4=0100, 2=0010. AND = 0000.\n"
+        "\n"
+        "def bitwise_and(a, b):\n"
+        "    return a & b\n"
+    )
+    result = _extract_code(text)
+    assert result == "def bitwise_and(a, b):\n    return a & b"
+
+
+def test_extract_code_fenced_valid() -> None:
+    """_extract_code: valid code inside fence is returned as-is."""
+    assert _extract_code("```python\nx = 1\n```") == "x = 1"
+
+
+def test_extract_code_unfenced_valid() -> None:
+    """_extract_code: valid Python without fence passes through."""
+    assert _extract_code("x = 1\ny = 2") == "x = 1\ny = 2"
+
+
+def test_extract_code_truncated_fence() -> None:
+    """_extract_code: unclosed fence (max_tokens truncation) still extracts."""
+    assert _extract_code("```python\nx = 1\ny = 2\n") == "x = 1\ny = 2"
+
+
+def test_extract_code_garbage_returns_empty() -> None:
+    """_extract_code: unrecoverable garbage returns empty string."""
+    assert _extract_code("* step 1: do the thing\n* step 2: profit") == ""
+
+
+def test_extract_code_meta_reasoning_stripped() -> None:
+    """_extract_code: model meta-reasoning about the task is stripped."""
+    text = (
+        '* Input Context: "Integrating 1 completed subtasks." This suggests\n'
+        "I should produce the final consolidated file.\n"
+        "\n"
+        "def add(a, b):\n"
+        "    return a + b\n"
+    )
+    assert "def add" in _extract_code(text)
+
+
+def test_extract_code_interleaved_garbage() -> None:
+    """_extract_code: valid code sandwiched between garbage lines."""
+    text = (
+        "Here is my analysis of the problem:\n"
+        "* Step 1: parse the input\n"
+        "def solve(n):\n"
+        "    return n * 2\n"
+        "\n"
+        "import unittest\n"
+        "\n"
+        "class TestSolve(unittest.TestCase):\n"
+        "    def test_basic(self):\n"
+        "        self.assertEqual(solve(3), 6)\n"
+        "And that wraps up the solution.\n"
+    )
+    result = _extract_code(text)
+    assert "def solve" in result
+    assert "class TestSolve" in result
+    assert _syntax_ok(result)
+
+
+async def test_generate_node_diagnose_preserves_raw_text() -> None:
+    """generate_node: non-code phases bypass _extract_code, preserving raw text."""
+    raw_list = "1. Bug in subtask Alpha: NameError on line 15\n2. Subtask Beta is fine"
+    provider = _mock_provider(raw_list)
+
+    state: dict[str, Any] = {
+        "task_description": "Diagnose failures",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 0,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "phase": "diagnose",
+    }
+
+    with patch("rune_agent.nodes.get_provider", return_value=provider):
+        result = await generate_node(state)
+
+    assert result["generated_code"] == raw_list
 
 
 async def test_generate_node_with_adapter() -> None:
@@ -443,3 +535,93 @@ async def test_execute_node_testcase_without_main_auto_injected() -> None:
     assert result["tests_passed"] is True
     assert result["test_count"] >= 1
     assert result["tests_ran"] is True
+
+
+# ---------------------------------------------------------------------------
+# enable_thinking tests
+# ---------------------------------------------------------------------------
+
+
+async def test_generate_node_code_phase_disables_thinking() -> None:
+    """Code phases pass enable_thinking=False to prevent think tokens eating budget."""
+    provider = _mock_provider("```python\ndef solve(): pass\n```")
+
+    state: dict[str, Any] = {
+        "task_description": "Build solver",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 0,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "phase": "code",
+    }
+
+    with patch("rune_agent.nodes.get_provider", return_value=provider):
+        await generate_node(state)
+
+    call_kwargs = provider.generate.call_args.kwargs
+    assert call_kwargs["enable_thinking"] is False
+
+
+async def test_generate_node_text_phase_enables_thinking() -> None:
+    """Text-only phases (decompose, plan, diagnose) keep thinking enabled."""
+    provider = _mock_provider("1. Subtask Alpha\n2. Subtask Beta")
+
+    state: dict[str, Any] = {
+        "task_description": "Build a calculator",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 0,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "phase": "decompose",
+    }
+
+    with patch("rune_agent.nodes.get_provider", return_value=provider):
+        await generate_node(state)
+
+    call_kwargs = provider.generate.call_args.kwargs
+    assert call_kwargs["enable_thinking"] is True
+
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "code",
+        "code_retry",
+        "code_continue",
+        "code_repair",
+        "integrate",
+        "integrate_retry",
+    ],
+)
+async def test_all_code_phases_disable_thinking(phase: str) -> None:
+    """Every code-generation phase should disable thinking."""
+    provider = _mock_provider("```python\npass\n```")
+
+    state: dict[str, Any] = {
+        "task_description": "task",
+        "task_type": "function",
+        "test_suite": "",
+        "adapter_ids": [],
+        "attempt_count": 0,
+        "generated_code": "",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "phase": phase,
+    }
+
+    with patch("rune_agent.nodes.get_provider", return_value=provider):
+        await generate_node(state)
+
+    call_kwargs = provider.generate.call_args.kwargs
+    assert call_kwargs["enable_thinking"] is False, (
+        f"Phase '{phase}' should disable thinking"
+    )

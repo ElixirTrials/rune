@@ -98,8 +98,15 @@ def get_provider(
             from inference.transformers_provider import TransformersProvider
 
             device = os.environ.get("TRANSFORMERS_DEVICE", get_best_device())
+            pool = None
+            try:
+                from model_training.model_pool import get_pool  # noqa: PLC0415
+
+                pool = get_pool()
+            except (ImportError, RuntimeError):
+                pool = None
             _provider_cache[cache_key] = TransformersProvider(
-                model_name=resolved_url, device=device
+                model_name=resolved_url, device=device, pool=pool
             )
         else:
             from inference.ollama_provider import OllamaProvider

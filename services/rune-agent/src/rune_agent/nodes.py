@@ -1,5 +1,6 @@
 """Node functions for the Rune coding agent recursive loop."""
 
+import ast
 import logging
 import os
 import re
@@ -26,28 +27,44 @@ _PHASE_SYSTEM_PROMPTS: dict[str, str] = {
         "You are a software architect. Output ONLY architecture plans "
         "with class signatures, data flow, and test strategy. Never output code."
     ),
-    "code": "You are a Python code generator. Output only code, no explanation.",
-    "code_retry": "You are a Python code generator. Output only code, no explanation.",
+    "code": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
+    "code_retry": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
     "code_continue": (
-        "You are a Python code generator. Output only code, no explanation."
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
     ),
     "diagnose": (
         "You are a code diagnostician. Identify which subtasks have bugs. "
         "Output ONLY a numbered list, never code."
     ),
     "code_repair": (
-        "You are a Python code generator. Output only code, no explanation."
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
     ),
-    "integrate": "You are a Python code generator. Output only code, no explanation.",
+    "integrate": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
     "integrate_retry": (
-        "You are a Python code generator. Output only code, no explanation."
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
     ),
 }
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a Python code generator. Output only code, no explanation."
+    "You are a code generator. Output ONLY valid executable code. "
+    "No explanation, no commentary, no markdown fencing."
 )
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen3.5-9B"
+_TEXT_ONLY_PHASES = frozenset({
+    "decompose", "decompose_concise", "plan", "diagnose",
+})
 
 
 def _build_prompt(state: RuneState) -> str:
@@ -80,7 +97,7 @@ def _build_prompt(state: RuneState) -> str:
     base = (
         f"Task: {task}\n\n"
         f"Test suite (your code must pass these):\n{test_suite}\n\n"
-        "Write a Python solution:"
+        "Write a solution:"
     )
 
     if state["attempt_count"] == 0:
@@ -102,19 +119,91 @@ def _build_prompt(state: RuneState) -> str:
     )
 
 
-def _extract_code(text: str) -> str:
-    """Extract code from a markdown python block, or return stripped text.
+_CODE_START_RE = re.compile(r"^(import |from |def |class |@)", re.MULTILINE)
 
-    Args:
-        text: Raw LLM response text.
 
-    Returns:
-        Extracted code string.
+def _syntax_ok(code: str) -> bool:
+    try:
+        ast.parse(code)
+        return True
+    except SyntaxError:
+        return False
+
+
+def _longest_valid_block(text: str) -> str:
+    """Find the longest contiguous line range that is valid Python.
+
+    Adapted from EvalPlus's code_extract — the de-facto standard for
+    sanitizing LLM code output across major benchmarks. O(n²) worst case
+    but n is bounded by max_tokens (typically <200 lines).
     """
-    match = re.search(r"```python\s*(.*?)```", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return text.strip()
+    lines = text.split("\n")
+    n = len(lines)
+    best_start = 0
+    best_end = 0
+    best_nonblank = 0
+
+    for i in range(n):
+        if n - i <= best_nonblank:
+            break
+        for j in range(n, i, -1):
+            if j - i <= best_nonblank:
+                break
+            candidate = "\n".join(lines[i:j])
+            if _syntax_ok(candidate):
+                nonblank = sum(1 for line in lines[i:j] if line.strip())
+                if nonblank > best_nonblank:
+                    best_nonblank = nonblank
+                    best_start = i
+                    best_end = j
+                break
+
+    if best_nonblank > 0:
+        return "\n".join(lines[best_start:best_end]).strip()
+    return ""
+
+
+def _extract_code(text: str) -> str:
+    """Extract executable Python from an LLM response.
+
+    Fast path: fence extraction or raw-text validation. Fallback: find
+    the longest contiguous valid-Python line range (EvalPlus pattern).
+    Returns empty string if nothing valid — the retry loop handles that.
+    """
+    # 1. Try ```python fence (prefer last closed fence).
+    fenced = list(re.finditer(r"```python\s*(.*?)```", text, re.DOTALL))
+    if fenced:
+        code = fenced[-1].group(1).strip()
+        if _syntax_ok(code):
+            return code
+
+    # 2. Truncated/unclosed fence (output hit max_tokens).
+    trunc = re.search(r"```python\s*(.*)", text, re.DOTALL)
+    if trunc:
+        code = trunc.group(1).strip()
+        if _syntax_ok(code):
+            return code
+
+    # 3. Raw text as-is.
+    raw = text.strip()
+    if _syntax_ok(raw):
+        return raw
+
+    # 4. Fast heuristic: strip preamble at first code-like line.
+    m = _CODE_START_RE.search(raw)
+    if m:
+        tail = raw[m.start() :].strip()
+        if _syntax_ok(tail):
+            return tail
+
+    # 5. Robust fallback: longest contiguous valid block.
+    result = _longest_valid_block(raw)
+    if result:
+        return result
+
+    # 6. Unrecoverable — return empty to trigger retry.
+    logger.warning("_extract_code: could not recover valid Python from LLM output")
+    return ""
 
 
 async def generate_node(state: RuneState) -> dict[str, Any]:
@@ -147,15 +236,22 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
 
     max_tokens = int(os.environ.get("RUNE_MAX_TOKENS", "1024"))
 
+    enable_thinking = phase in _TEXT_ONLY_PHASES
+
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,
         model=model,
         adapter_id=adapter_id,
         max_tokens=max_tokens,
         system_prompt=system_prompt,
+        enable_thinking=enable_thinking,
     )
 
-    extracted = _extract_code(result.text)
+    extracted = (
+        result.text.strip()
+        if phase in _TEXT_ONLY_PHASES
+        else _extract_code(result.text)
+    )
     logger.info(
         "generate_node: attempt=%d, model=%s, adapter_id=%s, tokens=%d, finish=%s",
         state["attempt_count"],

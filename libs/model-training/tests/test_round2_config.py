@@ -60,5 +60,5 @@ def test_round2_config_inherits_d2l_fields() -> None:
     cfg = Round2TrainConfig(**_minimal_kwargs(lr=1e-4, alpha=0.7))
     assert cfg.lr == pytest.approx(1e-4)
     assert cfg.alpha == pytest.approx(0.7)
-    # default from parent
-    assert cfg.temperature == pytest.approx(2.0)
+    # default from parent (hypernet_defaults.yaml: T=1.0, validated in kd-a10-t10)
+    assert cfg.temperature == pytest.approx(1.0)

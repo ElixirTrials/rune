@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 from inference.provider import GenerationResult, InferenceProvider
@@ -41,6 +42,7 @@ class TransformersProvider(InferenceProvider):
         model_name: str = "",
         device: str = "cpu",
         torch_dtype: str = "auto",
+        pool: Any = None,
     ) -> None:
         """Initialize TransformersProvider.
 
@@ -48,10 +50,14 @@ class TransformersProvider(InferenceProvider):
             model_name: HuggingFace model ID or local path.
             device: Device to load model onto.
             torch_dtype: Model dtype string.
+            pool: Optional ModelPool instance. When provided, the base model
+                and tokenizer are borrowed from the pool instead of loaded
+                independently, avoiding a second copy in VRAM.
         """
         self._model_name = model_name
         self._device = device
         self._torch_dtype = torch_dtype
+        self._pool = pool
         self._model: Any = None
         self._tokenizer: Any = None
         self._base_model: Any = None
@@ -60,8 +66,31 @@ class TransformersProvider(InferenceProvider):
         self._is_peft_wrapped: bool = False
 
     def _load_model_if_needed(self) -> None:
-        """Load the base model and tokenizer if not already loaded."""
+        """Load the base model and tokenizer if not already loaded.
+
+        When a pool is available, borrows the model and tokenizer from it
+        instead of loading a second copy into VRAM.
+        """
         if self._model is not None:
+            return
+
+        if self._pool is not None:
+            model, tokenizer = self._pool.base_model()
+            # Clean residual PEFT state left by a previous pipeline run
+            if hasattr(model, "peft_config"):
+                from peft import PeftModel as _PeftModel  # noqa: PLC0415
+
+                if isinstance(model, _PeftModel):
+                    model = model.base_model.unload()
+                    self._pool._model = model
+                elif hasattr(model, "peft_config"):
+                    del model.peft_config
+                logger.info("Cleaned residual PEFT state from pooled model")
+            self._model = model
+            self._tokenizer = tokenizer
+            self._base_model = model
+            self._device = self._pool.device
+            logger.info("Borrowed base model from pool (device=%s)", self._device)
             return
 
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
@@ -82,10 +111,17 @@ class TransformersProvider(InferenceProvider):
             config = AutoConfig.from_pretrained(self._model_name)
             param_count = getattr(config, "num_parameters", None)
             if param_count is None:
-                # Estimate from config fields
-                h = getattr(config, "hidden_size", 2048)
-                v = getattr(config, "vocab_size", 32000)
-                n = getattr(config, "num_hidden_layers", 24)
+                # Multimodal configs (e.g. Qwen3.5) nest dims under text_config
+                text_cfg = getattr(config, "text_config", config)
+                h = getattr(text_cfg, "hidden_size", None) or getattr(
+                    config, "hidden_size", 2048
+                )
+                v = getattr(text_cfg, "vocab_size", None) or getattr(
+                    config, "vocab_size", 32000
+                )
+                n = getattr(text_cfg, "num_hidden_layers", None) or getattr(
+                    config, "num_hidden_layers", 24
+                )
                 param_count = v * h + n * 12 * h * h
             resolved_dtype = resolve_model_dtype(  # type: ignore[assignment]
                 param_count=param_count, device=self._device
@@ -111,6 +147,7 @@ class TransformersProvider(InferenceProvider):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        enable_thinking: bool = True,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
@@ -125,6 +162,9 @@ class TransformersProvider(InferenceProvider):
             temperature: Sampling temperature (default from pipeline config).
             top_p: Nucleus sampling threshold (default from pipeline config).
             repetition_penalty: Repetition penalty (default 1.0 = off).
+            enable_thinking: Whether to allow model thinking/reasoning
+                tokens. When False, passes ``enable_thinking=False`` to the
+                chat template so output tokens go entirely to the response.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -160,7 +200,7 @@ class TransformersProvider(InferenceProvider):
             self._deactivate_adapter()
 
         # Build chat-formatted prompt via tokenizer's chat template
-        formatted = self._format_prompt(prompt, system_prompt)
+        formatted = self._format_prompt(prompt, system_prompt, enable_thinking)
         inputs = self._tokenizer(
             formatted, return_tensors="pt", truncation=True, max_length=8192
         )
@@ -182,6 +222,18 @@ class TransformersProvider(InferenceProvider):
 
         new_tokens = outputs[0][input_len:]
         text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
+
+        # Capture <think> blocks before stripping (for future adapter injection).
+        thinking_parts = re.findall(
+            r"<think>(.*?)</think>", text, flags=re.DOTALL
+        )
+        dangling = re.search(r"<think>(.*)", text, flags=re.DOTALL)
+        if dangling and not re.search(r"</think>", dangling.group(0)):
+            thinking_parts.append(dangling.group(1))
+        thinking = "\n".join(p.strip() for p in thinking_parts if p.strip()) or None
+
+        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
         total_tokens = outputs.shape[1]
         new_token_count = len(new_tokens)
 
@@ -194,9 +246,15 @@ class TransformersProvider(InferenceProvider):
             adapter_id=self._active_adapter,
             token_count=total_tokens,
             finish_reason=finish_reason,
+            thinking=thinking,
         )
 
-    def _format_prompt(self, prompt: str, system_prompt: str | None = None) -> str:
+    def _format_prompt(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        enable_thinking: bool = True,
+    ) -> str:
         """Format prompt using the tokenizer's chat template when available.
 
         Constructs a messages list and applies the tokenizer's chat template
@@ -205,16 +263,35 @@ class TransformersProvider(InferenceProvider):
         """
         messages: list[dict[str, str]] = []
         if system_prompt:
-            messages.append({"role": "user", "content": f"{system_prompt}\n\n{prompt}"})
-        else:
-            messages.append({"role": "user", "content": prompt})
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
 
         try:
             return self._tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=enable_thinking,
             )
-        except Exception:
-            # Tokenizer has no chat template — fall back to raw concat
+        except TypeError:
+            # Template doesn't support enable_thinking kwarg — retry without it
+            try:
+                return self._tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+            except (AttributeError, TypeError, ValueError):
+                logger.warning(
+                    "Chat template failed, falling back to raw concat",
+                    exc_info=True,
+                )
+                if system_prompt:
+                    return f"{system_prompt}\n\n{prompt}"
+                return prompt
+        except (AttributeError, ValueError):
+            logger.warning(
+                "Chat template failed, falling back to raw concat",
+                exc_info=True,
+            )
             if system_prompt:
                 return f"{system_prompt}\n\n{prompt}"
             return prompt
@@ -268,7 +345,7 @@ class TransformersProvider(InferenceProvider):
         """Register a PEFT adapter directory for use during generation.
 
         The adapter directory must contain adapter_model.safetensors and
-        adapter_config.json as output by save_hypernetwork_adapter().
+        adapter_config.json in standard PEFT format.
 
         Args:
             adapter_id: Unique name for the adapter.
@@ -290,11 +367,13 @@ class TransformersProvider(InferenceProvider):
             if self._is_peft_wrapped and adapter_id in self._model.peft_config:
                 self._model.delete_adapter(adapter_id)
             del self._loaded_adapters[adapter_id]
-            # If no adapters remain, revert to base model
+            # If no adapters remain, fully unwrap PEFT layers from the base model
             if not self._loaded_adapters and self._is_peft_wrapped:
-                self._model = self._base_model
+                clean_model = self._model.base_model.unload()
+                self._model = clean_model
+                self._base_model = clean_model
                 self._is_peft_wrapped = False
-                logger.info("All adapters removed, reverted to base model")
+                logger.info("All adapters removed, PEFT layers unwrapped")
             else:
                 logger.info("Unloaded adapter %s", adapter_id)
 

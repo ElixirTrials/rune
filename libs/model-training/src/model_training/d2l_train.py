@@ -411,7 +411,7 @@ def _dry_run_validate_shapes(config: D2LTrainConfig) -> dict[str, Any]:
     from model_training.d2l_probe import (  # noqa: PLC0415
         extract_activations_with_model,
     )
-    from model_training.sakana_d2l import (  # noqa: PLC0415
+    from model_training.hypernetwork import (  # noqa: PLC0415
         get_aggregator_config,
         transfer_aggregator_weights,
     )
@@ -541,6 +541,8 @@ def train_d2l_qwen3(  # noqa: C901
         LinearLR,
         SequentialLR,
     )
+
+    torch.set_float32_matmul_precision("high")
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
     from model_training.d2l_config import build_hypernet_config  # noqa: PLC0415
@@ -549,7 +551,7 @@ def train_d2l_qwen3(  # noqa: C901
         load_jsonl,
         split_by_task_id,
     )
-    from model_training.sakana_d2l import (  # noqa: PLC0415
+    from model_training.hypernetwork import (  # noqa: PLC0415
         get_aggregator_config,
         transfer_aggregator_weights,
     )

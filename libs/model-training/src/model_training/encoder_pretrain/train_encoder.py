@@ -240,7 +240,10 @@ def run_training(config: EncoderTrainingConfig) -> Path:
         batch_size=config.batch_size,
         shuffle=True,
         collate_fn=collator,
-        drop_last=True,  # ensure every batch has exactly batch_size pairs
+        drop_last=True,
+        num_workers=2,
+        pin_memory=True,
+        persistent_workers=True,
     )
 
     # ---- model ----

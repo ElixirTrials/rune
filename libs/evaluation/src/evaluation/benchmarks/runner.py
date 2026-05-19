@@ -32,6 +32,34 @@ logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_S = 2.0
+# Stop sequences per benchmark type (bigcode-evaluation-harness).
+# HumanEval: model completes a function body → \ndef stops at next function.
+# MBPP: model generates the entire function → \ndef would kill it.
+_HUMANEVAL_STOP = [
+    "\nclass",
+    "\ndef",
+    "\n#",
+    "\n@",
+    "\nprint",
+    "\nif",
+]
+_MBPP_STOP = [
+    "\nclass",
+    "\nassert",
+    '\n"""',
+    "\nprint",
+    "\nif",
+]
+_DEFAULT_CODE_STOP = _HUMANEVAL_STOP
+_STOP_BY_BENCHMARK: dict[str, list[str]] = {
+    "mbpp": _MBPP_STOP,
+    "humaneval": _HUMANEVAL_STOP,
+}
+
+
+def _stop_sequences_for(benchmark_id: str) -> list[str]:
+    return _STOP_BY_BENCHMARK.get(benchmark_id, _DEFAULT_CODE_STOP)
+
 
 try:
     from openai import APIConnectionError, APITimeoutError
@@ -73,10 +101,24 @@ def _import_adapter(dotted_path: str) -> Any:
     return cls()
 
 
+def _truncate_at_stop_token(text: str, stop_tokens: list[str]) -> str:
+    """Post-hoc truncation at the first stop token (bigcode pattern).
+
+    Safety net in case the provider doesn't honor stop sequences.
+    """
+    min_idx = len(text)
+    for token in stop_tokens:
+        idx = text.find(token)
+        if idx != -1 and idx < min_idx:
+            min_idx = idx
+    return text[:min_idx]
+
+
 def _generate_completion(
     adapter_stack: AdapterStack,
     problem: Problem,
     max_tokens: int = 512,
+    stop: list[str] | None = None,
 ) -> str:
     """Synchronously call provider.generate() from a thread.
 
@@ -88,10 +130,13 @@ def _generate_completion(
         adapter_stack: AdapterStack with provider and model config.
         problem: Problem whose prompt is sent to the model.
         max_tokens: Generation token cap.
+        stop: Stop sequences for truncation.
 
     Returns:
         Generated text string.
     """
+    effective_stop = stop or _DEFAULT_CODE_STOP
+
     if adapter_stack.completion_override is not None:
         prompt = problem.prompt
         if adapter_stack.prompt_augmenter is not None:
@@ -101,7 +146,9 @@ def _generate_completion(
     loop = asyncio.new_event_loop()
     try:
         if adapter_stack.adapter_generator is not None:
-            return _generate_with_hypernet(adapter_stack, problem, max_tokens, loop)
+            return _generate_with_hypernet(
+                adapter_stack, problem, max_tokens, loop, effective_stop
+            )
 
         effective_prompt = problem.prompt
         if adapter_stack.prompt_augmenter is not None:
@@ -122,9 +169,10 @@ def _generate_completion(
                         model=adapter_stack.base_model,
                         adapter_id=adapter_id,
                         max_tokens=max_tokens,
+                        stop=effective_stop,
                     )
                 )
-                return str(result.text)
+                return _truncate_at_stop_token(str(result.text), effective_stop)
             except _RETRYABLE_ERRORS as exc:
                 last_exc = exc
                 wait = _RETRY_BACKOFF_S * (2**attempt)
@@ -137,7 +185,7 @@ def _generate_completion(
                     exc,
                 )
                 time.sleep(wait)
-        raise last_exc  # type: ignore[misc]
+        raise last_exc  # type: ignore[misc]  # noqa: PLE0704 — always bound after ≥1 iteration
     finally:
         loop.close()
 
@@ -147,6 +195,7 @@ def _generate_with_hypernet(
     problem: Problem,
     max_tokens: int,
     loop: asyncio.AbstractEventLoop,
+    stop: list[str],
 ) -> str:
     """Generate a completion using a per-problem hypernetwork adapter.
 
@@ -155,10 +204,12 @@ def _generate_with_hypernet(
         problem: Problem whose prompt drives adapter generation.
         max_tokens: Generation token cap.
         loop: Event loop for async provider calls.
+        stop: Stop sequences for truncation.
 
     Returns:
         Generated text string.
     """
+    effective_stop = stop
     assert adapter_stack.adapter_generator is not None
 
     effective_prompt = problem.prompt
@@ -176,9 +227,10 @@ def _generate_with_hypernet(
                 prompt=effective_prompt,
                 model=adapter_stack.base_model,
                 max_tokens=max_tokens,
+                stop=effective_stop,
             )
         )
-        return str(result.text)
+        return _truncate_at_stop_token(str(result.text), effective_stop)
 
     adapter_id = f"hypernet_{problem.problem_id}"
     try:
@@ -191,9 +243,10 @@ def _generate_with_hypernet(
                 model=adapter_stack.base_model,
                 adapter_id=adapter_id,
                 max_tokens=max_tokens,
+                stop=effective_stop,
             )
         )
-        return str(result.text)
+        return _truncate_at_stop_token(str(result.text), effective_stop)
     finally:
         try:
             loop.run_until_complete(adapter_stack.provider.unload_adapter(adapter_id))
@@ -210,6 +263,7 @@ def _evaluate_one(
     adapter_stack: AdapterStack,
     problem: Problem,
     config: BenchmarkConfig,
+    stop: list[str] | None = None,
 ) -> PassVerdict:
     """Generate a completion and score it for a single problem.
 
@@ -218,22 +272,13 @@ def _evaluate_one(
         adapter_stack: AdapterStack for generation.
         problem: Problem to evaluate.
         config: BenchmarkConfig with timeout_s.
+        stop: Benchmark-specific stop sequences.
 
     Returns:
         PassVerdict for this problem.
     """
-    try:
-        generation = _generate_completion(adapter_stack, problem)
-        return adapter.score(problem, generation, timeout_s=config.timeout_s)  # type: ignore[no-any-return]
-    except Exception as exc:
-        logger.warning("Error evaluating problem %s: %s", problem.problem_id, exc)
-        return PassVerdict(
-            problem_id=problem.problem_id,
-            passed=False,
-            generation="",
-            error=str(exc),
-            timed_out=False,
-        )
+    generation = _generate_completion(adapter_stack, problem, stop=stop)
+    return adapter.score(problem, generation, timeout_s=config.timeout_s)  # type: ignore[no-any-return]
 
 
 def _load_checkpoint(path: Path) -> list[PassVerdict]:
@@ -283,6 +328,7 @@ def run_benchmark(  # noqa: C901
     max_samples: int | None = None,
     config: BenchmarkConfig | None = None,
     checkpoint_dir: Path | str | None = None,
+    on_verdict: Any | None = None,
 ) -> BenchmarkResult:
     """Run a full benchmark evaluation pass and return aggregate Pass@1.
 
@@ -303,6 +349,9 @@ def run_benchmark(  # noqa: C901
         checkpoint_dir: Directory for per-problem JSONL checkpoints. When set,
             completed verdicts are appended incrementally and subsequent runs
             resume from the checkpoint.
+        on_verdict: Optional callback ``(benchmark_id, verdict, running_pass_at_1,
+            n_completed, n_total) -> None`` invoked after each problem completes.
+            Useful for streaming metrics to MLflow.
 
     Returns:
         BenchmarkResult with per-problem verdicts and aggregate pass_at_1.
@@ -384,10 +433,24 @@ def run_benchmark(  # noqa: C901
         cfg.max_workers,
     )
 
+    bench_stop = _stop_sequences_for(benchmark_id)
+    n_total = len(problems)
+    _pass_count = len([v for v in cached_verdicts if v.passed])
+    _completed = len(cached_verdicts)
+    _verdict_lock = threading.Lock()
+
     def _evaluate_and_checkpoint(problem: Problem) -> PassVerdict:
-        verdict = _evaluate_one(adapter, adapter_stack, problem, cfg)
+        nonlocal _pass_count, _completed
+        verdict = _evaluate_one(adapter, adapter_stack, problem, cfg, stop=bench_stop)
         if ckpt_path is not None:
             _append_checkpoint(ckpt_path, verdict)
+        with _verdict_lock:
+            _completed += 1
+            if verdict.passed:
+                _pass_count += 1
+            running_p1 = _pass_count / _completed if _completed else 0.0
+        if on_verdict is not None:
+            on_verdict(benchmark_id, verdict, running_p1, _completed, n_total)
         return verdict
 
     # Warm up the provider connection with the first problem (single-threaded)
@@ -409,4 +472,23 @@ def run_benchmark(  # noqa: C901
     id_order = {p.problem_id: i for i, p in enumerate(problems)}
     verdicts.sort(key=lambda v: id_order.get(v.problem_id, 9999))
 
-    return BenchmarkResult(benchmark_id=benchmark_id, verdicts=verdicts)
+    result = BenchmarkResult(benchmark_id=benchmark_id, verdicts=verdicts)
+
+    # Warn only on infrastructure-type failures (connection, timeout, empty gen),
+    # not on model-quality failures (assertion, syntax, name errors).
+    infra_errors = sum(
+        1
+        for v in verdicts
+        if not v.passed
+        and v.error
+        and ("Connection" in v.error or "Timeout" in v.error or v.generation == "")
+    )
+    if infra_errors > len(verdicts) * 0.1:
+        logger.warning(
+            "HIGH INFRA ERROR RATE: %s has %d/%d infrastructure errors — "
+            "check vLLM server health",
+            benchmark_id,
+            infra_errors,
+            result.n_problems,
+        )
+    return result

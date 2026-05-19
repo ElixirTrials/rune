@@ -36,6 +36,7 @@ class GenerationResult:
     adapter_id: str | None
     token_count: int
     finish_reason: str
+    thinking: str | None = None
 
 
 class InferenceProvider(ABC):
@@ -62,6 +63,7 @@ class InferenceProvider(ABC):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        enable_thinking: bool = True,
     ) -> GenerationResult:
         """Generate text from a prompt.
 
@@ -73,10 +75,12 @@ class InferenceProvider(ABC):
             max_tokens: Maximum number of tokens to generate.
             system_prompt: Optional system-level instruction. Providers that
                 support chat templates will format this as a system message.
-
             temperature: Sampling temperature override.
             top_p: Nucleus sampling threshold override.
             repetition_penalty: Repetition penalty override.
+            enable_thinking: Whether to allow model thinking/reasoning tokens.
+                When False, suppresses thinking via chat template so output
+                tokens go entirely to the response.
 
         Returns:
             A GenerationResult containing the generated text and metadata.
@@ -96,6 +100,7 @@ class InferenceProvider(ABC):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        stop: list[str] | None = None,
     ) -> GenerationResult:
         """Generate a text completion (no chat template).
 
@@ -119,6 +124,7 @@ class InferenceProvider(ABC):
             temperature=temperature,
             top_p=top_p,
             repetition_penalty=repetition_penalty,
+            enable_thinking=False,
         )
 
     @abstractmethod

@@ -382,7 +382,7 @@ def _char_level_match_pos(
         prefix_text = span_text[:char_idx]
         prefix_ids = tokenizer.encode(prefix_text, add_special_tokens=False)
         return len(prefix_ids)
-    except Exception:  # noqa: BLE001
+    except (AttributeError, TypeError, ValueError, IndexError, KeyError):
         logger.warning(
             "_char_level_match_pos failed for span [%d:%d] (post_text len=%d)",
             span_start,
@@ -1063,10 +1063,11 @@ class DiffAwareSFTTrainer(SFTTrainer):  # type: ignore[misc,valid-type]
             for k, v in metrics.items():
                 self._diff_metric_sums[k] = self._diff_metric_sums.get(k, 0.0) + v
             self._diff_metric_count += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.exception(
+        except (RuntimeError, ValueError, AttributeError) as exc:
+            logger.warning(
                 "DiffAwareSFTTrainer: step-metrics accumulation failed; "
-                "training continues without per-step diagnostics for this batch."
+                "training continues without per-step diagnostics for this batch.",
+                exc_info=True,
             )
             # Drop the traceback's frame references and free any partially
             # allocated CUDA tensors so a metrics-only OOM doesn't compound

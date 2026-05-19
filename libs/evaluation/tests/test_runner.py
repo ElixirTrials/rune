@@ -24,6 +24,21 @@ FIXTURE = Path(__file__).parent / "fixtures" / "humaneval_mini.parquet"
 class _MockProvider:
     """Minimal mock InferenceProvider that always returns a wrong answer."""
 
+    async def complete_text(
+        self,
+        prompt: str,
+        model: str,
+        adapter_id: str | None = None,
+        max_tokens: int = 512,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
+        stop: list[str] | None = None,
+    ) -> MagicMock:
+        return await self.generate(
+            prompt, model, adapter_id=adapter_id, max_tokens=max_tokens
+        )
+
     async def generate(
         self,
         prompt: str,
@@ -42,6 +57,8 @@ class _MockProvider:
             text="    return []",
             model=model,
             adapter_id=adapter_id,
+            token_count=10,
+            finish_reason="stop",
         )
 
     async def load_adapter(self, adapter_id: str, adapter_path: str) -> None:

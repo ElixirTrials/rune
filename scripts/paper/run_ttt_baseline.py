@@ -66,7 +66,7 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     ttt_model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         device_map="auto",
     )
     original_sd = {k: v.cpu().clone() for k, v in ttt_model.state_dict().items()}

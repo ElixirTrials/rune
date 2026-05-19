@@ -105,7 +105,7 @@ def test_qwen35_training_defaults() -> None:
     assert config.gradient_accumulation_steps == 16
     assert config.lr_scheduler_type == "constant"
     assert config.epochs == 3
-    assert config.attn_implementation == "eager"
+    assert config.attn_implementation == "sdpa"
     assert config.default_lora_rank == 64
     assert config.default_lora_alpha == 32
 

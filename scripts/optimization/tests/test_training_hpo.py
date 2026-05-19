@@ -84,32 +84,39 @@ def test_print_only_mode_prints_plan_and_exits(
     tmp_path: Path,
 ) -> None:
     """--print-only must NOT import optuna / torch and must print the new formula."""
-    rc = main(
-        [
-            "--dataset",
-            str(tmp_path / "x.jsonl"),
-            "--output-root",
-            str(tmp_path / "hpo"),
-            "--print-only",
-        ]
-    )
-    assert rc == 0
-    out = capsys.readouterr().out
-    payload = json.loads(out.strip())
-    assert payload["study_name"] == "rune-training-v1"
-    assert "fitness_formula" in payload
-    assert "hunk_loss" in payload["fitness_formula"]
-    assert "adapter_improvement" in payload["fitness_formula"]
-    assert set(payload["fitness"].keys()) == {
-        "hunk_loss_weight",
-        "hunk_accuracy_weight",
-        "adapter_improvement_weight",
-    }
-    assert payload["heldout"]["fraction"] == pytest.approx(0.1)
-    assert payload["heldout"]["strategy"] == "step_index"
-    assert payload["heldout"]["adapter_improvement_eval"] is True
-    # --print-only must not load optuna (the heavy HPO-side dependency).
-    assert "optuna" not in sys.modules
+    # Drop any optuna left in sys.modules by an earlier test so the assertion
+    # below tests the --print-only codepath itself, not global import state.
+    optuna_mod = sys.modules.pop("optuna", None)
+    try:
+        rc = main(
+            [
+                "--dataset",
+                str(tmp_path / "x.jsonl"),
+                "--output-root",
+                str(tmp_path / "hpo"),
+                "--print-only",
+            ]
+        )
+        assert rc == 0
+        out = capsys.readouterr().out
+        payload = json.loads(out.strip())
+        assert payload["study_name"] == "rune-training-v1"
+        assert "fitness_formula" in payload
+        assert "hunk_loss" in payload["fitness_formula"]
+        assert "adapter_improvement" in payload["fitness_formula"]
+        assert set(payload["fitness"].keys()) == {
+            "hunk_loss_weight",
+            "hunk_accuracy_weight",
+            "adapter_improvement_weight",
+        }
+        assert payload["heldout"]["fraction"] == pytest.approx(0.1)
+        assert payload["heldout"]["strategy"] == "step_index"
+        assert payload["heldout"]["adapter_improvement_eval"] is True
+        # --print-only must not load optuna (the heavy HPO-side dependency).
+        assert "optuna" not in sys.modules
+    finally:
+        if optuna_mod is not None:
+            sys.modules["optuna"] = optuna_mod
 
 
 def test_print_only_no_adapter_improvement_rebalances(
@@ -582,6 +589,10 @@ def test_upload_adapter_uses_mlflow_and_removes_local(
         def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
             calls.append((local_dir, artifact_path))
 
+        @staticmethod
+        def active_run() -> None:
+            return None
+
     monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
 
     result = hpo._upload_adapter_and_cleanup(
@@ -606,6 +617,10 @@ def test_upload_adapter_keeps_local_when_upload_fails(
         @staticmethod
         def log_artifacts(local_dir: str, *, artifact_path: str = "") -> None:
             raise RuntimeError("S3 unreachable")
+
+        @staticmethod
+        def active_run() -> None:
+            return None
 
     monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
 
@@ -688,6 +703,10 @@ def test_gate_uploads_when_trial_enters_top_k(
         @staticmethod
         def set_tag(key: str, value: str) -> None:  # for displaced tag (no-op here)
             pass
+
+        @staticmethod
+        def active_run() -> None:
+            return None
 
     monkeypatch.setitem(sys.modules, "mlflow", _FakeMlflow)
 
@@ -799,6 +818,10 @@ def test_gate_displaces_and_deletes_old_run_when_full_and_improved(
         @staticmethod
         def set_tag(key: str, value: str) -> None:
             set_tag_calls.append((key, value))
+
+        @staticmethod
+        def active_run() -> None:
+            return None
 
     class _FakeMlflowTracking:
         class MlflowClient:

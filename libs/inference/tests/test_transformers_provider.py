@@ -143,11 +143,12 @@ def test_unload_last_adapter_reverts_to_base(
 
     provider._activate_adapter("a1")
 
-    base = provider._base_model
     asyncio.run(provider.unload_adapter("a1"))
 
     assert provider._is_peft_wrapped is False
-    assert provider._model is base
+    # After unload(), model is the clean unwrapped result, not the original ref
+    wrapped.base_model.unload.assert_called_once()
+    assert provider._model is wrapped.base_model.unload()
 
 
 def test_full_lifecycle_no_accumulation(
@@ -181,3 +182,66 @@ def test_full_lifecycle_no_accumulation(
     asyncio.run(provider.unload_adapter("a2"))
     assert provider._is_peft_wrapped is False
     assert provider._model is provider._base_model
+
+
+# ---------------------------------------------------------------------------
+# _format_prompt tests
+# ---------------------------------------------------------------------------
+
+
+def test_format_prompt_uses_system_role(
+    provider: "TransformersProvider",  # noqa: F821
+) -> None:
+    """System prompt should be in a separate system message, not stuffed into user."""
+    template_calls: list[dict] = []
+
+    def fake_template(messages: list, **kwargs: object) -> str:
+        template_calls.append({"messages": messages, "kwargs": kwargs})
+        return "<formatted>"
+
+    provider._tokenizer.apply_chat_template = fake_template
+
+    result = provider._format_prompt("do something", system_prompt="be helpful")
+    assert result == "<formatted>"
+
+    msgs = template_calls[0]["messages"]
+    assert msgs[0]["role"] == "system"
+    assert msgs[0]["content"] == "be helpful"
+    assert msgs[1]["role"] == "user"
+    assert msgs[1]["content"] == "do something"
+
+
+def test_format_prompt_passes_enable_thinking(
+    provider: "TransformersProvider",  # noqa: F821
+) -> None:
+    """enable_thinking kwarg is forwarded to apply_chat_template."""
+    template_calls: list[dict] = []
+
+    def fake_template(messages: list, **kwargs: object) -> str:
+        template_calls.append({"messages": messages, "kwargs": kwargs})
+        return "<formatted>"
+
+    provider._tokenizer.apply_chat_template = fake_template
+
+    provider._format_prompt("code task", enable_thinking=False)
+    assert template_calls[0]["kwargs"]["enable_thinking"] is False
+
+
+def test_format_prompt_fallback_when_template_rejects_thinking(
+    provider: "TransformersProvider",  # noqa: F821
+) -> None:
+    """Falls back gracefully when chat template doesn't support enable_thinking."""
+    call_count = 0
+
+    def fake_template(messages: list, **kwargs: object) -> str:
+        nonlocal call_count
+        call_count += 1
+        if "enable_thinking" in kwargs:
+            raise TypeError("unexpected keyword argument 'enable_thinking'")
+        return "<formatted>"
+
+    provider._tokenizer.apply_chat_template = fake_template
+
+    result = provider._format_prompt("do something", enable_thinking=False)
+    assert result == "<formatted>"
+    assert call_count == 2

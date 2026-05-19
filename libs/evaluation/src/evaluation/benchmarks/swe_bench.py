@@ -221,6 +221,10 @@ class SWEBenchLiteAdapter:
         try:
             return self._load_from_hf()
         except Exception:
+            logger.warning(
+                "HuggingFace load failed, falling back to fixture",
+                exc_info=True,
+            )
             return self._load_from_fixture()
 
     def _load_from_hf(self) -> list[dict[str, Any]]:

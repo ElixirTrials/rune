@@ -179,13 +179,14 @@ class TestMlflowCheckpointUpload:
                 "/tmp/ckpt-5.pt", artifact_path="checkpoints"
             )
 
-    def test_mlflow_log_checkpoint_silent_on_failure(self) -> None:
+    def test_mlflow_log_checkpoint_raises_on_failure(self) -> None:
         from model_training.training_common import mlflow_log_checkpoint
 
         mock_mlflow = MagicMock()
         mock_mlflow.log_artifact.side_effect = RuntimeError("connection refused")
         with patch.dict("sys.modules", {"mlflow": mock_mlflow}):
-            mlflow_log_checkpoint("/tmp/ckpt-5.pt")
+            with pytest.raises(RuntimeError, match="connection refused"):
+                mlflow_log_checkpoint("/tmp/ckpt-5.pt")
 
 
 class TestMlflowCheckpointDownload:

@@ -93,6 +93,18 @@ class BenchmarkResult:
         return sum(1 for v in self.verdicts if v.passed)
 
     @property
+    def n_errors(self) -> int:
+        """Number of verdicts with a non-None error (infrastructure or model)."""
+        return sum(1 for v in self.verdicts if v.error is not None)
+
+    @property
+    def error_rate(self) -> float:
+        """Fraction of verdicts that had errors, in [0.0, 1.0]."""
+        if not self.verdicts:
+            return 0.0
+        return self.n_errors / self.n_problems
+
+    @property
     def pass_at_1(self) -> float:
         """Pass@1 as a fraction in [0.0, 1.0].
 

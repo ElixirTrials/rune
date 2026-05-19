@@ -114,7 +114,7 @@ async def main() -> None:
 
     import tempfile
 
-    from model_training.sakana_d2l import generate_adapter_from_sakana
+    from model_training.adapter_generator import generate_adapter
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Generate methodology adapter
@@ -131,7 +131,7 @@ async def main() -> None:
             "PHASE: bootstrap — apply methodology to plan and implement this project."
         )
 
-        adapter_path = generate_adapter_from_sakana(
+        adapter_path = generate_adapter(
             text=bootstrap_text,
             output_dir=os.path.join(tmpdir, "methodology"),
             device=DEVICE,
@@ -181,7 +181,7 @@ async def main() -> None:
                 f"FIX: Check syntax, imports, indentation. Ensure all names defined."
             )
 
-            adapter_path2 = generate_adapter_from_sakana(
+            adapter_path2 = generate_adapter(
                 text=error_trajectory,
                 output_dir=os.path.join(tmpdir, "error_conditioned"),
                 device=DEVICE,

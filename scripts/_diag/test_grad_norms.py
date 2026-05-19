@@ -112,7 +112,7 @@ def main():
     from model_training.d2l_data import generate_needle_dataset
     from model_training.d2l_lora import apply_functional_lora
     from model_training.d2l_probe import extract_activations_with_model
-    from model_training.sakana_d2l import _patch_flash_attention
+    from model_training.hypernetwork import _patch_flash_attention
     from shared.hardware import get_best_device
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 

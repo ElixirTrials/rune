@@ -36,6 +36,10 @@ from typing import Any
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 warnings.filterwarnings("ignore", message=".*guard_size_oblivious.*")
 
+import torch  # noqa: E402
+
+torch.set_float32_matmul_precision("high")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bootstrap import setup_path  # type: ignore[import-not-found]
 
@@ -412,7 +416,7 @@ def main() -> None:  # noqa: C901
     from model_training.d2l_data import load_jsonl, split_by_task_id  # noqa: PLC0415
     from model_training.d2l_lora import apply_functional_lora  # noqa: PLC0415
     from model_training.d2l_probe import extract_activations_with_model  # noqa: PLC0415
-    from model_training.sakana_d2l import _patch_flash_attention  # noqa: PLC0415
+    from model_training.hypernetwork import _patch_flash_attention  # noqa: PLC0415
     from model_training.training_common import (  # noqa: PLC0415
         _log_failure,
         mlflow_download_latest_checkpoint,
@@ -462,7 +466,7 @@ def main() -> None:  # noqa: C901
         base_model = AutoModelForCausalLM.from_pretrained(
             args.base_model,
             output_hidden_states=True,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             device_map="auto",
         ).eval()
     else:
@@ -615,7 +619,7 @@ def main() -> None:  # noqa: C901
                     logits_src,
                     _manifest.get("n_valid", "?"),
                 )
-            except Exception:
+            except (OSError, KeyError, json.JSONDecodeError):
                 logger.info("Using precomputed teacher logits from %s", logits_src)
         else:
             logits_dir = Path(logits_src)

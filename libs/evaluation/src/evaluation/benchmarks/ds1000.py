@@ -11,12 +11,15 @@ Split: test
 
 from __future__ import annotations
 
+import logging
 import os
 import random
 from pathlib import Path
 from typing import Any
 
 from evaluation.benchmarks.protocol import PassVerdict, Problem
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_FIXTURE = (
     Path(__file__).parent.parent.parent.parent.parent.parent
@@ -98,6 +101,10 @@ class DS1000Adapter:
         try:
             return self._load_from_hf()
         except Exception:
+            logger.warning(
+                "HuggingFace load failed, falling back to fixture",
+                exc_info=True,
+            )
             return self._load_from_fixture()
 
     def _load_from_hf(self) -> list[dict[str, Any]]:

@@ -151,7 +151,7 @@ def evaluate_code(code: str, timeout: int = 60) -> dict[str, Any]:
 
 
 async def main() -> None:
-    from model_training.sakana_d2l import download_checkpoint
+    from model_training.hypernetwork import download_checkpoint
     from rune_runner import run_phased_pipeline  # type: ignore[import-not-found]
 
     # Download checkpoint once

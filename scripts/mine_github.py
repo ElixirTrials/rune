@@ -130,8 +130,8 @@ def _run_batch(config_path: Path, output_dir: Path, token: str) -> None:
             total_traj += len(trajectories)
             total_pairs += len(pairs)
         except Exception:
-            logger.exception("Failed to mine %s, skipping", repo)
-            continue
+            logger.exception("Failed to mine %s", repo)
+            raise
 
     logger.info(
         "Batch complete: %d trajectories / %d pairs across %d repos",

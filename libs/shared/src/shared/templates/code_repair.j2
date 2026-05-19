@@ -1,4 +1,4 @@
-ROLE: python-coder (repair)
+ROLE: coder (repair)
 {% if project %}PROJECT: {{ project[:300] }}
 {% endif %}SUBTASK: {{ subtask.name }}
 DIAGNOSIS: {{ diagnosis[:300] }}
@@ -17,5 +17,5 @@ PRIOR REPAIR ATTEMPTS FOR THIS SUBTASK:
 {% endif %}
 PRACTICES: Fix the diagnosed issues. Ensure all classes and functions are
 defined in your code — do not import from sibling subtask modules.
-Use dataclasses, type annotations, unittest.TestCase.
-End with: if __name__ == '__main__': unittest.main()
+For example, for a Python task: use dataclasses, type annotations,
+unittest.TestCase. End with: if __name__ == '__main__': unittest.main()

@@ -2,16 +2,25 @@
 
 Loads from google-research-datasets/mbpp (full config, train split).
 MBPP test_list field contains assert statements; we join and execute them.
+
+Prompt construction follows the standard MBPP evaluation protocol
+(bigcode-evaluation-harness, EvalPlus): the natural-language description
+is wrapped with example assertions so the model can infer the expected
+function name and signature.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import random
+import re
 from pathlib import Path
 from typing import Any
 
 from evaluation.benchmarks.protocol import PassVerdict, Problem
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_FIXTURE = (
     Path(__file__).parent.parent.parent.parent.parent.parent
@@ -19,6 +28,8 @@ _DEFAULT_FIXTURE = (
     / "fixtures"
     / "mbpp_mini.parquet"
 )
+
+_FUNC_NAME_RE = re.compile(r"assert\s+(\w+)\s*\(")
 
 
 class MBPPAdapter:
@@ -69,9 +80,9 @@ class MBPPAdapter:
         """
         from shared.sandbox import SubprocessBackend  # deferred: INFRA-05
 
-        # MBPP prompt is a natural-language description, not Python —
-        # only generation + assertions are executed.
-        code = f"{generation}\n\n{problem.test_code}\n"
+        setup = problem.metadata.get("test_setup_code", "")
+        setup_block = f"{setup}\n" if setup else ""
+        code = f"{setup_block}{generation}\n\n{problem.test_code}\n"
         backend = SubprocessBackend()
         result = backend.run(code, timeout=timeout_s)
         passed = result.exit_code == 0 and not result.is_timed_out
@@ -91,6 +102,10 @@ class MBPPAdapter:
         try:
             return self._load_from_hf()
         except Exception:
+            logger.warning(
+                "HuggingFace load failed, falling back to fixture",
+                exc_info=True,
+            )
             return self._load_from_fixture()
 
     def _load_from_hf(self) -> list[dict[str, Any]]:
@@ -98,7 +113,7 @@ class MBPPAdapter:
         import datasets as hf_datasets  # deferred
 
         ds = hf_datasets.load_dataset(
-            "google-research-datasets/mbpp", "full", split="train"
+            "google-research-datasets/mbpp", "sanitized", split="test"
         )
         return list(ds)
 
@@ -114,13 +129,34 @@ class MBPPAdapter:
     def _row_to_problem(self, row: dict[str, Any]) -> Problem:
         """Convert a raw MBPP row to a Problem instance."""
         test_list = row.get("test_list", [])
-        if isinstance(test_list, list):
+        if not isinstance(test_list, str):
             test_code = "\n".join(str(t) for t in test_list)
         else:
-            test_code = str(test_list)
+            test_code = test_list
+
+        description = str(row.get("text", "") or row.get("prompt", ""))
+
+        # Standard MBPP eval protocol (bigcode-evaluation-harness):
+        # include assertions so the model sees the expected function name.
+        test_lines = test_code.split("\n")
+        test_hint = test_lines[0] if test_lines else ""
+        prompt = f'"""\n{description}\n\n>>> {test_hint}\n"""\n'
+
+        entry_point: str | None = None
+        match = _FUNC_NAME_RE.search(test_code)
+        if match:
+            entry_point = match.group(1)
+
+        setup_code = str(row.get("test_setup_code", "") or "")
+
         return Problem(
             problem_id=f"mbpp/{row.get('task_id', '')}",
-            prompt=str(row.get("text", "")),
+            prompt=prompt,
             test_code=test_code,
-            metadata={"source_file": row.get("source_file", "")},
+            entry_point=entry_point,
+            metadata={
+                "source_file": row.get("source_file", ""),
+                "test_setup_code": setup_code,
+                "description": description,
+            },
         )

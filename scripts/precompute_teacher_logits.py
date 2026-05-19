@@ -184,7 +184,7 @@ def main() -> None:
 
     import torch  # noqa: PLC0415
     from model_training.d2l_lora import apply_functional_lora  # noqa: PLC0415
-    from model_training.sakana_d2l import _patch_flash_attention  # noqa: PLC0415
+    from model_training.hypernetwork import _patch_flash_attention  # noqa: PLC0415
     from safetensors.torch import load_file  # noqa: PLC0415
     from shared.hardware import get_best_device  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
@@ -207,7 +207,7 @@ def main() -> None:
         logger.info("Loading base model: %s (bf16)", args.base_model)
         base_model = AutoModelForCausalLM.from_pretrained(
             args.base_model,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             device_map="auto",
         ).eval()
     elif nf4_cache.exists():
@@ -237,7 +237,7 @@ def main() -> None:
             base_model.save_pretrained(str(nf4_cache))
             tokenizer.save_pretrained(str(nf4_cache))
             logger.info("Cached NF4 model to %s", nf4_cache)
-        except Exception:
+        except OSError:
             logger.warning(
                 "Failed to cache NF4 model — will re-quantize next run", exc_info=True
             )

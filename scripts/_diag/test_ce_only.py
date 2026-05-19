@@ -52,7 +52,7 @@ def _build_env():
         load_hypernet_defaults,
     )
     from model_training.d2l_data import generate_needle_dataset  # noqa: PLC0415
-    from model_training.sakana_d2l import _patch_flash_attention  # noqa: PLC0415
+    from model_training.hypernetwork import _patch_flash_attention  # noqa: PLC0415
     from shared.hardware import get_best_device  # noqa: PLC0415
     from transformers import (  # noqa: PLC0415
         AutoModelForCausalLM,

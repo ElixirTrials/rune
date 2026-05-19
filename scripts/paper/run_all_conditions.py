@@ -5,7 +5,7 @@ Conditions:
     (ii)  Trajectory-aware RAG — substrate + retrieved trajectory context
     (iii) Direct PEFT QLoRA — substrate + best HPO-tuned LoRA
     (iv)  TTT-E2E — substrate + test-time MLP fine-tuning
-    (v)   Rune — substrate + hypernetwork-generated per-task adapter
+    (v)   Rune — the full 5-phase pipeline per benchmark problem
 
 Usage:
     uv run python scripts/paper/run_all_conditions.py \
@@ -131,6 +131,60 @@ DEFAULT_BASE_MODEL = "Qwen/Qwen3.5-9B"
 DEFAULT_WARM_START = "danielcherubini/Qwen3.5-DeltaCoder-9B"
 
 
+def _run_benchmarks(
+    stack: Any,
+    benchmarks: list[str],
+    max_samples: int | None = None,
+    checkpoint_dir: Path | str | None = None,
+    condition_label: str | None = None,
+) -> dict[str, float | None]:
+    """Run benchmarks against an AdapterStack, returning {benchmark: pass_at_1}."""
+    from evaluation.benchmarks import run_benchmark
+
+    try:
+        import mlflow
+
+        mlflow_active = mlflow.active_run() is not None
+    except ImportError:
+        mlflow_active = False
+
+    def _on_verdict(
+        bench_id: str,
+        verdict: Any,
+        running_p1: float,
+        n_done: int,
+        n_total: int,
+    ) -> None:
+        prefix = f"{condition_label}_" if condition_label else ""
+        if mlflow_active:
+            mlflow.log_metric(
+                f"{prefix}{bench_id}_running_pass_at_1",
+                running_p1,
+                step=n_done,
+            )
+        if n_done % 50 == 0 or n_done == n_total:
+            print(
+                f"  [{prefix}{bench_id}] {n_done}/{n_total} "
+                f"running Pass@1={running_p1:.2%}"
+            )
+
+    results: dict[str, float | None] = {}
+    for bench_id in benchmarks:
+        result = run_benchmark(
+            stack,
+            bench_id,
+            max_samples=max_samples,
+            checkpoint_dir=checkpoint_dir,
+            on_verdict=_on_verdict,
+        )
+        results[bench_id] = result.pass_at_1
+        if mlflow_active and checkpoint_dir:
+            ckpt_file = Path(checkpoint_dir) / f"{bench_id}.jsonl"
+            if ckpt_file.exists():
+                mlflow.log_artifact(str(ckpt_file), "checkpoints")
+    return results
+
+
 def run_condition_static(
     benchmarks: list[str],
     model: str,
@@ -160,7 +214,6 @@ def run_condition_static(
     """
     import asyncio
 
-    from evaluation.benchmarks import run_benchmark
     from evaluation.benchmarks.adapter_stack import AdapterStack
 
     paths = adapter_paths or {}
@@ -177,29 +230,16 @@ def run_condition_static(
             provider=provider,
         )
 
-        results: dict[str, float | None] = {}
-        for bench_id in benchmarks:
-            try:
-                result = run_benchmark(
-                    stack,
-                    bench_id,
-                    max_samples=max_samples,
-                    checkpoint_dir=checkpoint_dir,
-                )
-                results[bench_id] = result.pass_at_1
-            except Exception as exc:
-                logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
-                results[bench_id] = None
-                continue
+        return _run_benchmarks(
+            stack, benchmarks, max_samples, checkpoint_dir, condition_label="static"
+        )
     finally:
         for aid in paths:
             try:
                 loop.run_until_complete(provider.unload_adapter(aid))
-            except Exception:
+            except RuntimeError:
                 logger.warning("Failed to unload adapter %s", aid, exc_info=True)
         loop.close()
-
-    return results
 
 
 def run_condition_rag(
@@ -231,7 +271,6 @@ def run_condition_rag(
     Returns:
         Dict of {benchmark: pass_at_1}.
     """
-    from evaluation.benchmarks import run_benchmark
     from evaluation.benchmarks.adapter_stack import AdapterStack
     from model_training.rag_pipeline import (
         RAGConfig,
@@ -267,21 +306,9 @@ def run_condition_rag(
         prompt_augmenter=prompt_augmenter,
     )
 
-    results: dict[str, float | None] = {}
-    for bench_id in benchmarks:
-        try:
-            result = run_benchmark(
-                stack,
-                bench_id,
-                max_samples=max_samples,
-                checkpoint_dir=checkpoint_dir,
-            )
-            results[bench_id] = result.pass_at_1
-        except Exception as exc:
-            logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
-            results[bench_id] = None
-            continue
-    return results
+    return _run_benchmarks(
+        stack, benchmarks, max_samples, checkpoint_dir, condition_label="rag"
+    )
 
 
 def run_condition_ttt(
@@ -315,7 +342,6 @@ def run_condition_ttt(
     Returns:
         Dict of {benchmark: pass_at_1}.
     """
-    from evaluation.benchmarks import run_benchmark
     from evaluation.benchmarks.adapter_stack import AdapterStack
     from model_training.ttt_e2e import TTTConfig, ttt_forward_pass
 
@@ -326,19 +352,41 @@ def run_condition_ttt(
     )
 
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     print(f"  Loading model {model} for TTT inner-loop...")
     tokenizer = AutoTokenizer.from_pretrained(model)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        llm_int8_enable_fp32_cpu_offload=True,
+    )
     ttt_model = AutoModelForCausalLM.from_pretrained(
         model,
-        torch_dtype=torch.float16,
+        quantization_config=bnb_config,
         device_map="auto",
     )
-    original_sd = {k: v.cpu().clone() for k, v in ttt_model.state_dict().items()}
+
+    from model_training.ttt_e2e import select_mlp_layers
+
+    all_mlp_names = [
+        name
+        for name, _ in ttt_model.named_parameters()
+        if "mlp" in name and "weight" in name
+    ]
+    trainable_names = set(select_mlp_layers(all_mlp_names, ttt_config.mlp_fraction))
+    original_sd = {
+        k: v.detach().cpu().clone()
+        for k, v in ttt_model.state_dict().items()
+        if k in trainable_names
+    }
 
     def completion_override(prompt: str, max_tokens: int) -> str:
-        ttt_model.load_state_dict(original_sd, assign=False)
+        for k, v in original_sd.items():
+            param = ttt_model.get_parameter(k)
+            param.data.copy_(v.to(param.device))
         result = ttt_forward_pass(
             model=ttt_model,
             tokenizer=tokenizer,
@@ -356,92 +404,241 @@ def run_condition_ttt(
         completion_override=completion_override,
     )
 
-    results: dict[str, float | None] = {}
-    for bench_id in benchmarks:
-        try:
-            result = run_benchmark(
-                stack,
-                bench_id,
-                max_samples=max_samples,
-                checkpoint_dir=checkpoint_dir,
-            )
-            results[bench_id] = result.pass_at_1
-        except Exception as exc:
-            logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
-            results[bench_id] = None
-            continue
-    return results
+    return _run_benchmarks(
+        stack, benchmarks, max_samples, checkpoint_dir, condition_label="ttt"
+    )
 
 
-def run_condition_rune(
+def run_condition_rune_phased(
     benchmarks: list[str],
     model: str,
-    warm_start_adapter: str,
     hypernet_checkpoint: str,
-    device: str,
-    provider: Any,
+    device: str = "cuda",
     max_samples: int | None = None,
     checkpoint_dir: Path | str | None = None,
 ) -> dict[str, float | None]:
-    """Evaluate with per-task hypernetwork-generated adapters (condition v).
+    """Condition (v) — Rune: the full 5-phase pipeline per benchmark problem.
 
-    For each benchmark problem, generates a task-specific adapter via the
-    D2L hypernetwork, stacks it on top of the substrate (base + warm-start),
-    and runs inference.
+    Runs the real ``run_phased_pipeline()`` from ``rune_runner.py`` on each
+    problem and scores the accumulated code with the benchmark adapter's
+    ``score()`` method. A pipeline exception on one problem becomes a failed
+    verdict so the run continues.
 
     Args:
         benchmarks: Benchmark IDs to evaluate.
-        model: Base model ID.
-        warm_start_adapter: Warm-start LoRA adapter ID (DeltaCoder).
-        hypernet_checkpoint: Path to trained hypernetwork checkpoint.
-        device: Device for hypernetwork computation.
-        provider: InferenceProvider instance.
+        model: Base model HuggingFace ID.
+        hypernet_checkpoint: Path (local or ``s3://``) to the hypernetwork.
+        device: Device for pipeline computation.
         max_samples: Cap on problems per benchmark.
-        checkpoint_dir: Directory for per-problem JSONL checkpoints.
+        checkpoint_dir: Unused; accepted for signature parity with other
+            conditions.
 
     Returns:
-        Dict of {benchmark: pass_at_1}.
+        Dict of ``{benchmark: pass_at_1}``.
     """
-    import tempfile
+    import asyncio
+    import shutil
 
-    from evaluation.benchmarks import run_benchmark
-    from evaluation.benchmarks.adapter_stack import AdapterStack
-    from rune_runner import run_hypernetwork  # type: ignore[import-not-found]
+    from evaluation.benchmarks.protocol import BenchmarkResult, PassVerdict
+    from evaluation.benchmarks.runner import _ADAPTER_REGISTRY, _import_adapter
+    from rune_runner import run_phased_pipeline  # type: ignore[import-not-found]
 
-    tmp_dir = tempfile.mkdtemp(prefix="rune_eval_")
+    try:
+        import mlflow
 
-    def adapter_generator(prompt: str) -> str | None:
-        return run_hypernetwork(
-            trajectory_text=prompt,
-            output_dir=tmp_dir,
-            base_model_id=model,
-            checkpoint_path=hypernet_checkpoint,
-            device=device,
-        )
-
-    stack = AdapterStack(
-        base_model=model,
-        adapter_ids=[warm_start_adapter],
-        adapter_paths={},
-        provider=provider,
-        adapter_generator=adapter_generator,
-    )
+        mlflow_active = mlflow.active_run() is not None
+    except ImportError:
+        mlflow_active = False
 
     results: dict[str, float | None] = {}
     for bench_id in benchmarks:
-        try:
-            result = run_benchmark(
-                stack,
-                bench_id,
-                max_samples=max_samples,
-                checkpoint_dir=checkpoint_dir,
-            )
-            results[bench_id] = result.pass_at_1
-        except Exception as exc:
-            logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
+        if bench_id not in _ADAPTER_REGISTRY:
+            logger.error("Unknown benchmark %s", bench_id)
             results[bench_id] = None
             continue
+
+        adapter = _import_adapter(_ADAPTER_REGISTRY[bench_id])
+        problems = adapter.load_problems(max_samples=max_samples, seed=42)
+        verdicts: list[PassVerdict] = []
+        n_passed = 0
+
+        logger.info("Rune phased: %s — %d problems", bench_id, len(problems))
+        for pi, problem in enumerate(problems):
+            try:
+                result = asyncio.run(
+                    run_phased_pipeline(
+                        project_prompt=problem.prompt,
+                        checkpoint_path=hypernet_checkpoint,
+                        base_model_id=model,
+                        device=device,
+                    )
+                )
+                verdict = adapter.score(problem, result.get("accumulated_code", ""))
+                shutil.rmtree(result.get("adapter_dir", ""), ignore_errors=True)
+            except Exception:
+                logger.error(
+                    "Pipeline crashed on %s problem %d", bench_id, pi, exc_info=True
+                )
+                verdict = PassVerdict(passed=False, reason="pipeline_crash")
+            verdicts.append(verdict)
+            if verdict.passed:
+                n_passed += 1
+            running_p1 = n_passed / (pi + 1)
+            if mlflow_active:
+                mlflow.log_metric(
+                    f"v_{bench_id}_running_pass_at_1", running_p1, step=pi + 1
+                )
+            if (pi + 1) % 10 == 0 or (pi + 1) == len(problems):
+                print(
+                    f"  [rune/{bench_id}] {pi + 1}/{len(problems)} "
+                    f"running Pass@1={running_p1:.2%}"
+                )
+
+        bench_result = BenchmarkResult(benchmark_id=bench_id, verdicts=verdicts)
+        results[bench_id] = bench_result.pass_at_1
+        logger.info(
+            "Rune phased %s: Pass@1=%.2f%%", bench_id, bench_result.pass_at_1 * 100
+        )
+        if mlflow_active:
+            mlflow.log_metric(f"v_{bench_id}_pass_at_1", bench_result.pass_at_1)
+
     return results
+
+
+def pregenerate_rune_adapters(
+    benchmarks: list[str],
+    model: str,
+    hypernet_checkpoint: str,
+    device: str,
+    output_dir: str,
+    max_samples: int | None = None,
+) -> None:
+    """Phase 1: Pre-generate per-problem adapters on GPU (no vLLM needed).
+
+    Saves adapters to output_dir/<bench_id>/<problem_id>/ and writes a
+    manifest.json mapping problem_id → adapter_path.
+    """
+    import json as _json
+
+    import ctx_to_lora.modeling.hypernet as _hypernet_mod
+    import torch
+    from ctx_to_lora.modeling.lora_merger import combine_lora as _combine_lora
+    from evaluation.benchmarks.runner import _ADAPTER_REGISTRY, _import_adapter
+    from model_training.adapter_generator import _save_adapter
+    from model_training.d2l_probe import extract_activations_with_model
+    from model_training.hypernetwork import load_hypernetwork
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    # HyperLoRA.forward hardcodes torch.autocast(device_type="cuda").
+    # Patch it to derive device_type from the input tensor instead.
+
+    def _device_safe_forward(
+        self, features, attn_mask=None, position_ids=None, n_ctx_chunks=None
+    ):
+        dev = "cuda" if features.is_cuda else "cpu"
+        with torch.autocast(device_type=dev, dtype=torch.bfloat16):
+            if self.aggregator.layer_to_layer and self.iterative_mode:
+                bs, n_layers = features.shape[0:2]
+                lora_emb = torch.empty(
+                    (bs, n_layers, self.num_modules, self.r, self.config.latent_size),
+                    device=features.device,
+                )
+                for i in range(n_layers):
+                    lora_emb[:, i], _ = self.aggregator(
+                        features[:, i], attn_mask, position_ids
+                    )
+            else:
+                lora_emb, _ = self.aggregator(features, attn_mask, position_ids)
+
+        flat_loras = None
+        if self.target_modules:
+            lora_emb = self.layers(lora_emb)
+            norm = torch.norm(lora_emb, dim=-1, keepdim=True)
+            norm_lora_emb = lora_emb / norm
+            flat_loras = self.head(norm_lora_emb)
+
+        return flat_loras, None
+
+    _hypernet_mod.HyperLoRA.forward = _device_safe_forward
+
+    logger.info("Pre-loading HyperLoRA perceiver from %s", hypernet_checkpoint)
+    hypernet, hc = load_hypernetwork(hypernet_checkpoint, device=device)
+    layer_indices = list(hc.layer_indices)
+    scaling_factor = 0.16
+
+    # bf16 weights (~18 GB) + forward pass activations (~4 GB) exceed the
+    # 22 GB L4.  Use 4-bit NF4 quantization (~4.5 GB) to leave headroom.
+    from transformers import BitsAndBytesConfig  # noqa: PLC0415
+
+    bnb_cfg = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+    logger.info(
+        "Loading base model %s (4-bit NF4) on %s for activation extraction",
+        model,
+        device,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model,
+        quantization_config=bnb_cfg,
+        device_map="auto",
+    )
+    base_model.eval()
+
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, dict[str, str]] = {}
+
+    for bench_id in benchmarks:
+        adapter = _import_adapter(_ADAPTER_REGISTRY[bench_id])
+        problems = adapter.load_problems(max_samples=max_samples, seed=42)
+        manifest[bench_id] = {}
+        logger.info("Generating %d adapters for %s", len(problems), bench_id)
+
+        for i, problem in enumerate(problems):
+            problem_dir = str(Path(output_dir) / bench_id / problem.problem_id)
+            Path(problem_dir).mkdir(parents=True, exist_ok=True)
+
+            features, attn_mask = extract_activations_with_model(
+                text=problem.prompt,
+                model=base_model,
+                tokenizer=tokenizer,
+                layer_indices=layer_indices,
+            )
+            with torch.no_grad():
+                lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
+
+            n_chunks = torch.ones(1, dtype=torch.int32)
+            lora_bias = hypernet.get_head_bias() if hypernet.config.use_bias else None
+            lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
+
+            _save_adapter(
+                lora_dict=lora_dict,
+                output_dir=problem_dir,
+                base_model_name=model,
+                hc=hc,
+                scaling_factor=scaling_factor,
+            )
+            manifest[bench_id][problem.problem_id] = problem_dir
+            if (i + 1) % 50 == 0:
+                logger.info(
+                    "  %s: %d/%d adapters generated", bench_id, i + 1, len(problems)
+                )
+
+    manifest_path = Path(output_dir) / "manifest.json"
+    manifest_path.write_text(_json.dumps(manifest, indent=2))
+    logger.info("Wrote adapter manifest to %s", manifest_path)
+
+    del hypernet, base_model
+    import gc  # noqa: PLC0415
+
+    gc.collect()
+    torch.cuda.empty_cache()
+    logger.info(
+        "GPU freed — %d adapters pre-generated", sum(len(v) for v in manifest.values())
+    )
 
 
 def assemble_table2(
@@ -512,7 +709,18 @@ def main() -> None:
         "--hypernet-checkpoint",
         type=str,
         default=None,
-        help="Path to trained hypernetwork checkpoint for Condition (v)",
+        help="Path to trained hypernetwork checkpoint for Condition (v) pregeneration",
+    )
+    parser.add_argument(
+        "--rune-adapter-dir",
+        type=str,
+        default=None,
+        help="Path to pre-generated adapter dir (with manifest.json) for Condition (v) eval",
+    )
+    parser.add_argument(
+        "--pregenerate",
+        action="store_true",
+        help="Pre-generate Rune adapters (GPU phase) and exit without running benchmarks",
     )
     parser.add_argument("--ttt-lr", type=float, default=1e-4)
     parser.add_argument("--ttt-steps", type=int, default=5)
@@ -528,6 +736,22 @@ def main() -> None:
         "--output", type=Path, default=Path("evaluation_results/table2.json")
     )
     args = parser.parse_args()
+
+    # --pregenerate: GPU-only phase — generate adapters and exit.
+    if args.pregenerate:
+        if not args.hypernet_checkpoint:
+            parser.error("--pregenerate requires --hypernet-checkpoint")
+        adapter_out = args.rune_adapter_dir or str(args.output.parent / "rune_adapters")
+        pregenerate_rune_adapters(
+            benchmarks=args.benchmarks,
+            model=args.model,
+            hypernet_checkpoint=args.hypernet_checkpoint,
+            device=args.device,
+            output_dir=adapter_out,
+            max_samples=args.max_samples,
+        )
+        print(f"Adapters written to {adapter_out}")
+        return
 
     from inference.factory import get_provider
     from model_training.training_common import (
@@ -560,7 +784,7 @@ def main() -> None:
 
     # Auto-fetch HPO adapter for conditions that need it (iii, v)
     hpo_adapter_path: Path | None = None
-    needs_hpo = {"iii", "v"} & set(args.conditions)
+    needs_hpo = {"iii"} & set(args.conditions)
     if needs_hpo:
         hpo_dest = (
             Path(args.adapter_iii)
@@ -654,15 +878,13 @@ def main() -> None:
 
         elif cond == "v":
             if not args.hypernet_checkpoint:
-                print("  SKIPPED: --hypernet-checkpoint not provided")
+                print("  SKIPPED: --hypernet-checkpoint required for Rune condition")
                 continue
-            results = run_condition_rune(
+            results = run_condition_rune_phased(
                 args.benchmarks,
                 args.model,
-                warm_start_adapter=args.warm_start_adapter,
                 hypernet_checkpoint=args.hypernet_checkpoint,
                 device=args.device,
-                provider=provider,
                 max_samples=args.max_samples,
                 checkpoint_dir=cond_ckpt,
             )

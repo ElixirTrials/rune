@@ -25,10 +25,8 @@ from bootstrap import setup_path  # type: ignore[import-not-found]
 setup_path()
 
 import torch
-from model_training.sakana_d2l import (
-    download_checkpoint,
-    generate_adapter_from_sakana,
-)
+from model_training.adapter_generator import generate_adapter as _generate_adapter
+from model_training.hypernetwork import download_checkpoint
 from peft import PeftModel
 from shared.hardware import get_best_device
 from shared.template_loader import render_trajectory
@@ -90,7 +88,7 @@ def generate_adapter(
     tmpdir = tempfile.mkdtemp()
     adapter_dir = str(Path(tmpdir) / label)
 
-    return generate_adapter_from_sakana(
+    return _generate_adapter(
         text=trajectory,
         output_dir=adapter_dir,
         checkpoint_path=_checkpoint_path,

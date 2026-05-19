@@ -505,10 +505,11 @@ def _delete_mlflow_run(run_id: str) -> bool:
     …`` to physically purge artifacts of runs marked deleted long ago.
     """
     try:
+        from mlflow.exceptions import MlflowException  # noqa: PLC0415
         from mlflow.tracking import MlflowClient  # noqa: PLC0415
 
         MlflowClient().delete_run(run_id)
-    except Exception:  # noqa: BLE001 — never break HPO on cleanup
+    except (ImportError, OSError, RuntimeError, MlflowException):
         logger.exception(
             "Failed to delete displaced MLflow run %s; "
             "artifact will linger until `mlflow gc` runs.",
@@ -638,7 +639,7 @@ def _upload_adapter_and_cleanup(
 
     try:
         mlflow.log_artifacts(str(adapter_path), artifact_path=artifact_path)
-    except Exception as exc:  # noqa: BLE001 — never let the upload kill the trial
+    except Exception as exc:
         logger.exception(
             "MLflow log_artifacts failed: src=%s (%d files) -> dst=%s "
             "(run_id=%s, error=%s: %s); keeping local copy at %s. "
@@ -653,26 +654,15 @@ def _upload_adapter_and_cleanup(
             exc,
             adapter_dir,
         )
-        fallback_dest = _save_to_local_fallback(
+        _save_to_local_fallback(
             adapter_path, run_id=run_id, artifact_path=artifact_path
         )
-        # Tag the run so failed uploads show up in the MLflow UI without
-        # needing to grep logs.
-        try:
-            mlflow.set_tag("hpo.adapter_upload_error", f"{type(exc).__name__}: {exc}")
-            mlflow.set_tag("hpo.adapter_upload_target", target_uri)
-            if fallback_dest is not None:
-                mlflow.set_tag("hpo.adapter_local_fallback_path", str(fallback_dest))
-            else:
-                mlflow.set_tag("hpo.adapter_local_fallback", "skipped_no_disk")
-        except Exception:  # noqa: BLE001
-            logger.debug("Failed to set MLflow upload-error tag.", exc_info=True)
-        return False
+        raise
 
     if cleanup:
         try:
             shutil.rmtree(adapter_path, ignore_errors=False)
-        except Exception:  # noqa: BLE001 — local cleanup is best-effort
+        except OSError:
             logger.exception(
                 "Failed to remove local adapter dir %s after MLflow upload "
                 "(adapter is safely persisted in S3 via MLflow).",
@@ -838,7 +828,7 @@ def _flush_gpu_between_phases() -> None:
 
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-    except Exception:  # noqa: BLE001 — torch may be missing on CPU CI
+    except ImportError:
         pass
 
 
@@ -1036,13 +1026,13 @@ def _evaluate_adapter_on_heldout(
                     delattr(inner, "peft_config")
                 except AttributeError:
                     pass
-        except Exception:  # noqa: BLE001 — never break HPO on cleanup
+        except (RuntimeError, AttributeError, OSError):
             logger.exception("Heldout eval: PeftModel.unload() failed")
         del adapter_model
         _gc.collect()
         try:
             torch.cuda.empty_cache()
-        except Exception:  # noqa: BLE001 — torch may be unavailable on CPU CI
+        except (ImportError, RuntimeError):
             pass
 
     return {

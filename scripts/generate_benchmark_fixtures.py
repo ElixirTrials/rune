@@ -23,9 +23,12 @@ Generates:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Allow running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent / "libs" / "evaluation" / "src"))
@@ -85,18 +88,18 @@ def main() -> None:
         save_mini(
             "bigcode/bigcodebench", None, "v0.1.2", 5, "bigcodebench_mini.parquet"
         )
-    except Exception:
+    except (ValueError, KeyError, FileNotFoundError):
         try:
             save_mini(
                 "bigcode/bigcodebench", None, "train", 5, "bigcodebench_mini.parquet"
             )
-        except Exception as exc:
-            print(f"  [warn] bigcodebench fixture failed: {exc}")
+        except (ValueError, KeyError, FileNotFoundError) as exc:
+            logger.warning("bigcodebench fixture failed: %s", exc)
 
     try:
         save_mini("xlangai/DS-1000", None, "test", 5, "ds1000_mini.parquet")
-    except Exception as exc:
-        print(f"  [warn] ds1000 fixture failed: {exc}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        logger.warning("ds1000 fixture failed: %s", exc)
 
     try:
         save_mini(
@@ -106,8 +109,8 @@ def main() -> None:
             5,
             "livecodebench_mini.parquet",
         )
-    except Exception as exc:
-        print(f"  [warn] livecodebench fixture failed: {exc}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        logger.warning("livecodebench fixture failed: %s", exc)
 
     # Held-out benchmarks
     try:
@@ -118,15 +121,15 @@ def main() -> None:
             5,
             "swe_bench_lite_mini.parquet",
         )
-    except Exception as exc:
-        print(f"  [warn] swe_bench_lite fixture failed: {exc}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        logger.warning("swe_bench_lite fixture failed: %s", exc)
 
     try:
         save_mini(
             "deepmind/code_contests", None, "test", 5, "codecontests_mini.parquet"
         )
-    except Exception as exc:
-        print(f"  [warn] codecontests fixture failed: {exc}")
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        logger.warning("codecontests fixture failed: %s", exc)
 
     print("\nAll fixtures generated. Check them into git:")
     print("  git add libs/evaluation/tests/fixtures/*.parquet")

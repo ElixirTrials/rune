@@ -225,3 +225,93 @@ class TestFetchBestHpoAdapter:
         mlflow_env = env_log[1]
         assert mlflow_env is not None
         assert mlflow_env["MLFLOW_TRACKING_URI"] == "http://mlflow:5000"
+
+
+# ── run_condition_rune_phased ────────────────────────────────────────
+
+
+class TestRuneConditionPhased:
+    def test_scores_each_problem_with_adapter(self) -> None:
+        """run_condition_rune_phased drives run_phased_pipeline + adapter.score."""
+        from evaluation.benchmarks.protocol import PassVerdict, Problem
+
+        from scripts.paper.run_all_conditions import run_condition_rune_phased
+
+        problems = [
+            Problem(problem_id="mbpp/1", prompt="p1", test_code="assert True"),
+            Problem(problem_id="mbpp/2", prompt="p2", test_code="assert True"),
+        ]
+
+        class _FakeAdapter:
+            def load_problems(self, max_samples=None, seed=42):  # noqa: ANN001
+                return problems
+
+            def score(self, problem, generation, timeout_s=30):  # noqa: ANN001
+                passed = problem.problem_id == "mbpp/1"
+                return PassVerdict(
+                    problem_id=problem.problem_id,
+                    passed=passed,
+                    generation=generation,
+                    error=None if passed else "fail",
+                    timed_out=False,
+                )
+
+        async def _fake_pipeline(**kwargs):  # noqa: ANN001, ANN003
+            return {"accumulated_code": "code", "adapter_dir": ""}
+
+        with (
+            patch(
+                "evaluation.benchmarks.runner._import_adapter",
+                return_value=_FakeAdapter(),
+            ),
+            patch.dict(
+                "evaluation.benchmarks.runner._ADAPTER_REGISTRY",
+                {"mbpp": "x"},
+                clear=False,
+            ),
+            patch("rune_runner.run_phased_pipeline", _fake_pipeline),
+        ):
+            results = run_condition_rune_phased(
+                benchmarks=["mbpp"],
+                model="m",
+                hypernet_checkpoint="ckpt",
+                device="cpu",
+            )
+        assert results["mbpp"] == pytest.approx(0.5)
+
+    def test_pipeline_exception_propagates(self) -> None:
+        from evaluation.benchmarks.protocol import Problem
+
+        from scripts.paper.run_all_conditions import run_condition_rune_phased
+
+        problems = [Problem(problem_id="mbpp/9", prompt="p", test_code="assert True")]
+
+        class _FakeAdapter:
+            def load_problems(self, max_samples=None, seed=42):  # noqa: ANN001
+                return problems
+
+            def score(self, problem, generation, timeout_s=30):  # noqa: ANN001
+                raise AssertionError("score must not be called on crash path")
+
+        async def _boom(**kwargs):  # noqa: ANN001, ANN003
+            raise RuntimeError("pipeline exploded")
+
+        with (
+            patch(
+                "evaluation.benchmarks.runner._import_adapter",
+                return_value=_FakeAdapter(),
+            ),
+            patch.dict(
+                "evaluation.benchmarks.runner._ADAPTER_REGISTRY",
+                {"mbpp": "x"},
+                clear=False,
+            ),
+            patch("rune_runner.run_phased_pipeline", _boom),
+            pytest.raises(RuntimeError, match="pipeline exploded"),
+        ):
+            run_condition_rune_phased(
+                benchmarks=["mbpp"],
+                model="m",
+                hypernet_checkpoint="ckpt",
+                device="cpu",
+            )

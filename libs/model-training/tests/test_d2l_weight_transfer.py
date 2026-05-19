@@ -1,4 +1,4 @@
-"""Tests for partial weight transfer functions in model_training.sakana_d2l.
+"""Tests for partial weight transfer functions in model_training.hypernetwork.
 
 CPU-only tests covering:
 - transfer_aggregator_weights() freezes aggregator params (requires_grad=False)
@@ -64,7 +64,7 @@ class _FakeIncompatibleKeys:
 
 def test_transfer_freezes_aggregator_params(monkeypatch: Any) -> None:
     """After transfer_aggregator_weights(), all aggregator.* params are frozen."""
-    from model_training.sakana_d2l import transfer_aggregator_weights
+    from model_training.hypernetwork import transfer_aggregator_weights
 
     target = _FakeHyperLoRA()
     source = _FakeHyperLoRA()
@@ -89,7 +89,7 @@ def test_transfer_freezes_aggregator_params(monkeypatch: Any) -> None:
 
 def test_transfer_leaves_head_trainable(monkeypatch: Any) -> None:
     """After transfer_aggregator_weights(), all head.* params remain trainable."""
-    from model_training.sakana_d2l import transfer_aggregator_weights
+    from model_training.hypernetwork import transfer_aggregator_weights
 
     target = _FakeHyperLoRA()
     source = _FakeHyperLoRA()
@@ -114,7 +114,7 @@ def test_transfer_leaves_head_trainable(monkeypatch: Any) -> None:
 
 def test_transfer_head_in_missing_keys(monkeypatch: Any) -> None:
     """After transfer, missing_keys contains only head.* keys (head not in ckpt)."""
-    from model_training.sakana_d2l import transfer_aggregator_weights
+    from model_training.hypernetwork import transfer_aggregator_weights
 
     target = _FakeHyperLoRA()
     source = _FakeHyperLoRA()
@@ -129,10 +129,10 @@ def test_transfer_head_in_missing_keys(monkeypatch: Any) -> None:
         if original_assert is not None:
             original_assert(hypernet, loaded)
 
-    import model_training.sakana_d2l as sakana_mod
+    from model_training import hypernetwork as hypernetwork_mod
 
-    original_assert = sakana_mod._assert_transfer_integrity
-    monkeypatch.setattr(sakana_mod, "_assert_transfer_integrity", _capture_loaded)
+    original_assert = hypernetwork_mod._assert_transfer_integrity
+    monkeypatch.setattr(hypernetwork_mod, "_assert_transfer_integrity", _capture_loaded)
     monkeypatch.setattr(torch, "load", lambda *a, **kw: fake_sd)
 
     transfer_aggregator_weights(target, "/fake/checkpoint.bin")
@@ -153,7 +153,7 @@ def test_transfer_head_in_missing_keys(monkeypatch: Any) -> None:
 
 def test_assert_integrity_fails_on_missing_aggregator() -> None:
     """_assert_transfer_integrity raises AssertionError if aggregator key missing."""
-    from model_training.sakana_d2l import _assert_transfer_integrity
+    from model_training.hypernetwork import _assert_transfer_integrity
 
     model = _FakeHyperLoRA()
     # Simulate a transfer where an aggregator key was missing (bad checkpoint)
@@ -173,7 +173,7 @@ def test_assert_integrity_fails_on_missing_aggregator() -> None:
 
 def test_assert_integrity_fails_on_unexpected_keys() -> None:
     """_assert_transfer_integrity raises AssertionError if unexpected_keys non-empty."""
-    from model_training.sakana_d2l import _assert_transfer_integrity
+    from model_training.hypernetwork import _assert_transfer_integrity
 
     model = _FakeHyperLoRA()
     # All head.* missing is fine, but unexpected keys indicate a mismatch
@@ -193,7 +193,7 @@ def test_assert_integrity_fails_on_unexpected_keys() -> None:
 
 def test_assert_integrity_passes_clean_transfer() -> None:
     """_assert_transfer_integrity does NOT raise when only head.* missing."""
-    from model_training.sakana_d2l import _assert_transfer_integrity
+    from model_training.hypernetwork import _assert_transfer_integrity
 
     model = _FakeHyperLoRA()
     # Clean transfer: only head keys missing (not loaded from aggregator checkpoint)
@@ -213,7 +213,7 @@ def test_assert_integrity_passes_clean_transfer() -> None:
 
 def test_get_aggregator_config_returns_config(monkeypatch: Any) -> None:
     """get_aggregator_config extracts aggregator_config from fake checkpoint dict."""
-    from model_training.sakana_d2l import get_aggregator_config
+    from model_training.hypernetwork import get_aggregator_config
 
     fake_aggregator_config = {"num_layers": 4, "hidden_size": 256}
 
@@ -235,7 +235,7 @@ def test_get_aggregator_config_returns_config(monkeypatch: Any) -> None:
 
 def test_get_aggregator_config_raises_on_none(monkeypatch: Any) -> None:
     """get_aggregator_config raises ValueError when aggregator_config is None."""
-    from model_training.sakana_d2l import get_aggregator_config
+    from model_training.hypernetwork import get_aggregator_config
 
     fake_hypernet_config = MagicMock()
     fake_hypernet_config.aggregator_config = None
