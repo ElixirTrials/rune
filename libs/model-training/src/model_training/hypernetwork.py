@@ -353,9 +353,12 @@ def load_hypernetwork(
     hypernet_param_count = sum(
         v.numel() for v in sd.values() if isinstance(v, torch.Tensor)
     )
+    # On GPU, force bf16 — the hypernetwork shares VRAM with the base LLM
+    # and fp32 provides no quality benefit for weight generation.
     hypernet_dtype = resolve_model_dtype(
         param_count=hypernet_param_count,
         device=device,
+        dtype_override=None if device == "cpu" else "bfloat16",
     )
     logger.info("HyperLoRA dtype resolved to %s", hypernet_dtype)
     # Suppress "Flash Attention 2 without specifying a torch dtype" warning

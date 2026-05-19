@@ -485,6 +485,29 @@ async def _load_adapter(
     return adapter_id
 
 
+async def _cleanup_phase_adapters() -> None:
+    """Unload all adapters from the provider and release cached CUDA memory.
+
+    Called at phase boundaries to prevent adapter accumulation across phases.
+    """
+    from inference import get_provider  # noqa: PLC0415
+
+    provider = get_provider()
+    for aid in list(await provider.list_adapters()):
+        try:
+            await provider.unload_adapter(aid)
+        except Exception:
+            pass
+
+    try:
+        import torch  # noqa: PLC0415
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Multi-phase pipeline
 # ---------------------------------------------------------------------------
@@ -899,6 +922,7 @@ async def run_phased_pipeline(
             "pipeline/decompose/n_subtasks_final": float(len(subtasks)),
         })
         _mlflow_tag("pipeline.decompose.status", "complete")
+        await _cleanup_phase_adapters()
 
         # ---------------------------------------------------------------
         # Phase 2: PLAN (parallel swarm, with evolution)
@@ -909,6 +933,7 @@ async def run_phased_pipeline(
         best_plan_score: float = -1.0
         best_plan_adapter_ids: list[str] = []
         phase2_task_type = "phase2-plan"
+        _plan_semaphore = asyncio.Semaphore(4)
 
         for evo_iter in range(iters_plan):
             logger.info("  Plan iteration %d/%d", evo_iter + 1, iters_plan)
@@ -918,6 +943,12 @@ async def run_phased_pipeline(
                 idx: int, subtask: dict[str, Any], evo: int
             ) -> tuple[str, str, str | None]:
                 """Plan a single subtask — runs as a parallel coroutine."""
+                async with _plan_semaphore:
+                    return await _plan_subtask_inner(idx, subtask, evo)
+
+            async def _plan_subtask_inner(
+                idx: int, subtask: dict[str, Any], evo: int
+            ) -> tuple[str, str, str | None]:
                 traj = render_trajectory(
                     "plan",
                     subtask=subtask,
@@ -986,6 +1017,17 @@ async def run_phased_pipeline(
             plan_tasks = [_plan_subtask(i, st, evo_iter) for i, st in enumerate(subtasks)]
             plan_results = await asyncio.gather(*plan_tasks)
 
+            # Unload all plan adapters from this iteration to free VRAM
+            from inference import get_provider as _get_provider  # noqa: PLC0415
+
+            _provider = _get_provider()
+            for _name, _text, _paid in plan_results:
+                if _paid:
+                    try:
+                        await _provider.unload_adapter(_paid)
+                    except Exception:
+                        pass
+
             iter_adapter_ids: list[str] = []
             for name, plan_text, plan_aid in plan_results:
                 iter_plans[name] = plan_text
@@ -1047,6 +1089,7 @@ async def run_phased_pipeline(
             "pipeline/plan/best_score": best_plan_score,
         })
         _mlflow_tag("pipeline.plan.status", "complete")
+        await _cleanup_phase_adapters()
 
         # ---------------------------------------------------------------
         # Phase 3: CODE (parallel swarm, with evolutionary retries via H())
@@ -1478,6 +1521,7 @@ async def run_phased_pipeline(
             "pipeline/code/max_attempts": float(max_code_attempts),
         })
         _mlflow_tag("pipeline.code.status", "complete")
+        await _cleanup_phase_adapters()
 
         # ---------------------------------------------------------------
         # Phase 4: INTEGRATE (single agent, with evolution)
@@ -1668,6 +1712,7 @@ async def run_phased_pipeline(
             "pipeline/integrate/final_passed": float(final_passed),
         })
         _mlflow_tag("pipeline.integrate.status", "complete")
+        await _cleanup_phase_adapters()
 
         # ---------------------------------------------------------------
         # Phase 5: DIAGNOSE → REPAIR → RE-INTEGRATE loop
@@ -1675,6 +1720,7 @@ async def run_phased_pipeline(
         # fix them with targeted adapters, and re-integrate.
         # ---------------------------------------------------------------
         repair_history: list[dict[str, Any]] = []
+        loaded_repair_adapter: str | None = None
 
         for repair_iter in range(iters_repair):
             if final_passed:
@@ -1715,7 +1761,8 @@ async def run_phased_pipeline(
             diagnose_aid: str | None = None
             if diagnose_adapter_path:
                 diagnose_aid = f"phase5-diagnose-v{repair_iter}"
-                await _load_adapter(diagnose_aid, diagnose_adapter_path, None)
+                await _load_adapter(diagnose_aid, diagnose_adapter_path, loaded_repair_adapter)
+                loaded_repair_adapter = diagnose_aid
 
             iteration_counter += 1
             diagnose_state = await run_iteration(
@@ -1796,7 +1843,8 @@ async def run_phased_pipeline(
                     repair_aid = (
                         f"phase5-repair-{_safe_adapter_id(repair_name)}-v{repair_iter}"
                     )
-                    await _load_adapter(repair_aid, repair_adapter_path, None)
+                    await _load_adapter(repair_aid, repair_adapter_path, loaded_repair_adapter)
+                    loaded_repair_adapter = repair_aid
 
                 iteration_counter += 1
                 repair_state = await run_iteration(
@@ -1859,7 +1907,8 @@ async def run_phased_pipeline(
             reintegrate_aid: str | None = None
             if reintegrate_adapter_path:
                 reintegrate_aid = f"phase5-reintegrate-v{repair_iter}"
-                await _load_adapter(reintegrate_aid, reintegrate_adapter_path, None)
+                await _load_adapter(reintegrate_aid, reintegrate_adapter_path, loaded_repair_adapter)
+                loaded_repair_adapter = reintegrate_aid
 
             iteration_counter += 1
             reintegrate_state = await run_iteration(

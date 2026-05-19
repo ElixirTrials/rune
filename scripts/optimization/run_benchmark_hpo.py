@@ -337,6 +337,10 @@ def run_pipeline_on_problem(
                 problem, result, time.time() - start
             )
         except Exception as exc:  # noqa: BLE001 - pipeline failure -> failed verdict
+            import torch  # noqa: PLC0415
+
+            if isinstance(exc, torch.cuda.OutOfMemoryError):
+                raise
             logger.warning(
                 "Pipeline failed on %s: %s", problem.problem_id, exc
             )
@@ -844,9 +848,9 @@ def main() -> None:
                 "seed": args.seed,
             }
         )
-        # catch=(Exception,) marks a failed trial FAILED in Optuna (excluded
-        # from best-trial selection) rather than scoring it 0.0.
-        study.optimize(objective, n_trials=args.n_trials, catch=(Exception,))
+        # catch=() lets CUDA OOM propagate immediately. Other exceptions
+        # are caught inside the objective and scored as 0.0.
+        study.optimize(objective, n_trials=args.n_trials, catch=())
 
         completed = [t for t in study.trials if t.state.name == "COMPLETE"]
         if not completed:
