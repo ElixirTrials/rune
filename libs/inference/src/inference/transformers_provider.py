@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 from inference.provider import GenerationResult, InferenceProvider
@@ -218,6 +219,10 @@ class TransformersProvider(InferenceProvider):
 
         new_tokens = outputs[0][input_len:]
         text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
+        # Strip <think>...</think> blocks that Qwen 3.5 emits (not in special tokens).
+        # First pass removes closed blocks; second removes dangling/truncated ones.
+        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
         total_tokens = outputs.shape[1]
         new_token_count = len(new_tokens)
 
