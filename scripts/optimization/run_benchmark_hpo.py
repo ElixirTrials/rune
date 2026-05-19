@@ -391,7 +391,7 @@ def _flush_gpu() -> None:
 
         torch.cuda.empty_cache()
     except ImportError:
-        pass
+        pass  # torch not installed (CPU-only env)
 
 
 def _mlflow() -> Any:

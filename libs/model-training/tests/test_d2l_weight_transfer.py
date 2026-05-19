@@ -129,7 +129,7 @@ def test_transfer_head_in_missing_keys(monkeypatch: Any) -> None:
         if original_assert is not None:
             original_assert(hypernet, loaded)
 
-    import model_training.hypernetwork as hypernetwork_mod
+    from model_training import hypernetwork as hypernetwork_mod
 
     original_assert = hypernetwork_mod._assert_transfer_integrity
     monkeypatch.setattr(hypernetwork_mod, "_assert_transfer_integrity", _capture_loaded)

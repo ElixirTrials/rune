@@ -245,7 +245,7 @@ def test_generate_adapter_standalone_mode(tmp_path: Path) -> None:
     def fake_save_file(tensors: dict[str, Any], path: str) -> None:
         saved_paths.append(path)
 
-    import model_training.adapter_generator as ag_mod
+    from model_training import adapter_generator as ag_mod
 
     with (
         patch.object(

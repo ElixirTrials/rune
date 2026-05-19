@@ -6,14 +6,16 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from model_training.model_pool import ModelPool, get_pool, set_pool
+import model_training.model_pool as _mp
+
+ModelPool = _mp.ModelPool
+get_pool = _mp.get_pool
+set_pool = _mp.set_pool
 
 
 @pytest.fixture(autouse=True)
 def _reset_pool() -> Any:
     """Reset the module-level singleton before and after every test."""
-    import model_training.model_pool as _mp
-
     _mp._POOL = None
     yield
     _mp._POOL = None
@@ -80,7 +82,7 @@ def test_base_model_sets_pad_token_when_none(monkeypatch: pytest.MonkeyPatch) ->
     fake_tokenizer.eos_token = "<eos>"
 
     pool = ModelPool.create(model_name="test-model", device="cpu")
-    monkeypatch.setattr(pool, "_resolve_dtype", lambda: MagicMock())
+    monkeypatch.setattr(pool, "_resolve_dtype", MagicMock)
 
     with (
         patch("transformers.AutoModelForCausalLM") as mock_amc,
@@ -155,7 +157,7 @@ def test_release_clears_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_tokenizer.pad_token = "pad"
 
     pool = ModelPool.create(model_name="test-model", device="cpu")
-    monkeypatch.setattr(pool, "_resolve_dtype", lambda: MagicMock())
+    monkeypatch.setattr(pool, "_resolve_dtype", MagicMock)
 
     with (
         patch("transformers.AutoModelForCausalLM") as mock_amc,

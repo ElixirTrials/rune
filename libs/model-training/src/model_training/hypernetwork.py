@@ -191,8 +191,6 @@ def _patch_flash_attention() -> None:  # noqa: C901
 
     # Patch resampler __init__ to use eager attention (avoids triggering
     # transformers' flash_attention_2 validation chain)
-    _orig_resampler_init = Idefics2PerceiverResampler.__init__
-
     def _patched_resampler_init(self: Any, config: Any) -> None:
         # Bypass PreTrainedModel.__init__ entirely — it validates flash
         # attention support which fails on transformers 5.x. Rebuild the
@@ -335,7 +333,7 @@ def load_hypernetwork(
     try:
         import flash_attn.flash_attn_interface  # noqa: F401,PLC0415
     except ImportError:
-        pass
+        logger.debug("flash_attn not available; using eager attention fallback")
 
     if checkpoint_path is None:
         checkpoint_path = download_checkpoint(variant)

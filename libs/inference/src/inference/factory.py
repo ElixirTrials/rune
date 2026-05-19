@@ -104,7 +104,7 @@ def get_provider(
 
                 pool = get_pool()
             except (ImportError, RuntimeError):
-                pass
+                pool = None
             _provider_cache[cache_key] = TransformersProvider(
                 model_name=resolved_url, device=device, pool=pool
             )
