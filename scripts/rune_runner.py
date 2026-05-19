@@ -236,6 +236,26 @@ def _safe_adapter_id(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _should_skip_decompose(project_prompt: str, threshold: int = 200) -> bool:
+    """Return True if the task is simple enough to skip decomposition.
+
+    Simple tasks are short prompts (under threshold words) that contain
+    single-function signals like 'write a function' or 'implement a method'.
+    """
+    word_count = len(project_prompt.split())
+    if word_count > threshold:
+        return False
+    single_fn_signals = [
+        "write a function",
+        "implement a function",
+        "write a method",
+        "implement a method",
+        "create a function",
+        "def ",
+    ]
+    return any(s in project_prompt.lower() for s in single_fn_signals)
+
+
 def _parse_subtask_list(
     model_output: str, *, validate: bool = True
 ) -> list[dict[str, Any]]:
@@ -755,13 +775,37 @@ async def run_phased_pipeline(
         # ---------------------------------------------------------------
         logger.info("=== Phase 1: DECOMPOSE ===")
         _mlflow_tag("pipeline.phase", "decompose")
+
+        # Task-complexity gating: skip decompose for simple single-function tasks
+        if _should_skip_decompose(
+            project_prompt, threshold=_pipeline_cfg.decompose.skip_threshold
+        ):
+            logger.info("Simple task detected — skipping decompose phase")
+            subtasks: list[dict[str, Any]] = [
+                {
+                    "name": "implementation",
+                    "description": project_prompt[:200],
+                    "depends_on": [],
+                }
+            ]
+            phase_results["decompose"] = {
+                "subtasks": subtasks,
+                "adapter_id": None,
+                "iterations": 0,
+                "best_score": 1.0,
+            }
+            _mlflow_tag("pipeline.decompose.status", "skipped")
+            _decompose_skipped = True
+        else:
+            _decompose_skipped = False
+
         best_decompose_state: dict[str, Any] | None = None
         best_decompose_adapter_id: str | None = None
         best_decompose_score: float = -1.0
         loaded_adapter_id: str | None = None  # tracks what's currently loaded
         phase1_task_type = "phase1-decompose"
 
-        for evo_iter in range(iters_decompose):
+        for evo_iter in range(0 if _decompose_skipped else iters_decompose):
             logger.info("  Decompose iteration %d/%d", evo_iter + 1, iters_decompose)
 
             # Build trajectory — include prior output on retries
@@ -880,131 +924,133 @@ async def run_phased_pipeline(
                 sweep = evolution_sweep(registry)
                 evolution_stats["sweeps"][f"decompose-iter{evo_iter}"] = sweep
 
-        evolution_stats["phase_iterations"]["decompose"] = evo_iter + 1
+        if not _decompose_skipped:
+            evolution_stats["phase_iterations"]["decompose"] = evo_iter + 1
 
-        # Use best decompose result
-        assert best_decompose_state is not None
-        raw_subtasks = _parse_subtask_list(
-            best_decompose_state.get("generated_code", "")
-        )
-        # Deduplicate subtasks by name
-        seen: set[str] = set()
-        subtasks: list[dict[str, Any]] = []
-        for st in raw_subtasks:
-            key = st["name"].lower().strip()
-            if key not in seen:
-                seen.add(key)
-                subtasks.append(st)
+        if not _decompose_skipped:
+            # Use best decompose result
+            assert best_decompose_state is not None
+            raw_subtasks = _parse_subtask_list(
+                best_decompose_state.get("generated_code", "")
+            )
+            # Deduplicate subtasks by name
+            seen: set[str] = set()
+            subtasks = []
+            for st in raw_subtasks:
+                key = st["name"].lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    subtasks.append(st)
 
-        subtasks = subtasks[:8]
+            subtasks = subtasks[:8]
 
-        # Validate dependency graph is acyclic; retry decompose if not
-        from graphlib import CycleError
+            # Validate dependency graph is acyclic; retry decompose if not
+            from graphlib import CycleError
 
-        from shared.blackboard import build_execution_layers
+            from shared.blackboard import build_execution_layers
 
-        max_cycle_retries = 2
-        for cycle_attempt in range(max_cycle_retries):
-            try:
-                build_execution_layers(subtasks)  # validation only
-                break  # acyclic — proceed
-            except CycleError as exc:
-                logger.warning(
-                    "Cycle in decomposition (attempt %d/%d): %s",
-                    cycle_attempt + 1,
-                    max_cycle_retries,
-                    exc,
-                )
-                if cycle_attempt + 1 >= max_cycle_retries:
-                    raise RuntimeError(
-                        f"Decompose phase could not produce cycle-free "
-                        f"subtasks after {max_cycle_retries} retries: {exc}"
-                    ) from exc
-
-                # Re-run decompose with cycle correction context
-                correction_traj = render_trajectory("decompose", project=project_prompt)
-                prior_output = best_decompose_state.get("generated_code", "")
-                correction_traj += (
-                    f"\n\n[ERROR: Your prior decomposition had circular "
-                    f"dependencies: {exc}. Fix the [depends:] declarations "
-                    f"to remove the cycle.]\n{prior_output[:500]}"
-                )
-
-                iter_adapter_dir = str(
-                    adapter_dir / f"phase1_decompose_cycle_fix_{cycle_attempt}"
-                )
-                adapter_path = run_hypernetwork(
-                    trajectory_text=correction_traj,
-                    output_dir=iter_adapter_dir,
-                    base_model_id=base_model_id,
-                    checkpoint_path=checkpoint_path,
-                    device=device,
-                    scaling_factor=adapter_scaling,
-                    max_length=adapter_max_length,
-                    pool=pool,
-                )
-
-                cycle_adapter_id: str | None = None
-                if adapter_path:
-                    cycle_adapter_id = f"phase1-decompose-cycle-fix-{cycle_attempt}"
-                    await _load_adapter(
-                        cycle_adapter_id, adapter_path, loaded_adapter_id
+            max_cycle_retries = 2
+            for cycle_attempt in range(max_cycle_retries):
+                try:
+                    build_execution_layers(subtasks)  # validation only
+                    break  # acyclic — proceed
+                except CycleError as exc:
+                    logger.warning(
+                        "Cycle in decomposition (attempt %d/%d): %s",
+                        cycle_attempt + 1,
+                        max_cycle_retries,
+                        exc,
                     )
-                    loaded_adapter_id = cycle_adapter_id
+                    if cycle_attempt + 1 >= max_cycle_retries:
+                        raise RuntimeError(
+                            f"Decompose phase could not produce cycle-free "
+                            f"subtasks after {max_cycle_retries} retries: {exc}"
+                        ) from exc
 
-                iteration_counter += 1
-                retry_phase = "decompose_concise" if cycle_adapter_id else "decompose"
-                retry_state = await run_iteration(
-                    graph=graph,
-                    project_prompt=project_prompt,
-                    adapter_id=cycle_adapter_id,
-                    session_id=session_id,
-                    iteration=iteration_counter,
-                    phase=retry_phase,
-                )
-                await _eager_unload(cycle_adapter_id)
+                    # Re-run decompose with cycle correction context
+                    correction_traj = render_trajectory("decompose", project=project_prompt)
+                    prior_output = best_decompose_state.get("generated_code", "")
+                    correction_traj += (
+                        f"\n\n[ERROR: Your prior decomposition had circular "
+                        f"dependencies: {exc}. Fix the [depends:] declarations "
+                        f"to remove the cycle.]\n{prior_output[:500]}"
+                    )
 
-                # Re-parse and deduplicate
-                raw_subtasks = _parse_subtask_list(
-                    retry_state.get("generated_code", "")
-                )
-                seen = set()
-                subtasks = []
-                for st in raw_subtasks:
-                    key = st["name"].lower().strip()
-                    if key not in seen:
-                        seen.add(key)
-                        subtasks.append(st)
-                best_decompose_state = retry_state
-                logger.info(
-                    "Cycle-fix attempt %d produced %d subtasks: %s",
-                    cycle_attempt + 1,
-                    len(subtasks),
-                    [s["name"] for s in subtasks],
-                )
+                    iter_adapter_dir = str(
+                        adapter_dir / f"phase1_decompose_cycle_fix_{cycle_attempt}"
+                    )
+                    adapter_path = run_hypernetwork(
+                        trajectory_text=correction_traj,
+                        output_dir=iter_adapter_dir,
+                        base_model_id=base_model_id,
+                        checkpoint_path=checkpoint_path,
+                        device=device,
+                        scaling_factor=adapter_scaling,
+                        max_length=adapter_max_length,
+                        pool=pool,
+                    )
 
-        evolution_stats["best_adapters"]["decompose"] = best_decompose_adapter_id
+                    cycle_adapter_id: str | None = None
+                    if adapter_path:
+                        cycle_adapter_id = f"phase1-decompose-cycle-fix-{cycle_attempt}"
+                        await _load_adapter(
+                            cycle_adapter_id, adapter_path, loaded_adapter_id
+                        )
+                        loaded_adapter_id = cycle_adapter_id
 
-        logger.info(
-            "Decomposed into %d subtasks: %s",
-            len(subtasks),
-            [s["name"] for s in subtasks],
-        )
-        phase_results["decompose"] = {
-            "subtasks": subtasks,
-            "adapter_id": best_decompose_adapter_id,
-            "iterations": evo_iter + 1,
-            "best_score": best_decompose_score,
-        }
-        _mlflow_metrics(
-            {
-                "pipeline/decompose/iterations": float(evo_iter + 1),
-                "pipeline/decompose/best_score": best_decompose_score,
-                "pipeline/decompose/n_subtasks_final": float(len(subtasks)),
+                    iteration_counter += 1
+                    retry_phase = "decompose_concise" if cycle_adapter_id else "decompose"
+                    retry_state = await run_iteration(
+                        graph=graph,
+                        project_prompt=project_prompt,
+                        adapter_id=cycle_adapter_id,
+                        session_id=session_id,
+                        iteration=iteration_counter,
+                        phase=retry_phase,
+                    )
+                    await _eager_unload(cycle_adapter_id)
+
+                    # Re-parse and deduplicate
+                    raw_subtasks = _parse_subtask_list(
+                        retry_state.get("generated_code", "")
+                    )
+                    seen = set()
+                    subtasks = []
+                    for st in raw_subtasks:
+                        key = st["name"].lower().strip()
+                        if key not in seen:
+                            seen.add(key)
+                            subtasks.append(st)
+                    best_decompose_state = retry_state
+                    logger.info(
+                        "Cycle-fix attempt %d produced %d subtasks: %s",
+                        cycle_attempt + 1,
+                        len(subtasks),
+                        [s["name"] for s in subtasks],
+                    )
+
+            evolution_stats["best_adapters"]["decompose"] = best_decompose_adapter_id
+
+            logger.info(
+                "Decomposed into %d subtasks: %s",
+                len(subtasks),
+                [s["name"] for s in subtasks],
+            )
+            phase_results["decompose"] = {
+                "subtasks": subtasks,
+                "adapter_id": best_decompose_adapter_id,
+                "iterations": evo_iter + 1,
+                "best_score": best_decompose_score,
             }
-        )
-        _mlflow_tag("pipeline.decompose.status", "complete")
-        await _cleanup_phase_adapters()
+            _mlflow_metrics(
+                {
+                    "pipeline/decompose/iterations": float(evo_iter + 1),
+                    "pipeline/decompose/best_score": best_decompose_score,
+                    "pipeline/decompose/n_subtasks_final": float(len(subtasks)),
+                }
+            )
+            _mlflow_tag("pipeline.decompose.status", "complete")
+            await _cleanup_phase_adapters()
 
         # ---------------------------------------------------------------
         # Phase 2: PLAN (parallel swarm, with evolution)

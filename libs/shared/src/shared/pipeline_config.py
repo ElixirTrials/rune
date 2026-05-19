@@ -59,6 +59,13 @@ class CalibrationConfig:
 
 
 @dataclass(frozen=True)
+class DecomposeConfig:
+    """Decompose phase settings."""
+
+    skip_threshold: int = 200
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """Top-level pipeline configuration."""
 
@@ -67,6 +74,7 @@ class PipelineConfig:
     prompt: PromptConfig = field(default_factory=PromptConfig)
     trajectory: TrajectoryConfig = field(default_factory=TrajectoryConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
+    decompose: DecomposeConfig = field(default_factory=DecomposeConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict."""
@@ -111,6 +119,7 @@ def _from_dict(d: dict[str, Any]) -> PipelineConfig:
         prompt=PromptConfig(**d.get("prompt", {})),
         trajectory=TrajectoryConfig(**d.get("trajectory", {})),
         calibration=CalibrationConfig(**cal),
+        decompose=DecomposeConfig(**d.get("decompose", {})),
     )
 
 
