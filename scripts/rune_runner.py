@@ -519,7 +519,11 @@ async def _load_adapter(
         try:
             await provider.unload_adapter(current_adapter_id)
         except Exception:
-            logger.warning("Failed to unload previous adapter %s", current_adapter_id, exc_info=True)
+            logger.warning(
+                "Failed to unload previous adapter %s",
+                current_adapter_id,
+                exc_info=True,
+            )
     await provider.load_adapter(adapter_id, adapter_path)
     return adapter_id
 
@@ -538,6 +542,26 @@ async def _cleanup_phase_adapters() -> None:
         except Exception:
             logger.warning("Failed to unload adapter %s", aid, exc_info=True)
 
+    try:
+        import torch  # noqa: PLC0415
+    except ImportError:
+        pass
+    else:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+async def _eager_unload(adapter_id: str | None) -> None:
+    """Unload a single adapter immediately after use to prevent VRAM accumulation."""
+    if not adapter_id:
+        return
+    from inference import get_provider  # noqa: PLC0415
+
+    provider = get_provider()
+    try:
+        await provider.unload_adapter(adapter_id)
+    except Exception:
+        logger.warning("Failed to eager-unload adapter %s", adapter_id, exc_info=True)
     try:
         import torch  # noqa: PLC0415
     except ImportError:
@@ -798,6 +822,7 @@ async def run_phased_pipeline(
                 iteration=iteration_counter,
                 phase=decompose_phase,
             )
+            await _eager_unload(adapter_id)
 
             # Score: reward 2-6 unique subtasks, penalize duplicates
             iter_subtasks = _parse_subtask_list(state.get("generated_code", ""))
@@ -937,6 +962,7 @@ async def run_phased_pipeline(
                     iteration=iteration_counter,
                     phase=retry_phase,
                 )
+                await _eager_unload(cycle_adapter_id)
 
                 # Re-parse and deduplicate
                 raw_subtasks = _parse_subtask_list(
@@ -1078,15 +1104,8 @@ async def run_phased_pipeline(
             plan_results = await asyncio.gather(*plan_tasks)
 
             # Unload all plan adapters from this iteration to free VRAM
-            from inference import get_provider as _get_provider  # noqa: PLC0415
-
-            _provider = _get_provider()
             for _name, _text, _paid in plan_results:
-                if _paid:
-                    try:
-                        await _provider.unload_adapter(_paid)
-                    except Exception:
-                        logger.warning("Failed to unload plan adapter %s", _paid, exc_info=True)
+                await _eager_unload(_paid)
 
             iter_adapter_ids: list[str] = []
             for name, plan_text, plan_aid in plan_results:
@@ -1264,6 +1283,7 @@ async def run_phased_pipeline(
                                     else "unknown error",
                                 },
                             )
+                            await _eager_unload(diag_aid)
                             diagnosis = diag_state.get("generated_code", "").strip()
                             # Take first sentence as fix guidance
                             fix_guidance = diagnosis.split(".")[0].strip()
@@ -1406,6 +1426,7 @@ async def run_phased_pipeline(
                     phase=code_phase,
                     prompt_context=code_ctx,
                 )
+                await _eager_unload(code_adapter_id)
 
                 last_state = code_state
                 new_code = code_state.get("generated_code", "")
@@ -1721,6 +1742,7 @@ async def run_phased_pipeline(
                 phase=integrate_phase,
                 prompt_context=integrate_ctx,
             )
+            await _eager_unload(integrate_aid)
 
             # Score from test results
             passed_count, total_count = _count_test_results(
@@ -1856,6 +1878,7 @@ async def run_phased_pipeline(
                 phase="diagnose",
                 prompt_context={"project_label": project_label},
             )
+            await _eager_unload(diagnose_aid)
 
             diagnosed = _parse_diagnose_output(
                 diagnose_state.get("generated_code", ""),
@@ -1947,6 +1970,7 @@ async def run_phased_pipeline(
                         "diagnosis": diagnosis,
                     },
                 )
+                await _eager_unload(repair_aid)
 
                 repaired_code = repair_state.get("generated_code", "")
                 if repaired_code.strip():
@@ -2014,6 +2038,7 @@ async def run_phased_pipeline(
                     "project_label": project_label,
                 },
             )
+            await _eager_unload(reintegrate_aid)
 
             ri_passed, ri_total = _count_test_results(
                 reintegrate_state.get("stdout", ""),
