@@ -530,7 +530,7 @@ def make_objective(
 
     def objective(trial: optuna.Trial) -> float:
         scaling_factor = trial.suggest_float("scaling_factor", 0.02, 0.50, log=True)
-        temperature = trial.suggest_float("temperature", 0.1, 0.7)
+        temperature = trial.suggest_float("temperature", 0.1, 0.4)
         repetition_penalty = trial.suggest_float("repetition_penalty", 1.0, 1.3)
         max_tokens = trial.suggest_categorical("max_tokens", [1024, 2048, 4096])
         max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
