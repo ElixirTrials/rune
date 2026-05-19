@@ -61,6 +61,7 @@ class VLLMProvider(InferenceProvider):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        enable_thinking: bool = True,
     ) -> GenerationResult:
         """Generate text from a prompt, optionally using a loaded LoRA adapter.
 
@@ -78,6 +79,8 @@ class VLLMProvider(InferenceProvider):
             temperature: Sampling temperature override.
             top_p: Nucleus sampling threshold override.
             repetition_penalty: Repetition penalty override.
+            enable_thinking: Accepted for interface compatibility; ignored
+                by vLLM provider.
 
         Returns:
             GenerationResult with the generated text and metadata.

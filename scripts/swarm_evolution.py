@@ -76,7 +76,7 @@ def evolution_sweep(registry: "AdapterRegistry") -> dict[str, Any]:
                 try:
                     _ties_merge_adapters(parent_ids, task_type, registry)
                     merged_count = 1
-                except Exception:
+                except (OSError, RuntimeError, ValueError):
                     logger.exception("TIES merge failed for task_type=%s", task_type)
 
         # Prune low-fitness adapters
@@ -191,7 +191,7 @@ async def evolution_worker(
         try:
             summary = evolution_sweep(registry)
             logger.info("Evolution sweep completed: %s", summary)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             logger.exception("Evolution sweep failed")
 
         await asyncio.sleep(interval_seconds)

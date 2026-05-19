@@ -60,6 +60,7 @@ _STOP_BY_BENCHMARK: dict[str, list[str]] = {
 def _stop_sequences_for(benchmark_id: str) -> list[str]:
     return _STOP_BY_BENCHMARK.get(benchmark_id, _DEFAULT_CODE_STOP)
 
+
 try:
     from openai import APIConnectionError, APITimeoutError
 
@@ -171,9 +172,7 @@ def _generate_completion(
                         stop=effective_stop,
                     )
                 )
-                return _truncate_at_stop_token(
-                    str(result.text), effective_stop
-                )
+                return _truncate_at_stop_token(str(result.text), effective_stop)
             except _RETRYABLE_ERRORS as exc:
                 last_exc = exc
                 wait = _RETRY_BACKOFF_S * (2**attempt)
@@ -278,20 +277,8 @@ def _evaluate_one(
     Returns:
         PassVerdict for this problem.
     """
-    try:
-        generation = _generate_completion(
-            adapter_stack, problem, stop=stop
-        )
-        return adapter.score(problem, generation, timeout_s=config.timeout_s)  # type: ignore[no-any-return]
-    except Exception as exc:
-        logger.warning("Error evaluating problem %s: %s", problem.problem_id, exc)
-        return PassVerdict(
-            problem_id=problem.problem_id,
-            passed=False,
-            generation="",
-            error=str(exc),
-            timed_out=False,
-        )
+    generation = _generate_completion(adapter_stack, problem, stop=stop)
+    return adapter.score(problem, generation, timeout_s=config.timeout_s)  # type: ignore[no-any-return]
 
 
 def _load_checkpoint(path: Path) -> list[PassVerdict]:
@@ -454,9 +441,7 @@ def run_benchmark(  # noqa: C901
 
     def _evaluate_and_checkpoint(problem: Problem) -> PassVerdict:
         nonlocal _pass_count, _completed
-        verdict = _evaluate_one(
-            adapter, adapter_stack, problem, cfg, stop=bench_stop
-        )
+        verdict = _evaluate_one(adapter, adapter_stack, problem, cfg, stop=bench_stop)
         if ckpt_path is not None:
             _append_checkpoint(ckpt_path, verdict)
         with _verdict_lock:
@@ -465,10 +450,7 @@ def run_benchmark(  # noqa: C901
                 _pass_count += 1
             running_p1 = _pass_count / _completed if _completed else 0.0
         if on_verdict is not None:
-            try:
-                on_verdict(benchmark_id, verdict, running_p1, _completed, n_total)
-            except Exception:
-                logger.debug("on_verdict callback error", exc_info=True)
+            on_verdict(benchmark_id, verdict, running_p1, _completed, n_total)
         return verdict
 
     # Warm up the provider connection with the first problem (single-threaded)
@@ -499,11 +481,7 @@ def run_benchmark(  # noqa: C901
         for v in verdicts
         if not v.passed
         and v.error
-        and (
-            "Connection" in v.error
-            or "Timeout" in v.error
-            or v.generation == ""
-        )
+        and ("Connection" in v.error or "Timeout" in v.error or v.generation == "")
     )
     if infra_errors > len(verdicts) * 0.1:
         logger.warning(

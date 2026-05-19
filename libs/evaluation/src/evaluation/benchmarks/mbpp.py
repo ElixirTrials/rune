@@ -11,6 +11,7 @@ function name and signature.
 
 from __future__ import annotations
 
+import logging
 import os
 import random
 import re
@@ -18,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from evaluation.benchmarks.protocol import PassVerdict, Problem
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_FIXTURE = (
     Path(__file__).parent.parent.parent.parent.parent.parent
@@ -99,6 +102,10 @@ class MBPPAdapter:
         try:
             return self._load_from_hf()
         except Exception:
+            logger.warning(
+                "HuggingFace load failed, falling back to fixture",
+                exc_info=True,
+            )
             return self._load_from_fixture()
 
     def _load_from_hf(self) -> list[dict[str, Any]]:
@@ -133,9 +140,7 @@ class MBPPAdapter:
         # include assertions so the model sees the expected function name.
         test_lines = test_code.split("\n")
         test_hint = test_lines[0] if test_lines else ""
-        prompt = (
-            f'"""\n{description}\n\n>>> {test_hint}\n"""\n'
-        )
+        prompt = f'"""\n{description}\n\n>>> {test_hint}\n"""\n'
 
         entry_point: str | None = None
         match = _FUNC_NAME_RE.search(test_code)

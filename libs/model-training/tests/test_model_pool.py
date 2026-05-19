@@ -66,9 +66,7 @@ def test_base_model_lazy_loading(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert model1 is model2
     assert tok1 is tok2
-    mock_amc.from_pretrained.assert_called_once_with(
-        "test-model", dtype=fake_dtype
-    )
+    mock_amc.from_pretrained.assert_called_once_with("test-model", dtype=fake_dtype)
     mock_at.from_pretrained.assert_called_once_with("test-model")
 
 

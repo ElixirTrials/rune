@@ -318,10 +318,12 @@ def run_pipeline_on_problem(
     start = time.time()
     adapter_dir: str | None = None
     with mlflow.start_span(name=f"problem/{problem.problem_id}") as span:
-        span.set_inputs({
-            "problem_id": problem.problem_id,
-            "prompt": problem.prompt[:300],
-        })
+        span.set_inputs(
+            {
+                "problem_id": problem.problem_id,
+                "prompt": problem.prompt[:300],
+            }
+        )
         try:
             result = asyncio.run(
                 run_phased_pipeline(
@@ -333,39 +335,20 @@ def run_pipeline_on_problem(
                 )
             )
             adapter_dir = result.get("adapter_dir")
-            verdict = score_pipeline_result(
-                problem, result, time.time() - start
-            )
-        except Exception as exc:  # noqa: BLE001 - pipeline failure -> failed verdict
-            import torch  # noqa: PLC0415
-
-            if isinstance(exc, torch.cuda.OutOfMemoryError):
-                raise
-            logger.warning(
-                "Pipeline failed on %s: %s", problem.problem_id, exc
-            )
-            verdict = ProblemVerdict(
-                problem_id=problem.problem_id,
-                passed=False,
-                code_attempts=0,
-                diagnose_fired=False,
-                n_subtasks=0,
-                wall_time_s=time.time() - start,
-                accumulated_code_len=0,
-                error=str(exc),
-                generation="",
-            )
+            verdict = score_pipeline_result(problem, result, time.time() - start)
         finally:
             if adapter_dir:
                 shutil.rmtree(adapter_dir, ignore_errors=True)
             _flush_gpu()
-        span.set_outputs({
-            "passed": verdict.passed,
-            "code_attempts": verdict.code_attempts,
-            "n_subtasks": verdict.n_subtasks,
-            "wall_time_s": round(verdict.wall_time_s, 1),
-            "error": verdict.error[:200] if verdict.error else "",
-        })
+        span.set_outputs(
+            {
+                "passed": verdict.passed,
+                "code_attempts": verdict.code_attempts,
+                "n_subtasks": verdict.n_subtasks,
+                "wall_time_s": round(verdict.wall_time_s, 1),
+                "error": verdict.error[:200] if verdict.error else "",
+            }
+        )
     # Flush traces eagerly so each problem appears in the UI immediately
     mlflow.flush_trace_async_logging()
     return verdict
@@ -405,7 +388,7 @@ def _flush_gpu() -> None:
         import torch  # noqa: PLC0415
 
         torch.cuda.empty_cache()
-    except Exception:  # noqa: BLE001
+    except ImportError:
         pass
 
 
@@ -536,9 +519,7 @@ def make_objective(
         max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
 
         n = min(problems_per_trial, len(tuning_problems))
-        trial_problems = random.Random(seed + trial.number).sample(
-            tuning_problems, n
-        )
+        trial_problems = random.Random(seed + trial.number).sample(tuning_problems, n)
         apply_trial_env(
             scaling_factor=scaling_factor,
             temperature=temperature,
@@ -561,7 +542,10 @@ def make_objective(
                 }
             )
             verdicts = evaluate_problem_set(
-                trial_problems, hypernet_checkpoint, base_model, device,
+                trial_problems,
+                hypernet_checkpoint,
+                base_model,
+                device,
                 pool=pool,
             )
             log_trial_metrics(verdicts, time.time() - start)
@@ -872,7 +856,10 @@ def main() -> None:
             max_tokens=best["max_tokens"],
         )
         val_verdicts = evaluate_problem_set(
-            validation, args.hypernet_checkpoint, args.base_model, args.device,
+            validation,
+            args.hypernet_checkpoint,
+            args.base_model,
+            args.device,
             pool=pool,
         )
         val_pass_rate = (

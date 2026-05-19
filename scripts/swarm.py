@@ -146,8 +146,9 @@ def _register_iteration_adapter(
             fitness,
             pass_rate,
         )
-    except Exception:
+    except (OSError, RuntimeError):
         logger.exception("Failed to register adapter %s", record.id)
+        raise
 
 
 def _register_phased_adapters(
@@ -215,8 +216,9 @@ def _register_phased_adapters(
                 adapter_task_type,
                 fitness,
             )
-        except Exception:
+        except (OSError, RuntimeError):
             logger.exception("Failed to register phased adapter %s", record.id)
+            raise
 
 
 async def agent_supervisor(
@@ -346,8 +348,7 @@ async def agent_supervisor(
         except Exception:
             logger.exception("Agent %s failed on task %s", agent_id, task_hash)
             checkpoint_db.mark_failed(task_hash, agent_id)
-            failed += 1
-            consecutive_failures += 1
+            raise
 
         if consecutive_failures >= max_failures:
             logger.warning(

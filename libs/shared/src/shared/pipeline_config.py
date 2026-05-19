@@ -30,7 +30,7 @@ class GenerationConfig:
     """LLM generation settings."""
 
     temperature: float = 0.3
-    max_tokens: int = 1024
+    max_tokens: int = 2048
     repetition_penalty: float = 1.1
     top_p: float = 0.9
 

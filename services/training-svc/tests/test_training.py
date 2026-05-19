@@ -70,5 +70,3 @@ def test_get_job_status_not_found(test_client):
     """GET /jobs/{nonexistent-id} returns 404."""
     response = test_client.get("/jobs/nonexistent-id")
     assert response.status_code == 404
-
-

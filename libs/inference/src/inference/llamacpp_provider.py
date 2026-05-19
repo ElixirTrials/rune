@@ -107,6 +107,7 @@ class LlamaCppProvider(InferenceProvider):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        enable_thinking: bool = True,
     ) -> GenerationResult:
         """Generate text using llama-cpp-python with optional LoRA adapter.
 
@@ -121,6 +122,8 @@ class LlamaCppProvider(InferenceProvider):
             temperature: Sampling temperature override.
             top_p: Nucleus sampling threshold override.
             repetition_penalty: Repetition penalty override.
+            enable_thinking: Accepted for interface compatibility; ignored
+                by llama.cpp provider.
 
         Returns:
             GenerationResult with generated text and metadata.

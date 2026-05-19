@@ -118,10 +118,13 @@ async def _sleep_vllm(base_url: str) -> None:
     """
     try:
         import httpx
-
+    except ImportError:
+        logger.warning("httpx not available — cannot sleep vLLM at %s", base_url)
+        return
+    try:
         async with httpx.AsyncClient() as client:
             await client.post(f"{base_url}/sleep", timeout=30)
-    except Exception:
+    except (httpx.HTTPError, OSError):
         logger.warning("Failed to sleep vLLM at %s", base_url, exc_info=True)
 
 
@@ -133,10 +136,13 @@ async def _wake_vllm(base_url: str) -> None:
     """
     try:
         import httpx
-
+    except ImportError:
+        logger.warning("httpx not available — cannot wake vLLM at %s", base_url)
+        return
+    try:
         async with httpx.AsyncClient() as client:
             await client.post(f"{base_url}/wake_up", timeout=30)
-    except Exception:
+    except (httpx.HTTPError, OSError):
         logger.warning("Failed to wake vLLM at %s", base_url, exc_info=True)
 
 

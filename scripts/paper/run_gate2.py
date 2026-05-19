@@ -135,14 +135,20 @@ def main() -> None:
         adapter_paths={},
         provider=provider,
     )
+
     def _on_verdict(
-        bench_id: str, verdict: Any, running_p1: float,
-        n_done: int, n_total: int,
+        bench_id: str,
+        verdict: Any,
+        running_p1: float,
+        n_done: int,
+        n_total: int,
     ) -> None:
         if mlflow_ok:
             mlflow.log_metric(f"substrate_{bench_id}_running", running_p1, step=n_done)
         if n_done % 50 == 0 or n_done == n_total:
-            print(f"  [substrate/{bench_id}] {n_done}/{n_total} Pass@1={running_p1:.2%}")
+            print(
+                f"  [substrate/{bench_id}] {n_done}/{n_total} Pass@1={running_p1:.2%}"
+            )
 
     baseline_scores: dict[str, float] = {}
     for bench in benchmarks:
@@ -175,8 +181,11 @@ def main() -> None:
             )
 
     def _on_verdict_rune(
-        bench_id: str, verdict: Any, running_p1: float,
-        n_done: int, n_total: int,
+        bench_id: str,
+        verdict: Any,
+        running_p1: float,
+        n_done: int,
+        n_total: int,
     ) -> None:
         if mlflow_ok:
             mlflow.log_metric(f"rune_{bench_id}_running", running_p1, step=n_done)

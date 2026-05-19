@@ -92,9 +92,9 @@ def _generate_completions(
                         loop.run_until_complete(
                             provider.unload_adapter(adapter_id_to_unload)
                         )
-                    except Exception:
-                        logger.debug(
-                            "Failed to unload adapter %s", adapter_id_to_unload
+                    except RuntimeError:
+                        logger.warning(
+                            "Failed to unload adapter %s", adapter_id_to_unload, exc_info=True
                         )
     finally:
         loop.close()
@@ -118,7 +118,9 @@ def _pregenerate_ood_adapters(
     from model_training.hypernetwork import load_hypernetwork
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-    def _device_safe_forward(self, features, attn_mask=None, position_ids=None, n_ctx_chunks=None):
+    def _device_safe_forward(
+        self, features, attn_mask=None, position_ids=None, n_ctx_chunks=None
+    ):
         dev = "cuda" if features.is_cuda else "cpu"
         with torch.autocast(device_type=dev, dtype=torch.bfloat16):
             if self.aggregator.layer_to_layer and self.iterative_mode:
@@ -168,7 +170,9 @@ def _pregenerate_ood_adapters(
         Path(task_dir).mkdir(parents=True, exist_ok=True)
 
         features, attn_mask = extract_activations_with_model(
-            text=prompt, model=base_model, tokenizer=tokenizer,
+            text=prompt,
+            model=base_model,
+            tokenizer=tokenizer,
             layer_indices=layer_indices,
         )
         with torch.no_grad():
@@ -179,8 +183,11 @@ def _pregenerate_ood_adapters(
         lora_dict = _combine_lora(lora_dict, n_chunks, lora_bias=lora_bias)
 
         _save_adapter(
-            lora_dict=lora_dict, output_dir=task_dir,
-            base_model_name=model, hc=hc, scaling_factor=0.16,
+            lora_dict=lora_dict,
+            output_dir=task_dir,
+            base_model_name=model,
+            hc=hc,
+            scaling_factor=0.16,
         )
         manifest[task_id] = task_dir
         logger.info("  OOD adapter: %s", task_id)
@@ -190,6 +197,7 @@ def _pregenerate_ood_adapters(
 
     del hypernet, base_model
     import gc
+
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -237,8 +245,11 @@ def main() -> None:
             args.output.parent / "rune_adapters_ood"
         )
         _pregenerate_ood_adapters(
-            all_tasks, args.model, args.hypernet_checkpoint,
-            args.device, adapter_out,
+            all_tasks,
+            args.model,
+            args.hypernet_checkpoint,
+            args.device,
+            adapter_out,
         )
         print(f"OOD adapters written to {adapter_out}")
         return

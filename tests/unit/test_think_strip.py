@@ -18,6 +18,7 @@ import re
 # Helpers — mirror the exact regexes in transformers_provider.py
 # ---------------------------------------------------------------------------
 
+
 def _strip_thinking(text: str) -> str:
     """Apply both think-strip passes as done in generate()."""
     text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
@@ -28,6 +29,7 @@ def _strip_thinking(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Closed block tests
 # ---------------------------------------------------------------------------
+
 
 def test_single_closed_block_removed() -> None:
     raw = "<think>Some internal reasoning here.</think>def hello(): pass"
@@ -62,6 +64,7 @@ def test_empty_string_passthrough() -> None:
 # Dangling (truncated) block tests
 # ---------------------------------------------------------------------------
 
+
 def test_dangling_block_removed() -> None:
     """A <think> with no closing tag should remove everything from it onward."""
     raw = "preamble\n<think>I started thinking but got cut off"
@@ -81,6 +84,7 @@ def test_dangling_multiline_removed() -> None:
 # ---------------------------------------------------------------------------
 # Edge-case / mixed tests
 # ---------------------------------------------------------------------------
+
 
 def test_closed_then_dangling_both_removed() -> None:
     """Closed block stripped first, then residual dangling block stripped."""

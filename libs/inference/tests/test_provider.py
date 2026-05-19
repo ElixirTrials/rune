@@ -61,6 +61,29 @@ class TestGenerationResult:
         )
         assert result.adapter_id is None
 
+    def test_thinking_defaults_to_none(self) -> None:
+        """GenerationResult.thinking defaults to None for backward compat."""
+        result = GenerationResult(
+            text="output",
+            model="m",
+            adapter_id=None,
+            token_count=5,
+            finish_reason="stop",
+        )
+        assert result.thinking is None
+
+    def test_thinking_can_store_captured_content(self) -> None:
+        """GenerationResult.thinking stores captured think-block content."""
+        result = GenerationResult(
+            text="def solve(): pass",
+            model="m",
+            adapter_id=None,
+            token_count=50,
+            finish_reason="stop",
+            thinking="I should use dynamic programming here.",
+        )
+        assert result.thinking == "I should use dynamic programming here."
+
 
 class TestUnsupportedOperationError:
     """Tests for UnsupportedOperationError exception."""

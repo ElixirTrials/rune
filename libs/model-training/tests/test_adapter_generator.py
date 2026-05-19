@@ -121,9 +121,7 @@ def test_generate_adapter_pool_mode(tmp_path: Path) -> None:
     target_modules = ["q_proj", "v_proj"]
     layer_indices = [0, 1]
     rank = 8
-    hc = _make_hc(
-        layer_indices=layer_indices, target_modules=target_modules, rank=rank
-    )
+    hc = _make_hc(layer_indices=layer_indices, target_modules=target_modules, rank=rank)
 
     # Build fake hypernet
     fake_hypernet = MagicMock()
@@ -198,9 +196,7 @@ def test_generate_adapter_standalone_mode(tmp_path: Path) -> None:
     target_modules = ["q_proj", "v_proj"]
     layer_indices = [0, 1]
     rank = 8
-    hc = _make_hc(
-        layer_indices=layer_indices, target_modules=target_modules, rank=rank
-    )
+    hc = _make_hc(layer_indices=layer_indices, target_modules=target_modules, rank=rank)
 
     fake_hypernet = MagicMock()
     fake_hypernet.config.use_bias = False
@@ -276,6 +272,7 @@ def test_generate_adapter_standalone_mode(tmp_path: Path) -> None:
         ),
     ):
         import model_training.hypernetwork as _hn_mod
+
         with patch.object(
             _hn_mod,
             "load_hypernetwork",

@@ -111,51 +111,52 @@ def _enable_mlflow_autolog() -> None:
         return
     try:
         import mlflow  # noqa: PLC0415
+    except ImportError:
+        logger.debug("MLflow not available, skipping autolog")
+        return
 
-        mlflow.langchain.autolog(run_tracer_inline=True)
-        _MLFLOW_AUTOLOG_ENABLED = True
-        logger.info("MLflow LangChain autolog enabled")
-    except Exception:
-        pass
+    mlflow.langchain.autolog(run_tracer_inline=True)
+    _MLFLOW_AUTOLOG_ENABLED = True
+    logger.info("MLflow LangChain autolog enabled")
 
 
 def _mlflow_tag(key: str, value: str) -> None:
     """Set an MLflow tag if an active run exists."""
     try:
         import mlflow  # noqa: PLC0415
+    except ImportError:
+        return
 
-        if mlflow.active_run() is not None:
-            mlflow.set_tag(key, value)
-    except Exception:
-        pass
+    if mlflow.active_run() is not None:
+        mlflow.set_tag(key, value)
 
 
 def _mlflow_metric(key: str, value: float, step: int | None = None) -> None:
     """Log an MLflow metric if an active run exists."""
     try:
         import mlflow  # noqa: PLC0415
+    except ImportError:
+        return
 
-        if mlflow.active_run() is not None:
-            if step is not None:
-                mlflow.log_metric(key, value, step=step)
-            else:
-                mlflow.log_metric(key, value)
-    except Exception:
-        pass
+    if mlflow.active_run() is not None:
+        if step is not None:
+            mlflow.log_metric(key, value, step=step)
+        else:
+            mlflow.log_metric(key, value)
 
 
 def _mlflow_metrics(metrics: dict[str, float], step: int | None = None) -> None:
     """Log multiple MLflow metrics if an active run exists."""
     try:
         import mlflow  # noqa: PLC0415
+    except ImportError:
+        return
 
-        if mlflow.active_run() is not None:
-            if step is not None:
-                mlflow.log_metrics(metrics, step=step)
-            else:
-                mlflow.log_metrics(metrics)
-    except Exception:
-        pass
+    if mlflow.active_run() is not None:
+        if step is not None:
+            mlflow.log_metrics(metrics, step=step)
+        else:
+            mlflow.log_metrics(metrics)
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +303,13 @@ def _parse_subtask_list(
         result = DecomposeResult(subtasks=[Subtask(**s) for s in subtasks])
         return [s.model_dump() for s in result.subtasks]
     except ValidationError:
-        return [{"name": "implementation", "description": model_output[:200].strip(), "depends_on": []}]
+        return [
+            {
+                "name": "implementation",
+                "description": model_output[:200].strip(),
+                "depends_on": [],
+            }
+        ]
 
 
 def _parse_plan(model_output: str) -> str:
@@ -391,21 +398,29 @@ async def run_iteration(
         "outcome": None,
     }
 
+    span_cm = None
     try:
         import mlflow  # noqa: PLC0415
 
-        with mlflow.start_span(
-            name=f"run_iteration/{phase or 'unknown'}",
-        ) as span:
-            span.set_inputs({"phase": phase, "adapter_id": adapter_id, "iteration": iteration})
+        span_cm = mlflow.start_span(name=f"run_iteration/{phase or 'unknown'}")
+    except ImportError:
+        pass
+
+    if span_cm is not None:
+        with span_cm as span:
+            span.set_inputs(
+                {"phase": phase, "adapter_id": adapter_id, "iteration": iteration}
+            )
             result = await graph.ainvoke(initial_state)
-            span.set_outputs({
-                "tests_passed": result.get("tests_passed"),
-                "exit_code": result.get("exit_code"),
-                "finish_reason": result.get("finish_reason"),
-            })
+            span.set_outputs(
+                {
+                    "tests_passed": result.get("tests_passed"),
+                    "exit_code": result.get("exit_code"),
+                    "finish_reason": result.get("finish_reason"),
+                }
+            )
             return result
-    except Exception:
+    else:
         return await graph.ainvoke(initial_state)
 
 
@@ -421,6 +436,7 @@ def run_hypernetwork(
     checkpoint_path: str | None = None,
     device: str = "cpu",
     scaling_factor: float = 0.16,
+    max_length: int = 512,
     pool: Any = None,
 ) -> str | None:
     """Run the HyperLoRA perceiver to produce a PEFT adapter from trajectory.
@@ -448,11 +464,14 @@ def run_hypernetwork(
             text=trajectory_text,
             output_dir=output_dir,
             pool=pool,
+            max_length=max_length,
             scaling_factor=scaling_factor,
         )
 
     if not checkpoint_path:
-        logger.warning("No hypernetwork checkpoint provided — skipping adapter generation")
+        logger.warning(
+            "No hypernetwork checkpoint provided — skipping adapter generation"
+        )
         return None
     if not checkpoint_path.startswith("s3://") and not Path(checkpoint_path).exists():
         logger.warning(
@@ -477,6 +496,7 @@ def run_hypernetwork(
         checkpoint_path=checkpoint_path,
         base_model_name=base_model_id,
         device=device,
+        max_length=max_length,
         scaling_factor=scaling_factor,
     )
 
@@ -499,7 +519,7 @@ async def _load_adapter(
         try:
             await provider.unload_adapter(current_adapter_id)
         except Exception:
-            pass
+            logger.warning("Failed to unload previous adapter %s", current_adapter_id, exc_info=True)
     await provider.load_adapter(adapter_id, adapter_path)
     return adapter_id
 
@@ -516,15 +536,15 @@ async def _cleanup_phase_adapters() -> None:
         try:
             await provider.unload_adapter(aid)
         except Exception:
-            pass
+            logger.warning("Failed to unload adapter %s", aid, exc_info=True)
 
     try:
         import torch  # noqa: PLC0415
-
+    except ImportError:
+        pass
+    else:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -574,7 +594,7 @@ def _register_adapter(
     try:
         registry.store(record)
     except Exception:
-        # Duplicate — update fitness instead
+        logger.debug("Adapter %s already registered, updating fitness", adapter_id)
         registry.update_fitness(adapter_id, pass_rate=pass_rate, fitness_score=fitness)
     return fitness
 
@@ -683,6 +703,7 @@ async def run_phased_pipeline(
     )
     os.environ.setdefault("RUNE_MAX_TOKENS", str(_pipeline_cfg.generation.max_tokens))
     adapter_scaling = _pipeline_cfg.adapter.scaling
+    adapter_max_length = _pipeline_cfg.adapter.max_length
 
     # Create resident model pool for base model + hypernetwork
     from model_training.model_pool import ModelPool, set_pool  # noqa: PLC0415
@@ -723,7 +744,9 @@ async def run_phased_pipeline(
             prior_output = ""
             if best_decompose_state is not None:
                 prior_output = best_decompose_state.get("generated_code", "")
-            decompose_trajectory = render_trajectory("decompose", project=project_prompt)
+            decompose_trajectory = render_trajectory(
+                "decompose", project=project_prompt
+            )
             if prior_output and evo_iter > 0:
                 decompose_trajectory += (
                     f"\n\n[Prior decomposition attempt — improve on this]\n"
@@ -738,6 +761,7 @@ async def run_phased_pipeline(
                 checkpoint_path=checkpoint_path,
                 device=device,
                 scaling_factor=adapter_scaling,
+                max_length=adapter_max_length,
                 pool=pool,
             )
 
@@ -796,7 +820,9 @@ async def run_phased_pipeline(
 
             # Update fitness in registry
             if adapter_id:
-                registry.update_fitness(adapter_id, pass_rate=score, fitness_score=score)
+                registry.update_fitness(
+                    adapter_id, pass_rate=score, fitness_score=score
+                )
 
             if score > best_decompose_score:
                 best_decompose_score = score
@@ -833,7 +859,9 @@ async def run_phased_pipeline(
 
         # Use best decompose result
         assert best_decompose_state is not None
-        raw_subtasks = _parse_subtask_list(best_decompose_state.get("generated_code", ""))
+        raw_subtasks = _parse_subtask_list(
+            best_decompose_state.get("generated_code", "")
+        )
         # Deduplicate subtasks by name
         seen: set[str] = set()
         subtasks: list[dict[str, Any]] = []
@@ -887,13 +915,16 @@ async def run_phased_pipeline(
                     checkpoint_path=checkpoint_path,
                     device=device,
                     scaling_factor=adapter_scaling,
+                    max_length=adapter_max_length,
                     pool=pool,
                 )
 
                 cycle_adapter_id: str | None = None
                 if adapter_path:
                     cycle_adapter_id = f"phase1-decompose-cycle-fix-{cycle_attempt}"
-                    await _load_adapter(cycle_adapter_id, adapter_path, loaded_adapter_id)
+                    await _load_adapter(
+                        cycle_adapter_id, adapter_path, loaded_adapter_id
+                    )
                     loaded_adapter_id = cycle_adapter_id
 
                 iteration_counter += 1
@@ -908,7 +939,9 @@ async def run_phased_pipeline(
                 )
 
                 # Re-parse and deduplicate
-                raw_subtasks = _parse_subtask_list(retry_state.get("generated_code", ""))
+                raw_subtasks = _parse_subtask_list(
+                    retry_state.get("generated_code", "")
+                )
                 seen = set()
                 subtasks = []
                 for st in raw_subtasks:
@@ -937,11 +970,13 @@ async def run_phased_pipeline(
             "iterations": evo_iter + 1,
             "best_score": best_decompose_score,
         }
-        _mlflow_metrics({
-            "pipeline/decompose/iterations": float(evo_iter + 1),
-            "pipeline/decompose/best_score": best_decompose_score,
-            "pipeline/decompose/n_subtasks_final": float(len(subtasks)),
-        })
+        _mlflow_metrics(
+            {
+                "pipeline/decompose/iterations": float(evo_iter + 1),
+                "pipeline/decompose/best_score": best_decompose_score,
+                "pipeline/decompose/n_subtasks_final": float(len(subtasks)),
+            }
+        )
         _mlflow_tag("pipeline.decompose.status", "complete")
         await _cleanup_phase_adapters()
 
@@ -985,7 +1020,8 @@ async def run_phased_pipeline(
                     )
 
                 plan_ad = str(
-                    adapter_dir / f"phase2_plan_{_safe_adapter_id(subtask['name'])}_v{evo}"
+                    adapter_dir
+                    / f"phase2_plan_{_safe_adapter_id(subtask['name'])}_v{evo}"
                 )
                 plan_path = run_hypernetwork(
                     trajectory_text=traj,
@@ -994,6 +1030,7 @@ async def run_phased_pipeline(
                     checkpoint_path=checkpoint_path,
                     device=device,
                     scaling_factor=adapter_scaling,
+                    max_length=adapter_max_length,
                     pool=pool,
                 )
                 plan_aid: str | None = None
@@ -1035,7 +1072,9 @@ async def run_phased_pipeline(
                     plan_aid,
                 )
 
-            plan_tasks = [_plan_subtask(i, st, evo_iter) for i, st in enumerate(subtasks)]
+            plan_tasks = [
+                _plan_subtask(i, st, evo_iter) for i, st in enumerate(subtasks)
+            ]
             plan_results = await asyncio.gather(*plan_tasks)
 
             # Unload all plan adapters from this iteration to free VRAM
@@ -1047,7 +1086,7 @@ async def run_phased_pipeline(
                     try:
                         await _provider.unload_adapter(_paid)
                     except Exception:
-                        pass
+                        logger.warning("Failed to unload plan adapter %s", _paid, exc_info=True)
 
             iter_adapter_ids: list[str] = []
             for name, plan_text, plan_aid in plan_results:
@@ -1105,10 +1144,12 @@ async def run_phased_pipeline(
             "iterations": evo_iter + 1,
             "best_score": best_plan_score,
         }
-        _mlflow_metrics({
-            "pipeline/plan/iterations": float(evo_iter + 1),
-            "pipeline/plan/best_score": best_plan_score,
-        })
+        _mlflow_metrics(
+            {
+                "pipeline/plan/iterations": float(evo_iter + 1),
+                "pipeline/plan/best_score": best_plan_score,
+            }
+        )
         _mlflow_tag("pipeline.plan.status", "complete")
         await _cleanup_phase_adapters()
 
@@ -1168,8 +1209,12 @@ async def run_phased_pipeline(
                             last_state.get("stdout", ""),
                             last_state.get("stderr", ""),
                         )
-                        error_summary = _extract_error_summary(last_state.get("stderr", ""))
-                        failed_tests = _extract_failed_tests(last_state.get("stderr", ""))
+                        error_summary = _extract_error_summary(
+                            last_state.get("stderr", "")
+                        )
+                        failed_tests = _extract_failed_tests(
+                            last_state.get("stderr", "")
+                        )
                         tests_passed = last_state.get("tests_passed", False)
 
                         # Step 1: Quick diagnose — error in prompt, code in adapter
@@ -1194,6 +1239,7 @@ async def run_phased_pipeline(
                             checkpoint_path=checkpoint_path,
                             device=device,
                             scaling_factor=adapter_scaling,
+                            max_length=adapter_max_length,
                             pool=pool,
                         )
                         if diag_adapter_path:
@@ -1236,9 +1282,7 @@ async def run_phased_pipeline(
                         else:
                             # Fallback: generic guidance
                             if total == 0 and last_state.get("exit_code", 1) == 0:
-                                fix_guidance = (
-                                    "NO tests detected — include unittest.TestCase tests"
-                                )
+                                fix_guidance = "NO tests detected — include unittest.TestCase tests"
                             elif total == 0:
                                 fix_guidance = (
                                     "Code failed to execute. "
@@ -1281,6 +1325,7 @@ async def run_phased_pipeline(
                     checkpoint_path=checkpoint_path,
                     device=device,
                     scaling_factor=adapter_scaling,
+                    max_length=adapter_max_length,
                     pool=pool,
                 )
 
@@ -1339,7 +1384,9 @@ async def run_phased_pipeline(
                     elif passed == 0:
                         fix_guidance_prompt = "No tests pass. Fix basic structure."
                     else:
-                        fix_guidance_prompt = f"{total - passed} test(s) failing. Fix them."
+                        fix_guidance_prompt = (
+                            f"{total - passed} test(s) failing. Fix them."
+                        )
 
                     code_phase = "code_retry"
                     code_ctx = {
@@ -1533,14 +1580,16 @@ async def run_phased_pipeline(
             "passed": code_passed_count,
             "total": len(code_outputs),
         }
-        _mlflow_metrics({
-            "pipeline/code/passed": float(code_passed_count),
-            "pipeline/code/total": float(len(code_outputs)),
-            "pipeline/code/pass_rate": (
-                code_passed_count / len(code_outputs) if code_outputs else 0.0
-            ),
-            "pipeline/code/max_attempts": float(max_code_attempts),
-        })
+        _mlflow_metrics(
+            {
+                "pipeline/code/passed": float(code_passed_count),
+                "pipeline/code/total": float(len(code_outputs)),
+                "pipeline/code/pass_rate": (
+                    code_passed_count / len(code_outputs) if code_outputs else 0.0
+                ),
+                "pipeline/code/max_attempts": float(max_code_attempts),
+            }
+        )
         _mlflow_tag("pipeline.code.status", "complete")
         await _cleanup_phase_adapters()
 
@@ -1587,7 +1636,9 @@ async def run_phased_pipeline(
             )
             # Include prior error context on retries
             if evo_iter > 0 and best_integrate_state is not None:
-                error_ctx = _extract_error_summary(best_integrate_state.get("stderr", ""))
+                error_ctx = _extract_error_summary(
+                    best_integrate_state.get("stderr", "")
+                )
                 if error_ctx:
                     integrate_trajectory += (
                         f"\n\n[Prior integration errors — fix these]\n{error_ctx}"
@@ -1601,6 +1652,7 @@ async def run_phased_pipeline(
                 checkpoint_path=checkpoint_path,
                 device=device,
                 scaling_factor=adapter_scaling,
+                max_length=adapter_max_length,
                 pool=pool,
             )
 
@@ -1637,7 +1689,9 @@ async def run_phased_pipeline(
                     best_integrate_state.get("stdout", ""),
                     best_integrate_state.get("stderr", ""),
                 )
-                int_error = _extract_error_summary(best_integrate_state.get("stderr", ""))
+                int_error = _extract_error_summary(
+                    best_integrate_state.get("stderr", "")
+                )
 
                 if int_total == 0 and best_integrate_state.get("exit_code", 1) == 0:
                     int_fix = "NO tests detected — include unittest.TestCase"
@@ -1682,7 +1736,9 @@ async def run_phased_pipeline(
 
             # Update fitness
             if integrate_aid:
-                registry.update_fitness(integrate_aid, pass_rate=score, fitness_score=score)
+                registry.update_fitness(
+                    integrate_aid, pass_rate=score, fitness_score=score
+                )
 
             if score > best_integrate_score:
                 best_integrate_score = score
@@ -1727,11 +1783,13 @@ async def run_phased_pipeline(
             "iterations": evo_iter + 1,
             "best_score": best_integrate_score,
         }
-        _mlflow_metrics({
-            "pipeline/integrate/iterations": float(evo_iter + 1),
-            "pipeline/integrate/best_score": best_integrate_score,
-            "pipeline/integrate/final_passed": float(final_passed),
-        })
+        _mlflow_metrics(
+            {
+                "pipeline/integrate/iterations": float(evo_iter + 1),
+                "pipeline/integrate/best_score": best_integrate_score,
+                "pipeline/integrate/final_passed": float(final_passed),
+            }
+        )
         _mlflow_tag("pipeline.integrate.status", "complete")
         await _cleanup_phase_adapters()
 
@@ -1776,13 +1834,16 @@ async def run_phased_pipeline(
                 checkpoint_path=checkpoint_path,
                 device=device,
                 scaling_factor=adapter_scaling,
+                max_length=adapter_max_length,
                 pool=pool,
             )
 
             diagnose_aid: str | None = None
             if diagnose_adapter_path:
                 diagnose_aid = f"phase5-diagnose-v{repair_iter}"
-                await _load_adapter(diagnose_aid, diagnose_adapter_path, loaded_repair_adapter)
+                await _load_adapter(
+                    diagnose_aid, diagnose_adapter_path, loaded_repair_adapter
+                )
                 loaded_repair_adapter = diagnose_aid
 
             iteration_counter += 1
@@ -1802,7 +1863,9 @@ async def run_phased_pipeline(
             )
 
             if not diagnosed:
-                logger.warning("  Diagnose produced no actionable items, stopping repair")
+                logger.warning(
+                    "  Diagnose produced no actionable items, stopping repair"
+                )
                 break
 
             logger.info(
@@ -1856,6 +1919,7 @@ async def run_phased_pipeline(
                     checkpoint_path=checkpoint_path,
                     device=device,
                     scaling_factor=adapter_scaling,
+                    max_length=adapter_max_length,
                     pool=pool,
                 )
 
@@ -1864,7 +1928,9 @@ async def run_phased_pipeline(
                     repair_aid = (
                         f"phase5-repair-{_safe_adapter_id(repair_name)}-v{repair_iter}"
                     )
-                    await _load_adapter(repair_aid, repair_adapter_path, loaded_repair_adapter)
+                    await _load_adapter(
+                        repair_aid, repair_adapter_path, loaded_repair_adapter
+                    )
                     loaded_repair_adapter = repair_aid
 
                 iteration_counter += 1
@@ -1893,7 +1959,8 @@ async def run_phased_pipeline(
 
             # --- RE-INTEGRATE with patched code ---
             skeletons = {
-                name: _extract_code_skeleton(code) for name, code in code_outputs.items()
+                name: _extract_code_skeleton(code)
+                for name, code in code_outputs.items()
             }
             integration_doc_parts = []
             for st in subtasks:
@@ -1922,13 +1989,16 @@ async def run_phased_pipeline(
                 checkpoint_path=checkpoint_path,
                 device=device,
                 scaling_factor=adapter_scaling,
+                max_length=adapter_max_length,
                 pool=pool,
             )
 
             reintegrate_aid: str | None = None
             if reintegrate_adapter_path:
                 reintegrate_aid = f"phase5-reintegrate-v{repair_iter}"
-                await _load_adapter(reintegrate_aid, reintegrate_adapter_path, loaded_repair_adapter)
+                await _load_adapter(
+                    reintegrate_aid, reintegrate_adapter_path, loaded_repair_adapter
+                )
                 loaded_repair_adapter = reintegrate_aid
 
             iteration_counter += 1
@@ -1999,10 +2069,12 @@ async def run_phased_pipeline(
                 "best_score": best_integrate_score,
                 "diagnosed_total": sum(len(h["diagnosed"]) for h in repair_history),
             }
-            _mlflow_metrics({
-                "pipeline/repair/iterations": float(len(repair_history)),
-                "pipeline/repair/best_score": best_integrate_score,
-            })
+            _mlflow_metrics(
+                {
+                    "pipeline/repair/iterations": float(len(repair_history)),
+                    "pipeline/repair/best_score": best_integrate_score,
+                }
+            )
             _mlflow_tag("pipeline.repair.status", "complete")
 
         # Final evolution sweep
@@ -2047,17 +2119,19 @@ async def run_phased_pipeline(
         logger.info("Final tests passed: %s", final_passed)
 
         _mlflow_tag("pipeline.phase", "complete")
-        _mlflow_metrics({
-            "pipeline/final_passed": float(final_passed),
-            "pipeline/total_iterations": float(iteration_counter),
-            "pipeline/n_subtasks": float(len(subtasks)),
-            "pipeline/n_adapters": float(len(registered_adapters)),
-        })
+        _mlflow_metrics(
+            {
+                "pipeline/final_passed": float(final_passed),
+                "pipeline/total_iterations": float(iteration_counter),
+                "pipeline/n_subtasks": float(len(subtasks)),
+                "pipeline/n_adapters": float(len(registered_adapters)),
+            }
+        )
         try:
             import mlflow  # noqa: PLC0415
 
             mlflow.flush_trace_async_logging()
-        except Exception:
+        except ImportError:
             pass
 
         return {

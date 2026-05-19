@@ -187,7 +187,5 @@ def test_validate_false_single_item_passes_through() -> None:
 def test_validate_false_many_items_passes_through() -> None:
     """validate=False lets >8 items through (no cap at parse)."""
     names = [f"diag_{i}" for i in range(12)]
-    result = _parse_subtask_list(
-        _numbered_list(names), validate=False
-    )
+    result = _parse_subtask_list(_numbered_list(names), validate=False)
     assert len(result) == 12

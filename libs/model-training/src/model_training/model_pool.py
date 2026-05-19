@@ -152,16 +152,24 @@ class ModelPool:
         if param_count is None:
             # Multimodal configs (e.g. Qwen3.5) nest dims under text_config
             text_cfg = getattr(config, "text_config", config)
-            h = getattr(text_cfg, "hidden_size", None) or getattr(
-                config, "hidden_size", 2048
-            )
-            v = getattr(text_cfg, "vocab_size", None) or getattr(
-                config, "vocab_size", 32000
-            )
-            n = getattr(text_cfg, "num_hidden_layers", None) or getattr(
-                config, "num_hidden_layers", 24
-            )
-            param_count = v * h + n * 12 * h * h
+
+            def _cfg(name: str, default: int) -> int:
+                return getattr(text_cfg, name, None) or getattr(
+                    config, name, default
+                )
+
+            h = _cfg("hidden_size", 2048)
+            v = _cfg("vocab_size", 32000)
+            n = _cfg("num_hidden_layers", 24)
+            i = _cfg("intermediate_size", 4 * h)
+            n_q = _cfg("num_attention_heads", h // 128)
+            n_kv = _cfg("num_key_value_heads", n_q)
+            head_dim = h // n_q if n_q else 128
+
+            attn = (n_q + 2 * n_kv) * head_dim * h + n_q * head_dim * h
+            ffn = 3 * h * i
+            lm_head = 0 if getattr(config, "tie_word_embeddings", True) else v * h
+            param_count = v * h + n * (attn + ffn) + lm_head
 
         logger.info(
             "ModelPool: estimated param_count=%s (%.1fB)",

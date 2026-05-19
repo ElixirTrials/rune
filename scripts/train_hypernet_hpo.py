@@ -619,7 +619,7 @@ def main() -> None:  # noqa: C901
                     logits_src,
                     _manifest.get("n_valid", "?"),
                 )
-            except Exception:
+            except (OSError, KeyError, json.JSONDecodeError):
                 logger.info("Using precomputed teacher logits from %s", logits_src)
         else:
             logits_dir = Path(logits_src)

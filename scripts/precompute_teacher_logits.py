@@ -237,7 +237,7 @@ def main() -> None:
             base_model.save_pretrained(str(nf4_cache))
             tokenizer.save_pretrained(str(nf4_cache))
             logger.info("Cached NF4 model to %s", nf4_cache)
-        except Exception:
+        except OSError:
             logger.warning(
                 "Failed to cache NF4 model — will re-quantize next run", exc_info=True
             )

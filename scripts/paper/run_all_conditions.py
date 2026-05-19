@@ -145,18 +145,22 @@ def _run_benchmarks(
         import mlflow
 
         mlflow_active = mlflow.active_run() is not None
-    except Exception:
+    except ImportError:
         mlflow_active = False
 
     def _on_verdict(
-        bench_id: str, verdict: Any, running_p1: float,
-        n_done: int, n_total: int,
+        bench_id: str,
+        verdict: Any,
+        running_p1: float,
+        n_done: int,
+        n_total: int,
     ) -> None:
         prefix = f"{condition_label}_" if condition_label else ""
         if mlflow_active:
             mlflow.log_metric(
                 f"{prefix}{bench_id}_running_pass_at_1",
-                running_p1, step=n_done,
+                running_p1,
+                step=n_done,
             )
         if n_done % 50 == 0 or n_done == n_total:
             print(
@@ -166,20 +170,18 @@ def _run_benchmarks(
 
     results: dict[str, float | None] = {}
     for bench_id in benchmarks:
-        try:
-            result = run_benchmark(
-                stack, bench_id, max_samples=max_samples,
-                checkpoint_dir=checkpoint_dir,
-                on_verdict=_on_verdict,
-            )
-            results[bench_id] = result.pass_at_1
-            if mlflow_active and checkpoint_dir:
-                ckpt_file = Path(checkpoint_dir) / f"{bench_id}.jsonl"
-                if ckpt_file.exists():
-                    mlflow.log_artifact(str(ckpt_file), "checkpoints")
-        except Exception as exc:
-            logger.error("Benchmark %s failed: %s", bench_id, exc, exc_info=True)
-            results[bench_id] = None
+        result = run_benchmark(
+            stack,
+            bench_id,
+            max_samples=max_samples,
+            checkpoint_dir=checkpoint_dir,
+            on_verdict=_on_verdict,
+        )
+        results[bench_id] = result.pass_at_1
+        if mlflow_active and checkpoint_dir:
+            ckpt_file = Path(checkpoint_dir) / f"{bench_id}.jsonl"
+            if ckpt_file.exists():
+                mlflow.log_artifact(str(ckpt_file), "checkpoints")
     return results
 
 
@@ -228,12 +230,14 @@ def run_condition_static(
             provider=provider,
         )
 
-        return _run_benchmarks(stack, benchmarks, max_samples, checkpoint_dir, condition_label="static")
+        return _run_benchmarks(
+            stack, benchmarks, max_samples, checkpoint_dir, condition_label="static"
+        )
     finally:
         for aid in paths:
             try:
                 loop.run_until_complete(provider.unload_adapter(aid))
-            except Exception:
+            except RuntimeError:
                 logger.warning("Failed to unload adapter %s", aid, exc_info=True)
         loop.close()
 
@@ -302,7 +306,9 @@ def run_condition_rag(
         prompt_augmenter=prompt_augmenter,
     )
 
-    return _run_benchmarks(stack, benchmarks, max_samples, checkpoint_dir, condition_label="rag")
+    return _run_benchmarks(
+        stack, benchmarks, max_samples, checkpoint_dir, condition_label="rag"
+    )
 
 
 def run_condition_ttt(
@@ -370,9 +376,7 @@ def run_condition_ttt(
         for name, _ in ttt_model.named_parameters()
         if "mlp" in name and "weight" in name
     ]
-    trainable_names = set(
-        select_mlp_layers(all_mlp_names, ttt_config.mlp_fraction)
-    )
+    trainable_names = set(select_mlp_layers(all_mlp_names, ttt_config.mlp_fraction))
     original_sd = {
         k: v.detach().cpu().clone()
         for k, v in ttt_model.state_dict().items()
@@ -400,7 +404,9 @@ def run_condition_ttt(
         completion_override=completion_override,
     )
 
-    return _run_benchmarks(stack, benchmarks, max_samples, checkpoint_dir, condition_label="ttt")
+    return _run_benchmarks(
+        stack, benchmarks, max_samples, checkpoint_dir, condition_label="ttt"
+    )
 
 
 def run_condition_rune_phased(
@@ -441,7 +447,7 @@ def run_condition_rune_phased(
         import mlflow
 
         mlflow_active = mlflow.active_run() is not None
-    except Exception:
+    except ImportError:
         mlflow_active = False
 
     results: dict[str, float | None] = {}
@@ -458,30 +464,16 @@ def run_condition_rune_phased(
 
         logger.info("Rune phased: %s — %d problems", bench_id, len(problems))
         for pi, problem in enumerate(problems):
-            try:
-                result = asyncio.run(
-                    run_phased_pipeline(
-                        project_prompt=problem.prompt,
-                        checkpoint_path=hypernet_checkpoint,
-                        base_model_id=model,
-                        device=device,
-                    )
+            result = asyncio.run(
+                run_phased_pipeline(
+                    project_prompt=problem.prompt,
+                    checkpoint_path=hypernet_checkpoint,
+                    base_model_id=model,
+                    device=device,
                 )
-                verdict = adapter.score(
-                    problem, result.get("accumulated_code", "")
-                )
-                shutil.rmtree(result.get("adapter_dir", ""), ignore_errors=True)
-            except Exception as exc:  # noqa: BLE001 - failure -> failed verdict
-                logger.error(
-                    "Pipeline failed on %s: %s", problem.problem_id, exc
-                )
-                verdict = PassVerdict(
-                    problem_id=problem.problem_id,
-                    passed=False,
-                    generation="",
-                    error=str(exc)[:500],
-                    timed_out=False,
-                )
+            )
+            verdict = adapter.score(problem, result.get("accumulated_code", ""))
+            shutil.rmtree(result.get("adapter_dir", ""), ignore_errors=True)
             verdicts.append(verdict)
             if verdict.passed:
                 n_passed += 1
@@ -534,7 +526,9 @@ def pregenerate_rune_adapters(
     # HyperLoRA.forward hardcodes torch.autocast(device_type="cuda").
     # Patch it to derive device_type from the input tensor instead.
 
-    def _device_safe_forward(self, features, attn_mask=None, position_ids=None, n_ctx_chunks=None):
+    def _device_safe_forward(
+        self, features, attn_mask=None, position_ids=None, n_ctx_chunks=None
+    ):
         dev = "cuda" if features.is_cuda else "cpu"
         with torch.autocast(device_type=dev, dtype=torch.bfloat16):
             if self.aggregator.layer_to_layer and self.iterative_mode:
@@ -575,10 +569,16 @@ def pregenerate_rune_adapters(
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
-    logger.info("Loading base model %s (4-bit NF4) on %s for activation extraction", model, device)
+    logger.info(
+        "Loading base model %s (4-bit NF4) on %s for activation extraction",
+        model,
+        device,
+    )
     tokenizer = AutoTokenizer.from_pretrained(model)
     base_model = AutoModelForCausalLM.from_pretrained(
-        model, quantization_config=bnb_cfg, device_map="auto",
+        model,
+        quantization_config=bnb_cfg,
+        device_map="auto",
     )
     base_model.eval()
 
@@ -617,7 +617,9 @@ def pregenerate_rune_adapters(
             )
             manifest[bench_id][problem.problem_id] = problem_dir
             if (i + 1) % 50 == 0:
-                logger.info("  %s: %d/%d adapters generated", bench_id, i + 1, len(problems))
+                logger.info(
+                    "  %s: %d/%d adapters generated", bench_id, i + 1, len(problems)
+                )
 
     manifest_path = Path(output_dir) / "manifest.json"
     manifest_path.write_text(_json.dumps(manifest, indent=2))
@@ -625,9 +627,12 @@ def pregenerate_rune_adapters(
 
     del hypernet, base_model
     import gc  # noqa: PLC0415
+
     gc.collect()
     torch.cuda.empty_cache()
-    logger.info("GPU freed — %d adapters pre-generated", sum(len(v) for v in manifest.values()))
+    logger.info(
+        "GPU freed — %d adapters pre-generated", sum(len(v) for v in manifest.values())
+    )
 
 
 def assemble_table2(
@@ -730,9 +735,7 @@ def main() -> None:
     if args.pregenerate:
         if not args.hypernet_checkpoint:
             parser.error("--pregenerate requires --hypernet-checkpoint")
-        adapter_out = args.rune_adapter_dir or str(
-            args.output.parent / "rune_adapters"
-        )
+        adapter_out = args.rune_adapter_dir or str(args.output.parent / "rune_adapters")
         pregenerate_rune_adapters(
             benchmarks=args.benchmarks,
             model=args.model,

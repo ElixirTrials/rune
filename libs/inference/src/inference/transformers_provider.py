@@ -89,9 +89,7 @@ class TransformersProvider(InferenceProvider):
             self._tokenizer = tokenizer
             self._base_model = model
             self._device = self._pool.device
-            logger.info(
-                "Borrowed base model from pool (device=%s)", self._device
-            )
+            logger.info("Borrowed base model from pool (device=%s)", self._device)
             return
 
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
@@ -148,6 +146,7 @@ class TransformersProvider(InferenceProvider):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        enable_thinking: bool = True,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
@@ -162,6 +161,9 @@ class TransformersProvider(InferenceProvider):
             temperature: Sampling temperature (default from pipeline config).
             top_p: Nucleus sampling threshold (default from pipeline config).
             repetition_penalty: Repetition penalty (default 1.0 = off).
+            enable_thinking: Whether to allow model thinking/reasoning
+                tokens. When False, passes ``enable_thinking=False`` to the
+                chat template so output tokens go entirely to the response.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -197,7 +199,7 @@ class TransformersProvider(InferenceProvider):
             self._deactivate_adapter()
 
         # Build chat-formatted prompt via tokenizer's chat template
-        formatted = self._format_prompt(prompt, system_prompt)
+        formatted = self._format_prompt(prompt, system_prompt, enable_thinking)
         inputs = self._tokenizer(
             formatted, return_tensors="pt", truncation=True, max_length=8192
         )
@@ -219,8 +221,16 @@ class TransformersProvider(InferenceProvider):
 
         new_tokens = outputs[0][input_len:]
         text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
-        # Strip <think>...</think> blocks that Qwen 3.5 emits (not in special tokens).
-        # First pass removes closed blocks; second removes dangling/truncated ones.
+
+        # Capture <think> blocks before stripping (for future adapter injection).
+        thinking_parts = re.findall(
+            r"<think>(.*?)</think>", text, flags=re.DOTALL
+        )
+        dangling = re.search(r"<think>(.*)", text, flags=re.DOTALL)
+        if dangling and not re.search(r"</think>", dangling.group(0)):
+            thinking_parts.append(dangling.group(1))
+        thinking = "\n".join(p.strip() for p in thinking_parts if p.strip()) or None
+
         text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
         text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
         total_tokens = outputs.shape[1]
@@ -235,9 +245,15 @@ class TransformersProvider(InferenceProvider):
             adapter_id=self._active_adapter,
             token_count=total_tokens,
             finish_reason=finish_reason,
+            thinking=thinking,
         )
 
-    def _format_prompt(self, prompt: str, system_prompt: str | None = None) -> str:
+    def _format_prompt(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        enable_thinking: bool = True,
+    ) -> str:
         """Format prompt using the tokenizer's chat template when available.
 
         Constructs a messages list and applies the tokenizer's chat template
@@ -246,16 +262,35 @@ class TransformersProvider(InferenceProvider):
         """
         messages: list[dict[str, str]] = []
         if system_prompt:
-            messages.append({"role": "user", "content": f"{system_prompt}\n\n{prompt}"})
-        else:
-            messages.append({"role": "user", "content": prompt})
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
 
         try:
             return self._tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=enable_thinking,
             )
-        except Exception:
-            # Tokenizer has no chat template — fall back to raw concat
+        except TypeError:
+            # Template doesn't support enable_thinking kwarg — retry without it
+            try:
+                return self._tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+            except (AttributeError, TypeError, ValueError):
+                logger.warning(
+                    "Chat template failed, falling back to raw concat",
+                    exc_info=True,
+                )
+                if system_prompt:
+                    return f"{system_prompt}\n\n{prompt}"
+                return prompt
+        except (AttributeError, ValueError):
+            logger.warning(
+                "Chat template failed, falling back to raw concat",
+                exc_info=True,
+            )
             if system_prompt:
                 return f"{system_prompt}\n\n{prompt}"
             return prompt

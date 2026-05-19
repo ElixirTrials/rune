@@ -92,11 +92,8 @@ def main() -> None:
         ("bigcodebench", _bigcodebench),
         ("swebench_lite_repos", _swebench_lite_repos),
     ]:
-        try:
-            fn(out)
-            logger.info("Loaded %s", name)
-        except Exception:
-            logger.exception("Skipping %s", name)
+        fn(out)
+        logger.info("Loaded %s", name)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

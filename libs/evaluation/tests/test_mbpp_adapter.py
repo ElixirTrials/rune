@@ -101,10 +101,10 @@ def test_score_correct_solution() -> None:
     if p602 is None:
         pytest.skip("task 602 not in fixture")
     correct = (
-        'def first_repeated_char(str1):\n'
-        '    for index, c in enumerate(str1):\n'
-        '        if str1[:index].count(c) > 0:\n'
-        '            return c\n'
+        "def first_repeated_char(str1):\n"
+        "    for index, c in enumerate(str1):\n"
+        "        if str1[:index].count(c) > 0:\n"
+        "            return c\n"
         '    return "None"\n'
     )
     verdict = adapter.score(p602, correct, timeout_s=10)

@@ -60,6 +60,7 @@ class OllamaProvider(InferenceProvider):
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        enable_thinking: bool = True,
     ) -> GenerationResult:
         """Generate text from a prompt using the base Ollama model.
 
@@ -75,6 +76,8 @@ class OllamaProvider(InferenceProvider):
             temperature: Sampling temperature override.
             top_p: Nucleus sampling threshold override.
             repetition_penalty: Repetition penalty override.
+            enable_thinking: Accepted for interface compatibility; ignored
+                by Ollama provider.
 
         Returns:
             GenerationResult with adapter_id=None (Ollama has no adapter concept).

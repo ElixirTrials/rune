@@ -67,7 +67,7 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
     mlflow.set_tracking_uri(uri)
     try:
         mlflow.set_experiment(experiment_name)
-    except Exception as exc:
+    except (ConnectionError, OSError, RuntimeError) as exc:
         logger.warning("MLflow tracking server unreachable at %s: %s", uri, exc)
         return False
     logger.info("MLflow enabled: tracking_uri=%s experiment=%s", uri, experiment_name)
@@ -75,49 +75,49 @@ def setup_mlflow(experiment_name: str, tracking_uri: str | None) -> bool:
 
 
 def mlflow_log_params(params: dict[str, Any]) -> None:
-    """Log a dict of params to the active MLflow run. Silent no-op on failure.
+    """Log a dict of params to the active MLflow run.
 
-    All exceptions are caught and logged at DEBUG level so that MLflow
-    unavailability never interrupts training.
+    No-op when mlflow is not installed or no run is active.
 
     Args:
         params: Mapping of parameter names to values forwarded verbatim to
             ``mlflow.log_params``.
-
-    Returns:
-        None.
-
-    Raises:
-        None: All exceptions from ``mlflow.log_params`` are caught and
-            logged at DEBUG level; MLflow unavailability never interrupts
-            training.
     """
     try:
         import mlflow  # noqa: PLC0415
-
-        mlflow.log_params(params)
-    except Exception:  # noqa: BLE001 — logging must never break training
-        logger.debug("mlflow.log_params skipped", exc_info=True)
+    except ImportError:
+        logger.debug("mlflow.log_params skipped: mlflow not installed")
+        return
+    if mlflow.active_run() is None:
+        return
+    mlflow.log_params(params)
 
 
 def mlflow_log_artifact(path: str) -> None:
-    """Log a file artifact to the active MLflow run. Silent no-op on failure."""
+    """Log a file artifact to the active MLflow run.
+
+    No-op when mlflow is absent or no run is active.
+    """
     try:
         import mlflow  # noqa: PLC0415
-
-        mlflow.log_artifact(path)
-    except Exception:  # noqa: BLE001
-        logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
+    except ImportError:
+        logger.debug("mlflow.log_artifact skipped for %s: mlflow not installed", path)
+        return
+    if mlflow.active_run() is None:
+        return
+    mlflow.log_artifact(path)
 
 
 def mlflow_log_checkpoint(path: str, artifact_path: str = "checkpoints") -> None:
     """Log a checkpoint file to MLflow under a structured artifact path."""
     try:
         import mlflow  # noqa: PLC0415
-
-        mlflow.log_artifact(path, artifact_path=artifact_path)
-    except Exception:  # noqa: BLE001
-        logger.debug("mlflow.log_artifact skipped for %s", path, exc_info=True)
+    except ImportError:
+        logger.debug("mlflow.log_artifact skipped for %s: mlflow not installed", path)
+        return
+    if mlflow.active_run() is None:
+        return
+    mlflow.log_artifact(path, artifact_path=artifact_path)
 
 
 def mlflow_download_latest_checkpoint(
@@ -181,8 +181,8 @@ def mlflow_download_latest_checkpoint(
 
         logger.debug("No checkpoint artifacts found in experiment %r", experiment_name)
         return None
-    except Exception:  # noqa: BLE001
-        logger.debug("mlflow_download_latest_checkpoint failed", exc_info=True)
+    except (ImportError, ConnectionError, OSError, RuntimeError):
+        logger.warning("mlflow_download_latest_checkpoint failed", exc_info=True)
         return None
 
 
@@ -210,8 +210,8 @@ def _log_failure(exc: BaseException) -> None:
         mlflow.set_tag("error_message", str(exc)[:250])
         mlflow.log_text(tb, "error_traceback.txt")
         mlflow.end_run(status="FAILED")
-    except Exception:  # noqa: BLE001
-        logger.debug("_log_failure: could not record error in MLflow", exc_info=True)
+    except (ImportError, ConnectionError, OSError, RuntimeError):
+        logger.warning("_log_failure: could not record error in MLflow", exc_info=True)
 
 
 @contextmanager

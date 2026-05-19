@@ -34,10 +34,7 @@ class _KnownWarningFilter(logging.Filter):
         self._needles = needles
 
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
-        try:
-            msg = record.getMessage()
-        except Exception:  # noqa: BLE001 — formatting failure should not crash log path
-            return True
+        msg = record.getMessage()
         return not any(n in msg for n in self._needles)
 
 
@@ -106,9 +103,10 @@ def _release_trial_state(
                         delattr(inner, "peft_config")
                     except AttributeError:
                         pass
-            except Exception:  # noqa: BLE001 — never break training cleanup
-                logger.exception(
-                    "PEFT unload() failed; cache may be in a wrapped state"
+            except (RuntimeError, AttributeError):
+                logger.warning(
+                    "PEFT unload() failed; cache may be in a wrapped state",
+                    exc_info=True,
                 )
     del trainer, dataset
     if not persist_base:
@@ -119,7 +117,7 @@ def _release_trial_state(
         import torch  # noqa: PLC0415
 
         torch.cuda.empty_cache()
-    except Exception:  # noqa: BLE001 — torch may be absent in CPU-only paths
+    except ImportError:
         pass
 
 
@@ -1187,20 +1185,12 @@ def train_qlora(
         # We bypass trainer.save_model (which would call save_pretrained with
         # default kwargs) and call save_pretrained directly to avoid the
         # double-write race the reviewer flagged.
-        try:
-            from peft import PeftModel  # noqa: PLC0415
+        from peft import PeftModel  # noqa: PLC0415
 
-            inner = getattr(trainer, "model", None)
-            if isinstance(inner, PeftModel):
-                inner.save_pretrained(output_dir, save_embedding_layers=False)
-            else:
-                # Non-PEFT path (shouldn't fire in QLoRA but stays correct).
-                trainer.save_model(output_dir)
-        except Exception:  # noqa: BLE001 — fall back to default save path
-            logger.exception(
-                "PeftModel.save_pretrained failed; falling back to "
-                "trainer.save_model (Qwen config warning may resurface)"
-            )
+        inner = getattr(trainer, "model", None)
+        if isinstance(inner, PeftModel):
+            inner.save_pretrained(output_dir, save_embedding_layers=False)
+        else:
             trainer.save_model(output_dir)
 
         if mlflow_enabled:

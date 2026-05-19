@@ -287,9 +287,7 @@ def _verdict(pid: str, passed: bool, attempts: int, diagnosed: bool):
 
 
 class TestVerdictsJsonl:
-    def test_write_verdicts_jsonl_one_record_per_line(
-        self, tmp_path: Path
-    ) -> None:
+    def test_write_verdicts_jsonl_one_record_per_line(self, tmp_path: Path) -> None:
         from run_benchmark_hpo import write_verdicts_jsonl
 
         verdicts = [
@@ -322,9 +320,7 @@ class TestVerdictsJsonl:
         fake.log_artifact = _capture  # type: ignore[method-assign]
         monkeypatch.setattr(mod, "_mlflow", lambda: fake)
 
-        mod.log_verdicts_artifact(
-            [_verdict("mbpp/1", True, 1, False)], "trial-001"
-        )
+        mod.log_verdicts_artifact([_verdict("mbpp/1", True, 1, False)], "trial-001")
         # The artifact must exist at log time and be gone afterwards.
         assert captured["existed_during_call"] is True
         assert captured["artifact_path"] == "verdicts"
@@ -346,9 +342,7 @@ class TestVerdictsJsonl:
         monkeypatch.setattr(mod, "_mlflow", lambda: fake)
 
         with pytest.raises(RuntimeError, match="upload failed"):
-            mod.log_verdicts_artifact(
-                [_verdict("mbpp/1", True, 1, False)], "trial-001"
-            )
+            mod.log_verdicts_artifact([_verdict("mbpp/1", True, 1, False)], "trial-001")
         assert not captured_dirs[0].exists()
 
 
@@ -397,12 +391,8 @@ class TestMakeObjective:
 
         fake = _FakeMlflow()
         monkeypatch.setattr(mod, "_mlflow", lambda: fake)
-        monkeypatch.setattr(
-            mod, "_mlflow_run", lambda **kw: contextlib.nullcontext()
-        )
-        monkeypatch.setattr(
-            mod, "apply_trial_env", lambda **kw: None
-        )
+        monkeypatch.setattr(mod, "_mlflow_run", lambda **kw: contextlib.nullcontext())
+        monkeypatch.setattr(mod, "apply_trial_env", lambda **kw: None)
         monkeypatch.setattr(
             mod,
             "evaluate_problem_set",
@@ -450,9 +440,7 @@ class TestArtifactWriters:
 
         study = _study_with_two_trials()
         config_path = tmp_path / "pipeline_config.json"
-        params_path = save_best_params(
-            study, out_dir=tmp_path, config_path=config_path
-        )
+        params_path = save_best_params(study, out_dir=tmp_path, config_path=config_path)
         assert params_path == tmp_path / "best_params.json"
         best = json.loads(params_path.read_text())
         assert set(best) == {
@@ -522,12 +510,18 @@ class TestBuildParser:
         parser = _build_parser()
         args = parser.parse_args(
             [
-                "--hypernet-checkpoint", "ckpt.pt",
-                "--failed-ids", "/tmp/f.json",
-                "--n-problems", "50",
-                "--n-trials", "5",
-                "--problems-per-trial", "3",
-                "--device", "cpu",
+                "--hypernet-checkpoint",
+                "ckpt.pt",
+                "--failed-ids",
+                "/tmp/f.json",
+                "--n-problems",
+                "50",
+                "--n-trials",
+                "5",
+                "--problems-per-trial",
+                "3",
+                "--device",
+                "cpu",
             ]
         )
         assert args.failed_ids == Path("/tmp/f.json")
