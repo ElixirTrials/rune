@@ -19,6 +19,32 @@ from inference.provider import GenerationResult, InferenceProvider
 logger = logging.getLogger(__name__)
 
 
+class _ThinkingBudgetProcessor:
+    """Forces </think> emission once the thinking token budget is exhausted."""
+
+    def __init__(self, end_think_token_id: int, budget: int, prompt_len: int) -> None:
+        self._etid = end_think_token_id
+        self._budget = budget
+        self._prompt_len = prompt_len
+        self._done = False
+
+    def __call__(self, input_ids: Any, scores: Any) -> Any:
+        if self._done:
+            return scores
+
+        new_ids = input_ids[0, self._prompt_len :]
+
+        if (new_ids == self._etid).any():
+            self._done = True
+            return scores
+
+        if new_ids.shape[0] >= self._budget:
+            scores.fill_(float("-inf"))
+            scores[:, self._etid] = 0.0
+
+        return scores
+
+
 class TransformersProvider(InferenceProvider):
     """InferenceProvider backed by HuggingFace transformers with PEFT LoRA.
 
@@ -227,6 +253,19 @@ class TransformersProvider(InferenceProvider):
             gen_kwargs["suppress_tokens"] = [
                 self._think_token_id,
                 self._end_think_token_id,
+            ]
+
+        if (
+            enable_thinking
+            and thinking_budget > 0
+            and self._end_think_token_id is not None
+        ):
+            gen_kwargs["logits_processor"] = [
+                _ThinkingBudgetProcessor(
+                    end_think_token_id=self._end_think_token_id,
+                    budget=thinking_budget,
+                    prompt_len=input_len,
+                )
             ]
 
         with torch.no_grad():

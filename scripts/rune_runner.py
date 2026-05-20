@@ -677,6 +677,8 @@ async def _run_continuation_loop(
             cont_adapter_id = f"phase3-cont-{_safe_adapter_id(subtask['name'])}-c{cont}"
             await load_adapter_fn(cont_adapter_id, cont_adapter_path, None)
 
+        # Last ~2000 chars of accumulated code for lossless prompt context
+        code_tail = accumulated[-2000:] if len(accumulated) > 2000 else accumulated
         state = await run_iteration(
             graph=graph,
             project_prompt=project_prompt,
@@ -687,6 +689,7 @@ async def _run_continuation_loop(
             prompt_context={
                 "subtask_name": subtask["name"],
                 "project_label": project_label,
+                "existing_code_tail": code_tail,
             },
         )
         await eager_unload_fn(cont_adapter_id)

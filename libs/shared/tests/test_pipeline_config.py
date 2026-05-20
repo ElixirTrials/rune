@@ -107,7 +107,7 @@ def test_decompose_config_round_trip(tmp_path: Path) -> None:
 
 def test_thinking_budget_default() -> None:
     cfg = default_config()
-    assert cfg.generation.thinking_budget == 512
+    assert cfg.generation.thinking_budget == 1024
 
 
 def test_thinking_budget_override() -> None:

@@ -14,6 +14,10 @@ from .state import RuneState
 
 logger = logging.getLogger(__name__)
 
+_SYS_CODE = (
+    "You are a code generator. Output ONLY valid executable code. "
+    "No explanation, no commentary, no markdown fencing."
+)
 _PHASE_SYSTEM_PROMPTS: dict[str, str] = {
     "decompose": (
         "You are a project decomposer. Break projects into subtasks. "
@@ -27,39 +31,18 @@ _PHASE_SYSTEM_PROMPTS: dict[str, str] = {
         "You are a software architect. Output ONLY architecture plans "
         "with class signatures, data flow, and test strategy. Never output code."
     ),
-    "code": (
-        "You are a code generator. Output ONLY valid executable code. "
-        "No explanation, no commentary, no markdown fencing."
-    ),
-    "code_retry": (
-        "You are a code generator. Output ONLY valid executable code. "
-        "No explanation, no commentary, no markdown fencing."
-    ),
-    "code_continue": (
-        "You are a code generator. Output ONLY valid executable code. "
-        "No explanation, no commentary, no markdown fencing."
-    ),
     "diagnose": (
         "You are a code diagnostician. Identify which subtasks have bugs. "
         "Output ONLY a numbered list, never code."
     ),
-    "code_repair": (
-        "You are a code generator. Output ONLY valid executable code. "
-        "No explanation, no commentary, no markdown fencing."
-    ),
-    "integrate": (
-        "You are a code generator. Output ONLY valid executable code. "
-        "No explanation, no commentary, no markdown fencing."
-    ),
-    "integrate_retry": (
-        "You are a code generator. Output ONLY valid executable code. "
-        "No explanation, no commentary, no markdown fencing."
-    ),
+    "code": _SYS_CODE,
+    "code_retry": _SYS_CODE,
+    "code_continue": _SYS_CODE,
+    "code_repair": _SYS_CODE,
+    "integrate": _SYS_CODE,
+    "integrate_retry": _SYS_CODE,
 }
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a code generator. Output ONLY valid executable code. "
-    "No explanation, no commentary, no markdown fencing."
-)
+DEFAULT_SYSTEM_PROMPT = _SYS_CODE
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen3.5-9B"
 _TEXT_ONLY_PHASES = frozenset(
@@ -239,12 +222,25 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
     phase = state.get("phase")
     system_prompt = _PHASE_SYSTEM_PROMPTS.get(phase or "", DEFAULT_SYSTEM_PROMPT)
 
-    max_tokens = int(os.environ.get("RUNE_MAX_TOKENS", "1024"))
+    # Per-phase max_tokens: RUNE_MAX_TOKENS_CODE, RUNE_MAX_TOKENS_INTEGRATE, etc.
+    phase_key = (phase or "").upper().replace("-", "_")
+    max_tokens = int(
+        os.environ.get(f"RUNE_MAX_TOKENS_{phase_key}", "")
+        or os.environ.get("RUNE_MAX_TOKENS", "2048")
+    )
 
     enable_thinking = phase in _TEXT_ONLY_PHASES
-    thinking_budget = (
-        int(os.environ.get("RUNE_THINKING_BUDGET", "512")) if enable_thinking else 0
-    )
+
+    # Qwen3.5 needs temperature >= 0.6 for thinking mode; code phases
+    # keep Bayesian-optimized defaults (temp=0.25) from the provider.
+    if enable_thinking:
+        temperature: float | None = 0.6
+        top_p: float | None = 0.95
+        thinking_budget = int(os.environ.get("RUNE_THINKING_BUDGET", "1024"))
+    else:
+        temperature = None
+        top_p = None
+        thinking_budget = 0
 
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,
@@ -252,6 +248,8 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
         adapter_id=adapter_id,
         max_tokens=max_tokens,
         system_prompt=system_prompt,
+        temperature=temperature,
+        top_p=top_p,
         enable_thinking=enable_thinking,
         thinking_budget=thinking_budget,
     )
