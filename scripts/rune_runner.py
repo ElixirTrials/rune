@@ -974,7 +974,7 @@ async def run_phased_pipeline(
                 seen.add(key)
                 subtasks.append(st)
 
-        subtasks = subtasks[:4]
+        subtasks = subtasks[:_pipeline_cfg.max_subtasks]
 
         # Validate dependency graph is acyclic; retry decompose if not
         from graphlib import CycleError
@@ -1057,7 +1057,7 @@ async def run_phased_pipeline(
                     if key not in seen:
                         seen.add(key)
                         subtasks.append(st)
-                subtasks = subtasks[:4]
+                subtasks = subtasks[:_pipeline_cfg.max_subtasks]
                 best_decompose_state = retry_state
                 logger.info(
                     "Cycle-fix attempt %d produced %d subtasks: %s",

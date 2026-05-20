@@ -79,6 +79,7 @@ class PipelineConfig:
     trajectory: TrajectoryConfig = field(default_factory=TrajectoryConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     phase_tokens: PhaseTokenConfig = field(default_factory=PhaseTokenConfig)
+    max_subtasks: int = 4
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict."""
