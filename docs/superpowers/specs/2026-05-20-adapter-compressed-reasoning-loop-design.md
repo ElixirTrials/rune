@@ -167,7 +167,7 @@ class AdapterPlacement:
     be tested.
     """
     target_modules: list[str] | None = None     # None = use checkpoint default
-    layer_indices: list[str] | None = None      # None = use checkpoint default
+    layer_indices: list[int] | None = None      # None = use checkpoint default
     layer_selection: str = 'all'                # 'all', 'early_half', 'late_half',
                                                  # 'every_other', 'first_last_quarter'
 ```
@@ -409,7 +409,7 @@ Phase-specific sliding window defaults (overridable via `RUNE_SLIDING_WINDOW_{PH
 | integrate | 2048 | References multiple subtask outputs |
 | diagnose | 512 | Diagnostic text, moderate locality |
 
-Per-phase values are starting hypotheses subject to ablation A5.
+Per-phase values are starting hypotheses subject to ablation A3.
 
 ## File Changes
 
