@@ -7,7 +7,7 @@ degenerate single-subtask results.
 
 import pytest
 from pydantic import ValidationError
-from shared.rune_models import DecomposeResult, Subtask
+from shared.rune_models import DecomposeResult, DiagnoseItem, DiagnoseResult, Subtask
 
 # ---------------------------------------------------------------------------
 # Subtask tests
@@ -126,3 +126,64 @@ def test_decompose_result_round_trip_serialization() -> None:
     restored = DecomposeResult(**data)
     assert len(restored.subtasks) == 2
     assert restored.subtasks[1].depends_on == ["parse"]
+
+
+# ---------------------------------------------------------------------------
+# DiagnoseItem tests
+# ---------------------------------------------------------------------------
+
+
+def test_diagnose_item_valid() -> None:
+    item = DiagnoseItem(name="parse_input", diagnosis="Fix off-by-one in loop")
+    assert item.name == "parse_input"
+    assert item.diagnosis == "Fix off-by-one in loop"
+
+
+def test_diagnose_item_rejects_empty_name() -> None:
+    with pytest.raises(ValidationError):
+        DiagnoseItem(name="", diagnosis="some fix")
+
+
+def test_diagnose_item_rejects_empty_diagnosis() -> None:
+    with pytest.raises(ValidationError):
+        DiagnoseItem(name="parse_input", diagnosis="")
+
+
+# ---------------------------------------------------------------------------
+# DiagnoseResult tests
+# ---------------------------------------------------------------------------
+
+
+def test_diagnose_result_valid() -> None:
+    result = DiagnoseResult(repairs=[
+        DiagnoseItem(name="parse_input", diagnosis="Fix the bug"),
+    ])
+    assert len(result.repairs) == 1
+
+
+def test_diagnose_result_rejects_empty() -> None:
+    with pytest.raises(ValidationError):
+        DiagnoseResult(repairs=[])
+
+
+def test_diagnose_result_rejects_nine_repairs() -> None:
+    repairs = [DiagnoseItem(name=f"task_{i}", diagnosis=f"fix {i}") for i in range(9)]
+    with pytest.raises(ValidationError):
+        DiagnoseResult(repairs=repairs)
+
+
+def test_diagnose_result_max_eight_repairs() -> None:
+    repairs = [DiagnoseItem(name=f"task_{i}", diagnosis=f"fix {i}") for i in range(8)]
+    result = DiagnoseResult(repairs=repairs)
+    assert len(result.repairs) == 8
+
+
+def test_diagnose_result_round_trip() -> None:
+    original = DiagnoseResult(repairs=[
+        DiagnoseItem(name="parse_input", diagnosis="Fix the bug"),
+        DiagnoseItem(name="write_output", diagnosis="Handle edge case"),
+    ])
+    data = original.model_dump()
+    restored = DiagnoseResult(**data)
+    assert len(restored.repairs) == 2
+    assert restored.repairs[0].name == "parse_input"
