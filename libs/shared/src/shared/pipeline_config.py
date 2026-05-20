@@ -60,6 +60,16 @@ class CalibrationConfig:
 
 
 @dataclass(frozen=True)
+class PhaseTokenConfig:
+    """Per-phase token budget overrides. None means use GenerationConfig defaults."""
+
+    max_tokens_plan: int | None = None
+    max_tokens_code: int | None = None
+    max_tokens_integrate: int | None = None
+    thinking_budget: int | None = None
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """Top-level pipeline configuration."""
 
@@ -68,6 +78,7 @@ class PipelineConfig:
     prompt: PromptConfig = field(default_factory=PromptConfig)
     trajectory: TrajectoryConfig = field(default_factory=TrajectoryConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
+    phase_tokens: PhaseTokenConfig = field(default_factory=PhaseTokenConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict."""
@@ -112,6 +123,7 @@ def _from_dict(d: dict[str, Any]) -> PipelineConfig:
         prompt=PromptConfig(**d.get("prompt", {})),
         trajectory=TrajectoryConfig(**d.get("trajectory", {})),
         calibration=CalibrationConfig(**cal),
+        phase_tokens=PhaseTokenConfig(**d.get("phase_tokens", {})),
     )
 
 

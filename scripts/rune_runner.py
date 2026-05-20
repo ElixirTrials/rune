@@ -836,6 +836,18 @@ async def run_phased_pipeline(
         str(_pipeline_cfg.generation.repetition_penalty),
     )
     os.environ.setdefault("RUNE_MAX_TOKENS", str(_pipeline_cfg.generation.max_tokens))
+    # Bridge per-phase token budgets from config → env vars (nodes.py reads env)
+    _pt = _pipeline_cfg.phase_tokens
+    if _pt.max_tokens_plan is not None:
+        os.environ.setdefault("RUNE_MAX_TOKENS_PLAN", str(_pt.max_tokens_plan))
+    if _pt.max_tokens_code is not None:
+        os.environ.setdefault("RUNE_MAX_TOKENS_CODE", str(_pt.max_tokens_code))
+    if _pt.max_tokens_integrate is not None:
+        os.environ.setdefault(
+            "RUNE_MAX_TOKENS_INTEGRATE", str(_pt.max_tokens_integrate)
+        )
+    if _pt.thinking_budget is not None:
+        os.environ.setdefault("RUNE_THINKING_BUDGET", str(_pt.thinking_budget))
     adapter_scaling = _pipeline_cfg.adapter.scaling
     adapter_max_length = _pipeline_cfg.adapter.max_length
 

@@ -216,6 +216,10 @@ def apply_trial_env(
     config_dir: Path,
     *,
     max_tokens: int | None = None,
+    max_tokens_plan: int | None = None,
+    max_tokens_code: int | None = None,
+    max_tokens_integrate: int | None = None,
+    thinking_budget: int | None = None,
 ) -> None:
     """Set env vars + temp PipelineConfig so ``run_phased_pipeline()`` sees the trial params.
 
@@ -224,6 +228,10 @@ def apply_trial_env(
     - ``repetition_penalty`` -> ``RUNE_REPETITION_PENALTY``
     - ``max_phase_iterations`` -> ``RUNE_MAX_PHASE_ITERATIONS``
     - ``max_tokens`` -> ``RUNE_MAX_TOKENS`` + PipelineConfig
+    - ``max_tokens_plan`` -> ``RUNE_MAX_TOKENS_PLAN``
+    - ``max_tokens_code`` -> ``RUNE_MAX_TOKENS_CODE``
+    - ``max_tokens_integrate`` -> ``RUNE_MAX_TOKENS_INTEGRATE``
+    - ``thinking_budget`` -> ``RUNE_THINKING_BUDGET``
 
     Env vars are set unconditionally (overwriting any prior trial's values);
     ``run_phased_pipeline()`` uses ``os.environ.setdefault`` so values set here
@@ -237,6 +245,10 @@ def apply_trial_env(
         config_dir: Directory for the trial's temp PipelineConfig.
         max_tokens: Generation token cap. Also written to
             ``RUNE_MAX_TOKENS`` so ``rune-agent`` nodes pick it up.
+        max_tokens_plan: Token cap for the plan phase.
+        max_tokens_code: Token cap for the code phase.
+        max_tokens_integrate: Token cap for the integrate phase.
+        thinking_budget: Chain-of-thought token budget.
     """
     cfg_path = write_trial_pipeline_config(
         scaling_factor, config_dir, max_tokens=max_tokens
@@ -247,6 +259,14 @@ def apply_trial_env(
     os.environ["RUNE_MAX_PHASE_ITERATIONS"] = str(max_phase_iterations)
     if max_tokens is not None:
         os.environ["RUNE_MAX_TOKENS"] = str(max_tokens)
+    if max_tokens_plan is not None:
+        os.environ["RUNE_MAX_TOKENS_PLAN"] = str(max_tokens_plan)
+    if max_tokens_code is not None:
+        os.environ["RUNE_MAX_TOKENS_CODE"] = str(max_tokens_code)
+    if max_tokens_integrate is not None:
+        os.environ["RUNE_MAX_TOKENS_INTEGRATE"] = str(max_tokens_integrate)
+    if thinking_budget is not None:
+        os.environ["RUNE_THINKING_BUDGET"] = str(thinking_budget)
 
 
 def score_pipeline_result(
@@ -520,6 +540,20 @@ def make_objective(
         max_tokens = trial.suggest_categorical("max_tokens", [1024, 2048, 4096])
         max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
 
+        # Per-phase token budgets
+        max_tokens_plan = trial.suggest_categorical(
+            "max_tokens_plan", [512, 1024, 2048]
+        )
+        max_tokens_code = trial.suggest_categorical(
+            "max_tokens_code", [1024, 2048, 4096]
+        )
+        max_tokens_integrate = trial.suggest_categorical(
+            "max_tokens_integrate", [1024, 2048, 4096]
+        )
+        thinking_budget = trial.suggest_categorical(
+            "thinking_budget", [512, 1024, 2048]
+        )
+
         n = min(problems_per_trial, len(tuning_problems))
         trial_problems = random.Random(seed + trial.number + 1).sample(
             tuning_problems, n
@@ -531,6 +565,10 @@ def make_objective(
             max_phase_iterations=max_phase_iterations,
             config_dir=work_dir / f"trial_{trial.number}",
             max_tokens=max_tokens,
+            max_tokens_plan=max_tokens_plan,
+            max_tokens_code=max_tokens_code,
+            max_tokens_integrate=max_tokens_integrate,
+            thinking_budget=thinking_budget,
         )
 
         start = time.time()
@@ -543,6 +581,10 @@ def make_objective(
                     "repetition_penalty": repetition_penalty,
                     "max_tokens": max_tokens,
                     "max_phase_iterations": max_phase_iterations,
+                    "max_tokens_plan": max_tokens_plan,
+                    "max_tokens_code": max_tokens_code,
+                    "max_tokens_integrate": max_tokens_integrate,
+                    "thinking_budget": thinking_budget,
                 }
             )
             verdicts = evaluate_problem_set(
@@ -595,14 +637,23 @@ def save_best_params(
     params_path = out_dir / "best_params.json"
     params_path.write_text(json.dumps(best, indent=2))
 
-    config = PipelineConfig().override(
-        **{
-            "adapter.scaling": best["scaling_factor"],
-            "generation.temperature": best["temperature"],
-            "generation.repetition_penalty": best["repetition_penalty"],
-            "generation.max_tokens": best["max_tokens"],
-        }
-    )
+    overrides: dict[str, object] = {
+        "adapter.scaling": best["scaling_factor"],
+        "generation.temperature": best["temperature"],
+        "generation.repetition_penalty": best["repetition_penalty"],
+        "generation.max_tokens": best["max_tokens"],
+    }
+    # Per-phase token budgets (may not be present in older studies)
+    for key in (
+        "max_tokens_plan",
+        "max_tokens_code",
+        "max_tokens_integrate",
+        "thinking_budget",
+    ):
+        if key in best:
+            overrides[f"phase_tokens.{key}"] = best[key]
+
+    config = PipelineConfig().override(**overrides)
     config.save(config_path)
     return params_path
 
