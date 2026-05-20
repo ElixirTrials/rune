@@ -95,3 +95,28 @@ def test_thinking_budget_override() -> None:
     cfg = default_config()
     updated = cfg.override(**{"generation.thinking_budget": 1024})
     assert updated.generation.thinking_budget == 1024
+
+
+def test_phase_tokens_round_trip(tmp_path: Path) -> None:
+    cfg = default_config().override(
+        **{
+            "phase_tokens.max_tokens_plan": 512,
+            "phase_tokens.max_tokens_code": 4096,
+            "phase_tokens.max_tokens_integrate": 2048,
+            "phase_tokens.thinking_budget": 1024,
+        }
+    )
+    path = cfg.save(tmp_path / "phase_tokens.json")
+    loaded = load_config(path)
+    assert loaded.phase_tokens.max_tokens_plan == 512
+    assert loaded.phase_tokens.max_tokens_code == 4096
+    assert loaded.phase_tokens.max_tokens_integrate == 2048
+    assert loaded.phase_tokens.thinking_budget == 1024
+
+
+def test_phase_tokens_defaults_are_none() -> None:
+    cfg = default_config()
+    assert cfg.phase_tokens.max_tokens_plan is None
+    assert cfg.phase_tokens.max_tokens_code is None
+    assert cfg.phase_tokens.max_tokens_integrate is None
+    assert cfg.phase_tokens.thinking_budget is None
