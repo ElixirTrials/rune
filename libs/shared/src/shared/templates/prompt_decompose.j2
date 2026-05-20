@@ -1,22 +1,17 @@
 Decompose this project into 1-6 subtasks with dependencies.
 Use fewer subtasks for simpler projects. A single function needs only 1 subtask.
-Do NOT write code. Output ONLY a numbered list in this exact format.
-No preamble, no analysis, no reasoning. Just the list.
-1. name — one-line description [depends: none]
-2. name — one-line description [depends: 1]
+Do NOT write code. Output ONLY valid JSON matching this schema:
+{"subtasks": [{"name": "...", "description": "...", "depends_on": ["..."]}]}
+No preamble, no analysis, no reasoning. Just the JSON.
 
 Example output (simple project → 1 subtask):
-1. fibonacci — Recursive fibonacci with memoization and edge-case tests [depends: none]
+{"subtasks": [{"name": "fibonacci", "description": "Recursive fibonacci with memoization and edge-case tests", "depends_on": []}]}
 
 Example output (complex project → multiple subtasks):
-1. Data models — Dataclasses with validation and serialization [depends: none]
-2. Storage layer — SQLite-backed repository with CRUD operations [depends: 1]
-3. Business logic — Service class enforcing domain rules [depends: 1, 2]
-4. CLI interface — argparse subcommands for user interaction [depends: 3]
+{"subtasks": [{"name": "Data models", "description": "Dataclasses with validation and serialization", "depends_on": []}, {"name": "Storage layer", "description": "SQLite-backed repository with CRUD operations", "depends_on": ["Data models"]}, {"name": "Business logic", "description": "Service class enforcing domain rules", "depends_on": ["Data models", "Storage layer"]}, {"name": "CLI interface", "description": "argparse subcommands for user interaction", "depends_on": ["Business logic"]}]}
 
 BAD (do not do this):
-1. Analyze the request — determine requirements
-2. Numbered list? Yes
+{"subtasks": [{"name": "Analyze the request", "description": "determine requirements", "depends_on": []}]}
 These are reasoning steps, NOT subtasks. Never output these.
 
 Project: {{ task_description }}
