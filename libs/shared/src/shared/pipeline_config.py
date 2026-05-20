@@ -66,6 +66,33 @@ class DecomposeConfig:
 
 
 @dataclass(frozen=True)
+class ReasoningLoopConfig:
+    """Adapter-compressed reasoning loop settings."""
+
+    max_turns: int = 20
+    context_budget_ratio: float = 0.75
+    sliding_window_tokens: int = 1024
+    chunk_threshold: int = 1024
+    enable_chunk_composition: bool = False
+    code_scaling_boost: float = 1.2
+    default_merge_method: str = "ties"
+    collapse_cosine_threshold: float = 0.95
+    collapse_norm_min: float = 0.1
+    collapse_norm_max: float = 10.0
+    collapse_repetition_threshold: float = 0.8
+    adapter_target_modules: tuple[str, ...] | None = None
+    adapter_layer_selection: str = "all"
+    phase_sliding_windows: dict[str, int] = field(default_factory=lambda: {
+        "decompose": 256,
+        "plan": 512,
+        "code": 1024,
+        "code_repair": 1536,
+        "integrate": 2048,
+        "diagnose": 512,
+    })
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """Top-level pipeline configuration."""
 
@@ -75,12 +102,16 @@ class PipelineConfig:
     trajectory: TrajectoryConfig = field(default_factory=TrajectoryConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     decompose: DecomposeConfig = field(default_factory=DecomposeConfig)
+    reasoning_loop: ReasoningLoopConfig = field(default_factory=ReasoningLoopConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict."""
         d = asdict(self)
         # Convert tuple back for JSON compatibility
         d["calibration"]["scaling_range"] = list(d["calibration"]["scaling_range"])
+        rl_d = d.get("reasoning_loop", {})
+        if rl_d.get("adapter_target_modules") is not None:
+            rl_d["adapter_target_modules"] = list(rl_d["adapter_target_modules"])
         return d
 
     def save(self, path: Path | None = None) -> Path:
@@ -113,6 +144,11 @@ def _from_dict(d: dict[str, Any]) -> PipelineConfig:
     cal = d.get("calibration", {})
     if "scaling_range" in cal and isinstance(cal["scaling_range"], list):
         cal["scaling_range"] = tuple(cal["scaling_range"])
+    rl = d.get("reasoning_loop", {})
+    if "adapter_target_modules" in rl and isinstance(rl["adapter_target_modules"], list):
+        rl["adapter_target_modules"] = tuple(rl["adapter_target_modules"])
+    if "phase_sliding_windows" not in rl:
+        rl["phase_sliding_windows"] = dict(ReasoningLoopConfig().phase_sliding_windows)
     return PipelineConfig(
         adapter=AdapterConfig(**d.get("adapter", {})),
         generation=GenerationConfig(**d.get("generation", {})),
@@ -120,6 +156,7 @@ def _from_dict(d: dict[str, Any]) -> PipelineConfig:
         trajectory=TrajectoryConfig(**d.get("trajectory", {})),
         calibration=CalibrationConfig(**cal),
         decompose=DecomposeConfig(**d.get("decompose", {})),
+        reasoning_loop=ReasoningLoopConfig(**rl),
     )
 
 
@@ -141,3 +178,43 @@ def load_config(path: Path | None = None) -> PipelineConfig:
 def default_config() -> PipelineConfig:
     """Return the default config without reading any files."""
     return PipelineConfig()
+
+
+def resolve_reasoning_loop_config(base: ReasoningLoopConfig) -> ReasoningLoopConfig:
+    """Apply env var overrides to a ReasoningLoopConfig."""
+    overrides: dict[str, Any] = {}
+
+    env_map: dict[str, tuple[str, Any]] = {
+        "RUNE_MAX_REASONING_TURNS": ("max_turns", int),
+        "RUNE_CONTEXT_BUDGET_RATIO": ("context_budget_ratio", float),
+        "RUNE_SLIDING_WINDOW_TOKENS": ("sliding_window_tokens", int),
+        "RUNE_CHUNK_THRESHOLD": ("chunk_threshold", int),
+        "RUNE_ENABLE_CHUNK_COMPOSITION": ("enable_chunk_composition", lambda v: v.lower() in ("true", "1", "yes")),
+        "RUNE_CODE_SCALING_BOOST": ("code_scaling_boost", float),
+        "RUNE_MERGE_METHOD": ("default_merge_method", str),
+        "RUNE_COLLAPSE_COSINE_THRESHOLD": ("collapse_cosine_threshold", float),
+        "RUNE_COLLAPSE_NORM_MIN": ("collapse_norm_min", float),
+        "RUNE_COLLAPSE_NORM_MAX": ("collapse_norm_max", float),
+        "RUNE_COLLAPSE_REPETITION_THRESHOLD": ("collapse_repetition_threshold", float),
+        "RUNE_ADAPTER_TARGET_MODULES": ("adapter_target_modules", lambda v: tuple(v.split(","))),
+        "RUNE_ADAPTER_LAYER_SELECTION": ("adapter_layer_selection", str),
+    }
+
+    for env_key, (field_name, converter) in env_map.items():
+        val = os.environ.get(env_key)
+        if val is not None:
+            overrides[field_name] = converter(val)
+
+    phase_windows = dict(base.phase_sliding_windows)
+    for phase in phase_windows:
+        env_val = os.environ.get(f"RUNE_SLIDING_WINDOW_{phase.upper()}")
+        if env_val is not None:
+            phase_windows[phase] = int(env_val)
+    overrides["phase_sliding_windows"] = phase_windows
+
+    if not overrides or overrides == {"phase_sliding_windows": base.phase_sliding_windows}:
+        return base
+
+    d = {f.name: getattr(base, f.name) for f in base.__dataclass_fields__.values()}
+    d.update(overrides)
+    return ReasoningLoopConfig(**d)
