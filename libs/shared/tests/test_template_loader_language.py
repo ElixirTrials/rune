@@ -3,15 +3,27 @@ from pathlib import Path
 from shared.template_loader import render_trajectory
 
 
+def _code_kwargs() -> dict[str, object]:
+    return {
+        "project": "test",
+        "subtask": {"name": "test", "description": "test"},
+        "subtask_index": 1,
+        "total_subtasks": 1,
+        "plan": "plan",
+    }
+
+
 def test_render_trajectory_default_language() -> None:
-    """render_trajectory without language param returns base template."""
-    result = render_trajectory("code", project="test", subtask={"name": "test", "description": "test"}, subtask_index=1, total_subtasks=1, plan="plan")
+    """render_trajectory without language returns base template."""
+    result = render_trajectory("code", **_code_kwargs())
     assert "ROLE: coder" in result
 
 
 def test_render_trajectory_unknown_language_falls_back() -> None:
-    """render_trajectory with unknown language falls back to base template."""
-    result = render_trajectory("code", language="rust", project="test", subtask={"name": "test", "description": "test"}, subtask_index=1, total_subtasks=1, plan="plan")
+    """Unknown language falls back to base template."""
+    result = render_trajectory(
+        "code", language="rust", **_code_kwargs()
+    )
     assert "ROLE: coder" in result
 
 

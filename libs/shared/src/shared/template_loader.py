@@ -1,6 +1,6 @@
 """Jinja2 template loader for phase trajectory and prompt rendering."""
 
-from jinja2 import Environment, PackageLoader, TemplateNotFound, Undefined
+from jinja2 import Environment, PackageLoader, Template, TemplateNotFound, Undefined
 
 _env = Environment(
     loader=PackageLoader("shared", "templates"),
@@ -29,7 +29,7 @@ def render_prompt(phase: str, **kwargs: object) -> str:
     return template.render(**kwargs)
 
 
-def _resolve_template(phase: str, language: str | None):
+def _resolve_template(phase: str, language: str | None) -> Template:
     if language:
         try:
             return _env.get_template(f"{phase}.{language}.j2")
