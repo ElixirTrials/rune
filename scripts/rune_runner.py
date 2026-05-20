@@ -596,6 +596,87 @@ async def _eager_unload(adapter_id: str | None) -> None:
             torch.cuda.empty_cache()
 
 
+async def run_reasoning_loop(
+    graph: Any,
+    initial_output: str,
+    task_description: str,
+    phase: str,
+    phase_executes: bool,
+    max_turns: int = 20,
+    sliding_window_tokens: int = 1024,
+    scaling_factor: float = 0.16,
+    session_id: str = "",
+    enable_chunk_composition: bool = False,
+    chunk_threshold: int = 1024,
+    adapter_placement: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run the adapter-compressed reasoning loop.
+
+    Called as an escalation path when accumulated context exceeds
+    the context budget after finish_reason == 'length'.
+    """
+    words = initial_output.split()
+    window_words = sliding_window_tokens // 4
+    sliding_window = " ".join(words[-window_words:]) if words else ""
+
+    initial_state: dict[str, Any] = {
+        "task_description": task_description,
+        "phase": phase,
+        "adapter_ids": [],
+        "session_id": session_id,
+        "generated_code": initial_output,
+        "stdout": "",
+        "stderr": "",
+        "exit_code": 0,
+        "tests_passed": False,
+        "test_count": 0,
+        "tests_ran": False,
+        "finish_reason": "length",
+        "outcome": None,
+        "prompt_context": None,
+        "artifact": None,
+        "trajectory_state": None,
+        "turn_count": 0,
+        "max_turns": max_turns,
+        "sliding_window": sliding_window,
+        "sliding_window_size": sliding_window_tokens,
+        "base_sliding_window_size": sliding_window_tokens,
+        "current_adapter_path": None,
+        "previous_adapter_weights": None,
+        "first_adapter_norm": None,
+        "scaling_factor": scaling_factor,
+        "enable_chunk_composition": enable_chunk_composition,
+        "chunk_threshold": chunk_threshold,
+        "phase_executes": phase_executes,
+        "turn_history": [],
+        "adapter_placement": adapter_placement,
+        "adapter_cosine_sim": 0.0,
+        "adapter_norm_ratio": 1.0,
+        "output_repetition": 0.0,
+        "consecutive_high_similarity": 0,
+        "recovery_attempted": False,
+    }
+
+    _mlflow_tag("reasoning_loop.phase", phase)
+    _mlflow_tag("reasoning_loop.session_id", session_id)
+
+    result = await graph.ainvoke(initial_state)
+
+    _mlflow_metrics(
+        {
+            "reasoning_loop/total_turns": float(result.get("turn_count", 0)),
+            "reasoning_loop/final_tests_passed": float(
+                result.get("tests_passed", False)
+            ),
+            "reasoning_loop/recovery_triggered": float(
+                result.get("recovery_attempted", False)
+            ),
+        }
+    )
+
+    return result  # type: ignore[return-value]
+
+
 # ---------------------------------------------------------------------------
 # Multi-phase pipeline
 # ---------------------------------------------------------------------------
@@ -1494,6 +1575,61 @@ async def run_phased_pipeline(
                     )
                 else:
                     existing_code = new_code
+
+                # Escalation: if accumulated context exceeds budget, switch to
+                # reasoning loop
+                accumulated_words = len(existing_code.split())
+                context_budget_words = int(
+                    _pipeline_cfg.reasoning_loop.context_budget_ratio
+                    * _pipeline_cfg.generation.max_tokens
+                )
+                if (
+                    accumulated_words > context_budget_words
+                    and code_state.get("finish_reason") == "length"
+                ):
+                    logger.info(
+                        "  Subtask '%s': escalating to reasoning loop"
+                        " (%d words > %d budget)",
+                        subtask["name"],
+                        accumulated_words,
+                        context_budget_words,
+                    )
+                    from rune_agent.reasoning_loop import (  # noqa: PLC0415
+                        create_reasoning_loop_graph,
+                    )
+
+                    rl_graph = create_reasoning_loop_graph()
+                    rl_cfg = _pipeline_cfg.reasoning_loop
+                    phase_window = rl_cfg.phase_sliding_windows.get(
+                        "code", rl_cfg.sliding_window_tokens
+                    )
+                    rl_result = await run_reasoning_loop(
+                        graph=rl_graph,
+                        initial_output=existing_code,
+                        task_description=project_prompt,
+                        phase="code",
+                        phase_executes=True,
+                        max_turns=rl_cfg.max_turns,
+                        sliding_window_tokens=phase_window,
+                        scaling_factor=adapter_scaling,
+                        session_id=session_id,
+                        enable_chunk_composition=rl_cfg.enable_chunk_composition,
+                        chunk_threshold=rl_cfg.chunk_threshold,
+                    )
+                    existing_code = rl_result.get(
+                        "generated_code", existing_code
+                    )
+                    last_state = rl_result
+                    if rl_result.get("tests_passed", False):
+                        return (
+                            subtask["name"],
+                            existing_code,
+                            {
+                                "passed": True,
+                                "attempts": attempt + 1,
+                                "reasoning_loop": True,
+                            },
+                        )
 
                 # Update fitness with partial credit from test results
                 code_passed = code_state.get("tests_passed", False)
