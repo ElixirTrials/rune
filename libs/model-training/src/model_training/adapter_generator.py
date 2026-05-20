@@ -21,6 +21,70 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_RE_LAYER_IDX = __import__("re").compile(r"layers\.(\d+)\.")
+_RE_MODULE_NAME = __import__("re").compile(
+    r"\.(q_proj|k_proj|v_proj|o_proj|qkv_proj|gate_proj|up_proj|down_proj)\."
+)
+
+
+def _resolve_layer_mask(layer_selection: str, total_layers: int) -> set[int] | None:
+    """Return set of layer indices to KEEP, or None for all."""
+    if layer_selection == "all":
+        return None
+    half = total_layers // 2
+    if layer_selection == "early_half":
+        return set(range(half))
+    elif layer_selection == "late_half":
+        return set(range(half, total_layers))
+    elif layer_selection == "every_other":
+        return set(range(0, total_layers, 2))
+    elif layer_selection == "first_last_quarter":
+        quarter = max(1, total_layers // 4)
+        return set(range(quarter)) | set(range(total_layers - quarter, total_layers))
+    return None
+
+
+def apply_placement_mask(
+    state_dict: dict[str, Any],
+    target_modules: list[str] | None,
+    layer_selection: str = "all",
+    total_layers: int | None = None,
+) -> dict[str, Any]:
+    """Zero out adapter weights for excluded modules/layers."""
+    if target_modules is None and layer_selection == "all":
+        return state_dict
+
+    if total_layers is None:
+        indices = [
+            int(m.group(1))
+            for k in state_dict
+            if (m := _RE_LAYER_IDX.search(k))
+        ]
+        total_layers = max(indices) + 1 if indices else 0
+
+    layer_keep = _resolve_layer_mask(layer_selection, total_layers)
+    module_set = set(target_modules) if target_modules is not None else None
+
+    import torch
+
+    result = {}
+    for key, tensor in state_dict.items():
+        zero = False
+
+        if module_set is not None:
+            mod_match = _RE_MODULE_NAME.search(key)
+            if mod_match is not None and mod_match.group(1) not in module_set:
+                zero = True
+
+        if layer_keep is not None and not zero:
+            layer_match = _RE_LAYER_IDX.search(key)
+            if layer_match is not None and int(layer_match.group(1)) not in layer_keep:
+                zero = True
+
+        result[key] = torch.zeros_like(tensor) if zero else tensor
+
+    return result
+
 
 def extract_activations(
     text: str,
