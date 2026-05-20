@@ -596,6 +596,116 @@ async def _eager_unload(adapter_id: str | None) -> None:
             torch.cuda.empty_cache()
 
 
+_MAX_CONTINUATIONS = 3
+
+
+async def _run_continuation_loop(
+    code_state: dict[str, Any],
+    existing_code: str,
+    *,
+    graph: Any,
+    project_prompt: str,
+    session_id: str,
+    iteration_base: int,
+    subtask: dict[str, Any],
+    project_label: str,
+    run_hypernetwork_fn: Any,
+    adapter_dir: Any,
+    base_model_id: str,
+    checkpoint_path: str | None,
+    device: str,
+    adapter_scaling: float,
+    adapter_max_length: int,
+    pool: Any,
+    render_trajectory_fn: Any,
+    load_adapter_fn: Any,
+    eager_unload_fn: Any,
+    plan: str = "",
+    dep_interfaces: str = "",
+) -> tuple[dict[str, Any], str]:
+    """Accumulate continuation turns when finish_reason == "length".
+
+    Runs up to _MAX_CONTINUATIONS extra generation turns, concatenating
+    output each time. Does NOT consume retry attempts.
+
+    Returns:
+        (final_state, accumulated_code)
+    """
+    accumulated = existing_code
+    state = code_state
+
+    for cont in range(_MAX_CONTINUATIONS):
+        if state.get("finish_reason") != "length":
+            break
+
+        new_code = state.get("generated_code", "")
+        accumulated = accumulated + "\n" + new_code if accumulated else new_code
+
+        logger.info(
+            "  Continuation %d/%d for '%s' (accumulated %d chars)",
+            cont + 1,
+            _MAX_CONTINUATIONS,
+            subtask["name"],
+            len(accumulated),
+        )
+
+        traj = render_trajectory_fn(
+            "code_continue",
+            subtask=subtask,
+            attempt=1,
+            max_retries=1,
+            plan=plan,
+            existing_code=accumulated,
+            project=project_prompt,
+            dependency_interfaces=dep_interfaces,
+        )
+
+        cont_adapter_dir = str(
+            adapter_dir
+            / f"phase3_cont_{_safe_adapter_id(subtask['name'])}_c{cont}"
+        )
+        cont_adapter_path = run_hypernetwork_fn(
+            trajectory_text=traj,
+            output_dir=cont_adapter_dir,
+            base_model_id=base_model_id,
+            checkpoint_path=checkpoint_path,
+            device=device,
+            scaling_factor=adapter_scaling,
+            max_length=adapter_max_length,
+            pool=pool,
+        )
+
+        cont_adapter_id: str | None = None
+        if cont_adapter_path:
+            cont_adapter_id = (
+                f"phase3-cont-{_safe_adapter_id(subtask['name'])}-c{cont}"
+            )
+            await load_adapter_fn(cont_adapter_id, cont_adapter_path, None)
+
+        state = await run_iteration(
+            graph=graph,
+            project_prompt=project_prompt,
+            adapter_id=cont_adapter_id,
+            session_id=session_id,
+            iteration=iteration_base + 2000 + cont,
+            phase="code_continue",
+            prompt_context={
+                "subtask_name": subtask["name"],
+                "project_label": project_label,
+            },
+        )
+        await eager_unload_fn(cont_adapter_id)
+
+    # Final accumulation if the last turn produced output
+    if state is not code_state:
+        final_code = state.get("generated_code", "")
+        accumulated = accumulated + "\n" + final_code if accumulated else final_code
+    else:
+        accumulated = existing_code
+
+    return state, accumulated
+
+
 # ---------------------------------------------------------------------------
 # Multi-phase pipeline
 # ---------------------------------------------------------------------------
@@ -1257,134 +1367,118 @@ async def run_phased_pipeline(
                     )
                 else:
                     assert last_state is not None  # guaranteed by attempt > 0
-                    is_truncated = last_state.get("finish_reason") == "length"
+                    # Retry: code was complete but tests failed or code errored.
+                    # Two-step: diagnose the error first, then repair with
+                    # the model's own diagnosis as fix guidance.
+                    passed, total = _count_test_results(
+                        last_state.get("stdout", ""),
+                        last_state.get("stderr", ""),
+                    )
+                    error_summary = _extract_error_summary(
+                        last_state.get("stderr", "")
+                    )
+                    failed_tests = _extract_failed_tests(
+                        last_state.get("stderr", "")
+                    )
+                    tests_passed = last_state.get("tests_passed", False)
 
-                    if is_truncated:
-                        # Continuation: prior output was cut off at max_tokens.
-                        # Concatenate prior + new output after generation.
-                        traj = render_trajectory(
-                            "code_continue",
-                            subtask=subtask,
-                            attempt=attempt + 1,
-                            max_retries=iters_code,
-                            plan=plan,
-                            existing_code=existing_code,
-                            project=project_prompt,
-                            dependency_interfaces=dep_interfaces,
+                    # Step 1: Quick diagnose — error in prompt, code in adapter
+                    diag_traj = render_trajectory(
+                        "code",
+                        subtask=subtask,
+                        subtask_index=idx + 1,
+                        total_subtasks=len(subtasks),
+                        plan=plan,
+                        existing_code=existing_code,
+                        project=project_prompt,
+                        dependency_interfaces=dep_interfaces,
+                    )
+                    diag_adapter_dir = str(
+                        adapter_dir
+                        / f"phase3_diag_{_safe_adapter_id(subtask['name'])}_v{attempt}"
+                    )
+                    diag_adapter_path = run_hypernetwork(
+                        trajectory_text=diag_traj,
+                        output_dir=diag_adapter_dir,
+                        base_model_id=base_model_id,
+                        checkpoint_path=checkpoint_path,
+                        device=device,
+                        scaling_factor=adapter_scaling,
+                        max_length=adapter_max_length,
+                        pool=pool,
+                    )
+                    if diag_adapter_path:
+                        diag_aid = (
+                            f"phase3-diag-"
+                            f"{_safe_adapter_id(subtask['name'])}-v{attempt}"
+                        )
+                        await _load_adapter(
+                            diag_aid, diag_adapter_path, loaded_code_adapter
+                        )
+                        diag_state = await run_iteration(
+                            graph=graph,
+                            project_prompt=project_prompt,
+                            adapter_id=diag_aid,
+                            session_id=session_id,
+                            iteration=iteration_counter + 1000 + attempt,
+                            phase="diagnose",
+                            prompt_context={
+                                "project_label": project_label,
+                                "error_line": error_summary.splitlines()[-1]
+                                if error_summary
+                                else "unknown error",
+                            },
+                        )
+                        await _eager_unload(diag_aid)
+                        diagnosis = diag_state.get("generated_code", "").strip()
+                        # Take first sentence as fix guidance
+                        fix_guidance = diagnosis.split(".")[0].strip()
+                        if not fix_guidance or len(fix_guidance) < 5:
+                            fix_guidance = (
+                                error_summary.splitlines()[-1]
+                                if error_summary
+                                else "Fix the error"
+                            )
+                        fix_guidance = fix_guidance[:150]
+                        logger.info(
+                            "  Diagnosis for '%s': %s",
+                            subtask["name"],
+                            fix_guidance[:80],
                         )
                     else:
-                        # Retry: code was complete but tests failed or code errored.
-                        # Two-step: diagnose the error first, then repair with
-                        # the model's own diagnosis as fix guidance.
-                        passed, total = _count_test_results(
-                            last_state.get("stdout", ""),
-                            last_state.get("stderr", ""),
-                        )
-                        error_summary = _extract_error_summary(
-                            last_state.get("stderr", "")
-                        )
-                        failed_tests = _extract_failed_tests(
-                            last_state.get("stderr", "")
-                        )
-                        tests_passed = last_state.get("tests_passed", False)
-
-                        # Step 1: Quick diagnose — error in prompt, code in adapter
-                        diag_traj = render_trajectory(
-                            "code",
-                            subtask=subtask,
-                            subtask_index=idx + 1,
-                            total_subtasks=len(subtasks),
-                            plan=plan,
-                            existing_code=existing_code,
-                            project=project_prompt,
-                            dependency_interfaces=dep_interfaces,
-                        )
-                        diag_adapter_dir = str(
-                            adapter_dir
-                            / f"phase3_diag_{_safe_adapter_id(subtask['name'])}_v{attempt}"
-                        )
-                        diag_adapter_path = run_hypernetwork(
-                            trajectory_text=diag_traj,
-                            output_dir=diag_adapter_dir,
-                            base_model_id=base_model_id,
-                            checkpoint_path=checkpoint_path,
-                            device=device,
-                            scaling_factor=adapter_scaling,
-                            max_length=adapter_max_length,
-                            pool=pool,
-                        )
-                        if diag_adapter_path:
-                            diag_aid = (
-                                f"phase3-diag-"
-                                f"{_safe_adapter_id(subtask['name'])}-v{attempt}"
+                        # Fallback: generic guidance
+                        if total == 0 and last_state.get("exit_code", 1) == 0:
+                            fix_guidance = "NO tests detected — include unittest.TestCase tests"
+                        elif total == 0:
+                            fix_guidance = (
+                                "Code failed to execute. "
+                                "Check syntax, imports, indentation."
                             )
-                            await _load_adapter(
-                                diag_aid, diag_adapter_path, loaded_code_adapter
-                            )
-                            diag_state = await run_iteration(
-                                graph=graph,
-                                project_prompt=project_prompt,
-                                adapter_id=diag_aid,
-                                session_id=session_id,
-                                iteration=iteration_counter + 1000 + attempt,
-                                phase="diagnose",
-                                prompt_context={
-                                    "project_label": project_label,
-                                    "error_line": error_summary.splitlines()[-1]
-                                    if error_summary
-                                    else "unknown error",
-                                },
-                            )
-                            await _eager_unload(diag_aid)
-                            diagnosis = diag_state.get("generated_code", "").strip()
-                            # Take first sentence as fix guidance
-                            fix_guidance = diagnosis.split(".")[0].strip()
-                            if not fix_guidance or len(fix_guidance) < 5:
-                                fix_guidance = (
-                                    error_summary.splitlines()[-1]
-                                    if error_summary
-                                    else "Fix the error"
-                                )
-                            fix_guidance = fix_guidance[:150]
-                            logger.info(
-                                "  Diagnosis for '%s': %s",
-                                subtask["name"],
-                                fix_guidance[:80],
-                            )
+                        elif passed == 0:
+                            fix_guidance = "No tests pass. Fix basic structure."
                         else:
-                            # Fallback: generic guidance
-                            if total == 0 and last_state.get("exit_code", 1) == 0:
-                                fix_guidance = "NO tests detected — include unittest.TestCase tests"
-                            elif total == 0:
-                                fix_guidance = (
-                                    "Code failed to execute. "
-                                    "Check syntax, imports, indentation."
-                                )
-                            elif passed == 0:
-                                fix_guidance = "No tests pass. Fix basic structure."
-                            else:
-                                fix_guidance = (
-                                    f"{total - passed} test(s) failing. "
-                                    "Fix without breaking passing tests."
-                                )
+                            fix_guidance = (
+                                f"{total - passed} test(s) failing. "
+                                "Fix without breaking passing tests."
+                            )
 
-                        traj = render_trajectory(
-                            "code_retry",
-                            subtask=subtask,
-                            attempt=attempt + 1,
-                            max_retries=iters_code,
-                            plan=plan,
-                            existing_code=existing_code,
-                            passed=passed,
-                            total=total,
-                            tests_passed=tests_passed,
-                            error_summary=error_summary,
-                            failed_tests=failed_tests,
-                            fix_guidance=fix_guidance,
-                            history=None,
-                            project=project_prompt,
-                            dependency_interfaces=dep_interfaces,
-                        )
+                    traj = render_trajectory(
+                        "code_retry",
+                        subtask=subtask,
+                        attempt=attempt + 1,
+                        max_retries=iters_code,
+                        plan=plan,
+                        existing_code=existing_code,
+                        passed=passed,
+                        total=total,
+                        tests_passed=tests_passed,
+                        error_summary=error_summary,
+                        failed_tests=failed_tests,
+                        fix_guidance=fix_guidance,
+                        history=None,
+                        project=project_prompt,
+                        dependency_interfaces=dep_interfaces,
+                    )
 
                 code_adapter_dir = str(
                     adapter_dir
@@ -1433,12 +1527,6 @@ async def run_phased_pipeline(
                         "subtask_name": subtask["name"],
                         "project_label": project_label,
                     }
-                elif is_truncated:
-                    code_phase = "code_continue"
-                    code_ctx = {
-                        "subtask_name": subtask["name"],
-                        "project_label": project_label,
-                    }
                 else:
                     assert last_state is not None
                     passed, total = _count_test_results(
@@ -1480,20 +1568,36 @@ async def run_phased_pipeline(
                 )
                 await _eager_unload(code_adapter_id)
 
-                last_state = code_state
-                new_code = code_state.get("generated_code", "")
-
-                # For continuation: concatenate prior code + new output
-                if attempt > 0 and is_truncated:
-                    existing_code = existing_code + "\n" + new_code
-                    logger.info(
-                        "  Subtask '%s' continuation: appended %d chars (total %d)",
-                        subtask["name"],
-                        len(new_code),
-                        len(existing_code),
+                # Runner-managed continuation: if truncated, accumulate
+                # up to _MAX_CONTINUATIONS extra turns without consuming retries
+                if code_state.get("finish_reason") == "length":
+                    code_state, existing_code = await _run_continuation_loop(
+                        code_state,
+                        existing_code,
+                        graph=graph,
+                        project_prompt=project_prompt,
+                        session_id=session_id,
+                        iteration_base=iteration_counter + idx * iters_code + attempt,
+                        subtask=subtask,
+                        project_label=project_label,
+                        run_hypernetwork_fn=run_hypernetwork,
+                        adapter_dir=adapter_dir,
+                        base_model_id=base_model_id,
+                        checkpoint_path=checkpoint_path,
+                        device=device,
+                        adapter_scaling=adapter_scaling,
+                        adapter_max_length=adapter_max_length,
+                        pool=pool,
+                        render_trajectory_fn=render_trajectory,
+                        load_adapter_fn=_load_adapter,
+                        eager_unload_fn=_eager_unload,
+                        plan=plan,
+                        dep_interfaces=dep_interfaces,
                     )
                 else:
-                    existing_code = new_code
+                    existing_code = code_state.get("generated_code", "")
+
+                last_state = code_state
 
                 # Update fitness with partial credit from test results
                 code_passed = code_state.get("tests_passed", False)
