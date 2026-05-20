@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from typing import Any
 
 from inference.provider import GenerationResult, InferenceProvider
@@ -64,6 +63,8 @@ class TransformersProvider(InferenceProvider):
         self._loaded_adapters: dict[str, str] = {}  # id -> path
         self._active_adapter: str | None = None
         self._is_peft_wrapped: bool = False
+        self._think_token_id: int | None = None
+        self._end_think_token_id: int | None = None
 
     def _load_model_if_needed(self) -> None:
         """Load the base model and tokenizer if not already loaded.
@@ -81,7 +82,7 @@ class TransformersProvider(InferenceProvider):
                 from peft import PeftModel as _PeftModel  # noqa: PLC0415
 
                 if isinstance(model, _PeftModel):
-                    model = model.base_model.unload()
+                    model = model.base_model.unload()  # type: ignore[operator]
                     self._pool._model = model
                 elif hasattr(model, "peft_config"):
                     del model.peft_config
@@ -122,7 +123,7 @@ class TransformersProvider(InferenceProvider):
                 n = getattr(text_cfg, "num_hidden_layers", None) or getattr(
                     config, "num_hidden_layers", 24
                 )
-                param_count = v * h + n * 12 * h * h
+                param_count = int(v) * int(h) + int(n) * 12 * int(h) * int(h)  # type: ignore[arg-type]
             resolved_dtype = resolve_model_dtype(  # type: ignore[assignment]
                 param_count=param_count, device=self._device
             )
@@ -165,7 +166,9 @@ class TransformersProvider(InferenceProvider):
             repetition_penalty: Repetition penalty (default 1.0 = off).
             enable_thinking: Whether to allow model thinking/reasoning
                 tokens. When False, passes ``enable_thinking=False`` to the
-                chat template so output tokens go entirely to the response.
+                chat template and suppresses think token generation via
+                ``suppress_tokens`` so output goes entirely to the response.
+            thinking_budget: Extra token headroom for thinking when enabled.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -219,25 +222,22 @@ class TransformersProvider(InferenceProvider):
         if repetition_penalty > 1.0:
             gen_kwargs["repetition_penalty"] = repetition_penalty
 
+        self._resolve_think_token_ids()
+        if not enable_thinking and self._think_token_id is not None:
+            gen_kwargs["suppress_tokens"] = [
+                self._think_token_id,
+                self._end_think_token_id,
+            ]
+
         with torch.no_grad():
             outputs = self._model.generate(**inputs, **gen_kwargs)
 
-        new_tokens = outputs[0][input_len:]
-        text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-        # Capture <think> blocks before stripping (for future adapter injection).
-        thinking_parts = re.findall(r"<think>(.*?)</think>", text, flags=re.DOTALL)
-        dangling = re.search(r"<think>(.*)", text, flags=re.DOTALL)
-        if dangling and not re.search(r"</think>", dangling.group(0)):
-            thinking_parts.append(dangling.group(1))
-        thinking = "\n".join(p.strip() for p in thinking_parts if p.strip()) or None
-
-        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
-        text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+        new_token_ids = outputs[0][input_len:].tolist()
         total_tokens = outputs.shape[1]
-        new_token_count = len(new_tokens)
-
+        new_token_count = len(new_token_ids)
         finish_reason = "length" if new_token_count >= effective_max else "stop"
+
+        text, thinking = self._split_thinking(new_token_ids, enable_thinking)
 
         return GenerationResult(
             text=text,
@@ -294,6 +294,62 @@ class TransformersProvider(InferenceProvider):
             if system_prompt:
                 return f"{system_prompt}\n\n{prompt}"
             return prompt
+
+    def _resolve_think_token_ids(self) -> None:
+        """Cache ``<think>`` and ``</think>`` token IDs from the tokenizer."""
+        if self._think_token_id is not None:
+            return
+        if self._tokenizer is None:
+            return
+        tid = self._tokenizer.convert_tokens_to_ids("<think>")
+        etid = self._tokenizer.convert_tokens_to_ids("</think>")
+        if isinstance(tid, int) and tid != self._tokenizer.unk_token_id:
+            self._think_token_id = tid
+            self._end_think_token_id = etid if isinstance(etid, int) else None
+        else:
+            self._think_token_id = None
+            self._end_think_token_id = None
+
+    def _split_thinking(
+        self,
+        token_ids: list[int],
+        enable_thinking: bool,
+    ) -> tuple[str, str | None]:
+        """Separate thinking from response using token IDs, not regex.
+
+        When ``enable_thinking`` is True, finds the last ``</think>`` token
+        and splits: everything before is thinking, everything after is the
+        response.  If ``</think>`` is missing, all output is treated as
+        thinking (returns empty text) to prevent deliberation from leaking
+        into downstream phases.
+        """
+        etid = self._end_think_token_id
+        if not enable_thinking or etid is None:
+            text = self._tokenizer.decode(token_ids, skip_special_tokens=True).strip()
+            return text, None
+
+        try:
+            idx = len(token_ids) - token_ids[::-1].index(etid)
+        except ValueError:
+            # No </think> found — all tokens are unclosed thinking.
+            thinking_text = self._tokenizer.decode(
+                token_ids, skip_special_tokens=True
+            ).strip()
+            if thinking_text:
+                logger.warning(
+                    "enable_thinking=True but no </think> found; "
+                    "treating %d tokens as thinking (text will be empty)",
+                    len(token_ids),
+                )
+            return "", thinking_text or None
+
+        thinking_text = self._tokenizer.decode(
+            token_ids[:idx], skip_special_tokens=True
+        ).strip()
+        content_text = self._tokenizer.decode(
+            token_ids[idx:], skip_special_tokens=True
+        ).strip()
+        return content_text, thinking_text or None
 
     def _activate_adapter(self, adapter_id: str) -> None:
         """Activate a loaded PEFT adapter.

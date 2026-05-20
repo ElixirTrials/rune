@@ -163,7 +163,8 @@ class ModelPool:
             text_cfg = getattr(config, "text_config", config)
 
             def _cfg(name: str, default: int) -> int:
-                return getattr(text_cfg, name, None) or getattr(config, name, default)
+                val = getattr(text_cfg, name, None) or getattr(config, name, default)
+                return default if val is None else int(val)
 
             h = _cfg("hidden_size", 2048)
             v = _cfg("vocab_size", 32000)

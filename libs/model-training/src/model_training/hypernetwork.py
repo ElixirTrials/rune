@@ -1,6 +1,6 @@
 """Hypernetwork checkpoint loading and management utilities.
 
-Supports both local paths and S3 URIs via fsspec. Handles downloading
+Supports both local paths and S3 URIs via boto3. Handles downloading
 pretrained HyperLoRA perceiver checkpoints from HuggingFace and loading
 them into memory with flash-attention compatibility patches.
 
@@ -14,6 +14,7 @@ import hashlib
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +65,17 @@ def _ensure_local_s3_cache(s3_uri: str) -> str:
         logger.info("Using cached checkpoint: %s", cached)
         return str(cached)
 
-    import fsspec  # type: ignore[import-untyped]  # noqa: PLC0415
+    import boto3  # noqa: PLC0415
+
+    parsed = urlparse(s3_uri)
+    bucket, s3_key = parsed.netloc, parsed.path.lstrip("/")
 
     logger.info("Downloading %s → %s ...", s3_uri, cached)
     tmp = cached.with_suffix(".tmp")
     try:
-        with fsspec.open(s3_uri, "rb") as src, open(tmp, "wb") as dst:
-            while chunk := src.read(8 * 1024 * 1024):
-                dst.write(chunk)
+        client = boto3.client("s3")
+        with open(tmp, "wb") as dst:
+            client.download_fileobj(bucket, s3_key, dst)
         tmp.rename(cached)
     except BaseException:
         tmp.unlink(missing_ok=True)
