@@ -866,8 +866,6 @@ async def run_phased_pipeline(
         logger.info("=== Phase 1: DECOMPOSE ===")
         _mlflow_tag("pipeline.phase", "decompose")
 
-        _decompose_skipped = False
-
         best_decompose_state: dict[str, Any] | None = None
         best_decompose_adapter_id: str | None = None
         best_decompose_score: float = -1.0
