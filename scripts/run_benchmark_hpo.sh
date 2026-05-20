@@ -13,17 +13,25 @@
 #  Usage:
 #    scripts/run_benchmark_hpo.sh --smoke              # 1 trial x 2 problems
 #    scripts/run_benchmark_hpo.sh                      # full 30-trial study
+#    scripts/run_benchmark_hpo.sh --fresh              # wipe prior results, start clean
 #    scripts/run_benchmark_hpo.sh --n-trials 10        # any run_benchmark_hpo.py flag
 #    HYPERNET_CHECKPOINT=s3://.../ckpt.pt scripts/run_benchmark_hpo.sh
 #
-#  All arguments are forwarded verbatim to run_benchmark_hpo.py; see its
-#  --help for the full flag list.
+#  All arguments (except --fresh) are forwarded verbatim to run_benchmark_hpo.py;
+#  see its --help for the full flag list.
 # ────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+FRESH=0
+PASSTHROUGH=()
 for a in "$@"; do
-    case "$a" in -h|--help) sed -n '2,21p' "$0"; exit 0;; esac
+    case "$a" in
+        -h|--help) sed -n '2,22p' "$0"; exit 0;;
+        --fresh)   FRESH=1;;
+        *)         PASSTHROUGH+=("$a");;
+    esac
 done
+set -- "${PASSTHROUGH[@]+${PASSTHROUGH[@]}}"
 
 HYPERNET_CHECKPOINT="${HYPERNET_CHECKPOINT:-s3://elixirtrials-949678234935-eu-west-2-artifacts/checkpoints/hypernet_hpo/checkpoint.pt}"
 
@@ -78,6 +86,22 @@ fi
 # SQLAlchemy will not create the parent dir, so do it here.
 mkdir -p "${HOME}/.rune"
 
+# ── fresh run: back up and wipe prior Optuna state + results ──────────────
+# Extract --output-dir from ARGS if present, else use the Python default.
+_ODIR="evaluation_results/benchmark_hpo"
+for (( i=0; i<${#ARGS[@]}; i++ )); do
+    if [[ "${ARGS[$i]}" == "--output-dir" && $(( i+1 )) -lt ${#ARGS[@]} ]]; then
+        _ODIR="${ARGS[$((i+1))]}"
+        break
+    fi
+done
+if [[ $FRESH -eq 1 && -d "$_ODIR" ]]; then
+    BACKUP="/tmp/benchmark_hpo_backup_$(date +%Y%m%d-%H%M%S)"
+    echo "Backing up prior results to $BACKUP"
+    mv "$_ODIR" "$BACKUP"
+    mkdir -p "$_ODIR"
+fi
+
 # ── CUDA allocator: reduce VRAM fragmentation across pipeline runs ─────────
 # Must be set before any torch import. Set unconditionally for the
 # expandable_segments behaviour; preserve any other pre-set options.
@@ -95,6 +119,7 @@ echo "Checkpoint:   $HYPERNET_CHECKPOINT"
 echo "MLflow URI:   $MLFLOW_TRACKING_URI"
 echo "Inference:    $INFERENCE_PROVIDER ($TRANSFORMERS_MODEL_NAME)"
 echo "Alloc conf:   $PYTORCH_CUDA_ALLOC_CONF"
+[[ $FRESH -eq 1 ]] && echo "Fresh run:    yes (prior results backed up)"
 echo "Log:          $LOG"
 echo
 
