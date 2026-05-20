@@ -131,3 +131,84 @@ def test_resolve_strategy_custom_boost():
     )
     assert isinstance(s, ChunkComposition)
     assert s.scaling == pytest.approx(0.24)
+
+
+# --- Task 4: build_artifact_state and chunk_code_state ---
+
+from rune_agent.artifact_state import build_artifact_state, chunk_code_state, CodeChunk
+
+
+def test_build_artifact_state_first_turn():
+    art = build_artifact_state(
+        generated_code="import os\n\ndef main():\n    print('hello')\n",
+        stdout="1 passed",
+        stderr="",
+        tests_passed=True,
+        turn=0,
+        previous_artifact=None,
+    )
+    assert "import os" in art.import_block
+    assert "main" in art.interface_summary
+    assert art.tests_passed is True
+    assert len(art.patches) == 1
+    assert art.patches[0].turn == 0
+
+
+def test_build_artifact_state_with_previous():
+    prev = ArtifactState(
+        file_contents="def old(): pass",
+        interface_summary="def old()",
+        import_block="",
+        patches=[PatchRecord(turn=0, description="initial", diff_summary="+def old()")],
+        test_results="1 passed",
+        stderr_summary="",
+        tests_passed=True,
+        todos=[],
+    )
+    art = build_artifact_state(
+        generated_code="import os\n\ndef old(): pass\ndef new(): pass\n",
+        stdout="2 passed",
+        stderr="",
+        tests_passed=True,
+        turn=1,
+        previous_artifact=prev,
+    )
+    assert len(art.patches) == 2
+    assert art.patches[1].turn == 1
+    assert "new" in art.patches[1].diff_summary
+
+
+def test_chunk_code_state_small_artifact():
+    art = ArtifactState(
+        file_contents="import os\ndef main(): pass",
+        interface_summary="def main()",
+        import_block="import os",
+        patches=[],
+        test_results="",
+        stderr_summary="",
+        tests_passed=True,
+        todos=[],
+    )
+    chunks = chunk_code_state(art, max_chunk_tokens=5000)
+    assert len(chunks) >= 2
+    types = {c.chunk_type for c in chunks}
+    assert "imports" in types
+    assert "interfaces" in types
+
+
+def test_chunk_code_state_priority_ordering():
+    art = ArtifactState(
+        file_contents="import os\nimport sys\n\nclass Foo:\n    pass\n\ndef bar():\n    pass\n",
+        interface_summary="class Foo\ndef bar()",
+        import_block="import os\nimport sys",
+        patches=[PatchRecord(turn=0, description="init", diff_summary="+Foo, +bar")],
+        test_results="2 passed",
+        stderr_summary="",
+        tests_passed=True,
+        todos=[],
+    )
+    chunks = chunk_code_state(art, max_chunk_tokens=100)
+    assert chunks[0].chunk_type == "imports"
+    assert chunks[0].priority == 1.0
+    assert chunks[1].chunk_type == "interfaces"
+    assert chunks[1].priority == 0.95
