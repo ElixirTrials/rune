@@ -288,6 +288,11 @@ def score_pipeline_result(
 
     code = result.get("accumulated_code", "")
     verdict = MBPPAdapter().score(problem, code)
+    logger.info(
+        "Problem %s: MBPP evaluation: %s",
+        problem.problem_id,
+        "PASS" if verdict.passed else "FAIL",
+    )
     phase_metrics = extract_phase_metrics(result)
     return ProblemVerdict(
         problem_id=problem.problem_id,
@@ -354,6 +359,11 @@ def run_pipeline_on_problem(
                     device=device,
                     pool=pool,
                 )
+            )
+            logger.info(
+                "Problem %s: Pipeline completed (internal %s)",
+                problem.problem_id,
+                "pass" if result.get("tests_passed") else "fail",
             )
             adapter_dir = result.get("adapter_dir")
             verdict = score_pipeline_result(problem, result, time.time() - start)
