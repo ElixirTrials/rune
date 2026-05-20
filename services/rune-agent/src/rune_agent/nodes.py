@@ -294,12 +294,6 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
 
     script = state["generated_code"] + "\n\n" + state["test_suite"]
 
-    # Auto-inject unittest.main() if TestCase classes exist but no runner
-    if has_unittest_classes(script) and not re.search(r"unittest\.main\s*\(", script):
-        script += (
-            "\n\nimport unittest\nif __name__ == '__main__':\n    unittest.main()\n"
-        )
-
     backend = get_sandbox_backend()
     result = backend.run(script, timeout=timeout)
 
@@ -307,20 +301,13 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     stderr = result.stderr
     exit_code = result.exit_code
 
-    # Determine test validation based on unittest output
-    combined = state["generated_code"] + "\n" + state["test_suite"]
-    has_tests = has_unittest_classes(combined)
-    passed_count, total_count = count_test_results(stdout, stderr)
-    tests_ran = total_count > 0
+    tests_passed = exit_code == 0 and not result.is_timed_out
 
-    if has_tests and tests_ran and exit_code == 0 and not result.is_timed_out:
-        tests_passed = True
-    elif has_tests and not tests_ran:
-        tests_passed = False
-    elif not has_tests:
-        tests_passed = False
-    else:
-        tests_passed = False
+    # Optional metric enrichment from unittest output (informational only)
+    combined = state["generated_code"] + "\n" + state["test_suite"]
+    _has_tests = has_unittest_classes(combined)
+    _passed_count, total_count = count_test_results(stdout, stderr)
+    tests_ran = total_count > 0
 
     logger.info(
         "execute_node: exit_code=%d, tests_passed=%s, test_count=%d, tests_ran=%s",

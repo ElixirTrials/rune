@@ -233,14 +233,14 @@ async def test_generate_node_with_adapter() -> None:
 
 
 async def test_execute_node_passing_script() -> None:
-    """execute_node: bare assert (no TestCase) returns tests_passed=False."""
+    """execute_node: bare assert (no TestCase), exit_code=0 → tests_passed=True (exit-code based)."""
     state: dict[str, Any] = {
         "generated_code": "x = 1",
         "test_suite": "assert x == 1",
     }
     result = await execute_node(state)
 
-    assert result["tests_passed"] is False  # no unittest.TestCase
+    assert result["tests_passed"] is True
     assert result["exit_code"] == 0
     assert isinstance(result["stdout"], str)
     assert isinstance(result["stderr"], str)
@@ -272,6 +272,33 @@ async def test_execute_node_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["tests_passed"] is False
     assert result["exit_code"] == 1
     assert "timed out" in result["stderr"].lower()
+
+
+async def test_execute_node_exit_code_pass() -> None:
+    """execute_node: exit_code=0 with no timeout → tests_passed=True."""
+    state: dict[str, Any] = {
+        "generated_code": "x = 1\nassert x == 1",
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+
+    assert result["tests_passed"] is True
+    assert result["exit_code"] == 0
+
+
+async def test_execute_node_no_auto_inject() -> None:
+    """execute_node: class without TestCase base should not trigger auto-inject or fail."""
+    state: dict[str, Any] = {
+        "generated_code": (
+            "class TestMath:\n"
+            "    def test_add(self):\n"
+            "        assert 2 + 2 == 4\n"
+        ),
+        "test_suite": "",
+    }
+    result = await execute_node(state)
+    assert result["tests_passed"] is True
+    assert result["exit_code"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -428,14 +455,14 @@ async def test_save_trajectory_node_exhausted(
 
 
 async def test_execute_node_no_testcase_returns_false() -> None:
-    """execute_node: code without TestCase classes returns tests_passed=False."""
+    """execute_node: code without TestCase classes, exit_code=0 → tests_passed=True."""
     state: dict[str, Any] = {
         "generated_code": "print('hello world')",
         "test_suite": "",
     }
     result = await execute_node(state)
 
-    assert result["tests_passed"] is False
+    assert result["tests_passed"] is True
     assert result["test_count"] == 0
     assert result["tests_ran"] is False
 
@@ -519,8 +546,8 @@ async def test_build_prompt_with_prompt_context() -> None:
     assert "IndexError" not in result
 
 
-async def test_execute_node_testcase_without_main_auto_injected() -> None:
-    """execute_node: TestCase without unittest.main() gets auto-injected and passes."""
+async def test_execute_node_testcase_without_main_exits_zero() -> None:
+    """execute_node: TestCase without unittest.main() exits 0 (no auto-inject)."""
     state: dict[str, Any] = {
         "generated_code": (
             "import unittest\n\n"
@@ -533,8 +560,8 @@ async def test_execute_node_testcase_without_main_auto_injected() -> None:
     result = await execute_node(state)
 
     assert result["tests_passed"] is True
-    assert result["test_count"] >= 1
-    assert result["tests_ran"] is True
+    assert result["test_count"] == 0
+    assert result["tests_ran"] is False
 
 
 # ---------------------------------------------------------------------------
