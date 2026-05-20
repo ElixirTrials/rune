@@ -29,7 +29,10 @@ from scripts.rune_runner import _parse_subtask_list  # noqa: E402
 
 def _json_subtasks(names: list[str]) -> str:
     """Build a valid DecomposeResult JSON string for the given names."""
-    subtasks = [{"name": n, "description": f"do the {n} work", "depends_on": []} for n in names]
+    subtasks = [
+        {"name": n, "description": f"do the {n} work", "depends_on": []}
+        for n in names
+    ]
     return json.dumps({"subtasks": subtasks})
 
 
@@ -37,7 +40,9 @@ def _json_subtasks_with_deps(names: list[str]) -> str:
     """Build DecomposeResult JSON where items 2+ depend on item 1."""
     subtasks = [{"name": names[0], "description": "first task", "depends_on": []}]
     for name in names[1:]:
-        subtasks.append({"name": name, "description": "depends work", "depends_on": [names[0]]})
+        subtasks.append(
+            {"name": name, "description": "depends work", "depends_on": [names[0]]}
+        )
     return json.dumps({"subtasks": subtasks})
 
 
@@ -121,7 +126,11 @@ def test_sixteen_items_triggers_fallback() -> None:
 
 def test_single_item_passes_validation() -> None:
     """1 subtask is valid (min_length=1); parsed name is preserved."""
-    output = json.dumps({"subtasks": [{"name": "only_task", "description": "the entire implementation", "depends_on": []}]})
+    output = json.dumps({"subtasks": [{
+        "name": "only_task",
+        "description": "the entire implementation",
+        "depends_on": [],
+    }]})
     result = _parse_subtask_list(output)
     assert len(result) == 1
     assert result[0]["name"] == "only_task"
@@ -175,7 +184,9 @@ def test_hard_cap_eight_items_in_pipeline_dedup() -> None:
 
 def test_validate_false_single_item_passes_through() -> None:
     """validate=False lets single-item JSON output through."""
-    output = json.dumps({"subtasks": [{"name": "parse_input", "description": "NameError on line 5", "depends_on": []}]})
+    output = json.dumps({"subtasks": [
+        {"name": "parse_input", "description": "NameError on line 5", "depends_on": []}
+    ]})
     result = _parse_subtask_list(output, validate=False)
     assert len(result) == 1
     assert result[0]["name"] == "parse_input"
