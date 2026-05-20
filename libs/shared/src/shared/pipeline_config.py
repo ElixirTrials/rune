@@ -145,7 +145,9 @@ def _from_dict(d: dict[str, Any]) -> PipelineConfig:
     if "scaling_range" in cal and isinstance(cal["scaling_range"], list):
         cal["scaling_range"] = tuple(cal["scaling_range"])
     rl = d.get("reasoning_loop", {})
-    if "adapter_target_modules" in rl and isinstance(rl["adapter_target_modules"], list):
+    if "adapter_target_modules" in rl and isinstance(
+        rl["adapter_target_modules"], list
+    ):
         rl["adapter_target_modules"] = tuple(rl["adapter_target_modules"])
     if "phase_sliding_windows" not in rl:
         rl["phase_sliding_windows"] = dict(ReasoningLoopConfig().phase_sliding_windows)
@@ -189,14 +191,20 @@ def resolve_reasoning_loop_config(base: ReasoningLoopConfig) -> ReasoningLoopCon
         "RUNE_CONTEXT_BUDGET_RATIO": ("context_budget_ratio", float),
         "RUNE_SLIDING_WINDOW_TOKENS": ("sliding_window_tokens", int),
         "RUNE_CHUNK_THRESHOLD": ("chunk_threshold", int),
-        "RUNE_ENABLE_CHUNK_COMPOSITION": ("enable_chunk_composition", lambda v: v.lower() in ("true", "1", "yes")),
+        "RUNE_ENABLE_CHUNK_COMPOSITION": (
+            "enable_chunk_composition",
+            lambda v: v.lower() in ("true", "1", "yes"),
+        ),
         "RUNE_CODE_SCALING_BOOST": ("code_scaling_boost", float),
         "RUNE_MERGE_METHOD": ("default_merge_method", str),
         "RUNE_COLLAPSE_COSINE_THRESHOLD": ("collapse_cosine_threshold", float),
         "RUNE_COLLAPSE_NORM_MIN": ("collapse_norm_min", float),
         "RUNE_COLLAPSE_NORM_MAX": ("collapse_norm_max", float),
         "RUNE_COLLAPSE_REPETITION_THRESHOLD": ("collapse_repetition_threshold", float),
-        "RUNE_ADAPTER_TARGET_MODULES": ("adapter_target_modules", lambda v: tuple(v.split(","))),
+        "RUNE_ADAPTER_TARGET_MODULES": (
+            "adapter_target_modules",
+            lambda v: tuple(v.split(",")),
+        ),
         "RUNE_ADAPTER_LAYER_SELECTION": ("adapter_layer_selection", str),
     }
 
@@ -212,7 +220,10 @@ def resolve_reasoning_loop_config(base: ReasoningLoopConfig) -> ReasoningLoopCon
             phase_windows[phase] = int(env_val)
     overrides["phase_sliding_windows"] = phase_windows
 
-    if not overrides or overrides == {"phase_sliding_windows": base.phase_sliding_windows}:
+    no_real_overrides = overrides == {
+        "phase_sliding_windows": base.phase_sliding_windows
+    }
+    if not overrides or no_real_overrides:
         return base
 
     d = {f.name: getattr(base, f.name) for f in base.__dataclass_fields__.values()}

@@ -34,12 +34,17 @@ class ArtifactState:
     todos: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
+        """Serialize to plain dict."""
         return {
             "file_contents": self.file_contents,
             "interface_summary": self.interface_summary,
             "import_block": self.import_block,
             "patches": [
-                {"turn": p.turn, "description": p.description, "diff_summary": p.diff_summary}
+                {
+                    "turn": p.turn,
+                    "description": p.description,
+                    "diff_summary": p.diff_summary,
+                }
                 for p in self.patches
             ],
             "test_results": self.test_results,
@@ -50,6 +55,7 @@ class ArtifactState:
 
     @classmethod
     def from_dict(cls, d: dict[str, object]) -> ArtifactState:
+        """Deserialize from plain dict."""
         patches = [PatchRecord(**p) for p in d.get("patches", [])]  # type: ignore[arg-type]
         return cls(
             file_contents=str(d.get("file_contents", "")),
@@ -73,6 +79,7 @@ class TrajectoryState:
     diagnosis: str
 
     def to_dict(self) -> dict[str, object]:
+        """Serialize to plain dict."""
         return {
             "turn": self.turn,
             "output": self.output,
@@ -82,6 +89,7 @@ class TrajectoryState:
 
     @classmethod
     def from_dict(cls, d: dict[str, object]) -> TrajectoryState:
+        """Deserialize from plain dict."""
         return cls(
             turn=int(d.get("turn", 0)),  # type: ignore[arg-type]
             output=str(d.get("output", "")),
@@ -188,12 +196,28 @@ def build_artifact_state(
             generated_code, previous_artifact.file_contents
         )
         description = f"turn {turn}: {diff_summary[:100]}"
-        new_patch = PatchRecord(turn=turn, description=description, diff_summary=diff_summary)
+        new_patch = PatchRecord(
+            turn=turn,
+            description=description,
+            diff_summary=diff_summary,
+        )
         patches = list(previous_artifact.patches) + [new_patch]
     else:
-        funcs = set(re.findall(r"^(?:def|class)\s+(\w+)", generated_code, re.MULTILINE))
-        diff_summary = "+" + ", ".join(sorted(funcs)) if funcs else "initial"
-        new_patch = PatchRecord(turn=turn, description="initial", diff_summary=diff_summary)
+        funcs = set(
+            re.findall(
+                r"^(?:def|class)\s+(\w+)",
+                generated_code,
+                re.MULTILINE,
+            )
+        )
+        diff_summary = (
+            "+" + ", ".join(sorted(funcs)) if funcs else "initial"
+        )
+        new_patch = PatchRecord(
+            turn=turn,
+            description="initial",
+            diff_summary=diff_summary,
+        )
         patches = [new_patch]
 
     from shared.sandbox import count_test_results

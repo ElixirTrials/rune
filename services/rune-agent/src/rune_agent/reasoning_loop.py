@@ -13,7 +13,7 @@ import logging
 import time
 from typing import Any, Literal
 
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import START, StateGraph
 from typing_extensions import TypedDict
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,8 @@ _EXECUTING_PHASES = frozenset({"code", "code_repair", "integrate"})
 
 
 class ReasoningLoopState(TypedDict):
+    """State for the adapter-compressed reasoning loop."""
+
     task_description: str
     phase: str
     adapter_ids: list[str]
@@ -79,7 +81,7 @@ async def reason_node(state: ReasoningLoopState) -> dict[str, Any]:
         max_turns=state["max_turns"],
     )
 
-    prompt = render_prompt(
+    render_prompt(
         "reasoning_continue",
         task_description=state["task_description"],
         current_phase=phase,
@@ -89,7 +91,7 @@ async def reason_node(state: ReasoningLoopState) -> dict[str, Any]:
     from .nodes import generate_node
 
     gen_state: dict[str, Any] = {
-        "task_description": prompt,
+        "task_description": trajectory_text,
         "task_type": "project",
         "test_suite": "",
         "adapter_ids": state["adapter_ids"],
@@ -324,7 +326,9 @@ async def check_health_node(state: ReasoningLoopState) -> dict[str, Any]:
     }
 
 
-def should_continue(state: ReasoningLoopState) -> Literal["reason", "recover", "__end__"]:
+def should_continue(
+    state: ReasoningLoopState,
+) -> Literal["reason", "recover", "__end__"]:
     """Check termination conditions."""
     if state.get("finish_reason") == "stop":
         return "__end__"
@@ -367,7 +371,9 @@ async def recover_node(state: ReasoningLoopState) -> dict[str, Any]:
     }
 
 
-def route_after_reason(state: ReasoningLoopState) -> Literal["execute_reason", "build_artifact"]:
+def route_after_reason(
+    state: ReasoningLoopState,
+) -> Literal["execute_reason", "build_artifact"]:
     """Route based on whether this phase executes code."""
     if state["phase_executes"]:
         return "execute_reason"

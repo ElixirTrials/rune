@@ -9,9 +9,12 @@ from __future__ import annotations
 import keyword
 import re
 
-
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_]\w*)\b")
-_BUILTIN_NAMES = set(dir(__builtins__)) if isinstance(__builtins__, dict) else set(dir(__builtins__))
+_BUILTIN_NAMES = (
+    set(dir(__builtins__))
+    if isinstance(__builtins__, dict)
+    else set(dir(__builtins__))
+)
 _SKIP = _BUILTIN_NAMES | set(keyword.kwlist) | {
     "self", "cls", "None", "True", "False", "return", "pass", "import", "from",
     "class", "def", "if", "else", "elif", "for", "while", "try", "except",
@@ -50,10 +53,18 @@ def compute_signature_consistency(
     """Fraction of previous function/class signatures unchanged in current."""
     prev_sigs = set(_SIG_RE.findall(previous_interfaces))
     if not prev_sigs:
-        prev_lines = {line.strip() for line in previous_interfaces.splitlines() if line.strip()}
+        prev_lines = {
+            line.strip()
+            for line in previous_interfaces.splitlines()
+            if line.strip()
+        }
         if not prev_lines:
             return 1.0
-        curr_lines = {line.strip() for line in current_interfaces.splitlines() if line.strip()}
+        curr_lines = {
+            line.strip()
+            for line in current_interfaces.splitlines()
+            if line.strip()
+        }
         return len(prev_lines & curr_lines) / len(prev_lines)
 
     curr_sigs = set(_SIG_RE.findall(current_interfaces))
@@ -65,7 +76,11 @@ def compute_import_preservation(
     current_code: str,
 ) -> float:
     """Fraction of original import lines still present in current code."""
-    prev_lines = {line.strip() for line in previous_imports.splitlines() if line.strip()}
+    prev_lines = {
+        line.strip()
+        for line in previous_imports.splitlines()
+        if line.strip()
+    }
     if not prev_lines:
         return 1.0
     curr_lines = {line.strip() for line in current_code.splitlines() if line.strip()}
