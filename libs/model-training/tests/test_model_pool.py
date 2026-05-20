@@ -147,6 +147,19 @@ def test_get_set_pool_singleton() -> None:
     assert retrieved is pool
 
 
+def test_set_pool_idempotent_skips_release() -> None:
+    """set_pool(pool) is a no-op when the same pool is already registered."""
+    pool = ModelPool.create(model_name="test-model", device="cpu")
+    pool._model = MagicMock()
+    pool._hypernet = MagicMock()
+
+    set_pool(pool)
+    set_pool(pool)
+
+    assert pool._model is not None, "release() was called on same pool"
+    assert pool._hypernet is not None
+
+
 def test_get_pool_uninitialized_raises() -> None:
     """get_pool() raises RuntimeError before set_pool() is called."""
     with pytest.raises(RuntimeError, match="not initialised"):
