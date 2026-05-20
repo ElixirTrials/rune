@@ -233,7 +233,7 @@ async def test_generate_node_with_adapter() -> None:
 
 
 async def test_execute_node_passing_script() -> None:
-    """execute_node: bare assert (no TestCase), exit_code=0 → tests_passed=True (exit-code based)."""
+    """execute_node: exit_code=0 → tests_passed=True."""
     state: dict[str, Any] = {
         "generated_code": "x = 1",
         "test_suite": "assert x == 1",
@@ -287,7 +287,7 @@ async def test_execute_node_exit_code_pass() -> None:
 
 
 async def test_execute_node_no_auto_inject() -> None:
-    """execute_node: class without TestCase base should not trigger auto-inject or fail."""
+    """execute_node: non-TestCase class exits 0."""
     state: dict[str, Any] = {
         "generated_code": (
             "class TestMath:\n"
@@ -454,8 +454,8 @@ async def test_save_trajectory_node_exhausted(
 # ---------------------------------------------------------------------------
 
 
-async def test_execute_node_no_testcase_returns_false() -> None:
-    """execute_node: code without TestCase classes, exit_code=0 → tests_passed=True."""
+async def test_execute_node_no_testcase_exits_zero() -> None:
+    """execute_node: no TestCase, exit_code=0 → tests_passed=True."""
     state: dict[str, Any] = {
         "generated_code": "print('hello world')",
         "test_suite": "",
