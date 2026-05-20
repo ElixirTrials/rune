@@ -114,7 +114,7 @@ def test_sixteen_items_triggers_fallback() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Single item triggers fallback
+# Single item passes validation
 # ---------------------------------------------------------------------------
 
 
