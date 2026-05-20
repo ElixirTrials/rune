@@ -253,22 +253,27 @@ def _parse_subtask_list(
     # TODO: Replace regex parsing with structured JSON output from the model,
     # validated directly against DecomposeResult. Requires adding JSON mode
     # to TransformersProvider.generate() and updating decompose templates.
-    from shared.blackboard import parse_dependencies
+    from shared.blackboard import _DEPENDS_RE, parse_dependencies
 
     raw_lines: list[tuple[str, str, str]] = []  # (name, desc, original_line)
     for line in model_output.splitlines():
-        line = line.strip()
+        original_line = line.strip()
         # Strip markdown bold markers
-        line = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", line)
+        line = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", original_line)
+        # Strip [depends: ...] before splitting — the colon inside it
+        # would otherwise be matched as a name/description separator.
+        line_for_split = _DEPENDS_RE.sub("", line).strip()
         # Primary: "1. name — description" or "1. name - desc" or "1. name: desc"
-        match = re.match(r"^\d+\.\s*(.+?)\s*(?:—|-|:)\s*(.+)$", line)
+        match = re.match(r"^\d+\.\s*(.+?)\s*(?:—|-|:)\s*(.+)$", line_for_split)
         if match:
-            raw_lines.append((match.group(1).strip(), match.group(2).strip(), line))
+            raw_lines.append(
+                (match.group(1).strip(), match.group(2).strip(), original_line)
+            )
             continue
         # Fallback: "1. description sentence" (no separator)
-        match = re.match(r"^\d+\.\s*(.+?)\.?\s*$", line)
+        match = re.match(r"^\d+\.\s*(.+?)\.?\s*$", line_for_split)
         if match and len(match.group(1).strip()) > 3:
-            raw_lines.append((match.group(1).strip(), "", line))
+            raw_lines.append((match.group(1).strip(), "", original_line))
 
     if not raw_lines:
         return [
@@ -283,8 +288,6 @@ def _parse_subtask_list(
     all_names = [name for name, _, _ in raw_lines]
 
     # Second pass: resolve dependencies and clean descriptions
-    from shared.blackboard import _DEPENDS_RE
-
     subtasks: list[dict[str, Any]] = []
     for name, desc, original_line in raw_lines:
         deps = parse_dependencies(original_line, all_names)
@@ -1999,14 +2002,16 @@ async def run_phased_pipeline(
             )
             await _eager_unload(diagnose_aid)
 
-            diagnosed = _parse_diagnose_output(
-                diagnose_state.get("generated_code", ""),
-                list(code_outputs.keys()),
-            )
+            diagnose_text = diagnose_state.get("generated_code", "")
+            known_names = list(code_outputs.keys())
+            diagnosed = _parse_diagnose_output(diagnose_text, known_names)
 
             if not diagnosed:
                 logger.warning(
-                    "  Diagnose produced no actionable items, stopping repair"
+                    "  Diagnose produced no actionable items, stopping repair. "
+                    "Raw output: %.200s | Known subtasks: %s",
+                    diagnose_text,
+                    known_names,
                 )
                 break
 

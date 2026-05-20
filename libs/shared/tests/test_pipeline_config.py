@@ -19,7 +19,7 @@ def test_default_config_values() -> None:
     assert cfg.adapter.use_bias is True
     assert cfg.adapter.max_length == 2048
     assert cfg.generation.temperature == 0.3
-    assert cfg.generation.repetition_penalty == 1.1
+    assert cfg.generation.repetition_penalty == 1.0
     assert cfg.prompt.style == "must_include"
     assert cfg.trajectory.style == "full_context"
     assert cfg.calibration.enabled is True

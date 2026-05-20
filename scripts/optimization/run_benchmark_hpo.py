@@ -357,6 +357,22 @@ def run_pipeline_on_problem(
             )
             adapter_dir = result.get("adapter_dir")
             verdict = score_pipeline_result(problem, result, time.time() - start)
+        except Exception:
+            logger.exception(
+                "Problem %s crashed — scoring as failed", problem.problem_id
+            )
+            verdict = ProblemVerdict(
+                problem_id=problem.problem_id,
+                passed=False,
+                code_attempts=0,
+                diagnose_fired=False,
+                n_subtasks=0,
+                wall_time_s=time.time() - start,
+                accumulated_code_len=0,
+                error="pipeline crash (see logs)",
+                generation="",
+                phase_metrics={},
+            )
         finally:
             if adapter_dir:
                 shutil.rmtree(adapter_dir, ignore_errors=True)
@@ -537,21 +553,21 @@ def make_objective(
         scaling_factor = trial.suggest_float("scaling_factor", 0.02, 0.50, log=True)
         temperature = trial.suggest_float("temperature", 0.1, 0.4)
         repetition_penalty = trial.suggest_float("repetition_penalty", 1.0, 1.3)
-        max_tokens = trial.suggest_categorical("max_tokens", [1024, 2048, 4096])
-        max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
+        max_tokens = trial.suggest_categorical("max_tokens", [1024, 2048])
+        max_phase_iterations = trial.suggest_int("max_phase_iterations", 1, 3)
 
         # Per-phase token budgets
         max_tokens_plan = trial.suggest_categorical(
-            "max_tokens_plan", [512, 1024, 2048]
+            "max_tokens_plan", [512, 1024]
         )
         max_tokens_code = trial.suggest_categorical(
-            "max_tokens_code", [1024, 2048, 4096]
+            "max_tokens_code", [1024, 2048]
         )
         max_tokens_integrate = trial.suggest_categorical(
-            "max_tokens_integrate", [1024, 2048, 4096]
+            "max_tokens_integrate", [1024, 2048]
         )
         thinking_budget = trial.suggest_categorical(
-            "thinking_budget", [512, 1024, 2048]
+            "thinking_budget", [256, 512]
         )
 
         n = min(problems_per_trial, len(tuning_problems))
@@ -857,6 +873,10 @@ def main() -> None:
 
     from model_training.model_pool import ModelPool  # noqa: PLC0415
 
+    # Force NF4 quantization — HPO needs stability over bf16 speed, and
+    # the perceiver forward pass peak pushes L4 VRAM past the 15% headroom.
+    os.environ["RUNE_POOL_QUANTIZE"] = "1"
+
     pool = ModelPool.create(
         model_name=args.base_model,
         device=args.device,
@@ -887,8 +907,8 @@ def main() -> None:
                 "seed": args.seed,
             }
         )
-        # catch=() lets CUDA OOM propagate immediately. Other exceptions
-        # are caught inside the objective and scored as 0.0.
+        # catch=() — all exceptions are handled inside
+        # run_pipeline_on_problem (scored as failed verdicts).
         study.optimize(objective, n_trials=args.n_trials, catch=())
 
         completed = [t for t in study.trials if t.state.name == "COMPLETE"]

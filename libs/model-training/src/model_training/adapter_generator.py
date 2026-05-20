@@ -287,6 +287,11 @@ def _generate_adapter_pool(
         max_length=max_length,
     )
 
+    # Free fragmented CUDA memory before the perceiver forward pass.
+    # extract_activations materialises all hidden states then deletes most;
+    # the allocator still holds the freed blocks — empty_cache returns them.
+    torch.cuda.empty_cache()
+
     logger.info("Generating LoRA weights via HyperLoRA perceiver (pool mode)...")
     with torch.no_grad():
         lora_dict, layernorm_dict = hypernet.generate_weights(features, attn_mask, None)

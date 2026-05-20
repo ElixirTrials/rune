@@ -243,6 +243,7 @@ class TransformersProvider(InferenceProvider):
             "do_sample": temperature > 0,
             "temperature": max(temperature, 0.01),
             "top_p": top_p,
+            "top_k": 20,
             "pad_token_id": self._tokenizer.pad_token_id,
         }
         if repetition_penalty > 1.0:

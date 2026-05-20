@@ -229,18 +229,21 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
         or os.environ.get("RUNE_MAX_TOKENS", "2048")
     )
 
-    enable_thinking = phase in _TEXT_ONLY_PHASES
+    # Qwen3.5-9B ships with thinking disabled — the 9B was not tuned for
+    # thinking as its primary mode.  Forcing enable_thinking=True causes
+    # meta-reasoning about system prompts instead of following them.
+    enable_thinking = False
 
-    # Qwen3.5 needs temperature >= 0.6 for thinking mode; code phases
-    # keep Bayesian-optimized defaults (temp=0.25) from the provider.
-    if enable_thinking:
-        temperature: float | None = 0.6
-        top_p: float | None = 0.95
-        thinking_budget = int(os.environ.get("RUNE_THINKING_BUDGET", "1024"))
+    # Qwen3.5-9B recommended: temp=0.7, top_p=0.8 for non-thinking mode.
+    # Text-only phases (decompose, plan, diagnose) use slightly higher
+    # temperature for diversity; code phases keep the provider defaults.
+    if phase in _TEXT_ONLY_PHASES:
+        temperature: float | None = 0.7
+        top_p: float | None = 0.8
     else:
         temperature = None
         top_p = None
-        thinking_budget = 0
+    thinking_budget = 0
 
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,

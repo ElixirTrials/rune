@@ -593,8 +593,8 @@ async def test_generate_node_code_phase_disables_thinking() -> None:
     assert call_kwargs["enable_thinking"] is False
 
 
-async def test_generate_node_text_phase_enables_thinking() -> None:
-    """Text-only phases (decompose, plan, diagnose) keep thinking enabled."""
+async def test_generate_node_text_phase_disables_thinking() -> None:
+    """Qwen3.5-9B: all phases disable thinking (9B not tuned for it)."""
     provider = _mock_provider("1. Subtask Alpha\n2. Subtask Beta")
 
     state: dict[str, Any] = {
@@ -614,7 +614,7 @@ async def test_generate_node_text_phase_enables_thinking() -> None:
         await generate_node(state)
 
     call_kwargs = provider.generate.call_args.kwargs
-    assert call_kwargs["enable_thinking"] is True
+    assert call_kwargs["enable_thinking"] is False
 
 
 @pytest.mark.parametrize(
