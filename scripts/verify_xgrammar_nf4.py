@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Verify XGrammar constrained decoding works with NF4-quantized Qwen3.5-9B.
+"""Verify XGrammar constrained decoding works with Qwen3.5-9B.
 
-Run on a GPU machine (L4 / A10G / A100):
-    pip install xgrammar
-    python scripts/verify_xgrammar_nf4.py
+Auto-detects device: NF4 on CUDA, float32 on CPU/MPS.
+
+    uv run python scripts/verify_xgrammar_nf4.py
 
 Exits 0 if all 5 generations parse as valid JSON matching the schema.
-Exits 1 on any failure — logs the error and raw output for debugging.
+Exits 1 on any failure.
 """
 
 from __future__ import annotations
@@ -40,32 +40,46 @@ N_TRIALS = 5
 
 def main() -> None:
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
     model_id = "Qwen/Qwen3.5-9B"
 
-    print(f"Loading {model_id} in NF4...")
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-    )
+    if torch.cuda.is_available():
+        device = "cuda"
+        from transformers import BitsAndBytesConfig
+
+        print(f"Loading {model_id} in NF4 (CUDA)...")
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+        )
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+        print(f"Loading {model_id} on MPS (Apple Silicon)...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map="auto",
+            torch_dtype=torch.float32,
+        )
+    else:
+        device = "cpu"
+        print(f"Loading {model_id} on CPU...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype=torch.float32,
+        )
+
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        quantization_config=bnb_config,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
-    )
-    print(f"Model loaded. Device map: {model.hf_device_map}")
+    print(f"Model loaded on {device}")
 
-    try:
-        import xgrammar as xgr
-    except ImportError:
-        print("ERROR: xgrammar not installed. pip install xgrammar")
-        sys.exit(1)
-
-    from transformers import AutoConfig
+    import xgrammar as xgr
 
     config = AutoConfig.from_pretrained(model_id)
     tokenizer_info = xgr.TokenizerInfo.from_huggingface(
@@ -74,7 +88,10 @@ def main() -> None:
     compiler = xgr.GrammarCompiler(tokenizer_info)
     compiled_grammar = compiler.compile_json_schema(DecomposeResult)
     processor = xgr.contrib.hf.LogitsProcessor(compiled_grammar)
-    print(f"XGrammar compiled for schema: {json.dumps(DecomposeResult.model_json_schema(), indent=2)}")
+    print(
+        "XGrammar compiled for schema:\n"
+        f"{json.dumps(DecomposeResult.model_json_schema(), indent=2)}"
+    )
 
     messages = [
         {"role": "system", "content": "You are a coding assistant."},
@@ -90,7 +107,7 @@ def main() -> None:
     successes = 0
     for i in range(N_TRIALS):
         print(f"\n--- Trial {i + 1}/{N_TRIALS} ---")
-        inputs = tokenizer(formatted, return_tensors="pt").to(model.device)
+        inputs = tokenizer(formatted, return_tensors="pt").to(device)
 
         with torch.no_grad():
             output_ids = model.generate(
@@ -120,10 +137,10 @@ def main() -> None:
     print(f"Results: {successes}/{N_TRIALS} passed")
 
     if successes == N_TRIALS:
-        print("PASS — XGrammar + NF4 + Qwen3.5-9B verified.")
+        print(f"PASS — XGrammar + Qwen3.5-9B verified on {device}.")
         sys.exit(0)
     else:
-        print("FAIL — XGrammar + NF4 incompatibility detected.")
+        print(f"FAIL — XGrammar incompatibility on {device}.")
         sys.exit(1)
 
 

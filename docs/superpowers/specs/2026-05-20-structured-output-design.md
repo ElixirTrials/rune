@@ -19,19 +19,19 @@ Replace regex parsing with **tokenizer-level constrained decoding** using XGramm
 - **Provider-level integration**: `TransformersProvider.generate()` gains an optional `json_schema: type[BaseModel] | None` parameter. When set, XGrammar compiles a `LogitsProcessor` from the schema's JSON schema and injects it into the generation call.
 - **Phase-level dispatch**: `nodes.py` maps phase names to Pydantic schemas via a `_PHASE_SCHEMAS` dict. Only `decompose` and `diagnose` use structured output; code/plan/integrate remain free-form.
 - **Existing models**: `shared.rune_models.DecomposeResult` and `Subtask` already exist with `max_length=8`. A new `DiagnoseResult` model will be added.
-- **Regex fallback**: The existing `_parse_subtask_list` and `_parse_diagnose_output` stay as fallback parsers. If XGrammar is unavailable (CPU-only CI, incompatible backend), the runner falls back to regex + substring matching.
+- **No regex fallback**: XGrammar is the only parsing path. The existing `_parse_subtask_list` regex parser is removed for decompose/diagnose phases. XGrammar supports CPU, CUDA, and Apple MPS — there is no environment where it won't run.
 
 ## Verification Gate
 
-**XGrammar + NF4 quantization + Qwen3.5-9B must be verified on GPU before implementation.** The risk: XGrammar's `LogitsProcessor` operates on the logits tensor; NF4 quantization via bitsandbytes changes the model's forward pass but should not affect the logits shape. However, this is unverified.
+**XGrammar + Qwen3.5-9B must be verified before implementation.** XGrammar supports CPU, CUDA, and Apple MPS, so verification can run on a Mac (no GPU required).
 
 A standalone verification script (`scripts/verify_xgrammar_nf4.py`) will:
-1. Load Qwen3.5-9B in NF4 via bitsandbytes
+1. Load Qwen3.5-9B (NF4 on CUDA if available, otherwise CPU/MPS)
 2. Compile an XGrammar `LogitsProcessor` from a test JSON schema
 3. Generate 5 completions, parse each as JSON
 4. Verify all 5 parse successfully and match the schema
 
-The user must run this on a GPU machine. Implementation proceeds only after verification passes.
+Run via: `uv run python scripts/verify_xgrammar_nf4.py`
 
 ## Design
 
@@ -76,7 +76,7 @@ XGrammar requires a three-step setup:
 3. Compile the Pydantic schema via `compiler.compile_json_schema(SchemaClass)` — returns a `CompiledGrammar`.
 4. Wrap the compiled grammar in `xgr.contrib.hf.LogitsProcessor(compiled_grammar)` and add to `gen_kwargs["logits_processor"]`.
 
-The `GrammarCompiler` is created once per model (at `_load_model_if_needed` time) and cached on `self`. Compiled grammars are cached per schema class (`id(schema_class)` key) since compilation is non-trivial. All XGrammar imports are deferred (INFRA-05 pattern) with a graceful fallback: if `import xgrammar` fails, log a warning and generate without constraints.
+The `GrammarCompiler` is created once per model (at `_load_model_if_needed` time) and cached on `self`. Compiled grammars are cached per schema class (`id(schema_class)` key) since compilation is non-trivial. XGrammar imports are deferred (INFRA-05 pattern) but XGrammar is a required dependency — import failure is a hard error.
 
 ### 3. Node Layer (`services/rune-agent/src/rune_agent/nodes.py`)
 
@@ -100,9 +100,9 @@ result = await provider.generate(..., json_schema=schema)
 
 ### 4. Runner Layer (`scripts/rune_runner.py`)
 
-**Decompose parsing** (`_parse_subtask_list`): Add a JSON-first parse path at the top of the function. If the model output is valid JSON matching `DecomposeResult`, convert to the existing `list[dict]` format and return immediately. Fall through to regex if JSON parsing fails.
+**Decompose parsing**: Replace `_parse_subtask_list` with `DecomposeResult.model_validate_json()`. The model output is guaranteed valid JSON by XGrammar — no regex needed.
 
-**Diagnose parsing** (`_parse_diagnose_output`): Same approach — try `DiagnoseResult.model_validate_json()` first, then fall through to regex + substring matching.
+**Diagnose parsing**: Replace `_parse_diagnose_output` regex logic with `DiagnoseResult.model_validate_json()`. Post-parse name matching against known subtasks stays (substring matching for abbreviated names).
 
 **Subtask cap**: After parsing (JSON or regex), truncate to `max_subtasks` (default 4, configurable via `PipelineConfig`).
 
@@ -149,7 +149,7 @@ The current HPO logs conflate two meanings of "pass": the pipeline's internal in
 2. Diagnose always produces valid `DiagnoseResult` JSON. Name matching against known subtasks is post-parse validation (unchanged from current substring matching) — JSON validity guarantees structure, not semantic correctness
 3. No regression in HPO trial scores (0-shot, 3-problem smoke test)
 4. XGrammar + NF4 verification script passes on L4 GPU
-5. Regex fallback works when XGrammar is not installed (CPU-only CI)
+5. XGrammar is a required dependency — no regex fallback
 6. Existing tests pass with no modification (except schema-related ones)
 7. Pipeline completion logging clearly distinguishes "pipeline says done" from "MBPP evaluation pass" (see §7)
 
