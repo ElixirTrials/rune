@@ -1,11 +1,14 @@
-Decompose this project into 3-6 subtasks with dependencies.
+Decompose this project into 1-6 subtasks with dependencies.
+Use fewer subtasks for simpler projects. A single function needs only 1 subtask.
 Do NOT write code. Output ONLY a numbered list in this exact format.
 No preamble, no analysis, no reasoning. Just the list.
 1. name — one-line description [depends: none]
 2. name — one-line description [depends: 1]
-3. name — one-line description [depends: 1, 2]
 
-Example output:
+Example output (simple project → 1 subtask):
+1. fibonacci — Recursive fibonacci with memoization and edge-case tests [depends: none]
+
+Example output (complex project → multiple subtasks):
 1. Data models — Dataclasses with validation and serialization [depends: none]
 2. Storage layer — SQLite-backed repository with CRUD operations [depends: 1]
 3. Business logic — Service class enforcing domain rules [depends: 1, 2]

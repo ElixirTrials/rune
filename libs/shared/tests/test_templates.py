@@ -1,5 +1,5 @@
 import pytest
-from shared.template_loader import render_prompt
+from shared.template_loader import render_prompt, render_trajectory
 
 PYTHON_SPECIFIC_STRINGS = [
     "unittest.main()",
@@ -28,3 +28,12 @@ def test_prompt_templates_language_agnostic(phase: str) -> None:
         assert needle.lower() not in rendered.lower(), (
             f"prompt_{phase}.j2 contains Python-specific '{needle}'"
         )
+
+
+def test_decompose_trajectory_allows_single_subtask() -> None:
+    """Decompose trajectory template should mention 1-6, not 3-6."""
+    rendered = render_trajectory(
+        "decompose", project="Build a fibonacci function"
+    )
+    assert "1-6" in rendered or "1 to 6" in rendered
+    assert "3-6" not in rendered

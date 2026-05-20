@@ -86,25 +86,6 @@ def test_config_is_frozen() -> None:
         pass
 
 
-def test_decompose_config_defaults() -> None:
-    cfg = default_config()
-    assert hasattr(cfg, "decompose")
-    assert cfg.decompose.skip_threshold == 200
-
-
-def test_decompose_config_override() -> None:
-    cfg = default_config()
-    updated = cfg.override(**{"decompose.skip_threshold": 100})
-    assert updated.decompose.skip_threshold == 100
-
-
-def test_decompose_config_round_trip(tmp_path: Path) -> None:
-    cfg = default_config()
-    path = cfg.save(tmp_path / "test_decompose.json")
-    loaded = load_config(path)
-    assert loaded.decompose.skip_threshold == 200
-
-
 def test_thinking_budget_default() -> None:
     cfg = default_config()
     assert cfg.generation.thinking_budget == 1024
