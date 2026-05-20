@@ -8,7 +8,7 @@ from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
-from shared.sandbox import count_test_results, get_sandbox_backend, has_unittest_classes
+from shared.sandbox import count_test_results, get_sandbox_backend
 
 from .state import RuneState
 
@@ -303,9 +303,6 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
 
     tests_passed = exit_code == 0 and not result.is_timed_out
 
-    # Optional metric enrichment from unittest output (informational only)
-    combined = state["generated_code"] + "\n" + state["test_suite"]
-    _has_tests = has_unittest_classes(combined)
     _passed_count, total_count = count_test_results(stdout, stderr)
     tests_ran = total_count > 0
 
