@@ -49,24 +49,24 @@ dependencies = [
     "events-py",
     "corpus-producer",
     "igraph>=1.0.0",
-    "vllm>=0.20.1",
+    "vllm>=0.20.1; sys_platform == 'linux'",
     "sentence-transformers>=5.4.1",
     "faiss-cpu>=1.13.2",
 ]
 
 [project.optional-dependencies]
 gpu = [
-    "bitsandbytes>=0.45.0",
-    "trl>=0.16.0",
-    "flash-attn>=2.8.0",
-    "flash-attn-3>=3.0.0",
+    "bitsandbytes>=0.45.0; sys_platform == 'linux'",
+    "trl>=0.16.0; sys_platform == 'linux'",
+    "flash-attn>=2.8.0; sys_platform == 'linux'",
+    "flash-attn-3>=3.0.0; sys_platform == 'linux'",
     # Mamba-block fast kernels for Qwen3.5's hybrid linear-attn layers.
     # Without these, the model falls back to the slow torch implementation
     # that's 2-5× slower for inference (matters a lot for benchmarking).
     # These compile from source against our cu130 torch — see
     # ``no-build-isolation-package`` below for the build-environment fix.
-    "causal-conv1d>=1.6.0",
-    "flash-linear-attention>=0.1.0",
+    "causal-conv1d>=1.6.0; sys_platform == 'linux'",
+    "flash-linear-attention>=0.1.0; sys_platform == 'linux'",
 ]
 eval = [
     "evalplus>=0.3.0",
@@ -123,6 +123,10 @@ members = [
 ]
 
 [tool.uv]
+required-environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 # Mamba kernels (causal-conv1d, flash-linear-attention) compile from source
 # and would otherwise pull a CUDA-12.8 torch into the build sandbox, hitting
 # the ``CUDA_MISMATCH_MESSAGE`` against our system's CUDA 13. With build
