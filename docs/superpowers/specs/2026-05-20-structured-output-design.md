@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-20
 **Branch:** `feat/pipeline-speed-p4-p5`
-**Status:** Design approved, pending GPU verification
+**Status:** Design approved, GPU verification passed (5/5 on L4)
 
 ## Problem Statement
 
@@ -76,7 +76,9 @@ XGrammar requires a three-step setup:
 3. Compile the Pydantic schema via `compiler.compile_json_schema(SchemaClass)` — returns a `CompiledGrammar`.
 4. Wrap the compiled grammar in `xgr.contrib.hf.LogitsProcessor(compiled_grammar)` and add to `gen_kwargs["logits_processor"]`.
 
-The `GrammarCompiler` is created once per model (at `_load_model_if_needed` time) and cached on `self`. Compiled grammars are cached per schema class (`id(schema_class)` key) since compilation is non-trivial. XGrammar imports are deferred (INFRA-05 pattern) but XGrammar is a required dependency — import failure is a hard error.
+The `GrammarCompiler` is created once per model (at `_load_model_if_needed` time) and cached on `self`. Compiled grammars are cached per schema class (`id(schema_class)` key) since compilation is non-trivial. **The `LogitsProcessor` must be instantiated fresh per `generate()` call** — it is single-use (internal `GrammarMatcher` state advances and cannot be reset). XGrammar imports are deferred (INFRA-05 pattern) but XGrammar is a required dependency — import failure is a hard error.
+
+Note: Qwen3.5's config nests `vocab_size` under `text_config` (multimodal config pattern). Use `getattr(config, "text_config", config).vocab_size` when creating `TokenizerInfo`.
 
 ### 3. Node Layer (`services/rune-agent/src/rune_agent/nodes.py`)
 
@@ -104,7 +106,7 @@ result = await provider.generate(..., json_schema=schema)
 
 **Diagnose parsing**: Replace `_parse_diagnose_output` regex logic with `DiagnoseResult.model_validate_json()`. Post-parse name matching against known subtasks stays (substring matching for abbreviated names).
 
-**Subtask cap**: After parsing (JSON or regex), truncate to `max_subtasks` (default 4, configurable via `PipelineConfig`).
+**Subtask cap**: After JSON parsing, truncate to `max_subtasks` (default 4, configurable via `PipelineConfig`).
 
 ### 5. Template Changes
 
@@ -132,7 +134,7 @@ Adapters are trained on numbered-list trajectory outputs. When XGrammar forces J
 
 **Mitigation**: For decompose and diagnose phases, adapters carry domain context (project description, code snippets), not output format patterns. The format instruction is in the prompt, which changes from "numbered list" to "JSON". The adapter should not strongly encode output format since trajectories vary between phases.
 
-**Monitoring**: Log `tokens_generated / wall_time` for grammar-constrained vs. unconstrained phases. If grammar-constrained phases show >3x slowdown, fall back to regex parsing for that phase.
+**Monitoring**: Log `tokens_generated / wall_time` for grammar-constrained vs. unconstrained phases. If grammar-constrained phases show >3x slowdown, investigate adapter interaction — do not fall back to regex.
 
 ### 7. Logging Clarity
 

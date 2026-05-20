@@ -58,7 +58,7 @@ def main() -> None:
             model_id,
             quantization_config=bnb_config,
             device_map="auto",
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         )
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         device = "mps"
@@ -66,14 +66,14 @@ def main() -> None:
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             device_map="auto",
-            torch_dtype=torch.float32,
+            dtype=torch.float32,
         )
     else:
         device = "cpu"
         print(f"Loading {model_id} on CPU...")
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            torch_dtype=torch.float32,
+            dtype=torch.float32,
         )
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -82,8 +82,10 @@ def main() -> None:
     import xgrammar as xgr
 
     config = AutoConfig.from_pretrained(model_id)
+    text_cfg = getattr(config, "text_config", config)
+    vocab_size = text_cfg.vocab_size
     tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-        tokenizer, vocab_size=config.vocab_size
+        tokenizer, vocab_size=vocab_size
     )
     compiler = xgr.GrammarCompiler(tokenizer_info)
     compiled_grammar = compiler.compile_json_schema(DecomposeResult)
@@ -108,21 +110,25 @@ def main() -> None:
     for i in range(N_TRIALS):
         print(f"\n--- Trial {i + 1}/{N_TRIALS} ---")
         inputs = tokenizer(formatted, return_tensors="pt").to(device)
+        trial_processor = xgr.contrib.hf.LogitsProcessor(compiled_grammar)
+
+        gen_kwargs: dict[str, object] = {
+            "max_new_tokens": 512,
+            "do_sample": True,
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "logits_processor": [trial_processor],
+        }
 
         with torch.no_grad():
-            output_ids = model.generate(
-                **inputs,
-                max_new_tokens=512,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.8,
-                top_k=20,
-                logits_processor=[processor],
-            )
+            output_ids = model.generate(**inputs, **gen_kwargs)
 
         new_tokens = output_ids[0, inputs["input_ids"].shape[1] :]
+        raw_with_special = tokenizer.decode(new_tokens, skip_special_tokens=False)
         raw_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
-        print(f"Raw output: {raw_text[:500]}")
+        print(f"Raw (with special): {raw_with_special[:300]}")
+        print(f"Raw (clean):        {raw_text[:300]}")
 
         try:
             result = DecomposeResult.model_validate_json(raw_text)
