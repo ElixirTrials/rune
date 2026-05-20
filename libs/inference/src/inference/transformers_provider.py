@@ -148,6 +148,7 @@ class TransformersProvider(InferenceProvider):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
+        thinking_budget: int = 0,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
@@ -207,8 +208,9 @@ class TransformersProvider(InferenceProvider):
         inputs = {k: v.to(self._device) for k, v in inputs.items()}
         input_len = inputs["input_ids"].shape[1]
 
+        effective_max = max_tokens + thinking_budget
         gen_kwargs: dict[str, object] = {
-            "max_new_tokens": max_tokens,
+            "max_new_tokens": effective_max,
             "do_sample": temperature > 0,
             "temperature": max(temperature, 0.01),
             "top_p": top_p,
@@ -237,8 +239,7 @@ class TransformersProvider(InferenceProvider):
         total_tokens = outputs.shape[1]
         new_token_count = len(new_tokens)
 
-        # Detect truncation: generated exactly max_tokens means cut off
-        finish_reason = "length" if new_token_count >= max_tokens else "stop"
+        finish_reason = "length" if new_token_count >= effective_max else "stop"
 
         return GenerationResult(
             text=text,

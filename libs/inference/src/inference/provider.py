@@ -64,6 +64,7 @@ class InferenceProvider(ABC):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
+        thinking_budget: int = 0,
     ) -> GenerationResult:
         """Generate text from a prompt.
 
@@ -81,6 +82,9 @@ class InferenceProvider(ABC):
             enable_thinking: Whether to allow model thinking/reasoning tokens.
                 When False, suppresses thinking via chat template so output
                 tokens go entirely to the response.
+            thinking_budget: Extra token allowance for ``<think>`` blocks.
+                When > 0, max_new_tokens is raised by this amount so thinking
+                tokens don't eat into the response budget.
 
         Returns:
             A GenerationResult containing the generated text and metadata.

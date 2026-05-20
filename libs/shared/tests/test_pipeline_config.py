@@ -103,3 +103,14 @@ def test_decompose_config_round_trip(tmp_path: Path) -> None:
     path = cfg.save(tmp_path / "test_decompose.json")
     loaded = load_config(path)
     assert loaded.decompose.skip_threshold == 200
+
+
+def test_thinking_budget_default() -> None:
+    cfg = default_config()
+    assert cfg.generation.thinking_budget == 512
+
+
+def test_thinking_budget_override() -> None:
+    cfg = default_config()
+    updated = cfg.override(**{"generation.thinking_budget": 1024})
+    assert updated.generation.thinking_budget == 1024

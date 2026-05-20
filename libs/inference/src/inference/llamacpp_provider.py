@@ -108,6 +108,7 @@ class LlamaCppProvider(InferenceProvider):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
+        thinking_budget: int = 0,
     ) -> GenerationResult:
         """Generate text using llama-cpp-python with optional LoRA adapter.
 
@@ -124,6 +125,8 @@ class LlamaCppProvider(InferenceProvider):
             repetition_penalty: Repetition penalty override.
             enable_thinking: Accepted for interface compatibility; ignored
                 by llama.cpp provider.
+            thinking_budget: Extra token allowance for thinking blocks.
+                Added to max_tokens for generation.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -145,7 +148,7 @@ class LlamaCppProvider(InferenceProvider):
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
         response = self._llm(  # type: ignore[union-attr]
             full_prompt,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens + thinking_budget,
             stop=_STOP_SEQUENCES,
         )
 

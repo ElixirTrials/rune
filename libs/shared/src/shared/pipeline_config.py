@@ -33,6 +33,7 @@ class GenerationConfig:
     max_tokens: int = 2048
     repetition_penalty: float = 1.1
     top_p: float = 0.9
+    thinking_budget: int = 512
 
 
 @dataclass(frozen=True)
