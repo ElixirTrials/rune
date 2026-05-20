@@ -930,8 +930,11 @@ def main() -> None:
             config_dir=work_dir / "validation",
             max_tokens=best["max_tokens"],
         )
+        val_problems = validation
+        if args.smoke:
+            val_problems = validation[: args.problems_per_trial]
         val_verdicts = evaluate_problem_set(
-            validation,
+            val_problems,
             args.hypernet_checkpoint,
             args.base_model,
             args.device,

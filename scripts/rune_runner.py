@@ -1998,7 +1998,10 @@ async def run_phased_pipeline(
                 session_id=session_id,
                 iteration=iteration_counter,
                 phase="diagnose",
-                prompt_context={"project_label": project_label},
+                prompt_context={
+                    "project_label": project_label,
+                    "subtask_names": list(code_outputs.keys()),
+                },
             )
             await _eager_unload(diagnose_aid)
 
