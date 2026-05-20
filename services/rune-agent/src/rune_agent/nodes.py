@@ -8,6 +8,8 @@ from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
+from pydantic import BaseModel
+from shared.rune_models import DecomposeResult, DiagnoseResult
 from shared.sandbox import count_test_results, get_sandbox_backend
 
 from .state import RuneState
@@ -53,6 +55,11 @@ _TEXT_ONLY_PHASES = frozenset(
         "diagnose",
     }
 )
+_PHASE_SCHEMAS: dict[str, type[BaseModel]] = {
+    "decompose": DecomposeResult,
+    "decompose_concise": DecomposeResult,
+    "diagnose": DiagnoseResult,
+}
 
 
 def _build_prompt(state: RuneState) -> str:
@@ -245,6 +252,7 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
         top_p = None
     thinking_budget = 0
 
+    schema = _PHASE_SCHEMAS.get(phase or "")
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,
         model=model,
@@ -255,6 +263,7 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
         top_p=top_p,
         enable_thinking=enable_thinking,
         thinking_budget=thinking_budget,
+        json_schema=schema,
     )
 
     extracted = (
