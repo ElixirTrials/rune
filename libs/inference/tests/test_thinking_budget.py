@@ -26,9 +26,7 @@ class TestThinkingBudgetABC:
             "inference.llamacpp_provider.LlamaCppProvider",
         ],
     )
-    def test_concrete_providers_accept_thinking_budget(
-        self, provider_cls: str
-    ) -> None:
+    def test_concrete_providers_accept_thinking_budget(self, provider_cls: str) -> None:
         module_path, cls_name = provider_cls.rsplit(".", 1)
         import importlib
 

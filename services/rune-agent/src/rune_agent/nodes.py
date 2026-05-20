@@ -62,9 +62,14 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen3.5-9B"
-_TEXT_ONLY_PHASES = frozenset({
-    "decompose", "decompose_concise", "plan", "diagnose",
-})
+_TEXT_ONLY_PHASES = frozenset(
+    {
+        "decompose",
+        "decompose_concise",
+        "plan",
+        "diagnose",
+    }
+)
 
 
 def _build_prompt(state: RuneState) -> str:
@@ -237,7 +242,9 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
     max_tokens = int(os.environ.get("RUNE_MAX_TOKENS", "1024"))
 
     enable_thinking = phase in _TEXT_ONLY_PHASES
-    thinking_budget = int(os.environ.get("RUNE_THINKING_BUDGET", "512")) if enable_thinking else 0
+    thinking_budget = (
+        int(os.environ.get("RUNE_THINKING_BUDGET", "512")) if enable_thinking else 0
+    )
 
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,

@@ -256,9 +256,7 @@ def _should_skip_decompose(project_prompt: str, threshold: int = 200) -> bool:
     if any(s in lower for s in single_fn_signals):
         return True
     # "def " at start of a line indicates a single-function task
-    return any(
-        line.lstrip().startswith("def ") for line in project_prompt.splitlines()
-    )
+    return any(line.lstrip().startswith("def ") for line in project_prompt.splitlines())
 
 
 def _parse_subtask_list(
@@ -661,8 +659,7 @@ async def _run_continuation_loop(
         )
 
         cont_adapter_dir = str(
-            adapter_dir
-            / f"phase3_cont_{_safe_adapter_id(subtask['name'])}_c{cont}"
+            adapter_dir / f"phase3_cont_{_safe_adapter_id(subtask['name'])}_c{cont}"
         )
         cont_adapter_path = run_hypernetwork_fn(
             trajectory_text=traj,
@@ -677,9 +674,7 @@ async def _run_continuation_loop(
 
         cont_adapter_id: str | None = None
         if cont_adapter_path:
-            cont_adapter_id = (
-                f"phase3-cont-{_safe_adapter_id(subtask['name'])}-c{cont}"
-            )
+            cont_adapter_id = f"phase3-cont-{_safe_adapter_id(subtask['name'])}-c{cont}"
             await load_adapter_fn(cont_adapter_id, cont_adapter_path, None)
 
         state = await run_iteration(
@@ -1084,7 +1079,9 @@ async def run_phased_pipeline(
                         ) from exc
 
                     # Re-run decompose with cycle correction context
-                    correction_traj = render_trajectory("decompose", project=project_prompt)
+                    correction_traj = render_trajectory(
+                        "decompose", project=project_prompt
+                    )
                     prior_output = best_decompose_state.get("generated_code", "")
                     correction_traj += (
                         f"\n\n[ERROR: Your prior decomposition had circular "
@@ -1115,7 +1112,9 @@ async def run_phased_pipeline(
                         loaded_adapter_id = cycle_adapter_id
 
                     iteration_counter += 1
-                    retry_phase = "decompose_concise" if cycle_adapter_id else "decompose"
+                    retry_phase = (
+                        "decompose_concise" if cycle_adapter_id else "decompose"
+                    )
                     retry_state = await run_iteration(
                         graph=graph,
                         project_prompt=project_prompt,
@@ -1374,12 +1373,8 @@ async def run_phased_pipeline(
                         last_state.get("stdout", ""),
                         last_state.get("stderr", ""),
                     )
-                    error_summary = _extract_error_summary(
-                        last_state.get("stderr", "")
-                    )
-                    failed_tests = _extract_failed_tests(
-                        last_state.get("stderr", "")
-                    )
+                    error_summary = _extract_error_summary(last_state.get("stderr", ""))
+                    failed_tests = _extract_failed_tests(last_state.get("stderr", ""))
                     tests_passed = last_state.get("tests_passed", False)
 
                     # Step 1: Quick diagnose — error in prompt, code in adapter
@@ -1448,7 +1443,9 @@ async def run_phased_pipeline(
                     else:
                         # Fallback: generic guidance
                         if total == 0 and last_state.get("exit_code", 1) == 0:
-                            fix_guidance = "NO tests detected — include unittest.TestCase tests"
+                            fix_guidance = (
+                                "NO tests detected — include unittest.TestCase tests"
+                            )
                         elif total == 0:
                             fix_guidance = (
                                 "Code failed to execute. "

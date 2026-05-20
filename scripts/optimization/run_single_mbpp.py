@@ -61,11 +61,13 @@ def run_one(
     code = result.get("accumulated_code", "")
     verdict = MBPPAdapter().score(problem, code)
 
-    mlflow.log_metrics({
-        "verdict/passed": float(verdict.passed),
-        "verdict/code_len": float(len(code)),
-        "verdict/wall_time_s": round(elapsed, 1),
-    })
+    mlflow.log_metrics(
+        {
+            "verdict/passed": float(verdict.passed),
+            "verdict/code_len": float(len(code)),
+            "verdict/wall_time_s": round(elapsed, 1),
+        }
+    )
     if verdict.error:
         mlflow.set_tag("verdict/error", verdict.error[:500])
 
@@ -85,9 +87,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    logging.getLogger("mlflow.tracking.request_header.registry").setLevel(
-        logging.ERROR
-    )
+    logging.getLogger("mlflow.tracking.request_header.registry").setLevel(logging.ERROR)
 
     import mlflow
 
@@ -95,7 +95,9 @@ def main() -> None:
     mlflow.config.enable_async_logging()
     mlflow.set_experiment("single-mbpp")
     mlflow.start_run(run_name="single-mbpp")
-    parser = argparse.ArgumentParser(description="Single MBPP problem through Rune pipeline")
+    parser = argparse.ArgumentParser(
+        description="Single MBPP problem through Rune pipeline"
+    )
     parser.add_argument("--hypernet-checkpoint", required=True)
     parser.add_argument("--base-model", default=DEFAULT_BASE_MODEL)
     parser.add_argument("--device", default="cuda")

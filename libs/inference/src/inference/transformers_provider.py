@@ -226,9 +226,7 @@ class TransformersProvider(InferenceProvider):
         text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
 
         # Capture <think> blocks before stripping (for future adapter injection).
-        thinking_parts = re.findall(
-            r"<think>(.*?)</think>", text, flags=re.DOTALL
-        )
+        thinking_parts = re.findall(r"<think>(.*?)</think>", text, flags=re.DOTALL)
         dangling = re.search(r"<think>(.*)", text, flags=re.DOTALL)
         if dangling and not re.search(r"</think>", dangling.group(0)):
             thinking_parts.append(dangling.group(1))

@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import ast
-import re
-
 from pathlib import Path
-
 
 RUNNER_PATH = Path("scripts/rune_runner.py")
 
@@ -31,7 +28,11 @@ def _find_unload_after_line(source_lines: list[str], call_line: int) -> bool:
     start = call_line  # 0-indexed: call_line is 1-indexed
     end = min(start + 30, len(source_lines))
     window = "\n".join(source_lines[start:end])
-    return "unload_adapter" in window or "_eager_unload" in window or "eager_unload_fn" in window
+    return (
+        "unload_adapter" in window
+        or "_eager_unload" in window
+        or "eager_unload_fn" in window
+    )
 
 
 def test_every_run_iteration_has_unload() -> None:

@@ -117,7 +117,10 @@ class ModelPool:
             if self._model is not None:
                 return self._model, self._tokenizer
 
-            from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+            from transformers import (  # noqa: PLC0415
+                AutoModelForCausalLM,
+                AutoTokenizer,
+            )
 
             logger.info(
                 "ModelPool: loading base model %s on %s", self._model_name, self._device
@@ -160,9 +163,7 @@ class ModelPool:
             text_cfg = getattr(config, "text_config", config)
 
             def _cfg(name: str, default: int) -> int:
-                return getattr(text_cfg, name, None) or getattr(
-                    config, name, default
-                )
+                return getattr(text_cfg, name, None) or getattr(config, name, default)
 
             h = _cfg("hidden_size", 2048)
             v = _cfg("vocab_size", 32000)
