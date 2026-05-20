@@ -10,9 +10,12 @@ per INFRA-05 pattern so that this module is importable in CPU-only CI.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any
+
+from pydantic import BaseModel
 
 from inference.provider import GenerationResult, InferenceProvider
 
@@ -91,6 +94,8 @@ class TransformersProvider(InferenceProvider):
         self._is_peft_wrapped: bool = False
         self._think_token_id: int | None = None
         self._end_think_token_id: int | None = None
+        self._xgr_compiler: Any = None
+        self._xgr_compiled_cache: dict[int, Any] = {}
 
     def _load_model_if_needed(self) -> None:
         """Load the base model and tokenizer if not already loaded.
@@ -118,6 +123,7 @@ class TransformersProvider(InferenceProvider):
             self._base_model = model
             self._device = self._pool.device
             logger.info("Borrowed base model from pool (device=%s)", self._device)
+            self._init_xgr_compiler()
             return
 
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
@@ -163,8 +169,25 @@ class TransformersProvider(InferenceProvider):
         self._model.eval()
         self._base_model = self._model
         logger.info("Model loaded: %s", self._model_name)
+        self._init_xgr_compiler()
 
-    async def generate(
+    def _init_xgr_compiler(self) -> None:
+        """Create and cache the XGrammar compiler from the loaded tokenizer."""
+        import xgrammar as xgr  # noqa: PLC0415
+
+        config = self._model.config
+        vocab_size = getattr(
+            getattr(config, "text_config", config),
+            "vocab_size",
+            self._tokenizer.vocab_size,
+        )
+        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+            self._tokenizer, vocab_size=vocab_size
+        )
+        self._xgr_compiler = xgr.GrammarCompiler(tokenizer_info)
+        logger.info("XGrammar compiler initialized (vocab_size=%d)", vocab_size)
+
+    async def generate(  # noqa: C901
         self,
         prompt: str,
         model: str,
@@ -176,6 +199,7 @@ class TransformersProvider(InferenceProvider):
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
         thinking_budget: int = 0,
+        json_schema: type[BaseModel] | None = None,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
@@ -195,6 +219,7 @@ class TransformersProvider(InferenceProvider):
                 chat template and suppresses think token generation via
                 ``suppress_tokens`` so output goes entirely to the response.
             thinking_budget: Extra token headroom for thinking when enabled.
+            json_schema: Optional Pydantic model class for constrained JSON output.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -268,6 +293,21 @@ class TransformersProvider(InferenceProvider):
                     prompt_len=input_len,
                 )
             ]
+
+        if json_schema is not None:
+            import xgrammar as xgr  # noqa: PLC0415
+
+            compiled = self._xgr_compiled_cache.get(id(json_schema))
+            if compiled is None:
+                compiled = self._xgr_compiler.compile_json_schema(
+                    json.dumps(json_schema.model_json_schema())
+                )
+                self._xgr_compiled_cache[id(json_schema)] = compiled
+            xgr_processor = xgr.contrib.hf.LogitsProcessor(compiled)
+            if "logits_processor" in gen_kwargs:
+                gen_kwargs["logits_processor"].append(xgr_processor)  # type: ignore[union-attr]
+            else:
+                gen_kwargs["logits_processor"] = [xgr_processor]
 
         with torch.no_grad():
             outputs = self._model.generate(**inputs, **gen_kwargs)
