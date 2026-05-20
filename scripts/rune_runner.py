@@ -50,7 +50,7 @@ setup_path()  # noqa: E402
 
 from pydantic import ValidationError  # noqa: E402
 from shared.hardware import get_best_device  # noqa: E402
-from shared.rune_models import DecomposeResult, Subtask  # noqa: E402
+from shared.rune_models import DecomposeResult, DiagnoseResult  # noqa: E402
 from shared.sandbox import count_test_results, extract_failed_tests  # noqa: E402
 from shared.template_loader import render_trajectory  # noqa: E402
 
@@ -239,73 +239,21 @@ def _safe_adapter_id(name: str) -> str:
 def _parse_subtask_list(
     model_output: str, *, validate: bool = True
 ) -> list[dict[str, Any]]:
-    """Parse Phase 1 output into [{name, description, depends_on}, ...].
+    """Parse Phase 1 JSON output into [{name, description, depends_on}, ...].
 
-    Expects numbered list format: ``1. name — description [depends: none]``
-    Also accepts lines without dependency declarations (backward compatible).
+    The model produces valid JSON via XGrammar constrained decoding,
+    validated against DecomposeResult.
 
     Args:
-        model_output: Raw text from the decompose phase.
-        validate: When True, enforce 2-8 subtask range via DecomposeResult.
-            Set to False when reusing the parser for non-decompose output
-            (e.g. diagnose phase).
+        model_output: JSON string from the decompose phase.
+        validate: When True, enforce 1-8 subtask range via DecomposeResult.
     """
-    # TODO: Replace regex parsing with structured JSON output from the model,
-    # validated directly against DecomposeResult. Requires adding JSON mode
-    # to TransformersProvider.generate() and updating decompose templates.
-    from shared.blackboard import _DEPENDS_RE, parse_dependencies
-
-    raw_lines: list[tuple[str, str, str]] = []  # (name, desc, original_line)
-    for line in model_output.splitlines():
-        original_line = line.strip()
-        # Strip markdown bold markers
-        line = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", original_line)
-        # Strip [depends: ...] before splitting — the colon inside it
-        # would otherwise be matched as a name/description separator.
-        line_for_split = _DEPENDS_RE.sub("", line).strip()
-        # Primary: "1. name — description" or "1. name - desc" or "1. name: desc"
-        match = re.match(r"^\d+\.\s*(.+?)\s*(?:—|-|:)\s*(.+)$", line_for_split)
-        if match:
-            raw_lines.append(
-                (match.group(1).strip(), match.group(2).strip(), original_line)
-            )
-            continue
-        # Fallback: "1. description sentence" (no separator)
-        match = re.match(r"^\d+\.\s*(.+?)\.?\s*$", line_for_split)
-        if match and len(match.group(1).strip()) > 3:
-            raw_lines.append((match.group(1).strip(), "", original_line))
-
-    if not raw_lines:
-        return [
-            {
-                "name": "implementation",
-                "description": model_output[:200].strip(),
-                "depends_on": [],
-            }
-        ]
-
-    # First pass: collect all names
-    all_names = [name for name, _, _ in raw_lines]
-
-    # Second pass: resolve dependencies and clean descriptions
-    subtasks: list[dict[str, Any]] = []
-    for name, desc, original_line in raw_lines:
-        deps = parse_dependencies(original_line, all_names)
-        # Strip [depends: ...] from description text
-        desc_clean = _DEPENDS_RE.sub("", desc).strip()
-        subtasks.append(
-            {
-                "name": name,
-                "description": desc_clean,
-                "depends_on": deps,
-            }
-        )
-    if not validate:
-        return subtasks
     try:
-        result = DecomposeResult(subtasks=[Subtask(**s) for s in subtasks])
+        result = DecomposeResult.model_validate_json(model_output.strip())
+        if not validate:
+            return [s.model_dump() for s in result.subtasks]
         return [s.model_dump() for s in result.subtasks]
-    except ValidationError:
+    except (ValidationError, ValueError):
         return [
             {
                 "name": "implementation",
@@ -324,25 +272,29 @@ def _parse_diagnose_output(
     model_output: str,
     known_subtasks: list[str],
 ) -> list[dict[str, str]]:
-    """Parse diagnose phase output into [{name, diagnosis}, ...].
+    """Parse diagnose phase JSON output into [{name, diagnosis}, ...].
 
     Matches diagnosed subtask names against known subtask names using
     substring matching (the model may abbreviate or rephrase names).
     """
-    raw = _parse_subtask_list(model_output, validate=False)
-    known_lower = {k.lower().strip(): k for k in known_subtasks}
+    try:
+        result = DiagnoseResult.model_validate_json(model_output.strip())
+        items = [{"name": r.name, "diagnosis": r.diagnosis} for r in result.repairs]
+    except (ValidationError, ValueError):
+        return []
 
+    known_lower = {k.lower().strip(): k for k in known_subtasks}
     matched: list[dict[str, str]] = []
-    for item in raw:
+    for item in items:
         name = item["name"].lower().strip().rstrip(":")
-        diagnosis = item["description"] or item["name"]
+        diagnosis = item["diagnosis"]
 
         # Exact match
         if name in known_lower:
             matched.append({"name": known_lower[name], "diagnosis": diagnosis})
             continue
 
-        # Substring match: find the known subtask that best matches
+        # Substring match
         for known_key, known_name in known_lower.items():
             if name in known_key or known_key in name:
                 matched.append({"name": known_name, "diagnosis": diagnosis})
@@ -1022,7 +974,7 @@ async def run_phased_pipeline(
                 seen.add(key)
                 subtasks.append(st)
 
-        subtasks = subtasks[:8]
+        subtasks = subtasks[:4]
 
         # Validate dependency graph is acyclic; retry decompose if not
         from graphlib import CycleError
@@ -1105,6 +1057,7 @@ async def run_phased_pipeline(
                     if key not in seen:
                         seen.add(key)
                         subtasks.append(st)
+                subtasks = subtasks[:4]
                 best_decompose_state = retry_state
                 logger.info(
                     "Cycle-fix attempt %d produced %d subtasks: %s",
