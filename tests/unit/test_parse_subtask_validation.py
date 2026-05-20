@@ -118,11 +118,11 @@ def test_sixteen_items_triggers_fallback() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_single_item_triggers_fallback() -> None:
-    """1 subtask is below DecomposeResult min=2; fallback is returned."""
+def test_single_item_passes_validation() -> None:
+    """1 subtask is valid (min_length=1); parsed name is preserved."""
     result = _parse_subtask_list("1. only_task - the entire implementation")
     assert len(result) == 1
-    assert result[0]["name"] == "implementation"
+    assert result[0]["name"] == "only_task"
 
 
 # ---------------------------------------------------------------------------

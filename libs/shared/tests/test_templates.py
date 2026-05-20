@@ -10,7 +10,10 @@ PYTHON_SPECIFIC_STRINGS = [
     ".py",
 ]
 
-@pytest.mark.parametrize("phase", ["code", "code_continue", "code_repair", "code_retry", "integrate", "integrate_retry"])
+@pytest.mark.parametrize("phase", [
+    "code", "code_continue", "code_repair",
+    "code_retry", "integrate", "integrate_retry",
+])
 def test_prompt_templates_language_agnostic(phase: str) -> None:
     """Prompt templates must not contain language-specific directives."""
     kwargs: dict[str, object] = {
