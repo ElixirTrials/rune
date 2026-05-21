@@ -75,6 +75,8 @@ ADAPTER_BASE_DIR = Path.home() / ".rune" / "adapters"
 # Hardcoded fallback is 5.
 
 _FALLBACK_MAX_ITERATIONS = 5
+# Offsets continuation iteration IDs to avoid collisions with retry iterations
+_CONTINUATION_ITER_OFFSET = 2000
 
 
 def _get_phase_iterations(phase: str, cli_override: int | None = None) -> int:
@@ -236,9 +238,7 @@ def _safe_adapter_id(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _parse_subtask_list(
-    model_output: str, *, validate: bool = True
-) -> list[dict[str, Any]]:
+def _parse_subtask_list(model_output: str) -> list[dict[str, Any]]:
     """Parse Phase 1 JSON output into [{name, description, depends_on}, ...].
 
     The model produces valid JSON via XGrammar constrained decoding,
@@ -246,12 +246,9 @@ def _parse_subtask_list(
 
     Args:
         model_output: JSON string from the decompose phase.
-        validate: When True, enforce 1-8 subtask range via DecomposeResult.
     """
     try:
         result = DecomposeResult.model_validate_json(model_output.strip())
-        if not validate:
-            return [s.model_dump() for s in result.subtasks]
         return [s.model_dump() for s in result.subtasks]
     except (ValidationError, ValueError):
         return [
@@ -281,6 +278,7 @@ def _parse_diagnose_output(
         result = DiagnoseResult.model_validate_json(model_output.strip())
         items = [{"name": r.name, "diagnosis": r.diagnosis} for r in result.repairs]
     except (ValidationError, ValueError):
+        logger.warning("Failed to parse diagnose output as JSON, returning empty repairs")
         return []
 
     known_lower = {k.lower().strip(): k for k in known_subtasks}
@@ -616,7 +614,7 @@ async def _run_continuation_loop(
             project_prompt=project_prompt,
             adapter_id=cont_adapter_id,
             session_id=session_id,
-            iteration=iteration_base + 2000 + cont,
+            iteration=iteration_base + _CONTINUATION_ITER_OFFSET + cont,
             phase="code_continue",
             prompt_context={
                 "subtask_name": subtask["name"],
@@ -839,6 +837,7 @@ async def run_phased_pipeline(
         loaded_adapter_id: str | None = None  # tracks what's currently loaded
         phase1_task_type = "phase1-decompose"
 
+        evo_iter = -1
         for evo_iter in range(iters_decompose):
             logger.info("  Decompose iteration %d/%d", evo_iter + 1, iters_decompose)
 
@@ -975,6 +974,10 @@ async def run_phased_pipeline(
                 subtasks.append(st)
 
         subtasks = subtasks[:_pipeline_cfg.max_subtasks]
+        # Strip depends_on refs to dropped subtasks
+        retained_names = {s["name"] for s in subtasks}
+        for s in subtasks:
+            s["depends_on"] = [d for d in s.get("depends_on", []) if d in retained_names]
 
         # Validate dependency graph is acyclic; retry decompose if not
         from graphlib import CycleError
@@ -1058,6 +1061,10 @@ async def run_phased_pipeline(
                         seen.add(key)
                         subtasks.append(st)
                 subtasks = subtasks[:_pipeline_cfg.max_subtasks]
+                # Strip depends_on refs to dropped subtasks
+                retained_names = {s["name"] for s in subtasks}
+                for s in subtasks:
+                    s["depends_on"] = [d for d in s.get("depends_on", []) if d in retained_names]
                 best_decompose_state = retry_state
                 logger.info(
                     "Cycle-fix attempt %d produced %d subtasks: %s",
@@ -1100,6 +1107,7 @@ async def run_phased_pipeline(
         phase2_task_type = "phase2-plan"
         _plan_semaphore = asyncio.Semaphore(4)
 
+        evo_iter = -1
         for evo_iter in range(iters_plan):
             logger.info("  Plan iteration %d/%d", evo_iter + 1, iters_plan)
             iter_plans: dict[str, str] = {}
@@ -1720,6 +1728,7 @@ async def run_phased_pipeline(
         loaded_integrate_id: str | None = None  # tracks currently loaded adapter
         phase4_task_type = "phase4-integrate"
 
+        evo_iter = -1
         for evo_iter in range(iters_integrate):
             logger.info("  Integrate iteration %d/%d", evo_iter + 1, iters_integrate)
 
