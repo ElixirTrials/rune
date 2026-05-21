@@ -94,7 +94,9 @@ def _generate_completions(
                         )
                     except RuntimeError:
                         logger.warning(
-                            "Failed to unload adapter %s", adapter_id_to_unload, exc_info=True
+                            "Failed to unload adapter %s",
+                            adapter_id_to_unload,
+                            exc_info=True,
                         )
     finally:
         loop.close()

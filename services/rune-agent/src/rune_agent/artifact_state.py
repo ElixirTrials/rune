@@ -121,6 +121,7 @@ def _extract_imports(code: str) -> str:
 def _extract_interfaces(code: str) -> str:
     """Extract function/class signatures from code."""
     from shared.blackboard import extract_interfaces
+
     return extract_interfaces(code)
 
 
@@ -147,12 +148,14 @@ def _extract_error_summary(stderr: str) -> str:
         return ""
     lines = stderr.strip().splitlines()
     error_lines = [
-        ln for ln in lines
+        ln
+        for ln in lines
         if "Error" in ln or "Exception" in ln or "assert" in ln.lower()
     ]
     final_error = error_lines[-1].strip() if error_lines else lines[-1].strip()
     failed_tests = [
-        ln.strip() for ln in lines
+        ln.strip()
+        for ln in lines
         if ln.strip().startswith("FAIL:") or ln.strip().startswith("ERROR:")
     ]
     parts = []
@@ -168,7 +171,7 @@ def _find_unresolved_todos(code: str, tests_passed: bool, stderr: str) -> list[s
     for match in re.finditer(r"^(def|class)\s+(\w+).*:\s*$", code, re.MULTILINE):
         name = match.group(2)
         end = match.end()
-        body_start = code[end:end + 50].strip()
+        body_start = code[end : end + 50].strip()
         if body_start.startswith("pass") or body_start == "...":
             todos.append(f"stub: {match.group(1)} {name}")
     if not tests_passed and stderr:
@@ -210,9 +213,7 @@ def build_artifact_state(
                 re.MULTILINE,
             )
         )
-        diff_summary = (
-            "+" + ", ".join(sorted(funcs)) if funcs else "initial"
-        )
+        diff_summary = "+" + ", ".join(sorted(funcs)) if funcs else "initial"
         new_patch = PatchRecord(
             turn=turn,
             description="initial",
@@ -221,6 +222,7 @@ def build_artifact_state(
         patches = [new_patch]
 
     from shared.sandbox import count_test_results
+
     passed, total = count_test_results(stdout, stderr)
     test_results = f"{passed}/{total} passed" if total > 0 else "no tests"
 
@@ -272,29 +274,35 @@ def chunk_code_state(
     chunks: list[CodeChunk] = []
 
     if artifact.import_block.strip():
-        chunks.append(CodeChunk(
-            chunk_type="imports",
-            name="imports",
-            content=artifact.import_block,
-            priority=1.0,
-        ))
+        chunks.append(
+            CodeChunk(
+                chunk_type="imports",
+                name="imports",
+                content=artifact.import_block,
+                priority=1.0,
+            )
+        )
 
     if artifact.interface_summary.strip():
-        chunks.append(CodeChunk(
-            chunk_type="interfaces",
-            name="interfaces",
-            content=artifact.interface_summary,
-            priority=0.95,
-        ))
+        chunks.append(
+            CodeChunk(
+                chunk_type="interfaces",
+                name="interfaces",
+                content=artifact.interface_summary,
+                priority=0.95,
+            )
+        )
 
     blocks = _split_top_level_blocks(artifact.file_contents)
     for block_type, name, source in blocks:
-        chunks.append(CodeChunk(
-            chunk_type=block_type,
-            name=name,
-            content=source,
-            priority=0.7 if block_type == "class" else 0.6,
-        ))
+        chunks.append(
+            CodeChunk(
+                chunk_type=block_type,
+                name=name,
+                content=source,
+                priority=0.7 if block_type == "class" else 0.6,
+            )
+        )
 
     if artifact.patches or artifact.test_results:
         patch_text = "\n".join(
@@ -305,11 +313,13 @@ def chunk_code_state(
             patch_text += f"\nTests: {artifact.test_results}"
         if artifact.stderr_summary:
             patch_text += f"\nErrors: {artifact.stderr_summary}"
-        chunks.append(CodeChunk(
-            chunk_type="patches",
-            name="history",
-            content=patch_text,
-            priority=0.5,
-        ))
+        chunks.append(
+            CodeChunk(
+                chunk_type="patches",
+                name="history",
+                content=patch_text,
+                priority=0.5,
+            )
+        )
 
     return chunks

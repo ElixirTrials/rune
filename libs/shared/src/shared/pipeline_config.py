@@ -80,14 +80,16 @@ class ReasoningLoopConfig:
     collapse_norm_min: float = 0.1
     collapse_norm_max: float = 10.0
     collapse_repetition_threshold: float = 0.8
-    phase_sliding_windows: dict[str, int] = field(default_factory=lambda: {
-        "decompose": 256,
-        "plan": 512,
-        "code": 1024,
-        "code_repair": 1536,
-        "integrate": 2048,
-        "diagnose": 512,
-    })
+    phase_sliding_windows: dict[str, int] = field(
+        default_factory=lambda: {
+            "decompose": 256,
+            "plan": 512,
+            "code": 1024,
+            "code_repair": 1536,
+            "integrate": 2048,
+            "diagnose": 512,
+        }
+    )
 
 
 @dataclass(frozen=True)

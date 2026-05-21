@@ -35,9 +35,7 @@ def _extract_code_skeleton(code: str) -> str:
             or stripped.startswith("@")
             or stripped.startswith(("raise ", "return "))
             or (
-                "self." in stripped
-                and "=" in stripped
-                and stripped.startswith("self.")
+                "self." in stripped and "=" in stripped and stripped.startswith("self.")
             )
         ):
             skeleton_lines.append(line)
@@ -177,14 +175,17 @@ async def execute_reason_node(state: ReasoningLoopState) -> dict[str, Any]:
 async def reflect_reason_node(state: ReasoningLoopState) -> dict[str, Any]:
     """Lightweight reflection: record turn results."""
     return {
-        "turn_history": state["turn_history"] + [{
-            "turn": state["turn_count"],
-            "tests_passed": state["tests_passed"],
-            "exit_code": state["exit_code"],
-            "finish_reason": state["finish_reason"],
-            "generated_code": state["generated_code"],
-            "generated_code_len": len(state["generated_code"]),
-        }],
+        "turn_history": state["turn_history"]
+        + [
+            {
+                "turn": state["turn_count"],
+                "tests_passed": state["tests_passed"],
+                "exit_code": state["exit_code"],
+                "finish_reason": state["finish_reason"],
+                "generated_code": state["generated_code"],
+                "generated_code_len": len(state["generated_code"]),
+            }
+        ],
     }
 
 
@@ -234,8 +235,7 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
 
         art = ArtifactState.from_dict(art_dict)
         patches_text = "\n".join(
-            f"Turn {p.turn}: {p.description} ({p.diff_summary})"
-            for p in art.patches
+            f"Turn {p.turn}: {p.description} ({p.diff_summary})" for p in art.patches
         )
 
         code_skeleton = _extract_code_skeleton(art.file_contents)
@@ -353,15 +353,18 @@ def _log_mlflow_metrics(state: ReasoningLoopState, compress_latency_ms: float) -
         return
 
     turn = state["turn_count"]
-    mlflow.log_metrics({
-        "reasoning_loop/turn": float(turn),
-        "reasoning_loop/adapter_cosine_sim": state.get("adapter_cosine_sim", 0.0),
-        "reasoning_loop/adapter_norm_ratio": state.get("adapter_norm_ratio", 1.0),
-        "reasoning_loop/output_repetition": state.get("output_repetition", 0.0),
-        "reasoning_loop/hypernetwork_latency_ms": compress_latency_ms,
-        "reasoning_loop/sliding_window_tokens": float(state["sliding_window_size"]),
-        "reasoning_loop/scaling_factor": state["scaling_factor"],
-    }, step=turn)
+    mlflow.log_metrics(
+        {
+            "reasoning_loop/turn": float(turn),
+            "reasoning_loop/adapter_cosine_sim": state.get("adapter_cosine_sim", 0.0),
+            "reasoning_loop/adapter_norm_ratio": state.get("adapter_norm_ratio", 1.0),
+            "reasoning_loop/output_repetition": state.get("output_repetition", 0.0),
+            "reasoning_loop/hypernetwork_latency_ms": compress_latency_ms,
+            "reasoning_loop/sliding_window_tokens": float(state["sliding_window_size"]),
+            "reasoning_loop/scaling_factor": state["scaling_factor"],
+        },
+        step=turn,
+    )
 
 
 async def check_health_node(state: ReasoningLoopState) -> dict[str, Any]:

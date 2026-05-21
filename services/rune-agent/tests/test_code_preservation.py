@@ -1,7 +1,6 @@
 """Tests for code preservation evaluations."""
 
 import pytest
-
 from rune_agent.code_preservation import (
     compute_identifier_recall,
     compute_import_preservation,
@@ -11,14 +10,26 @@ from rune_agent.code_preservation import (
 
 
 def test_identifier_recall_perfect():
-    prev_code = "def compute_mean(data_vals):\n    running_total = accumulate(data_vals)\n    return running_total"
-    curr_output = "data_vals = [1, 2]\nrunning_total = compute_mean(data_vals)\naccumulate(running_total)"
+    prev_code = (
+        "def compute_mean(data_vals):\n"
+        "    running_total = accumulate(data_vals)\n"
+        "    return running_total"
+    )
+    curr_output = (
+        "data_vals = [1, 2]\n"
+        "running_total = compute_mean(data_vals)\n"
+        "accumulate(running_total)"
+    )
     recall = compute_identifier_recall(prev_code, curr_output)
     assert recall == pytest.approx(1.0)
 
 
 def test_identifier_recall_partial():
-    prev_code = "def compute_mean(values):\n    total = sum(values)\n    return total / len(values)"
+    prev_code = (
+        "def compute_mean(values):\n"
+        "    total = sum(values)\n"
+        "    return total / len(values)"
+    )
     curr_output = "result = compute_mean([1, 2])"
     recall = compute_identifier_recall(prev_code, curr_output)
     assert 0.0 < recall < 1.0

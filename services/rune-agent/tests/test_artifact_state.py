@@ -20,7 +20,9 @@ from rune_agent.artifact_state import (
 
 def test_artifact_state_creation():
     patch = PatchRecord(
-        turn=1, description="added helper", diff_summary="+def helper()",
+        turn=1,
+        description="added helper",
+        diff_summary="+def helper()",
     )
     state = ArtifactState(
         file_contents="def main(): pass",
@@ -70,7 +72,10 @@ def test_artifact_state_round_trip():
 
 def test_trajectory_state_round_trip():
     original = TrajectoryState(
-        turn=2, output="plan text", feedback="ok", diagnosis="good",
+        turn=2,
+        output="plan text",
+        feedback="ok",
+        diagnosis="good",
     )
     d = original.to_dict()
     restored = TrajectoryState.from_dict(d)
@@ -107,7 +112,10 @@ def test_resolve_strategy_large_code_no_chunk():
 
 def test_resolve_strategy_large_code_with_chunk():
     s = resolve_adapter_strategy(
-        "code", 2000, 1024, 0.16,
+        "code",
+        2000,
+        1024,
+        0.16,
         enable_chunk_composition=True,
     )
     assert isinstance(s, ChunkComposition)
@@ -117,7 +125,10 @@ def test_resolve_strategy_large_code_with_chunk():
 
 def test_resolve_strategy_large_text_phase():
     s = resolve_adapter_strategy(
-        "plan", 2000, 1024, 0.16,
+        "plan",
+        2000,
+        1024,
+        0.16,
         enable_chunk_composition=True,
     )
     assert isinstance(s, SinglePass)
@@ -126,7 +137,10 @@ def test_resolve_strategy_large_text_phase():
 
 def test_resolve_strategy_custom_boost():
     s = resolve_adapter_strategy(
-        "code", 2000, 1024, 0.16,
+        "code",
+        2000,
+        1024,
+        0.16,
         enable_chunk_composition=True,
         code_scaling_boost=1.5,
     )

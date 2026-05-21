@@ -137,9 +137,7 @@ def _save_adapter(
     target_modules = list(hc.lora_config.target_modules)
 
     if not lora_dict:
-        raise ValueError(
-            "generate_weights returned empty lora_dict"
-        )
+        raise ValueError("generate_weights returned empty lora_dict")
     first_mod = next(iter(lora_dict))
     actual_rank = lora_dict[first_mod]["A"].shape[-2]
 

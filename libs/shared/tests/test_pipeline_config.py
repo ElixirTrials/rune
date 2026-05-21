@@ -159,5 +159,3 @@ def test_reasoning_loop_round_trip(tmp_path: Path) -> None:
     path = cfg.save(tmp_path / "test_rl.json")
     loaded = load_config(path)
     assert loaded.reasoning_loop == cfg.reasoning_loop
-
-

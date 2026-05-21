@@ -60,19 +60,43 @@ def _make_state(**overrides: Any) -> ReasoningLoopState:
 def test_reasoning_loop_state_structure():
     annotations = ReasoningLoopState.__annotations__
     required_keys = {
-        "task_description", "phase", "adapter_ids", "session_id",
-        "generated_code", "stdout", "stderr", "exit_code",
-        "tests_passed", "test_count", "tests_ran", "finish_reason",
-        "outcome", "prompt_context",
-        "artifact", "trajectory_state",
-        "turn_count", "max_turns", "sliding_window", "sliding_window_size",
-        "base_sliding_window_size", "current_adapter_path",
-        "current_adapter_weights", "prior_adapter_weights", "first_adapter_norm",
-        "scaling_factor", "enable_chunk_composition", "chunk_threshold",
-        "phase_executes", "code_scaling_boost", "default_merge_method",
+        "task_description",
+        "phase",
+        "adapter_ids",
+        "session_id",
+        "generated_code",
+        "stdout",
+        "stderr",
+        "exit_code",
+        "tests_passed",
+        "test_count",
+        "tests_ran",
+        "finish_reason",
+        "outcome",
+        "prompt_context",
+        "artifact",
+        "trajectory_state",
+        "turn_count",
+        "max_turns",
+        "sliding_window",
+        "sliding_window_size",
+        "base_sliding_window_size",
+        "current_adapter_path",
+        "current_adapter_weights",
+        "prior_adapter_weights",
+        "first_adapter_norm",
+        "scaling_factor",
+        "enable_chunk_composition",
+        "chunk_threshold",
+        "phase_executes",
+        "code_scaling_boost",
+        "default_merge_method",
         "turn_history",
-        "adapter_cosine_sim", "adapter_norm_ratio", "output_repetition",
-        "consecutive_high_similarity", "recovery_attempted",
+        "adapter_cosine_sim",
+        "adapter_norm_ratio",
+        "output_repetition",
+        "consecutive_high_similarity",
+        "recovery_attempted",
     }
     for key in required_keys:
         assert key in annotations, f"Missing key: {key}"
@@ -90,18 +114,24 @@ def test_should_continue_max_turns():
 
 def test_should_continue_healthy():
     state = _make_state(
-        turn_count=3, max_turns=20,
-        adapter_cosine_sim=0.5, adapter_norm_ratio=1.0,
-        output_repetition=0.2, finish_reason="length",
+        turn_count=3,
+        max_turns=20,
+        adapter_cosine_sim=0.5,
+        adapter_norm_ratio=1.0,
+        output_repetition=0.2,
+        finish_reason="length",
     )
     assert should_continue(state) == "reason"
 
 
 def test_should_continue_collapse_triggers_recovery():
     state = _make_state(
-        turn_count=3, max_turns=20,
-        adapter_cosine_sim=0.97, adapter_norm_ratio=1.0,
-        output_repetition=0.85, finish_reason="length",
+        turn_count=3,
+        max_turns=20,
+        adapter_cosine_sim=0.97,
+        adapter_norm_ratio=1.0,
+        output_repetition=0.85,
+        finish_reason="length",
         recovery_attempted=False,
     )
     assert should_continue(state) == "recover"
@@ -109,9 +139,12 @@ def test_should_continue_collapse_triggers_recovery():
 
 def test_should_continue_collapse_after_recovery_halts():
     state = _make_state(
-        turn_count=3, max_turns=20,
-        adapter_cosine_sim=0.97, adapter_norm_ratio=1.0,
-        output_repetition=0.85, finish_reason="length",
+        turn_count=3,
+        max_turns=20,
+        adapter_cosine_sim=0.97,
+        adapter_norm_ratio=1.0,
+        output_repetition=0.85,
+        finish_reason="length",
         recovery_attempted=True,
     )
     assert should_continue(state) == "__end__"
@@ -177,8 +210,10 @@ def test_should_continue_stop_on_max_turns():
 
 def test_should_continue_continues_when_healthy():
     state = _make_state(
-        turn_count=1, max_turns=10,
-        adapter_cosine_sim=0.3, adapter_norm_ratio=1.0,
+        turn_count=1,
+        max_turns=10,
+        adapter_cosine_sim=0.3,
+        adapter_norm_ratio=1.0,
         output_repetition=0.1,
     )
     assert should_continue(state) == "reason"

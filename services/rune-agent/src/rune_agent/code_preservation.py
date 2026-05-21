@@ -12,12 +12,47 @@ import re
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_]\w*)\b")
 _BUILTIN_NAMES = set(dir(_builtins_mod))
-_SKIP = _BUILTIN_NAMES | set(keyword.kwlist) | {
-    "self", "cls", "None", "True", "False", "return", "pass", "import", "from",
-    "class", "def", "if", "else", "elif", "for", "while", "try", "except",
-    "finally", "with", "as", "yield", "raise", "break", "continue", "and",
-    "or", "not", "in", "is", "lambda", "global", "nonlocal", "assert", "del",
-}
+_SKIP = (
+    _BUILTIN_NAMES
+    | set(keyword.kwlist)
+    | {
+        "self",
+        "cls",
+        "None",
+        "True",
+        "False",
+        "return",
+        "pass",
+        "import",
+        "from",
+        "class",
+        "def",
+        "if",
+        "else",
+        "elif",
+        "for",
+        "while",
+        "try",
+        "except",
+        "finally",
+        "with",
+        "as",
+        "yield",
+        "raise",
+        "break",
+        "continue",
+        "and",
+        "or",
+        "not",
+        "in",
+        "is",
+        "lambda",
+        "global",
+        "nonlocal",
+        "assert",
+        "del",
+    }
+)
 
 _SIG_RE = re.compile(r"^(?:def|class)\s+\w+\s*\([^)]*\)", re.MULTILINE)
 
@@ -51,16 +86,12 @@ def compute_signature_consistency(
     prev_sigs = set(_SIG_RE.findall(previous_interfaces))
     if not prev_sigs:
         prev_lines = {
-            line.strip()
-            for line in previous_interfaces.splitlines()
-            if line.strip()
+            line.strip() for line in previous_interfaces.splitlines() if line.strip()
         }
         if not prev_lines:
             return 1.0
         curr_lines = {
-            line.strip()
-            for line in current_interfaces.splitlines()
-            if line.strip()
+            line.strip() for line in current_interfaces.splitlines() if line.strip()
         }
         return len(prev_lines & curr_lines) / len(prev_lines)
 
@@ -74,9 +105,7 @@ def compute_import_preservation(
 ) -> float:
     """Fraction of original import lines still present in current code."""
     prev_lines = {
-        line.strip()
-        for line in previous_imports.splitlines()
-        if line.strip()
+        line.strip() for line in previous_imports.splitlines() if line.strip()
     }
     if not prev_lines:
         return 1.0

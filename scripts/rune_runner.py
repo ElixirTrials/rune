@@ -256,9 +256,7 @@ def _should_skip_decompose(project_prompt: str, threshold: int = 200) -> bool:
     if any(s in lower for s in single_fn_signals):
         return True
     # "def " at start of a line indicates a single-function task
-    return any(
-        line.lstrip().startswith("def ") for line in project_prompt.splitlines()
-    )
+    return any(line.lstrip().startswith("def ") for line in project_prompt.splitlines())
 
 
 def _parse_subtask_list(
@@ -1058,7 +1056,9 @@ async def run_phased_pipeline(
                         ) from exc
 
                     # Re-run decompose with cycle correction context
-                    correction_traj = render_trajectory("decompose", project=project_prompt)
+                    correction_traj = render_trajectory(
+                        "decompose", project=project_prompt
+                    )
                     prior_output = best_decompose_state.get("generated_code", "")
                     correction_traj += (
                         f"\n\n[ERROR: Your prior decomposition had circular "
@@ -1089,7 +1089,9 @@ async def run_phased_pipeline(
                         loaded_adapter_id = cycle_adapter_id
 
                     iteration_counter += 1
-                    retry_phase = "decompose_concise" if cycle_adapter_id else "decompose"
+                    retry_phase = (
+                        "decompose_concise" if cycle_adapter_id else "decompose"
+                    )
                     retry_state = await run_iteration(
                         graph=graph,
                         project_prompt=project_prompt,
@@ -1623,9 +1625,7 @@ async def run_phased_pipeline(
                         code_scaling_boost=rl_cfg.code_scaling_boost,
                         default_merge_method=rl_cfg.default_merge_method,
                     )
-                    existing_code = rl_result.get(
-                        "generated_code", existing_code
-                    )
+                    existing_code = rl_result.get("generated_code", existing_code)
                     last_state = rl_result
                     if rl_result.get("tests_passed", False):
                         return (

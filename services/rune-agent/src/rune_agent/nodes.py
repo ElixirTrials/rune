@@ -66,9 +66,14 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen3.5-9B"
-_TEXT_ONLY_PHASES = frozenset({
-    "decompose", "decompose_concise", "plan", "diagnose",
-})
+_TEXT_ONLY_PHASES = frozenset(
+    {
+        "decompose",
+        "decompose_concise",
+        "plan",
+        "diagnose",
+    }
+)
 
 
 def _build_prompt(state: RuneState) -> str:

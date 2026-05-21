@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from rune_agent.adapter_health import (
     check_health,
     compute_cosine_similarity,
@@ -71,7 +70,9 @@ def test_output_repetition_empty():
 
 def test_check_health_healthy():
     h = check_health(
-        cosine_sim=0.5, norm_ratio=1.0, output_repetition=0.2,
+        cosine_sim=0.5,
+        norm_ratio=1.0,
+        output_repetition=0.2,
         consecutive_high_similarity=0,
     )
     assert h.is_collapsed is False
@@ -80,7 +81,9 @@ def test_check_health_healthy():
 
 def test_check_health_norm_collapse():
     h = check_health(
-        cosine_sim=0.5, norm_ratio=0.05, output_repetition=0.2,
+        cosine_sim=0.5,
+        norm_ratio=0.05,
+        output_repetition=0.2,
         consecutive_high_similarity=0,
     )
     assert h.is_collapsed is True
@@ -89,7 +92,9 @@ def test_check_health_norm_collapse():
 
 def test_check_health_norm_explosion():
     h = check_health(
-        cosine_sim=0.5, norm_ratio=15.0, output_repetition=0.2,
+        cosine_sim=0.5,
+        norm_ratio=15.0,
+        output_repetition=0.2,
         consecutive_high_similarity=0,
     )
     assert h.is_collapsed is True
@@ -98,13 +103,17 @@ def test_check_health_norm_explosion():
 
 def test_check_health_cosine_collapse_needs_consecutive():
     h1 = check_health(
-        cosine_sim=0.97, norm_ratio=1.0, output_repetition=0.2,
+        cosine_sim=0.97,
+        norm_ratio=1.0,
+        output_repetition=0.2,
         consecutive_high_similarity=0,
     )
     assert h1.is_collapsed is False
 
     h2 = check_health(
-        cosine_sim=0.97, norm_ratio=1.0, output_repetition=0.2,
+        cosine_sim=0.97,
+        norm_ratio=1.0,
+        output_repetition=0.2,
         consecutive_high_similarity=1,
     )
     assert h2.is_collapsed is True
@@ -113,7 +122,9 @@ def test_check_health_cosine_collapse_needs_consecutive():
 
 def test_check_health_output_repetition():
     h = check_health(
-        cosine_sim=0.5, norm_ratio=1.0, output_repetition=0.85,
+        cosine_sim=0.5,
+        norm_ratio=1.0,
+        output_repetition=0.85,
         consecutive_high_similarity=0,
     )
     assert h.is_collapsed is True

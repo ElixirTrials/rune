@@ -12,7 +12,8 @@ from rune_runner import _should_skip_decompose  # type: ignore[import-not-found]
 
 def test_short_function_prompt_skips() -> None:
     """Short 'write a function' prompt should skip decompose."""
-    assert _should_skip_decompose("Write a function to check if a number is prime") is True
+    prompt = "Write a function to check if a number is prime"
+    assert _should_skip_decompose(prompt) is True
 
 
 def test_long_prompt_does_not_skip() -> None:
@@ -28,7 +29,8 @@ def test_short_prompt_without_function_signal_does_not_skip() -> None:
 
 def test_implement_signal_skips() -> None:
     """'implement a function' signal should skip for short prompts."""
-    assert _should_skip_decompose("Implement a function that returns fibonacci numbers") is True
+    prompt = "Implement a function that returns fibonacci numbers"
+    assert _should_skip_decompose(prompt) is True
 
 
 def test_custom_threshold() -> None:

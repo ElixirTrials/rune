@@ -11,14 +11,16 @@ async def test_run_reasoning_loop_returns_result():
     from scripts.rune_runner import run_reasoning_loop
 
     mock_graph = MagicMock()
-    mock_graph.ainvoke = AsyncMock(return_value={
-        "generated_code": "def main(): pass",
-        "tests_passed": True,
-        "turn_count": 3,
-        "turn_history": [{"turn": 0}, {"turn": 1}, {"turn": 2}],
-        "artifact": None,
-        "finish_reason": "stop",
-    })
+    mock_graph.ainvoke = AsyncMock(
+        return_value={
+            "generated_code": "def main(): pass",
+            "tests_passed": True,
+            "turn_count": 3,
+            "turn_history": [{"turn": 0}, {"turn": 1}, {"turn": 2}],
+            "artifact": None,
+            "finish_reason": "stop",
+        }
+    )
 
     result = await run_reasoning_loop(
         graph=mock_graph,
