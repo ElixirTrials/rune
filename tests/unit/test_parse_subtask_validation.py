@@ -178,28 +178,23 @@ def test_hard_cap_eight_items_in_pipeline_dedup() -> None:
 
 
 # ----------------------------------------------------------
-# validate=False still uses DecomposeResult (JSON parsing)
+# DecomposeResult schema enforcement (JSON parsing)
 # ----------------------------------------------------------
 
 
-def test_validate_false_single_item_passes_through() -> None:
-    """validate=False lets single-item JSON output through."""
+def test_single_item_json_passes_through() -> None:
+    """Single-item JSON parses successfully."""
     output = json.dumps({"subtasks": [
         {"name": "parse_input", "description": "NameError on line 5", "depends_on": []}
     ]})
-    result = _parse_subtask_list(output, validate=False)
+    result = _parse_subtask_list(output)
     assert len(result) == 1
     assert result[0]["name"] == "parse_input"
 
 
-def test_validate_false_many_items_triggers_fallback() -> None:
-    """validate=False still enforces DecomposeResult max_length=8.
-
-    With JSON parsing, >8 items fail DecomposeResult validation even
-    with validate=False, because model_validate_json always enforces
-    the schema. The fallback is returned.
-    """
+def test_many_items_triggers_fallback() -> None:
+    """More than 8 subtasks fail DecomposeResult validation → fallback."""
     names = [f"diag_{i}" for i in range(12)]
-    result = _parse_subtask_list(_json_subtasks(names), validate=False)
+    result = _parse_subtask_list(_json_subtasks(names))
     assert len(result) == 1
     assert result[0]["name"] == "implementation"
