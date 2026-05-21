@@ -521,7 +521,9 @@ def make_objective(
         max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
 
         n = min(problems_per_trial, len(tuning_problems))
-        trial_problems = random.Random(seed + trial.number + 1).sample(tuning_problems, n)
+        trial_problems = random.Random(seed + trial.number + 1).sample(
+            tuning_problems, n
+        )
         apply_trial_env(
             scaling_factor=scaling_factor,
             temperature=temperature,

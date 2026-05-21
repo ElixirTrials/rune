@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import ast
-import re
-
 from pathlib import Path
-
 
 RUNNER_PATH = Path("scripts/rune_runner.py")
 
@@ -27,7 +24,7 @@ def _get_run_iteration_call_sites() -> list[int]:
 
 
 def _find_unload_after_line(source_lines: list[str], call_line: int) -> bool:
-    """Check that unload_adapter or _eager_unload appears within 30 lines after a run_iteration call."""
+    """Check unload_adapter/_eager_unload within 30 lines after run_iteration."""
     start = call_line  # 0-indexed: call_line is 1-indexed
     end = min(start + 30, len(source_lines))
     window = "\n".join(source_lines[start:end])

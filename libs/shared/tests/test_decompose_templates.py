@@ -10,7 +10,10 @@ TEMPLATE_DIR = Path("libs/shared/src/shared/templates")
 def test_decompose_trajectory_has_cot_suppression() -> None:
     """decompose.j2 must contain chain-of-thought suppression."""
     content = (TEMPLATE_DIR / "decompose.j2").read_text()
-    assert "Do NOT include your chain-of-thought" in content or "do NOT include" in content.lower()
+    assert (
+        "Do NOT include your chain-of-thought" in content
+        or "do NOT include" in content.lower()
+    )
 
 
 def test_decompose_trajectory_has_simple_task_example() -> None:
