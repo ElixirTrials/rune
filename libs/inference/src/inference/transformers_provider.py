@@ -94,8 +94,9 @@ class TransformersProvider(InferenceProvider):
         self._is_peft_wrapped: bool = False
         self._think_token_id: int | None = None
         self._end_think_token_id: int | None = None
+        self._think_ids_resolved: bool = False
         self._xgr_compiler: Any = None
-        self._xgr_compiled_cache: dict[int, Any] = {}
+        self._xgr_compiled_cache: dict[type[BaseModel], Any] = {}
 
     def _load_model_if_needed(self) -> None:
         """Load the base model and tokenizer if not already loaded.
@@ -123,7 +124,6 @@ class TransformersProvider(InferenceProvider):
             self._base_model = model
             self._device = self._pool.device
             logger.info("Borrowed base model from pool (device=%s)", self._device)
-            self._init_xgr_compiler()
             return
 
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
@@ -169,7 +169,6 @@ class TransformersProvider(InferenceProvider):
         self._model.eval()
         self._base_model = self._model
         logger.info("Model loaded: %s", self._model_name)
-        self._init_xgr_compiler()
 
     def _init_xgr_compiler(self) -> None:
         """Create and cache the XGrammar compiler from the loaded tokenizer."""
@@ -186,6 +185,12 @@ class TransformersProvider(InferenceProvider):
         )
         self._xgr_compiler = xgr.GrammarCompiler(tokenizer_info)
         logger.info("XGrammar compiler initialized (vocab_size=%d)", vocab_size)
+
+    def _get_xgr_compiler(self) -> Any:
+        """Lazily initialize and return the XGrammar compiler."""
+        if self._xgr_compiler is None:
+            self._init_xgr_compiler()
+        return self._xgr_compiler
 
     async def generate(  # noqa: C901
         self,
@@ -268,7 +273,6 @@ class TransformersProvider(InferenceProvider):
             "do_sample": temperature > 0,
             "temperature": max(temperature, 0.01),
             "top_p": top_p,
-            "top_k": 20,
             "pad_token_id": self._tokenizer.pad_token_id,
         }
         if repetition_penalty > 1.0:
@@ -276,10 +280,10 @@ class TransformersProvider(InferenceProvider):
 
         self._resolve_think_token_ids()
         if not enable_thinking and self._think_token_id is not None:
-            gen_kwargs["suppress_tokens"] = [
-                self._think_token_id,
-                self._end_think_token_id,
-            ]
+            suppress = [self._think_token_id]
+            if self._end_think_token_id is not None:
+                suppress.append(self._end_think_token_id)
+            gen_kwargs["suppress_tokens"] = suppress
 
         if (
             enable_thinking
@@ -295,14 +299,19 @@ class TransformersProvider(InferenceProvider):
             ]
 
         if json_schema is not None:
+            if enable_thinking and thinking_budget > 0:
+                raise ValueError(
+                    "json_schema and thinking_budget>0 are mutually exclusive: "
+                    "XGrammar constraints would corrupt thinking tokens"
+                )
             import xgrammar as xgr  # noqa: PLC0415
 
-            compiled = self._xgr_compiled_cache.get(id(json_schema))
+            compiled = self._xgr_compiled_cache.get(json_schema)
             if compiled is None:
-                compiled = self._xgr_compiler.compile_json_schema(
+                compiled = self._get_xgr_compiler().compile_json_schema(
                     json.dumps(json_schema.model_json_schema())
                 )
-                self._xgr_compiled_cache[id(json_schema)] = compiled
+                self._xgr_compiled_cache[json_schema] = compiled
             xgr_processor = xgr.contrib.hf.LogitsProcessor(compiled)
             if "logits_processor" in gen_kwargs:
                 gen_kwargs["logits_processor"].append(xgr_processor)  # type: ignore[union-attr]
@@ -377,7 +386,7 @@ class TransformersProvider(InferenceProvider):
 
     def _resolve_think_token_ids(self) -> None:
         """Cache ``<think>`` and ``</think>`` token IDs from the tokenizer."""
-        if self._think_token_id is not None:
+        if self._think_ids_resolved:
             return
         if self._tokenizer is None:
             return
@@ -389,6 +398,7 @@ class TransformersProvider(InferenceProvider):
         else:
             self._think_token_id = None
             self._end_think_token_id = None
+        self._think_ids_resolved = True
 
     def _split_thinking(
         self,
