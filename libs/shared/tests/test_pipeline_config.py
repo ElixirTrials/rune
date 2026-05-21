@@ -8,8 +8,10 @@ from pathlib import Path
 from shared.pipeline_config import (
     AdapterConfig,
     PipelineConfig,
+    ReasoningLoopConfig,
     default_config,
     load_config,
+    resolve_reasoning_loop_config,
 )
 
 
@@ -105,9 +107,6 @@ def test_decompose_config_round_trip(tmp_path: Path) -> None:
     assert loaded.decompose.skip_threshold == 200
 
 
-from shared.pipeline_config import ReasoningLoopConfig, resolve_reasoning_loop_config
-
-
 def test_reasoning_loop_config_defaults():
     cfg = ReasoningLoopConfig()
     assert cfg.max_turns == 20
@@ -121,8 +120,6 @@ def test_reasoning_loop_config_defaults():
     assert cfg.collapse_norm_min == 0.1
     assert cfg.collapse_norm_max == 10.0
     assert cfg.collapse_repetition_threshold == 0.8
-    assert cfg.adapter_target_modules is None
-    assert cfg.adapter_layer_selection == "all"
 
 
 def test_reasoning_loop_config_phase_windows():
@@ -164,11 +161,3 @@ def test_reasoning_loop_round_trip(tmp_path: Path) -> None:
     assert loaded.reasoning_loop == cfg.reasoning_loop
 
 
-def test_reasoning_loop_adapter_target_modules_round_trip(tmp_path: Path) -> None:
-    cfg = default_config().override(**{
-        "reasoning_loop.adapter_target_modules": ["q_proj", "v_proj"],
-    })
-    # Override inserts as list; after round-trip it should be tuple
-    path = cfg.save(tmp_path / "test_rl_modules.json")
-    loaded = load_config(path)
-    assert loaded.reasoning_loop.adapter_target_modules == ("q_proj", "v_proj")

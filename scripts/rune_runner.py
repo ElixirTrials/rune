@@ -608,7 +608,8 @@ async def run_reasoning_loop(
     session_id: str = "",
     enable_chunk_composition: bool = False,
     chunk_threshold: int = 1024,
-    adapter_placement: dict[str, Any] | None = None,
+    code_scaling_boost: float = 1.2,
+    default_merge_method: str = "ties",
 ) -> dict[str, Any]:
     """Run the adapter-compressed reasoning loop.
 
@@ -649,8 +650,9 @@ async def run_reasoning_loop(
         "enable_chunk_composition": enable_chunk_composition,
         "chunk_threshold": chunk_threshold,
         "phase_executes": phase_executes,
+        "code_scaling_boost": code_scaling_boost,
+        "default_merge_method": default_merge_method,
         "turn_history": [],
-        "adapter_placement": adapter_placement,
         "adapter_cosine_sim": 0.0,
         "adapter_norm_ratio": 1.0,
         "output_repetition": 0.0,
@@ -1618,6 +1620,8 @@ async def run_phased_pipeline(
                         session_id=session_id,
                         enable_chunk_composition=rl_cfg.enable_chunk_composition,
                         chunk_threshold=rl_cfg.chunk_threshold,
+                        code_scaling_boost=rl_cfg.code_scaling_boost,
+                        default_merge_method=rl_cfg.default_merge_method,
                     )
                     existing_code = rl_result.get(
                         "generated_code", existing_code

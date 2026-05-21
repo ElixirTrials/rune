@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from langgraph.graph import START, StateGraph
 from typing_extensions import TypedDict
@@ -78,9 +78,9 @@ class ReasoningLoopState(TypedDict):
     enable_chunk_composition: bool
     chunk_threshold: int
     phase_executes: bool
+    code_scaling_boost: float
+    default_merge_method: str
     turn_history: list[dict[str, Any]]
-
-    adapter_placement: dict[str, Any] | None
 
     adapter_cosine_sim: float
     adapter_norm_ratio: float
@@ -127,7 +127,9 @@ async def reason_node(state: ReasoningLoopState) -> dict[str, Any]:
         "outcome": None,
     }
 
-    result = await generate_node(gen_state)
+    from .state import RuneState
+
+    result = await generate_node(cast(RuneState, gen_state))
 
     new_code = result.get("generated_code", "")
     if phase in _EXECUTING_PHASES and state["generated_code"]:
@@ -135,14 +137,9 @@ async def reason_node(state: ReasoningLoopState) -> dict[str, Any]:
     else:
         accumulated = new_code
 
-    words = accumulated.split()
-    window_words = state["sliding_window_size"] // 4
-    new_window = " ".join(words[-window_words:]) if words else ""
-
     return {
         "generated_code": accumulated,
         "finish_reason": result.get("finish_reason"),
-        "sliding_window": new_window,
     }
 
 
@@ -172,7 +169,9 @@ async def execute_reason_node(state: ReasoningLoopState) -> dict[str, Any]:
         "outcome": None,
     }
 
-    return await execute_node(exec_state)
+    from .state import RuneState
+
+    return await execute_node(cast(RuneState, exec_state))
 
 
 async def reflect_reason_node(state: ReasoningLoopState) -> dict[str, Any]:
@@ -197,8 +196,9 @@ async def build_artifact_node(state: ReasoningLoopState) -> dict[str, Any]:
         from .artifact_state import ArtifactState, build_artifact_state
 
         prev_art = None
-        if state.get("artifact"):
-            prev_art = ArtifactState.from_dict(state["artifact"])
+        art_dict = state.get("artifact")
+        if art_dict is not None:
+            prev_art = ArtifactState.from_dict(art_dict)
 
         artifact = build_artifact_state(
             generated_code=state["generated_code"],
@@ -228,10 +228,11 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
     phase = state["phase"]
     start = time.monotonic()
 
-    if phase in _EXECUTING_PHASES and state.get("artifact"):
+    art_dict = state.get("artifact")
+    if phase in _EXECUTING_PHASES and art_dict is not None:
         from .artifact_state import ArtifactState
 
-        art = ArtifactState.from_dict(state["artifact"])
+        art = ArtifactState.from_dict(art_dict)
         patches_text = "\n".join(
             f"Turn {p.turn}: {p.description} ({p.diff_summary})"
             for p in art.patches
@@ -248,8 +249,7 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
             stderr_summary=art.stderr_summary,
             code_skeleton=code_skeleton,
         )
-    elif state.get("trajectory_state"):
-        ts = state["trajectory_state"]
+    elif (ts := state.get("trajectory_state")) is not None:
         text = render_trajectory(
             "trajectory_compress",
             turn=ts.get("turn", 0),
@@ -269,6 +269,8 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
         chunk_threshold=state["chunk_threshold"],
         base_scaling=state["scaling_factor"],
         enable_chunk_composition=state["enable_chunk_composition"],
+        code_scaling_boost=state["code_scaling_boost"],
+        default_merge_method=state["default_merge_method"],
     )
 
     import os  # noqa: PLC0415
@@ -292,6 +294,8 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
         assert state["artifact"] is not None
         art = ArtifactState.from_dict(state["artifact"])
         chunks = chunk_code_state(art, max_chunk_tokens=state["chunk_threshold"])
+        if not chunks:
+            return {}
         chunk_sds: list[dict[str, Any]] = []
         for i, chunk in enumerate(chunks):
             chunk_dir = os.path.join(output_dir, f"chunk_{i}")
@@ -385,6 +389,10 @@ async def check_health_node(state: ReasoningLoopState) -> dict[str, Any]:
     prev_output = state.get("sliding_window", "")
     output_rep = compute_output_repetition(state["generated_code"], prev_output)
 
+    words = state["generated_code"].split()
+    window_words = state["sliding_window_size"] // 4
+    new_window = " ".join(words[-window_words:]) if words else ""
+
     consec = state["consecutive_high_similarity"]
     if cosine_sim > 0.95:
         consec += 1
@@ -397,6 +405,7 @@ async def check_health_node(state: ReasoningLoopState) -> dict[str, Any]:
         "output_repetition": output_rep,
         "consecutive_high_similarity": consec,
         "turn_count": state["turn_count"] + 1,
+        "sliding_window": new_window,
     }
 
 
@@ -445,11 +454,11 @@ async def recover_node(state: ReasoningLoopState) -> dict[str, Any]:
 
 def route_after_reason(
     state: ReasoningLoopState,
-) -> Literal["execute_reason", "build_artifact"]:
+) -> Literal["execute_reason", "reflect"]:
     """Route based on whether this phase executes code."""
     if state["phase_executes"]:
         return "execute_reason"
-    return "build_artifact"
+    return "reflect"
 
 
 def select_best_output(turn_history: list[dict[str, Any]]) -> int | None:

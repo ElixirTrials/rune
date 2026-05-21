@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 import pytest
-
-from rune_agent.artifact_state import ArtifactState, PatchRecord, TrajectoryState
 from rune_agent.adapter_strategy import (
-    AdapterPlacement,
     AdapterStrategy,
     ChunkComposition,
     SinglePass,
     resolve_adapter_strategy,
 )
+from rune_agent.artifact_state import (
+    ArtifactState,
+    PatchRecord,
+    TrajectoryState,
+    build_artifact_state,
+    chunk_code_state,
+)
 
 
 def test_artifact_state_creation():
-    patch = PatchRecord(turn=1, description="added helper", diff_summary="+def helper()")
+    patch = PatchRecord(
+        turn=1, description="added helper", diff_summary="+def helper()",
+    )
     state = ArtifactState(
         file_contents="def main(): pass",
         interface_summary="def main()",
@@ -63,18 +69,13 @@ def test_artifact_state_round_trip():
 
 
 def test_trajectory_state_round_trip():
-    original = TrajectoryState(turn=2, output="plan text", feedback="ok", diagnosis="good")
+    original = TrajectoryState(
+        turn=2, output="plan text", feedback="ok", diagnosis="good",
+    )
     d = original.to_dict()
     restored = TrajectoryState.from_dict(d)
     assert restored.turn == 2
     assert restored.output == "plan text"
-
-
-def test_adapter_placement_defaults():
-    p = AdapterPlacement()
-    assert p.target_modules is None
-    assert p.layer_indices is None
-    assert p.layer_selection == "all"
 
 
 def test_single_pass_strategy():
@@ -131,11 +132,6 @@ def test_resolve_strategy_custom_boost():
     )
     assert isinstance(s, ChunkComposition)
     assert s.scaling == pytest.approx(0.24)
-
-
-# --- Task 4: build_artifact_state and chunk_code_state ---
-
-from rune_agent.artifact_state import build_artifact_state, chunk_code_state, CodeChunk
 
 
 def test_build_artifact_state_first_turn():
@@ -198,7 +194,9 @@ def test_chunk_code_state_small_artifact():
 
 def test_chunk_code_state_priority_ordering():
     art = ArtifactState(
-        file_contents="import os\nimport sys\n\nclass Foo:\n    pass\n\ndef bar():\n    pass\n",
+        file_contents=(
+            "import os\nimport sys\n\nclass Foo:\n    pass\n\ndef bar():\n    pass\n"
+        ),
         interface_summary="class Foo\ndef bar()",
         import_block="import os\nimport sys",
         patches=[PatchRecord(turn=0, description="init", diff_summary="+Foo, +bar")],

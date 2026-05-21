@@ -10,15 +10,6 @@ from dataclasses import dataclass
 
 
 @dataclass
-class AdapterPlacement:
-    """Controls which model layers and modules receive LoRA weights."""
-
-    target_modules: list[str] | None = None
-    layer_indices: list[int] | None = None
-    layer_selection: str = "all"
-
-
-@dataclass
 class AdapterStrategy:
     """Base strategy for adapter generation."""
 

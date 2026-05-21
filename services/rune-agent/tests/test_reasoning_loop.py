@@ -6,7 +6,6 @@ from typing import Any
 
 from rune_agent.reasoning_loop import (
     ReasoningLoopState,
-    create_reasoning_loop_graph,
     recover_node,
     route_after_reason,
     select_best_output,
@@ -45,8 +44,9 @@ def _make_state(**overrides: Any) -> ReasoningLoopState:
         "enable_chunk_composition": False,
         "chunk_threshold": 1024,
         "phase_executes": True,
+        "code_scaling_boost": 1.2,
+        "default_merge_method": "ties",
         "turn_history": [],
-        "adapter_placement": None,
         "adapter_cosine_sim": 0.0,
         "adapter_norm_ratio": 1.0,
         "output_repetition": 0.0,
@@ -69,8 +69,8 @@ def test_reasoning_loop_state_structure():
         "base_sliding_window_size", "current_adapter_path",
         "current_adapter_weights", "prior_adapter_weights", "first_adapter_norm",
         "scaling_factor", "enable_chunk_composition", "chunk_threshold",
-        "phase_executes", "turn_history",
-        "adapter_placement",
+        "phase_executes", "code_scaling_boost", "default_merge_method",
+        "turn_history",
         "adapter_cosine_sim", "adapter_norm_ratio", "output_repetition",
         "consecutive_high_similarity", "recovery_attempted",
     }
@@ -129,7 +129,7 @@ def test_route_after_reason_code_phase():
 
 def test_route_after_reason_text_phase():
     state = _make_state(phase_executes=False)
-    assert route_after_reason(state) == "build_artifact"
+    assert route_after_reason(state) == "reflect"
 
 
 async def test_recover_node_doubles_window():
@@ -140,6 +140,8 @@ async def test_recover_node_doubles_window():
 
 
 def test_reasoning_loop_graph_compiles():
+    from rune_agent.reasoning_loop import create_reasoning_loop_graph
+
     graph = create_reasoning_loop_graph()
     assert graph is not None
 
@@ -160,13 +162,6 @@ def test_best_passing_turn_none():
         {"turn": 1, "tests_passed": False},
     ]
     assert select_best_output(history) is None
-
-
-# Task 9: importable from graph
-def test_reasoning_loop_importable_from_graph():
-    from rune_agent.graph import create_reasoning_loop_graph as from_graph
-    g = from_graph()
-    assert g is not None
 
 
 # Task 12: integration tests

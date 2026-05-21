@@ -80,8 +80,6 @@ class ReasoningLoopConfig:
     collapse_norm_min: float = 0.1
     collapse_norm_max: float = 10.0
     collapse_repetition_threshold: float = 0.8
-    adapter_target_modules: tuple[str, ...] | None = None
-    adapter_layer_selection: str = "all"
     phase_sliding_windows: dict[str, int] = field(default_factory=lambda: {
         "decompose": 256,
         "plan": 512,
@@ -109,9 +107,6 @@ class PipelineConfig:
         d = asdict(self)
         # Convert tuple back for JSON compatibility
         d["calibration"]["scaling_range"] = list(d["calibration"]["scaling_range"])
-        rl_d = d.get("reasoning_loop", {})
-        if rl_d.get("adapter_target_modules") is not None:
-            rl_d["adapter_target_modules"] = list(rl_d["adapter_target_modules"])
         return d
 
     def save(self, path: Path | None = None) -> Path:
@@ -145,10 +140,8 @@ def _from_dict(d: dict[str, Any]) -> PipelineConfig:
     if "scaling_range" in cal and isinstance(cal["scaling_range"], list):
         cal["scaling_range"] = tuple(cal["scaling_range"])
     rl = d.get("reasoning_loop", {})
-    if "adapter_target_modules" in rl and isinstance(
-        rl["adapter_target_modules"], list
-    ):
-        rl["adapter_target_modules"] = tuple(rl["adapter_target_modules"])
+    rl.pop("adapter_target_modules", None)
+    rl.pop("adapter_layer_selection", None)
     if "phase_sliding_windows" not in rl:
         rl["phase_sliding_windows"] = dict(ReasoningLoopConfig().phase_sliding_windows)
     return PipelineConfig(
@@ -201,11 +194,6 @@ def resolve_reasoning_loop_config(base: ReasoningLoopConfig) -> ReasoningLoopCon
         "RUNE_COLLAPSE_NORM_MIN": ("collapse_norm_min", float),
         "RUNE_COLLAPSE_NORM_MAX": ("collapse_norm_max", float),
         "RUNE_COLLAPSE_REPETITION_THRESHOLD": ("collapse_repetition_threshold", float),
-        "RUNE_ADAPTER_TARGET_MODULES": (
-            "adapter_target_modules",
-            lambda v: tuple(v.split(",")),
-        ),
-        "RUNE_ADAPTER_LAYER_SELECTION": ("adapter_layer_selection", str),
     }
 
     for env_key, (field_name, converter) in env_map.items():
