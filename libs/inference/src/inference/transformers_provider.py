@@ -314,7 +314,7 @@ class TransformersProvider(InferenceProvider):
                 self._xgr_compiled_cache[json_schema] = compiled
             xgr_processor = xgr.contrib.hf.LogitsProcessor(compiled)
             if "logits_processor" in gen_kwargs:
-                gen_kwargs["logits_processor"].append(xgr_processor)  # type: ignore[union-attr]
+                gen_kwargs["logits_processor"].append(xgr_processor)  # type: ignore[attr-defined]
             else:
                 gen_kwargs["logits_processor"] = [xgr_processor]
 

@@ -21,9 +21,7 @@ def test_render_trajectory_default_language() -> None:
 
 def test_render_trajectory_unknown_language_falls_back() -> None:
     """Unknown language falls back to base template."""
-    result = render_trajectory(
-        "code", language="rust", **_code_kwargs()
-    )
+    result = render_trajectory("code", language="rust", **_code_kwargs())
     assert "ROLE: coder" in result
 
 
@@ -34,9 +32,13 @@ def test_render_trajectory_picks_language_template() -> None:
     lang_template.write_text("ROLE: coder-testlang\nLANG: testlang\n")
     try:
         result = render_trajectory(
-            "code", language="testlang",
-            project="test", subtask={"name": "t", "description": "t"},
-            subtask_index=1, total_subtasks=1, plan="p",
+            "code",
+            language="testlang",
+            project="test",
+            subtask={"name": "t", "description": "t"},
+            subtask_index=1,
+            total_subtasks=1,
+            plan="p",
         )
         assert "coder-testlang" in result
     finally:

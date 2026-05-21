@@ -278,7 +278,9 @@ def _parse_diagnose_output(
         result = DiagnoseResult.model_validate_json(model_output.strip())
         items = [{"name": r.name, "diagnosis": r.diagnosis} for r in result.repairs]
     except (ValidationError, ValueError):
-        logger.warning("Failed to parse diagnose output as JSON, returning empty repairs")
+        logger.warning(
+            "Failed to parse diagnose output as JSON, returning empty repairs"
+        )
         return []
 
     known_lower = {k.lower().strip(): k for k in known_subtasks}
@@ -973,11 +975,13 @@ async def run_phased_pipeline(
                 seen.add(key)
                 subtasks.append(st)
 
-        subtasks = subtasks[:_pipeline_cfg.max_subtasks]
+        subtasks = subtasks[: _pipeline_cfg.max_subtasks]
         # Strip depends_on refs to dropped subtasks
         retained_names = {s["name"] for s in subtasks}
         for s in subtasks:
-            s["depends_on"] = [d for d in s.get("depends_on", []) if d in retained_names]
+            s["depends_on"] = [
+                d for d in s.get("depends_on", []) if d in retained_names
+            ]
 
         # Validate dependency graph is acyclic; retry decompose if not
         from graphlib import CycleError
@@ -1003,9 +1007,7 @@ async def run_phased_pipeline(
                     ) from exc
 
                 # Re-run decompose with cycle correction context
-                correction_traj = render_trajectory(
-                    "decompose", project=project_prompt
-                )
+                correction_traj = render_trajectory("decompose", project=project_prompt)
                 prior_output = best_decompose_state.get("generated_code", "")
                 correction_traj += (
                     f"\n\n[ERROR: Your prior decomposition had circular "
@@ -1036,9 +1038,7 @@ async def run_phased_pipeline(
                     loaded_adapter_id = cycle_adapter_id
 
                 iteration_counter += 1
-                retry_phase = (
-                    "decompose_concise" if cycle_adapter_id else "decompose"
-                )
+                retry_phase = "decompose_concise" if cycle_adapter_id else "decompose"
                 retry_state = await run_iteration(
                     graph=graph,
                     project_prompt=project_prompt,
@@ -1060,11 +1060,13 @@ async def run_phased_pipeline(
                     if key not in seen:
                         seen.add(key)
                         subtasks.append(st)
-                subtasks = subtasks[:_pipeline_cfg.max_subtasks]
+                subtasks = subtasks[: _pipeline_cfg.max_subtasks]
                 # Strip depends_on refs to dropped subtasks
                 retained_names = {s["name"] for s in subtasks}
                 for s in subtasks:
-                    s["depends_on"] = [d for d in s.get("depends_on", []) if d in retained_names]
+                    s["depends_on"] = [
+                        d for d in s.get("depends_on", []) if d in retained_names
+                    ]
                 best_decompose_state = retry_state
                 logger.info(
                     "Cycle-fix attempt %d produced %d subtasks: %s",

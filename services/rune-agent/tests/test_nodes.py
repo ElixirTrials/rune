@@ -290,9 +290,7 @@ async def test_execute_node_no_auto_inject() -> None:
     """execute_node: non-TestCase class exits 0."""
     state: dict[str, Any] = {
         "generated_code": (
-            "class TestMath:\n"
-            "    def test_add(self):\n"
-            "        assert 2 + 2 == 4\n"
+            "class TestMath:\n    def test_add(self):\n        assert 2 + 2 == 4\n"
         ),
         "test_suite": "",
     }

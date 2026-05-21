@@ -31,7 +31,7 @@ PROMPT = (
     "Decompose this coding task into subtasks.\n"
     "Task: Write a Python function that takes a list of integers and returns "
     "the second largest unique value.\n\n"
-    'Output ONLY valid JSON matching this schema:\n'
+    "Output ONLY valid JSON matching this schema:\n"
     '{"subtasks": [{"name": "...", "description": "...", "depends_on": ["..."]}]}'
 )
 

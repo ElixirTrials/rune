@@ -10,10 +10,18 @@ PYTHON_SPECIFIC_STRINGS = [
     ".py",
 ]
 
-@pytest.mark.parametrize("phase", [
-    "code", "code_continue", "code_repair",
-    "code_retry", "integrate", "integrate_retry",
-])
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "code",
+        "code_continue",
+        "code_repair",
+        "code_retry",
+        "integrate",
+        "integrate_retry",
+    ],
+)
 def test_prompt_templates_language_agnostic(phase: str) -> None:
     """Prompt templates must not contain language-specific directives."""
     kwargs: dict[str, object] = {
@@ -35,8 +43,6 @@ def test_prompt_templates_language_agnostic(phase: str) -> None:
 
 def test_decompose_trajectory_allows_single_subtask() -> None:
     """Decompose trajectory template should mention 1-6, not 3-6."""
-    rendered = render_trajectory(
-        "decompose", project="Build a fibonacci function"
-    )
+    rendered = render_trajectory("decompose", project="Build a fibonacci function")
     assert "1-6" in rendered or "1 to 6" in rendered
     assert "3-6" not in rendered

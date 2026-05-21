@@ -89,7 +89,8 @@ class TestThinkingBudgetWiring:
             "attention_mask": torch.ones(1, 2),
         }
         tok.convert_tokens_to_ids.side_effect = lambda t: {
-            "<think>": 50, "</think>": 51
+            "<think>": 50,
+            "</think>": 51,
         }.get(t, 99)
         tok.decode.return_value = "output"
         tok.apply_chat_template.return_value = "formatted"
@@ -130,7 +131,8 @@ class TestThinkingBudgetWiring:
             "attention_mask": torch.ones(1, 2),
         }
         tok.convert_tokens_to_ids.side_effect = lambda t: {
-            "<think>": 50, "</think>": 51
+            "<think>": 50,
+            "</think>": 51,
         }.get(t, 99)
         tok.decode.return_value = "output"
         tok.apply_chat_template.return_value = "formatted"

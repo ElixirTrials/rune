@@ -155,9 +155,11 @@ def test_diagnose_item_rejects_empty_diagnosis() -> None:
 
 
 def test_diagnose_result_valid() -> None:
-    result = DiagnoseResult(repairs=[
-        DiagnoseItem(name="parse_input", diagnosis="Fix the bug"),
-    ])
+    result = DiagnoseResult(
+        repairs=[
+            DiagnoseItem(name="parse_input", diagnosis="Fix the bug"),
+        ]
+    )
     assert len(result.repairs) == 1
 
 
@@ -179,10 +181,12 @@ def test_diagnose_result_max_eight_repairs() -> None:
 
 
 def test_diagnose_result_round_trip() -> None:
-    original = DiagnoseResult(repairs=[
-        DiagnoseItem(name="parse_input", diagnosis="Fix the bug"),
-        DiagnoseItem(name="write_output", diagnosis="Handle edge case"),
-    ])
+    original = DiagnoseResult(
+        repairs=[
+            DiagnoseItem(name="parse_input", diagnosis="Fix the bug"),
+            DiagnoseItem(name="write_output", diagnosis="Handle edge case"),
+        ]
+    )
     data = original.model_dump()
     restored = DiagnoseResult(**data)
     assert len(restored.repairs) == 2

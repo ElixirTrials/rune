@@ -567,18 +567,12 @@ def make_objective(
         max_phase_iterations = trial.suggest_int("max_phase_iterations", 1, 3)
 
         # Per-phase token budgets
-        max_tokens_plan = trial.suggest_categorical(
-            "max_tokens_plan", [512, 1024]
-        )
-        max_tokens_code = trial.suggest_categorical(
-            "max_tokens_code", [1024, 2048]
-        )
+        max_tokens_plan = trial.suggest_categorical("max_tokens_plan", [512, 1024])
+        max_tokens_code = trial.suggest_categorical("max_tokens_code", [1024, 2048])
         max_tokens_integrate = trial.suggest_categorical(
             "max_tokens_integrate", [1024, 2048]
         )
-        thinking_budget = trial.suggest_categorical(
-            "thinking_budget", [256, 512]
-        )
+        thinking_budget = trial.suggest_categorical("thinking_budget", [256, 512])
 
         n = min(problems_per_trial, len(tuning_problems))
         trial_problems = random.Random(seed + trial.number + 1).sample(
