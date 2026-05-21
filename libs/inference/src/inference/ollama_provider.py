@@ -8,6 +8,7 @@ import logging
 import os
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from inference.exceptions import UnsupportedOperationError
 from inference.provider import GenerationResult, InferenceProvider
@@ -62,6 +63,7 @@ class OllamaProvider(InferenceProvider):
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
         thinking_budget: int = 0,
+        json_schema: type[BaseModel] | None = None,
     ) -> GenerationResult:
         """Generate text from a prompt using the base Ollama model.
 

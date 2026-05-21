@@ -14,6 +14,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
 from inference.provider import GenerationResult, InferenceProvider
 
 logger = logging.getLogger(__name__)
@@ -109,6 +111,7 @@ class LlamaCppProvider(InferenceProvider):
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
         thinking_budget: int = 0,
+        json_schema: type[BaseModel] | None = None,
     ) -> GenerationResult:
         """Generate text using llama-cpp-python with optional LoRA adapter.
 
