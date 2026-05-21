@@ -6,15 +6,12 @@ of the code artifact across turns.
 
 from __future__ import annotations
 
+import builtins as _builtins_mod
 import keyword
 import re
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_]\w*)\b")
-_BUILTIN_NAMES = (
-    set(dir(__builtins__))
-    if isinstance(__builtins__, dict)
-    else set(dir(__builtins__))
-)
+_BUILTIN_NAMES = set(dir(_builtins_mod))
 _SKIP = _BUILTIN_NAMES | set(keyword.kwlist) | {
     "self", "cls", "None", "True", "False", "return", "pass", "import", "from",
     "class", "def", "if", "else", "elif", "for", "while", "try", "except",

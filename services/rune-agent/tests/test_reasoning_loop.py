@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from rune_agent.reasoning_loop import (
     ReasoningLoopState,
     create_reasoning_loop_graph,
@@ -40,7 +38,8 @@ def _make_state(**overrides: Any) -> ReasoningLoopState:
         "sliding_window_size": 1024,
         "base_sliding_window_size": 1024,
         "current_adapter_path": None,
-        "previous_adapter_weights": None,
+        "current_adapter_weights": None,
+        "prior_adapter_weights": None,
         "first_adapter_norm": None,
         "scaling_factor": 0.16,
         "enable_chunk_composition": False,
@@ -68,7 +67,7 @@ def test_reasoning_loop_state_structure():
         "artifact", "trajectory_state",
         "turn_count", "max_turns", "sliding_window", "sliding_window_size",
         "base_sliding_window_size", "current_adapter_path",
-        "previous_adapter_weights", "first_adapter_norm",
+        "current_adapter_weights", "prior_adapter_weights", "first_adapter_norm",
         "scaling_factor", "enable_chunk_composition", "chunk_threshold",
         "phase_executes", "turn_history",
         "adapter_placement",
@@ -133,11 +132,10 @@ def test_route_after_reason_text_phase():
     assert route_after_reason(state) == "build_artifact"
 
 
-@pytest.mark.anyio
 async def test_recover_node_doubles_window():
     state = _make_state(sliding_window_size=1024)
     result = await recover_node(state)
-    assert result["sliding_window_size"] == 1600
+    assert result["sliding_window_size"] == 2048
     assert result["recovery_attempted"] is True
 
 

@@ -642,7 +642,8 @@ async def run_reasoning_loop(
         "sliding_window_size": sliding_window_tokens,
         "base_sliding_window_size": sliding_window_tokens,
         "current_adapter_path": None,
-        "previous_adapter_weights": None,
+        "current_adapter_weights": None,
+        "prior_adapter_weights": None,
         "first_adapter_norm": None,
         "scaling_factor": scaling_factor,
         "enable_chunk_composition": enable_chunk_composition,
@@ -1323,6 +1324,7 @@ async def run_phased_pipeline(
             existing_code = ""
             last_state: dict[str, Any] | None = None
             loaded_code_adapter: str | None = None
+            is_truncated = False
 
             for attempt in range(iters_code):
                 if attempt == 0:
@@ -1582,6 +1584,7 @@ async def run_phased_pipeline(
                 context_budget_words = int(
                     _pipeline_cfg.reasoning_loop.context_budget_ratio
                     * _pipeline_cfg.generation.max_tokens
+                    * 0.75  # token-to-word ratio for code
                 )
                 if (
                     accumulated_words > context_budget_words
@@ -1632,10 +1635,12 @@ async def run_phased_pipeline(
                         )
 
                 # Update fitness with partial credit from test results
-                code_passed = code_state.get("tests_passed", False)
+                # Use last_state (which may be rl_result after escalation)
+                fitness_src = last_state or code_state
+                code_passed = fitness_src.get("tests_passed", False)
                 code_p, code_t = _count_test_results(
-                    code_state.get("stdout", ""),
-                    code_state.get("stderr", ""),
+                    fitness_src.get("stdout", ""),
+                    fitness_src.get("stderr", ""),
                 )
                 if code_passed:
                     code_fitness = 1.0

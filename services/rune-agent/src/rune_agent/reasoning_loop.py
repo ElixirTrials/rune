@@ -21,6 +21,29 @@ logger = logging.getLogger(__name__)
 _EXECUTING_PHASES = frozenset({"code", "code_repair", "integrate"})
 
 
+def _extract_code_skeleton(code: str) -> str:
+    """Compress code into a structural skeleton (signatures, imports, decorators)."""
+    if not code:
+        return ""
+    skeleton_lines: list[str] = []
+    for line in code.splitlines():
+        stripped = line.strip()
+        if (
+            stripped.startswith(("import ", "from "))
+            or stripped.startswith(("class ", "def "))
+            or stripped.startswith('"""')
+            or stripped.startswith("@")
+            or stripped.startswith(("raise ", "return "))
+            or (
+                "self." in stripped
+                and "=" in stripped
+                and stripped.startswith("self.")
+            )
+        ):
+            skeleton_lines.append(line)
+    return "\n".join(skeleton_lines[:80])
+
+
 class ReasoningLoopState(TypedDict):
     """State for the adapter-compressed reasoning loop."""
 
@@ -48,7 +71,8 @@ class ReasoningLoopState(TypedDict):
     sliding_window_size: int
     base_sliding_window_size: int
     current_adapter_path: str | None
-    previous_adapter_weights: dict[str, list[float]] | None
+    current_adapter_weights: dict[str, list[float]] | None
+    prior_adapter_weights: dict[str, list[float]] | None
     first_adapter_norm: float | None
     scaling_factor: float
     enable_chunk_composition: bool
@@ -67,21 +91,12 @@ class ReasoningLoopState(TypedDict):
 
 async def reason_node(state: ReasoningLoopState) -> dict[str, Any]:
     """Generate with sliding window prompt + current adapter."""
-    from shared.template_loader import render_prompt, render_trajectory
+    from shared.template_loader import render_prompt
 
     phase = state["phase"]
     turn = state["turn_count"]
 
-    trajectory_text = render_trajectory(
-        "reasoning_continue",
-        current_phase=phase,
-        task_description=state["task_description"],
-        sliding_window=state["sliding_window"],
-        turn=turn,
-        max_turns=state["max_turns"],
-    )
-
-    render_prompt(
+    user_prompt = render_prompt(
         "reasoning_continue",
         task_description=state["task_description"],
         current_phase=phase,
@@ -91,7 +106,7 @@ async def reason_node(state: ReasoningLoopState) -> dict[str, Any]:
     from .nodes import generate_node
 
     gen_state: dict[str, Any] = {
-        "task_description": trajectory_text,
+        "task_description": user_prompt,
         "task_type": "project",
         "test_suite": "",
         "adapter_ids": state["adapter_ids"],
@@ -168,6 +183,7 @@ async def reflect_reason_node(state: ReasoningLoopState) -> dict[str, Any]:
             "tests_passed": state["tests_passed"],
             "exit_code": state["exit_code"],
             "finish_reason": state["finish_reason"],
+            "generated_code": state["generated_code"],
             "generated_code_len": len(state["generated_code"]),
         }],
     }
@@ -221,6 +237,8 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
             for p in art.patches
         )
 
+        code_skeleton = _extract_code_skeleton(art.file_contents)
+
         text = render_trajectory(
             "artifact_compress",
             import_block=art.import_block,
@@ -228,7 +246,7 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
             patches=patches_text,
             test_results=art.test_results,
             stderr_summary=art.stderr_summary,
-            code_skeleton=art.interface_summary,
+            code_skeleton=code_skeleton,
         )
     elif state.get("trajectory_state"):
         ts = state["trajectory_state"]
@@ -242,10 +260,10 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
     else:
         return {}
 
-    from .adapter_strategy import resolve_adapter_strategy
+    from .adapter_strategy import ChunkComposition, resolve_adapter_strategy
 
     word_count = len(text.split())
-    resolve_adapter_strategy(
+    strategy = resolve_adapter_strategy(
         phase=phase,
         artifact_tokens=word_count * 4,
         chunk_threshold=state["chunk_threshold"],
@@ -253,19 +271,70 @@ async def compress_to_adapter_node(state: ReasoningLoopState) -> dict[str, Any]:
         enable_chunk_composition=state["enable_chunk_composition"],
     )
 
-    current_weights: dict[str, list[float]] | None = None
-    first_norm = state.get("first_adapter_norm")
-
-    elapsed_ms = (time.monotonic() - start) * 1000
+    import os  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
 
     adapter_id = f"reasoning-loop-turn-{state['turn_count']}"
+    output_dir = os.path.join(tempfile.gettempdir(), "rune_rl_adapters", adapter_id)
+
+    from model_training.adapter_generator import generate_adapter  # noqa: PLC0415
+
+    if isinstance(strategy, ChunkComposition):
+        from model_training.merging import (  # noqa: PLC0415
+            dare_merge,
+            load_adapter_state_dict,
+            ties_merge,
+        )
+        from safetensors.torch import save_file as _save_chunk  # noqa: PLC0415
+
+        from .artifact_state import ArtifactState, chunk_code_state  # noqa: PLC0415
+
+        assert state["artifact"] is not None
+        art = ArtifactState.from_dict(state["artifact"])
+        chunks = chunk_code_state(art, max_chunk_tokens=state["chunk_threshold"])
+        chunk_sds: list[dict[str, Any]] = []
+        for i, chunk in enumerate(chunks):
+            chunk_dir = os.path.join(output_dir, f"chunk_{i}")
+            generate_adapter(
+                text=chunk.content,
+                output_dir=chunk_dir,
+                scaling_factor=strategy.scaling,
+            )
+            chunk_sds.append(load_adapter_state_dict(chunk_dir))
+        if chunk_sds:
+            merge_fn = ties_merge if strategy.merge_method == "ties" else dare_merge
+            merged_sd = merge_fn(chunk_sds)
+            os.makedirs(output_dir, exist_ok=True)
+            sd_out = os.path.join(output_dir, "adapter_model.safetensors")
+            _save_chunk(merged_sd, sd_out)
+    else:
+        generate_adapter(
+            text=text,
+            output_dir=output_dir,
+            scaling_factor=strategy.scaling,
+        )
+
+    from safetensors.torch import load_file  # noqa: PLC0415
+
+    sd_path = os.path.join(output_dir, "adapter_model.safetensors")
+    raw = load_file(sd_path)
+    current_weights = {k: v.flatten().tolist() for k, v in raw.items()}
+
+    first_norm = state.get("first_adapter_norm")
+    if first_norm is None:
+        from .adapter_health import compute_adapter_norm
+
+        first_norm = compute_adapter_norm(current_weights)
+
+    elapsed_ms = (time.monotonic() - start) * 1000
 
     _log_mlflow_metrics(state, elapsed_ms)
 
     return {
-        "current_adapter_path": None,
+        "current_adapter_path": output_dir,
         "adapter_ids": [adapter_id],
-        "previous_adapter_weights": current_weights,
+        "prior_adapter_weights": state.get("current_adapter_weights"),
+        "current_adapter_weights": current_weights,
         "first_adapter_norm": first_norm,
     }
 
@@ -293,9 +362,13 @@ def _log_mlflow_metrics(state: ReasoningLoopState, compress_latency_ms: float) -
 
 async def check_health_node(state: ReasoningLoopState) -> dict[str, Any]:
     """Compute adapter health signals."""
-    from .adapter_health import compute_norm_ratio, compute_output_repetition
+    from .adapter_health import (
+        compute_cosine_similarity,
+        compute_norm_ratio,
+        compute_output_repetition,
+    )
 
-    current_weights = state.get("previous_adapter_weights")
+    current_weights = state.get("current_adapter_weights")
     if current_weights is None:
         return {
             "adapter_cosine_sim": 0.0,
@@ -305,7 +378,8 @@ async def check_health_node(state: ReasoningLoopState) -> dict[str, Any]:
             "turn_count": state["turn_count"] + 1,
         }
 
-    cosine_sim = 0.0
+    prior_weights = state.get("prior_adapter_weights")
+    cosine_sim = compute_cosine_similarity(current_weights, prior_weights)
     norm_ratio = compute_norm_ratio(current_weights, state.get("first_adapter_norm"))
 
     prev_output = state.get("sliding_window", "")
@@ -360,10 +434,8 @@ def should_continue(
 
 async def recover_node(state: ReasoningLoopState) -> dict[str, Any]:
     """Expand sliding window and reset scaling for recovery."""
-    new_window_size = min(
-        state["sliding_window_size"] * 2,
-        int(state.get("max_turns", 20) * 100 * 0.8),
-    )
+    max_window = state.get("base_sliding_window_size", 1024) * 4
+    new_window_size = min(state["sliding_window_size"] * 2, max_window)
     return {
         "sliding_window_size": new_window_size,
         "scaling_factor": state["scaling_factor"],
@@ -389,6 +461,19 @@ def select_best_output(turn_history: list[dict[str, Any]]) -> int | None:
     return best
 
 
+async def finalize_node(state: ReasoningLoopState) -> dict[str, Any]:
+    """Restore best-passing-turn output if last turn did not pass."""
+    if state.get("tests_passed"):
+        return {}
+    best_turn = select_best_output(state["turn_history"])
+    if best_turn is None:
+        return {}
+    for entry in state["turn_history"]:
+        if entry["turn"] == best_turn and entry.get("generated_code"):
+            return {"generated_code": entry["generated_code"]}
+    return {}
+
+
 def create_reasoning_loop_graph() -> Any:
     """Create and compile the reasoning loop subgraph."""
     workflow = StateGraph(ReasoningLoopState)
@@ -400,6 +485,7 @@ def create_reasoning_loop_graph() -> Any:
     workflow.add_node("compress_to_adapter", compress_to_adapter_node)
     workflow.add_node("check_health", check_health_node)
     workflow.add_node("recover", recover_node)
+    workflow.add_node("finalize", finalize_node)
 
     workflow.add_edge(START, "reason")
     workflow.add_conditional_edges("reason", route_after_reason)
@@ -407,7 +493,11 @@ def create_reasoning_loop_graph() -> Any:
     workflow.add_edge("reflect", "build_artifact")
     workflow.add_edge("build_artifact", "compress_to_adapter")
     workflow.add_edge("compress_to_adapter", "check_health")
-    workflow.add_conditional_edges("check_health", should_continue)
+    workflow.add_conditional_edges(
+        "check_health",
+        should_continue,
+        {"reason": "reason", "recover": "recover", "__end__": "finalize"},
+    )
     workflow.add_edge("recover", "reason")
 
     return workflow.compile()
