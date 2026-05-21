@@ -23,11 +23,11 @@ _SYS_CODE = (
 _PHASE_SYSTEM_PROMPTS: dict[str, str] = {
     "decompose": (
         "You are a project decomposer. Break projects into subtasks. "
-        "Output ONLY a numbered list, never code."
+        "Output ONLY valid JSON, no prose, no code."
     ),
     "decompose_concise": (
         "You are a project decomposer. Break projects into subtasks. "
-        "Output ONLY a numbered list, never code."
+        "Output ONLY valid JSON, no prose, no code."
     ),
     "plan": (
         "You are a software architect. Output ONLY architecture plans "
@@ -35,7 +35,7 @@ _PHASE_SYSTEM_PROMPTS: dict[str, str] = {
     ),
     "diagnose": (
         "You are a code diagnostician. Identify which subtasks have bugs. "
-        "Output ONLY a numbered list, never code."
+        "Output ONLY valid JSON, no prose, no code."
     ),
     "code": _SYS_CODE,
     "code_retry": _SYS_CODE,
