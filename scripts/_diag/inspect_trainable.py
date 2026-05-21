@@ -65,7 +65,10 @@ for n, p in model.named_parameters():
 
 # Check the active adapter's effective alpha + scaling
 if hasattr(model, "peft_config"):
-    for name, cfg in model.peft_config.items():
+    peft_config = getattr(model, "peft_config", {})
+    if not hasattr(peft_config, "items"):
+        peft_config = {}
+    for name, cfg in peft_config.items():
         a = cfg.lora_alpha  # type: ignore[attr-defined]
         r = cfg.r  # type: ignore[attr-defined]
         print(f"\n=== adapter '{name}' ===")

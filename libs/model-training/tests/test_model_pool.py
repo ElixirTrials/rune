@@ -61,9 +61,7 @@ def test_base_model_lazy_loading(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_amc.from_pretrained.return_value = fake_model
         mock_at.from_pretrained.return_value = fake_tokenizer
 
-        monkeypatch.setattr(pool, "_estimate_param_count", lambda: 1_000_000)
-        monkeypatch.setattr(pool, "_should_quantize", lambda pc: False)
-        monkeypatch.setattr(pool, "_pick_dtype", lambda pc: fake_dtype)
+        monkeypatch.setattr(pool, "_resolve_dtype", lambda: fake_dtype)
 
         model1, tok1 = pool.base_model()
         model2, tok2 = pool.base_model()
@@ -84,9 +82,7 @@ def test_base_model_sets_pad_token_when_none(monkeypatch: pytest.MonkeyPatch) ->
     fake_tokenizer.eos_token = "<eos>"
 
     pool = ModelPool.create(model_name="test-model", device="cpu")
-    monkeypatch.setattr(pool, "_estimate_param_count", lambda: 1_000_000)
-    monkeypatch.setattr(pool, "_should_quantize", lambda pc: False)
-    monkeypatch.setattr(pool, "_pick_dtype", lambda pc: MagicMock())
+    monkeypatch.setattr(pool, "_resolve_dtype", lambda: MagicMock())
 
     with (
         patch("transformers.AutoModelForCausalLM") as mock_amc,
@@ -174,9 +170,7 @@ def test_release_clears_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_tokenizer.pad_token = "pad"
 
     pool = ModelPool.create(model_name="test-model", device="cpu")
-    monkeypatch.setattr(pool, "_estimate_param_count", lambda: 1_000_000)
-    monkeypatch.setattr(pool, "_should_quantize", lambda pc: False)
-    monkeypatch.setattr(pool, "_pick_dtype", lambda pc: MagicMock())
+    monkeypatch.setattr(pool, "_resolve_dtype", lambda: MagicMock())
 
     with (
         patch("transformers.AutoModelForCausalLM") as mock_amc,

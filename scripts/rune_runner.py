@@ -264,18 +264,42 @@ def _parse_subtask_list(
 ) -> list[dict[str, Any]]:
     """Parse Phase 1 output into [{name, description, depends_on}, ...].
 
-    Expects numbered list format: ``1. name — description [depends: none]``
-    Also accepts lines without dependency declarations (backward compatible).
+    Accepts JSON matching ``DecomposeResult`` or numbered list format:
+    ``1. name — description [depends: none]``.
 
     Args:
         model_output: Raw text from the decompose phase.
-        validate: When True, enforce 2-8 subtask range via DecomposeResult.
+        validate: When True, enforce 1-8 subtask range via DecomposeResult.
             Set to False when reusing the parser for non-decompose output
             (e.g. diagnose phase).
     """
-    # TODO: Replace regex parsing with structured JSON output from the model,
-    # validated directly against DecomposeResult. Requires adding JSON mode
-    # to TransformersProvider.generate() and updating decompose templates.
+    stripped = model_output.strip()
+    if stripped.startswith("{"):
+        try:
+            payload = json.loads(stripped)
+            raw_subtasks = payload.get("subtasks")
+            if isinstance(raw_subtasks, list):
+                if validate:
+                    try:
+                        result = DecomposeResult(
+                            subtasks=[Subtask(**s) for s in raw_subtasks]
+                        )
+                        return [s.model_dump() for s in result.subtasks]
+                    except ValidationError:
+                        pass
+                else:
+                    return [
+                        {
+                            "name": str(s.get("name", "")),
+                            "description": str(s.get("description", "")),
+                            "depends_on": list(s.get("depends_on", [])),
+                        }
+                        for s in raw_subtasks
+                        if isinstance(s, dict)
+                    ]
+        except json.JSONDecodeError:
+            pass
+
     from shared.blackboard import parse_dependencies
 
     raw_lines: list[tuple[str, str, str]] = []  # (name, desc, original_line)
@@ -340,35 +364,173 @@ def _parse_plan(model_output: str) -> str:
     return model_output.strip()
 
 
-def _parse_diagnose_output(
-    model_output: str,
+def _match_diagnoses_to_known(
+    raw: list[dict[str, Any]],
     known_subtasks: list[str],
 ) -> list[dict[str, str]]:
-    """Parse diagnose phase output into [{name, diagnosis}, ...].
-
-    Matches diagnosed subtask names against known subtask names using
-    substring matching (the model may abbreviate or rephrase names).
-    """
-    raw = _parse_subtask_list(model_output, validate=False)
+    """Map parsed diagnose rows onto known subtask names."""
     known_lower = {k.lower().strip(): k for k in known_subtasks}
-
     matched: list[dict[str, str]] = []
     for item in raw:
         name = item["name"].lower().strip().rstrip(":")
         diagnosis = item["description"] or item["name"]
 
-        # Exact match
         if name in known_lower:
             matched.append({"name": known_lower[name], "diagnosis": diagnosis})
             continue
 
-        # Substring match: find the known subtask that best matches
         for known_key, known_name in known_lower.items():
             if name in known_key or known_key in name:
                 matched.append({"name": known_name, "diagnosis": diagnosis})
                 break
 
     return matched
+
+
+def _parse_diagnose_output(
+    model_output: str,
+    known_subtasks: list[str],
+) -> list[dict[str, str]]:
+    """Parse diagnose phase output into [{name, diagnosis}, ...].
+
+    Accepts JSON matching ``DiagnoseResult`` or numbered-list fallback.
+    Matches diagnosed subtask names against known subtask names using
+    substring matching (the model may abbreviate or rephrase names).
+    """
+    from shared.rune_models import DiagnoseItem, DiagnoseResult
+
+    raw: list[dict[str, Any]] = []
+    stripped = model_output.strip()
+    if stripped.startswith("{"):
+        try:
+            payload = json.loads(stripped)
+            raw_repairs = payload.get("repairs")
+            if isinstance(raw_repairs, list):
+                try:
+                    parsed = DiagnoseResult(
+                        repairs=[DiagnoseItem(**r) for r in raw_repairs]
+                    )
+                    raw = [
+                        {"name": item.name, "description": item.diagnosis}
+                        for item in parsed.repairs
+                    ]
+                except ValidationError:
+                    raw = []
+        except json.JSONDecodeError:
+            pass
+
+    if not raw:
+        raw = _parse_subtask_list(model_output, validate=False)
+
+    return _match_diagnoses_to_known(raw, known_subtasks)
+
+
+# ---------------------------------------------------------------------------
+# Continuation loop (truncated code generation)
+# ---------------------------------------------------------------------------
+
+_MAX_CONTINUATIONS = 3
+
+
+async def _run_continuation_loop(
+    initial_state: dict[str, Any],
+    existing_code: str,
+    *,
+    graph: Any = None,
+    project_prompt: str = "",
+    session_id: str = "",
+    iteration_base: int = 0,
+    subtask: dict[str, Any] | None = None,
+    project_label: str = "",
+    run_hypernetwork_fn: Any = None,
+    adapter_dir: Path | None = None,
+    base_model_id: str = "",
+    checkpoint_path: str | None = None,
+    device: str = "cpu",
+    adapter_scaling: float = 0.16,
+    adapter_max_length: int = 2048,
+    pool: Any = None,
+    render_trajectory_fn: Any = None,
+    load_adapter_fn: Any = None,
+    eager_unload_fn: Any = None,
+) -> tuple[dict[str, Any], str]:
+    """Run continuation turns for truncated code generation.
+
+    Concatenates ``generated_code`` fragments while ``finish_reason == "length"``.
+    Does not count as a code-phase retry attempt.
+
+    Returns:
+        Tuple of (final_state, accumulated_code).
+    """
+    accumulated = existing_code or initial_state.get("generated_code", "")
+
+    if initial_state.get("finish_reason") != "length":
+        return initial_state, accumulated
+
+    state = dict(initial_state)
+
+    cont_count = 0
+    subtask_name = (subtask or {}).get("name", "unknown")
+
+    while state.get("finish_reason") == "length" and cont_count < _MAX_CONTINUATIONS:
+        cont_count += 1
+        logger.info(
+            "  Subtask '%s' truncated (cont %d/%d), accumulating...",
+            subtask_name,
+            cont_count,
+            _MAX_CONTINUATIONS,
+        )
+
+        traj = ""
+        if render_trajectory_fn is not None:
+            traj = render_trajectory_fn(
+                phase="code_continue",
+                subtask=subtask,
+                attempt=cont_count,
+                max_retries=_MAX_CONTINUATIONS,
+                existing_code=accumulated[:1200],
+                project=project_prompt,
+            )
+
+        cont_aid: str | None = None
+        if run_hypernetwork_fn is not None and adapter_dir is not None:
+            cont_adapter_dir = adapter_dir / (
+                f"phase3_cont_{_safe_adapter_id(subtask_name)}_c{cont_count}"
+            )
+            cont_adapter_path = run_hypernetwork_fn(
+                trajectory_text=traj,
+                output_dir=str(cont_adapter_dir),
+                base_model_id=base_model_id,
+                checkpoint_path=checkpoint_path,
+                device=device,
+                scaling_factor=adapter_scaling,
+                max_length=adapter_max_length,
+                pool=pool,
+            )
+            if cont_adapter_path and load_adapter_fn is not None:
+                cont_aid = f"phase3-cont-{_safe_adapter_id(subtask_name)}-c{cont_count}"
+                await load_adapter_fn(cont_aid, cont_adapter_path)
+
+        if graph is not None:
+            state = await graph.ainvoke(state)
+
+        if eager_unload_fn is not None and cont_aid is not None:
+            await eager_unload_fn(cont_aid)
+
+        new_fragment = state.get("generated_code", "")
+        if new_fragment:
+            accumulated = (
+                f"{accumulated}\n{new_fragment}" if accumulated else new_fragment
+            )
+            logger.info(
+                "  Subtask '%s' continuation %d: +%d chars (total %d)",
+                subtask_name,
+                cont_count,
+                len(new_fragment),
+                len(accumulated),
+            )
+
+    return state, accumulated
 
 
 # ---------------------------------------------------------------------------

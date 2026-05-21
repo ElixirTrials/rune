@@ -89,8 +89,11 @@ def test_checkpoint_layout_without_training(tmp_path: Path) -> None:
 
 
 @pytest.mark.slow
-def test_encoder_roundtrip_shape(tmp_path: Path) -> None:
+def test_encoder_roundtrip_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Train 1 epoch, save, load via SentenceTransformer, assert shape (2, 768)."""
+    monkeypatch.setenv("RUNE_DISABLE_MLFLOW", "1")
     # Skip when optional heavy deps are not installed (CI without GPU extras)
     pytest.importorskip("torch")
     pytest.importorskip("sentence_transformers")
@@ -140,8 +143,11 @@ def test_encoder_roundtrip_shape(tmp_path: Path) -> None:
 
 
 @pytest.mark.slow
-def test_encoder_loadable_via_load_default_encoder(tmp_path: Path) -> None:
+def test_encoder_loadable_via_load_default_encoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The saved checkpoint is loadable by task_embeddings.load_default_encoder()."""
+    monkeypatch.setenv("RUNE_DISABLE_MLFLOW", "1")
     pytest.importorskip("torch")
     pytest.importorskip("sentence_transformers")
 

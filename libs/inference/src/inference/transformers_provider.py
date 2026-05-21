@@ -13,13 +13,19 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from inference.provider import GenerationResult, InferenceProvider
 
 logger = logging.getLogger(__name__)
+
+
+def _config_int(cfg: object, attr: str, default: int) -> int:
+    """Read a positive integer from a HuggingFace config object."""
+    raw = getattr(cfg, attr, None)
+    return default if raw is None else int(raw)
 
 
 class _ThinkingBudgetProcessor:
@@ -114,7 +120,9 @@ class TransformersProvider(InferenceProvider):
                 from peft import PeftModel as _PeftModel  # noqa: PLC0415
 
                 if isinstance(model, _PeftModel):
-                    model = model.base_model.unload()
+                    # PeftModel stubs type base_model as
+                    # Tensor | Module; unload() is safe.
+                    model = cast(Any, model).unload()
                     self._pool._model = model
                 elif hasattr(model, "peft_config"):
                     del model.peft_config
@@ -142,20 +150,24 @@ class TransformersProvider(InferenceProvider):
             from transformers import AutoConfig  # noqa: PLC0415
 
             config = AutoConfig.from_pretrained(self._model_name)
-            param_count = getattr(config, "num_parameters", None)
-            if param_count is None:
+            raw_param_count = getattr(config, "num_parameters", None)
+            if raw_param_count is None:
                 # Multimodal configs (e.g. Qwen3.5) nest dims under text_config
                 text_cfg = getattr(config, "text_config", config)
-                h = getattr(text_cfg, "hidden_size", None) or getattr(
-                    config, "hidden_size", 2048
+                h = _config_int(
+                    text_cfg, "hidden_size", _config_int(config, "hidden_size", 2048)
                 )
-                v = getattr(text_cfg, "vocab_size", None) or getattr(
-                    config, "vocab_size", 32000
+                v = _config_int(
+                    text_cfg, "vocab_size", _config_int(config, "vocab_size", 32000)
                 )
-                n = getattr(text_cfg, "num_hidden_layers", None) or getattr(
-                    config, "num_hidden_layers", 24
+                n = _config_int(
+                    text_cfg,
+                    "num_hidden_layers",
+                    _config_int(config, "num_hidden_layers", 24),
                 )
                 param_count = v * h + n * 12 * h * h
+            else:
+                param_count = int(raw_param_count)
             resolved_dtype = resolve_model_dtype(  # type: ignore[assignment]
                 param_count=param_count, device=self._device
             )

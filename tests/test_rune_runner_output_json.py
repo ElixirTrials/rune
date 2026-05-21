@@ -69,7 +69,7 @@ def _fake_pipeline_result() -> dict[str, object]:
 @pytest.fixture()
 def stub_pipeline(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     """Stub run_phased_pipeline to avoid loading a real model."""
-    import rune_runner  # type: ignore[import-not-found]
+    import scripts.rune_runner as rune_runner
 
     result = _fake_pipeline_result()
 
@@ -86,7 +86,7 @@ def test_output_json_writes_file_with_phase_keys(
     stub_pipeline: dict[str, object],
 ) -> None:
     """--output-json PATH writes the pipeline result dict to PATH as JSON."""
-    import rune_runner  # type: ignore[import-not-found]
+    import scripts.rune_runner as rune_runner
 
     out_path = tmp_path / "pipeline_output.json"
     monkeypatch.setattr(
@@ -123,7 +123,7 @@ def test_no_output_json_writes_no_file(
     stub_pipeline: dict[str, object],
 ) -> None:
     """Without --output-json, no JSON file is written and main() returns cleanly."""
-    import rune_runner  # type: ignore[import-not-found]
+    import scripts.rune_runner as rune_runner
 
     out_path = tmp_path / "should_not_exist.json"
     monkeypatch.setattr(

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -111,7 +112,7 @@ def main() -> None:
         inputs = tokenizer(formatted, return_tensors="pt").to(device)
         trial_processor = xgr.contrib.hf.LogitsProcessor(compiled_grammar)
 
-        gen_kwargs: dict[str, object] = {
+        gen_kwargs: dict[str, Any] = {
             "max_new_tokens": 512,
             "do_sample": True,
             "temperature": 0.7,
@@ -121,7 +122,7 @@ def main() -> None:
         }
 
         with torch.no_grad():
-            output_ids = model.generate(**inputs, **gen_kwargs)
+            output_ids = model.generate(**inputs, **gen_kwargs)  # type: ignore[misc,arg-type]
 
         new_tokens = output_ids[0, inputs["input_ids"].shape[1] :]
         raw_with_special = tokenizer.decode(new_tokens, skip_special_tokens=False)
@@ -130,7 +131,7 @@ def main() -> None:
         print(f"Raw (clean):        {raw_text[:300]}")
 
         try:
-            result = DecomposeResult.model_validate_json(raw_text)
+            result = DecomposeResult.model_validate_json(str(raw_text))
             print(f"Parsed OK: {len(result.subtasks)} subtasks")
             for st in result.subtasks:
                 print(f"  - {st.name}: {st.description[:80]}")
