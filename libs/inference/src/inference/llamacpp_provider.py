@@ -130,6 +130,8 @@ class LlamaCppProvider(InferenceProvider):
                 by llama.cpp provider.
             thinking_budget: Extra token allowance for thinking blocks.
                 Added to max_tokens for generation.
+            json_schema: Ignored. Only TransformersProvider supports
+                XGrammar constrained decoding.
 
         Returns:
             GenerationResult with generated text and metadata.

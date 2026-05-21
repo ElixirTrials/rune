@@ -86,6 +86,8 @@ class VLLMProvider(InferenceProvider):
                 by vLLM provider.
             thinking_budget: Extra token allowance for thinking blocks.
                 Added to max_tokens for the API call.
+            json_schema: Ignored. Only TransformersProvider supports
+                XGrammar constrained decoding.
 
         Returns:
             GenerationResult with the generated text and metadata.

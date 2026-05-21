@@ -6,7 +6,6 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import torch
-
 from inference.transformers_provider import _ThinkingBudgetProcessor
 
 
@@ -85,7 +84,10 @@ class TestThinkingBudgetWiring:
         tok.pad_token_id = 0
         tok.eos_token = "<eos>"
         tok.unk_token_id = 99
-        tok.return_value = {"input_ids": torch.tensor([[1, 2]]), "attention_mask": torch.ones(1, 2)}
+        tok.return_value = {
+            "input_ids": torch.tensor([[1, 2]]),
+            "attention_mask": torch.ones(1, 2),
+        }
         tok.convert_tokens_to_ids.side_effect = lambda t: {
             "<think>": 50, "</think>": 51
         }.get(t, 99)
@@ -123,7 +125,10 @@ class TestThinkingBudgetWiring:
         tok.pad_token_id = 0
         tok.eos_token = "<eos>"
         tok.unk_token_id = 99
-        tok.return_value = {"input_ids": torch.tensor([[1, 2]]), "attention_mask": torch.ones(1, 2)}
+        tok.return_value = {
+            "input_ids": torch.tensor([[1, 2]]),
+            "attention_mask": torch.ones(1, 2),
+        }
         tok.convert_tokens_to_ids.side_effect = lambda t: {
             "<think>": 50, "</think>": 51
         }.get(t, 99)
