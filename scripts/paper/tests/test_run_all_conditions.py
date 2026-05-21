@@ -279,7 +279,8 @@ class TestRuneConditionPhased:
             )
         assert results["mbpp"] == pytest.approx(0.5)
 
-    def test_pipeline_exception_propagates(self) -> None:
+    def test_pipeline_exception_becomes_failed_verdict(self) -> None:
+        """Pipeline crash on one problem is recorded as failed, run continues."""
         from evaluation.benchmarks.protocol import Problem
 
         from scripts.paper.run_all_conditions import run_condition_rune_phased
@@ -307,11 +308,12 @@ class TestRuneConditionPhased:
                 clear=False,
             ),
             patch("rune_runner.run_phased_pipeline", _boom),
-            pytest.raises(RuntimeError, match="pipeline exploded"),
         ):
-            run_condition_rune_phased(
+            results = run_condition_rune_phased(
                 benchmarks=["mbpp"],
                 model="m",
                 hypernet_checkpoint="ckpt",
                 device="cpu",
             )
+
+        assert results["mbpp"] == pytest.approx(0.0)

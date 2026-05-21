@@ -232,3 +232,37 @@ class DecomposeResult(BaseModel):
     """
 
     subtasks: list[Subtask] = Field(min_length=1, max_length=8)
+
+
+class DiagnoseItem(BaseModel):
+    """A single subtask repair instruction.
+
+    Attributes:
+        name: Subtask name to repair (validated post-parse against known subtasks).
+        diagnosis: Concise fix instruction for the subtask.
+
+    Example:
+        >>> item = DiagnoseItem(name="parse_input", diagnosis="Fix off-by-one in loop")
+        >>> item.name
+        'parse_input'
+    """
+
+    name: str = Field(min_length=1)
+    diagnosis: str = Field(min_length=1)
+
+
+class DiagnoseResult(BaseModel):
+    """Structured output from the diagnose phase.
+
+    Attributes:
+        repairs: Ordered list of repair items, between 1 and 8 inclusive.
+
+    Example:
+        >>> result = DiagnoseResult(repairs=[
+        ...     DiagnoseItem(name="parse_input", diagnosis="Fix off-by-one"),
+        ... ])
+        >>> len(result.repairs)
+        1
+    """
+
+    repairs: list[DiagnoseItem] = Field(min_length=1, max_length=8)

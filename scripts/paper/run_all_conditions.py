@@ -479,7 +479,13 @@ def run_condition_rune_phased(
                 logger.error(
                     "Pipeline crashed on %s problem %d", bench_id, pi, exc_info=True
                 )
-                verdict = PassVerdict(passed=False, reason="pipeline_crash")
+                verdict = PassVerdict(
+                    problem_id=problem.problem_id,
+                    passed=False,
+                    generation="",
+                    error="pipeline_crash",
+                    timed_out=False,
+                )
             verdicts.append(verdict)
             if verdict.passed:
                 n_passed += 1

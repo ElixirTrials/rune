@@ -4,6 +4,15 @@ What is the fix? Answer in one sentence.
 {% else %}
 You are diagnosing integration failures.
 Project: {{ project_label }}
-Which subtasks need repair? Output ONLY a numbered list:
-1. subtask name — what is wrong and how to fix it
+{% if subtask_names %}
+Known subtasks:
+{% for name in subtask_names %}
+- {{ name }}
+{% endfor %}
+Which of these subtasks need repair? Use the EXACT subtask names above.
+{% else %}
+Which subtasks need repair?
+{% endif %}
+Output ONLY valid JSON matching this schema:
+{"repairs": [{"name": "subtask name", "diagnosis": "what is wrong and how to fix it"}]}
 {% endif %}

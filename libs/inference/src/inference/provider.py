@@ -8,6 +8,8 @@ their respective backends.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from pydantic import BaseModel
+
 
 @dataclass
 class GenerationResult:
@@ -64,6 +66,8 @@ class InferenceProvider(ABC):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
+        thinking_budget: int = 0,
+        json_schema: type[BaseModel] | None = None,
     ) -> GenerationResult:
         """Generate text from a prompt.
 
@@ -81,6 +85,10 @@ class InferenceProvider(ABC):
             enable_thinking: Whether to allow model thinking/reasoning tokens.
                 When False, suppresses thinking via chat template so output
                 tokens go entirely to the response.
+            thinking_budget: Extra token allowance for ``<think>`` blocks.
+                When > 0, max_new_tokens is raised by this amount so thinking
+                tokens don't eat into the response budget.
+            json_schema: Optional Pydantic model class for constrained JSON output.
 
         Returns:
             A GenerationResult containing the generated text and metadata.

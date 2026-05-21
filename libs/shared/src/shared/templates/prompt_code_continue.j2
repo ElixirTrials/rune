@@ -1,5 +1,7 @@
-You are continuing the subtask: {{ subtask_name }}
-Project: {{ project_label }}
-Your previous output was truncated. Continue from where you left off.
+Subtask: {{ subtask_name }}
+Continue from where the previous output was truncated.
 Do NOT repeat code already written. Output only the remaining code.
-End with: if __name__ == '__main__': unittest.main()
+{% if existing_code_tail %}
+Last lines of code so far:
+{{ existing_code_tail }}
+{% endif %}

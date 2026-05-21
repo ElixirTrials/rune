@@ -163,7 +163,8 @@ class ModelPool:
             text_cfg = getattr(config, "text_config", config)
 
             def _cfg(name: str, default: int) -> int:
-                return getattr(text_cfg, name, None) or getattr(config, name, default)
+                val = getattr(text_cfg, name, None) or getattr(config, name, default)
+                return default if val is None else int(val)
 
             h = _cfg("hidden_size", 2048)
             v = _cfg("vocab_size", 32000)
@@ -248,12 +249,15 @@ def get_pool() -> ModelPool:
 def set_pool(pool: ModelPool) -> None:
     """Register a ModelPool as the process-wide singleton.
 
-    Releases the previous pool (if any) before replacing it.
+    Releases the previous pool (if any) before replacing it. If *pool* is
+    already the registered singleton, this is a no-op (idempotent).
 
     Args:
         pool: The ModelPool instance to register.
     """
     global _POOL  # noqa: PLW0603
+    if _POOL is pool:
+        return
     if _POOL is not None:
         _POOL.release()
     _POOL = pool

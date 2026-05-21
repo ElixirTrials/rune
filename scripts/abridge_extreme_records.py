@@ -223,7 +223,7 @@ def main() -> None:
         print(f"\nOutput would be written to: {output_path}")
         return
 
-    from anthropic import Anthropic  # noqa: PLC0415
+    from anthropic import Anthropic  # type: ignore[import-not-found]  # noqa: PLC0415
 
     client = Anthropic()
 

@@ -14,6 +14,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
 from inference.provider import GenerationResult, InferenceProvider
 
 logger = logging.getLogger(__name__)
@@ -108,6 +110,8 @@ class LlamaCppProvider(InferenceProvider):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
+        thinking_budget: int = 0,
+        json_schema: type[BaseModel] | None = None,
     ) -> GenerationResult:
         """Generate text using llama-cpp-python with optional LoRA adapter.
 
@@ -124,6 +128,10 @@ class LlamaCppProvider(InferenceProvider):
             repetition_penalty: Repetition penalty override.
             enable_thinking: Accepted for interface compatibility; ignored
                 by llama.cpp provider.
+            thinking_budget: Extra token allowance for thinking blocks.
+                Added to max_tokens for generation.
+            json_schema: Ignored. Only TransformersProvider supports
+                XGrammar constrained decoding.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -145,7 +153,7 @@ class LlamaCppProvider(InferenceProvider):
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
         response = self._llm(  # type: ignore[union-attr]
             full_prompt,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens + thinking_budget,
             stop=_STOP_SEQUENCES,
         )
 

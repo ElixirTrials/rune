@@ -10,14 +10,48 @@ per INFRA-05 pattern so that this module is importable in CPU-only CI.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-import re
-from typing import Any
+from typing import Any, cast
+
+from pydantic import BaseModel
 
 from inference.provider import GenerationResult, InferenceProvider
 
 logger = logging.getLogger(__name__)
+
+
+def _config_int(cfg: object, attr: str, default: int) -> int:
+    """Read a positive integer from a HuggingFace config object."""
+    raw = getattr(cfg, attr, None)
+    return default if raw is None else int(raw)
+
+
+class _ThinkingBudgetProcessor:
+    """Forces </think> emission once the thinking token budget is exhausted."""
+
+    def __init__(self, end_think_token_id: int, budget: int, prompt_len: int) -> None:
+        self._etid = end_think_token_id
+        self._budget = budget
+        self._prompt_len = prompt_len
+        self._done = False
+
+    def __call__(self, input_ids: Any, scores: Any) -> Any:
+        if self._done:
+            return scores
+
+        new_ids = input_ids[0, self._prompt_len :]
+
+        if (new_ids == self._etid).any():
+            self._done = True
+            return scores
+
+        if new_ids.shape[0] >= self._budget:
+            scores.fill_(float("-inf"))
+            scores[:, self._etid] = 0.0
+
+        return scores
 
 
 class TransformersProvider(InferenceProvider):
@@ -64,6 +98,11 @@ class TransformersProvider(InferenceProvider):
         self._loaded_adapters: dict[str, str] = {}  # id -> path
         self._active_adapter: str | None = None
         self._is_peft_wrapped: bool = False
+        self._think_token_id: int | None = None
+        self._end_think_token_id: int | None = None
+        self._think_ids_resolved: bool = False
+        self._xgr_compiler: Any = None
+        self._xgr_compiled_cache: dict[type[BaseModel], Any] = {}
 
     def _load_model_if_needed(self) -> None:
         """Load the base model and tokenizer if not already loaded.
@@ -81,7 +120,9 @@ class TransformersProvider(InferenceProvider):
                 from peft import PeftModel as _PeftModel  # noqa: PLC0415
 
                 if isinstance(model, _PeftModel):
-                    model = model.base_model.unload()
+                    # PeftModel stubs type base_model as
+                    # Tensor | Module; unload() is safe.
+                    model = cast(Any, model).unload()
                     self._pool._model = model
                 elif hasattr(model, "peft_config"):
                     del model.peft_config
@@ -109,20 +150,24 @@ class TransformersProvider(InferenceProvider):
             from transformers import AutoConfig  # noqa: PLC0415
 
             config = AutoConfig.from_pretrained(self._model_name)
-            param_count = getattr(config, "num_parameters", None)
-            if param_count is None:
+            raw_param_count = getattr(config, "num_parameters", None)
+            if raw_param_count is None:
                 # Multimodal configs (e.g. Qwen3.5) nest dims under text_config
                 text_cfg = getattr(config, "text_config", config)
-                h = getattr(text_cfg, "hidden_size", None) or getattr(
-                    config, "hidden_size", 2048
+                h = _config_int(
+                    text_cfg, "hidden_size", _config_int(config, "hidden_size", 2048)
                 )
-                v = getattr(text_cfg, "vocab_size", None) or getattr(
-                    config, "vocab_size", 32000
+                v = _config_int(
+                    text_cfg, "vocab_size", _config_int(config, "vocab_size", 32000)
                 )
-                n = getattr(text_cfg, "num_hidden_layers", None) or getattr(
-                    config, "num_hidden_layers", 24
+                n = _config_int(
+                    text_cfg,
+                    "num_hidden_layers",
+                    _config_int(config, "num_hidden_layers", 24),
                 )
                 param_count = v * h + n * 12 * h * h
+            else:
+                param_count = int(raw_param_count)
             resolved_dtype = resolve_model_dtype(  # type: ignore[assignment]
                 param_count=param_count, device=self._device
             )
@@ -137,7 +182,29 @@ class TransformersProvider(InferenceProvider):
         self._base_model = self._model
         logger.info("Model loaded: %s", self._model_name)
 
-    async def generate(
+    def _init_xgr_compiler(self) -> None:
+        """Create and cache the XGrammar compiler from the loaded tokenizer."""
+        import xgrammar as xgr  # noqa: PLC0415
+
+        config = self._model.config
+        vocab_size = getattr(
+            getattr(config, "text_config", config),
+            "vocab_size",
+            self._tokenizer.vocab_size,
+        )
+        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+            self._tokenizer, vocab_size=vocab_size
+        )
+        self._xgr_compiler = xgr.GrammarCompiler(tokenizer_info)
+        logger.info("XGrammar compiler initialized (vocab_size=%d)", vocab_size)
+
+    def _get_xgr_compiler(self) -> Any:
+        """Lazily initialize and return the XGrammar compiler."""
+        if self._xgr_compiler is None:
+            self._init_xgr_compiler()
+        return self._xgr_compiler
+
+    async def generate(  # noqa: C901
         self,
         prompt: str,
         model: str,
@@ -148,6 +215,8 @@ class TransformersProvider(InferenceProvider):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
+        thinking_budget: int = 0,
+        json_schema: type[BaseModel] | None = None,
     ) -> GenerationResult:
         """Generate text using transformers with optional PEFT adapter.
 
@@ -164,7 +233,10 @@ class TransformersProvider(InferenceProvider):
             repetition_penalty: Repetition penalty (default 1.0 = off).
             enable_thinking: Whether to allow model thinking/reasoning
                 tokens. When False, passes ``enable_thinking=False`` to the
-                chat template so output tokens go entirely to the response.
+                chat template and suppresses think token generation via
+                ``suppress_tokens`` so output goes entirely to the response.
+            thinking_budget: Extra token headroom for thinking when enabled.
+            json_schema: Optional Pydantic model class for constrained JSON output.
 
         Returns:
             GenerationResult with generated text and metadata.
@@ -207,8 +279,9 @@ class TransformersProvider(InferenceProvider):
         inputs = {k: v.to(self._device) for k, v in inputs.items()}
         input_len = inputs["input_ids"].shape[1]
 
+        effective_max = max_tokens + thinking_budget
         gen_kwargs: dict[str, object] = {
-            "max_new_tokens": max_tokens,
+            "max_new_tokens": effective_max,
             "do_sample": temperature > 0,
             "temperature": max(temperature, 0.01),
             "top_p": top_p,
@@ -217,26 +290,55 @@ class TransformersProvider(InferenceProvider):
         if repetition_penalty > 1.0:
             gen_kwargs["repetition_penalty"] = repetition_penalty
 
+        self._resolve_think_token_ids()
+        if not enable_thinking and self._think_token_id is not None:
+            suppress = [self._think_token_id]
+            if self._end_think_token_id is not None:
+                suppress.append(self._end_think_token_id)
+            gen_kwargs["suppress_tokens"] = suppress
+
+        if (
+            enable_thinking
+            and thinking_budget > 0
+            and self._end_think_token_id is not None
+        ):
+            gen_kwargs["logits_processor"] = [
+                _ThinkingBudgetProcessor(
+                    end_think_token_id=self._end_think_token_id,
+                    budget=thinking_budget,
+                    prompt_len=input_len,
+                )
+            ]
+
+        if json_schema is not None:
+            if enable_thinking and thinking_budget > 0:
+                raise ValueError(
+                    "json_schema and thinking_budget>0 are mutually exclusive: "
+                    "XGrammar constraints would corrupt thinking tokens"
+                )
+            import xgrammar as xgr  # noqa: PLC0415
+
+            compiled = self._xgr_compiled_cache.get(json_schema)
+            if compiled is None:
+                compiled = self._get_xgr_compiler().compile_json_schema(
+                    json.dumps(json_schema.model_json_schema())
+                )
+                self._xgr_compiled_cache[json_schema] = compiled
+            xgr_processor = xgr.contrib.hf.LogitsProcessor(compiled)
+            if "logits_processor" in gen_kwargs:
+                gen_kwargs["logits_processor"].append(xgr_processor)  # type: ignore[attr-defined]
+            else:
+                gen_kwargs["logits_processor"] = [xgr_processor]
+
         with torch.no_grad():
             outputs = self._model.generate(**inputs, **gen_kwargs)
 
-        new_tokens = outputs[0][input_len:]
-        text = self._tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-        # Capture <think> blocks before stripping (for future adapter injection).
-        thinking_parts = re.findall(r"<think>(.*?)</think>", text, flags=re.DOTALL)
-        dangling = re.search(r"<think>(.*)", text, flags=re.DOTALL)
-        if dangling and not re.search(r"</think>", dangling.group(0)):
-            thinking_parts.append(dangling.group(1))
-        thinking = "\n".join(p.strip() for p in thinking_parts if p.strip()) or None
-
-        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
-        text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+        new_token_ids = outputs[0][input_len:].tolist()
         total_tokens = outputs.shape[1]
-        new_token_count = len(new_tokens)
+        new_token_count = len(new_token_ids)
+        finish_reason = "length" if new_token_count >= effective_max else "stop"
 
-        # Detect truncation: generated exactly max_tokens means cut off
-        finish_reason = "length" if new_token_count >= max_tokens else "stop"
+        text, thinking = self._split_thinking(new_token_ids, enable_thinking)
 
         return GenerationResult(
             text=text,
@@ -293,6 +395,63 @@ class TransformersProvider(InferenceProvider):
             if system_prompt:
                 return f"{system_prompt}\n\n{prompt}"
             return prompt
+
+    def _resolve_think_token_ids(self) -> None:
+        """Cache ``<think>`` and ``</think>`` token IDs from the tokenizer."""
+        if self._think_ids_resolved:
+            return
+        if self._tokenizer is None:
+            return
+        tid = self._tokenizer.convert_tokens_to_ids("<think>")
+        etid = self._tokenizer.convert_tokens_to_ids("</think>")
+        if isinstance(tid, int) and tid != self._tokenizer.unk_token_id:
+            self._think_token_id = tid
+            self._end_think_token_id = etid if isinstance(etid, int) else None
+        else:
+            self._think_token_id = None
+            self._end_think_token_id = None
+        self._think_ids_resolved = True
+
+    def _split_thinking(
+        self,
+        token_ids: list[int],
+        enable_thinking: bool,
+    ) -> tuple[str, str | None]:
+        """Separate thinking from response using token IDs, not regex.
+
+        When ``enable_thinking`` is True, finds the last ``</think>`` token
+        and splits: everything before is thinking, everything after is the
+        response.  If ``</think>`` is missing, all output is treated as
+        thinking (returns empty text) to prevent deliberation from leaking
+        into downstream phases.
+        """
+        etid = self._end_think_token_id
+        if not enable_thinking or etid is None:
+            text = self._tokenizer.decode(token_ids, skip_special_tokens=True).strip()
+            return text, None
+
+        try:
+            idx = len(token_ids) - token_ids[::-1].index(etid)
+        except ValueError:
+            # No </think> found — all tokens are unclosed thinking.
+            thinking_text = self._tokenizer.decode(
+                token_ids, skip_special_tokens=True
+            ).strip()
+            if thinking_text:
+                logger.warning(
+                    "enable_thinking=True but no </think> found; "
+                    "treating %d tokens as thinking (text will be empty)",
+                    len(token_ids),
+                )
+            return "", thinking_text or None
+
+        thinking_text = self._tokenizer.decode(
+            token_ids[:idx], skip_special_tokens=True
+        ).strip()
+        content_text = self._tokenizer.decode(
+            token_ids[idx:], skip_special_tokens=True
+        ).strip()
+        return content_text, thinking_text or None
 
     def _activate_adapter(self, adapter_id: str) -> None:
         """Activate a loaded PEFT adapter.

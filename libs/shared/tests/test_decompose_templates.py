@@ -10,21 +10,18 @@ TEMPLATE_DIR = Path("libs/shared/src/shared/templates")
 def test_decompose_trajectory_has_cot_suppression() -> None:
     """decompose.j2 must contain chain-of-thought suppression."""
     content = (TEMPLATE_DIR / "decompose.j2").read_text()
-    assert (
-        "Do NOT include your chain-of-thought" in content
-        or "do NOT include" in content.lower()
-    )
+    assert "Do NOT output reasoning" in content or "chain-of-thought" in content.lower()
 
 
 def test_decompose_trajectory_has_simple_task_example() -> None:
     """decompose.j2 must have a simple single-function example."""
     content = (TEMPLATE_DIR / "decompose.j2").read_text()
-    assert "Write a function" in content or "write a function" in content
+    assert "fibonacci" in content.lower() or "single function" in content.lower()
 
 
 def test_decompose_trajectory_has_negative_example() -> None:
-    """decompose.j2 must have a BAD/negative example."""
-    content = (TEMPLATE_DIR / "decompose.j2").read_text()
+    """prompt_decompose.j2 must have a BAD/negative example."""
+    content = (TEMPLATE_DIR / "prompt_decompose.j2").read_text()
     assert "BAD" in content
 
 

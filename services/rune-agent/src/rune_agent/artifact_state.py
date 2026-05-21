@@ -56,7 +56,7 @@ class ArtifactState:
     @classmethod
     def from_dict(cls, d: dict[str, object]) -> ArtifactState:
         """Deserialize from plain dict."""
-        patches = [PatchRecord(**p) for p in d.get("patches", [])]  # type: ignore[arg-type]
+        patches = [PatchRecord(**p) for p in d.get("patches", [])]  # type: ignore[attr-defined]
         return cls(
             file_contents=str(d.get("file_contents", "")),
             interface_summary=str(d.get("interface_summary", "")),
@@ -65,7 +65,7 @@ class ArtifactState:
             test_results=str(d.get("test_results", "")),
             stderr_summary=str(d.get("stderr_summary", "")),
             tests_passed=bool(d.get("tests_passed", False)),
-            todos=list(d.get("todos", [])),  # type: ignore[arg-type]
+            todos=list(d.get("todos", [])),  # type: ignore[call-overload]
         )
 
 
@@ -91,7 +91,7 @@ class TrajectoryState:
     def from_dict(cls, d: dict[str, object]) -> TrajectoryState:
         """Deserialize from plain dict."""
         return cls(
-            turn=int(d.get("turn", 0)),  # type: ignore[arg-type]
+            turn=int(d.get("turn", 0)),  # type: ignore[call-overload]
             output=str(d.get("output", "")),
             feedback=str(d.get("feedback", "")),
             diagnosis=str(d.get("diagnosis", "")),

@@ -216,6 +216,10 @@ def apply_trial_env(
     config_dir: Path,
     *,
     max_tokens: int | None = None,
+    max_tokens_plan: int | None = None,
+    max_tokens_code: int | None = None,
+    max_tokens_integrate: int | None = None,
+    thinking_budget: int | None = None,
 ) -> None:
     """Set env vars + temp PipelineConfig so ``run_phased_pipeline()`` sees the trial params.
 
@@ -224,6 +228,10 @@ def apply_trial_env(
     - ``repetition_penalty`` -> ``RUNE_REPETITION_PENALTY``
     - ``max_phase_iterations`` -> ``RUNE_MAX_PHASE_ITERATIONS``
     - ``max_tokens`` -> ``RUNE_MAX_TOKENS`` + PipelineConfig
+    - ``max_tokens_plan`` -> ``RUNE_MAX_TOKENS_PLAN``
+    - ``max_tokens_code`` -> ``RUNE_MAX_TOKENS_CODE``
+    - ``max_tokens_integrate`` -> ``RUNE_MAX_TOKENS_INTEGRATE``
+    - ``thinking_budget`` -> ``RUNE_THINKING_BUDGET``
 
     Env vars are set unconditionally (overwriting any prior trial's values);
     ``run_phased_pipeline()`` uses ``os.environ.setdefault`` so values set here
@@ -237,6 +245,10 @@ def apply_trial_env(
         config_dir: Directory for the trial's temp PipelineConfig.
         max_tokens: Generation token cap. Also written to
             ``RUNE_MAX_TOKENS`` so ``rune-agent`` nodes pick it up.
+        max_tokens_plan: Token cap for the plan phase.
+        max_tokens_code: Token cap for the code phase.
+        max_tokens_integrate: Token cap for the integrate phase.
+        thinking_budget: Chain-of-thought token budget.
     """
     cfg_path = write_trial_pipeline_config(
         scaling_factor, config_dir, max_tokens=max_tokens
@@ -247,6 +259,14 @@ def apply_trial_env(
     os.environ["RUNE_MAX_PHASE_ITERATIONS"] = str(max_phase_iterations)
     if max_tokens is not None:
         os.environ["RUNE_MAX_TOKENS"] = str(max_tokens)
+    if max_tokens_plan is not None:
+        os.environ["RUNE_MAX_TOKENS_PLAN"] = str(max_tokens_plan)
+    if max_tokens_code is not None:
+        os.environ["RUNE_MAX_TOKENS_CODE"] = str(max_tokens_code)
+    if max_tokens_integrate is not None:
+        os.environ["RUNE_MAX_TOKENS_INTEGRATE"] = str(max_tokens_integrate)
+    if thinking_budget is not None:
+        os.environ["RUNE_THINKING_BUDGET"] = str(thinking_budget)
 
 
 def score_pipeline_result(
@@ -268,6 +288,11 @@ def score_pipeline_result(
 
     code = result.get("accumulated_code", "")
     verdict = MBPPAdapter().score(problem, code)
+    logger.info(
+        "Problem %s: MBPP evaluation: %s",
+        problem.problem_id,
+        "PASS" if verdict.passed else "FAIL",
+    )
     phase_metrics = extract_phase_metrics(result)
     return ProblemVerdict(
         problem_id=problem.problem_id,
@@ -335,8 +360,29 @@ def run_pipeline_on_problem(
                     pool=pool,
                 )
             )
+            logger.info(
+                "Problem %s: Pipeline completed (internal %s)",
+                problem.problem_id,
+                "pass" if result.get("tests_passed") else "fail",
+            )
             adapter_dir = result.get("adapter_dir")
             verdict = score_pipeline_result(problem, result, time.time() - start)
+        except Exception:
+            logger.exception(
+                "Problem %s crashed — scoring as failed", problem.problem_id
+            )
+            verdict = ProblemVerdict(
+                problem_id=problem.problem_id,
+                passed=False,
+                code_attempts=0,
+                diagnose_fired=False,
+                n_subtasks=0,
+                wall_time_s=time.time() - start,
+                accumulated_code_len=0,
+                error="pipeline crash (see logs)",
+                generation="",
+                phase_metrics={},
+            )
         finally:
             if adapter_dir:
                 shutil.rmtree(adapter_dir, ignore_errors=True)
@@ -517,8 +563,16 @@ def make_objective(
         scaling_factor = trial.suggest_float("scaling_factor", 0.02, 0.50, log=True)
         temperature = trial.suggest_float("temperature", 0.1, 0.4)
         repetition_penalty = trial.suggest_float("repetition_penalty", 1.0, 1.3)
-        max_tokens = trial.suggest_categorical("max_tokens", [1024, 2048, 4096])
-        max_phase_iterations = trial.suggest_int("max_phase_iterations", 2, 6)
+        max_tokens = trial.suggest_categorical("max_tokens", [1024, 2048])
+        max_phase_iterations = trial.suggest_int("max_phase_iterations", 1, 3)
+
+        # Per-phase token budgets
+        max_tokens_plan = trial.suggest_categorical("max_tokens_plan", [512, 1024])
+        max_tokens_code = trial.suggest_categorical("max_tokens_code", [1024, 2048])
+        max_tokens_integrate = trial.suggest_categorical(
+            "max_tokens_integrate", [1024, 2048]
+        )
+        thinking_budget = trial.suggest_categorical("thinking_budget", [256, 512])
 
         n = min(problems_per_trial, len(tuning_problems))
         trial_problems = random.Random(seed + trial.number + 1).sample(
@@ -531,6 +585,10 @@ def make_objective(
             max_phase_iterations=max_phase_iterations,
             config_dir=work_dir / f"trial_{trial.number}",
             max_tokens=max_tokens,
+            max_tokens_plan=max_tokens_plan,
+            max_tokens_code=max_tokens_code,
+            max_tokens_integrate=max_tokens_integrate,
+            thinking_budget=thinking_budget,
         )
 
         start = time.time()
@@ -543,6 +601,10 @@ def make_objective(
                     "repetition_penalty": repetition_penalty,
                     "max_tokens": max_tokens,
                     "max_phase_iterations": max_phase_iterations,
+                    "max_tokens_plan": max_tokens_plan,
+                    "max_tokens_code": max_tokens_code,
+                    "max_tokens_integrate": max_tokens_integrate,
+                    "thinking_budget": thinking_budget,
                 }
             )
             verdicts = evaluate_problem_set(
@@ -595,14 +657,23 @@ def save_best_params(
     params_path = out_dir / "best_params.json"
     params_path.write_text(json.dumps(best, indent=2))
 
-    config = PipelineConfig().override(
-        **{
-            "adapter.scaling": best["scaling_factor"],
-            "generation.temperature": best["temperature"],
-            "generation.repetition_penalty": best["repetition_penalty"],
-            "generation.max_tokens": best["max_tokens"],
-        }
-    )
+    overrides: dict[str, object] = {
+        "adapter.scaling": best["scaling_factor"],
+        "generation.temperature": best["temperature"],
+        "generation.repetition_penalty": best["repetition_penalty"],
+        "generation.max_tokens": best["max_tokens"],
+    }
+    # Per-phase token budgets (may not be present in older studies)
+    for key in (
+        "max_tokens_plan",
+        "max_tokens_code",
+        "max_tokens_integrate",
+        "thinking_budget",
+    ):
+        if key in best:
+            overrides[f"phase_tokens.{key}"] = best[key]
+
+    config = PipelineConfig().override(**overrides)
     config.save(config_path)
     return params_path
 
@@ -806,6 +877,10 @@ def main() -> None:
 
     from model_training.model_pool import ModelPool  # noqa: PLC0415
 
+    # Force NF4 quantization — HPO needs stability over bf16 speed, and
+    # the perceiver forward pass peak pushes L4 VRAM past the 15% headroom.
+    os.environ["RUNE_POOL_QUANTIZE"] = "1"
+
     pool = ModelPool.create(
         model_name=args.base_model,
         device=args.device,
@@ -836,8 +911,8 @@ def main() -> None:
                 "seed": args.seed,
             }
         )
-        # catch=() lets CUDA OOM propagate immediately. Other exceptions
-        # are caught inside the objective and scored as 0.0.
+        # catch=() — all exceptions are handled inside
+        # run_pipeline_on_problem (scored as failed verdicts).
         study.optimize(objective, n_trials=args.n_trials, catch=())
 
         completed = [t for t in study.trials if t.state.name == "COMPLETE"]
@@ -859,8 +934,11 @@ def main() -> None:
             config_dir=work_dir / "validation",
             max_tokens=best["max_tokens"],
         )
+        val_problems = validation
+        if args.smoke:
+            val_problems = validation[: args.problems_per_trial]
         val_verdicts = evaluate_problem_set(
-            validation,
+            val_problems,
             args.hypernet_checkpoint,
             args.base_model,
             args.device,

@@ -82,7 +82,7 @@ def test_base_model_sets_pad_token_when_none(monkeypatch: pytest.MonkeyPatch) ->
     fake_tokenizer.eos_token = "<eos>"
 
     pool = ModelPool.create(model_name="test-model", device="cpu")
-    monkeypatch.setattr(pool, "_resolve_dtype", MagicMock)
+    monkeypatch.setattr(pool, "_resolve_dtype", lambda: MagicMock())
 
     with (
         patch("transformers.AutoModelForCausalLM") as mock_amc,
@@ -143,6 +143,19 @@ def test_get_set_pool_singleton() -> None:
     assert retrieved is pool
 
 
+def test_set_pool_idempotent_skips_release() -> None:
+    """set_pool(pool) is a no-op when the same pool is already registered."""
+    pool = ModelPool.create(model_name="test-model", device="cpu")
+    pool._model = MagicMock()
+    pool._hypernet = MagicMock()
+
+    set_pool(pool)
+    set_pool(pool)
+
+    assert pool._model is not None, "release() was called on same pool"
+    assert pool._hypernet is not None
+
+
 def test_get_pool_uninitialized_raises() -> None:
     """get_pool() raises RuntimeError before set_pool() is called."""
     with pytest.raises(RuntimeError, match="not initialised"):
@@ -157,7 +170,7 @@ def test_release_clears_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_tokenizer.pad_token = "pad"
 
     pool = ModelPool.create(model_name="test-model", device="cpu")
-    monkeypatch.setattr(pool, "_resolve_dtype", MagicMock)
+    monkeypatch.setattr(pool, "_resolve_dtype", lambda: MagicMock())
 
     with (
         patch("transformers.AutoModelForCausalLM") as mock_amc,

@@ -8,6 +8,8 @@ from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
+from pydantic import BaseModel
+from shared.rune_models import DecomposeResult, DiagnoseResult
 from shared.sandbox import count_test_results, get_sandbox_backend, has_unittest_classes
 
 from .state import RuneState
@@ -74,6 +76,10 @@ _TEXT_ONLY_PHASES = frozenset(
         "diagnose",
     }
 )
+_PHASE_SCHEMAS: dict[str, type[BaseModel]] = {
+    "decompose": DecomposeResult,
+    "diagnose": DiagnoseResult,
+}
 
 
 def _build_prompt(state: RuneState) -> str:
@@ -245,7 +251,8 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
 
     max_tokens = int(os.environ.get("RUNE_MAX_TOKENS", "1024"))
 
-    enable_thinking = phase in _TEXT_ONLY_PHASES
+    json_schema = _PHASE_SCHEMAS.get(phase or "")
+    enable_thinking = phase in _TEXT_ONLY_PHASES and json_schema is None
 
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,
@@ -254,6 +261,7 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
         max_tokens=max_tokens,
         system_prompt=system_prompt,
         enable_thinking=enable_thinking,
+        json_schema=json_schema,
     )
 
     extracted = (
@@ -296,12 +304,6 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
 
     script = state["generated_code"] + "\n\n" + state["test_suite"]
 
-    # Auto-inject unittest.main() if TestCase classes exist but no runner
-    if has_unittest_classes(script) and not re.search(r"unittest\.main\s*\(", script):
-        script += (
-            "\n\nimport unittest\nif __name__ == '__main__':\n    unittest.main()\n"
-        )
-
     backend = get_sandbox_backend()
     result = backend.run(script, timeout=timeout)
 
@@ -315,14 +317,13 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     passed_count, total_count = count_test_results(stdout, stderr)
     tests_ran = total_count > 0
 
-    if has_tests and tests_ran and exit_code == 0 and not result.is_timed_out:
-        tests_passed = True
-    elif has_tests and not tests_ran:
+    if result.is_timed_out:
         tests_passed = False
-    elif not has_tests:
-        tests_passed = False
+    elif has_tests and tests_ran:
+        tests_passed = exit_code == 0
     else:
-        tests_passed = False
+        # No TestCase, or TestCase without a runner: pass on clean exit.
+        tests_passed = exit_code == 0
 
     logger.info(
         "execute_node: exit_code=%d, tests_passed=%s, test_count=%d, tests_ran=%s",

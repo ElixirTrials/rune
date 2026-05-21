@@ -8,6 +8,7 @@ import logging
 import os
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from inference.exceptions import UnsupportedOperationError
 from inference.provider import GenerationResult, InferenceProvider
@@ -61,6 +62,8 @@ class OllamaProvider(InferenceProvider):
         top_p: float | None = None,
         repetition_penalty: float | None = None,
         enable_thinking: bool = True,
+        thinking_budget: int = 0,
+        json_schema: type[BaseModel] | None = None,
     ) -> GenerationResult:
         """Generate text from a prompt using the base Ollama model.
 
@@ -78,6 +81,10 @@ class OllamaProvider(InferenceProvider):
             repetition_penalty: Repetition penalty override.
             enable_thinking: Accepted for interface compatibility; ignored
                 by Ollama provider.
+            thinking_budget: Extra token allowance for thinking blocks.
+                Added to max_tokens for the API call.
+            json_schema: Ignored. Only TransformersProvider supports
+                XGrammar constrained decoding.
 
         Returns:
             GenerationResult with adapter_id=None (Ollama has no adapter concept).
@@ -102,7 +109,7 @@ class OllamaProvider(InferenceProvider):
         response = await self._client.chat.completions.create(
             model=model,
             messages=messages,  # type: ignore[arg-type]
-            max_tokens=max_tokens,
+            max_tokens=max_tokens + thinking_budget,
         )
 
         choice = response.choices[0]
