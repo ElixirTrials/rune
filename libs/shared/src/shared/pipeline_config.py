@@ -125,6 +125,7 @@ def _from_dict(d: dict[str, Any]) -> PipelineConfig:
         trajectory=TrajectoryConfig(**d.get("trajectory", {})),
         calibration=CalibrationConfig(**cal),
         phase_tokens=PhaseTokenConfig(**d.get("phase_tokens", {})),
+        max_subtasks=d.get("max_subtasks", 4),
     )
 
 

@@ -203,13 +203,6 @@ class ModelPool:
         """
         import os  # noqa: PLC0415
 
-        override = os.environ.get("RUNE_POOL_QUANTIZE", "").lower()
-        if override in ("1", "true"):
-            logger.info("ModelPool: quantization forced via RUNE_POOL_QUANTIZE")
-            return True
-        if override in ("0", "false"):
-            return False
-
         if not self._device.startswith("cuda"):
             return False
 
@@ -218,9 +211,16 @@ class ModelPool:
         if not torch.cuda.is_available():
             return False
 
+        override = os.environ.get("RUNE_POOL_QUANTIZE", "").lower()
+        if override in ("1", "true"):
+            logger.info("ModelPool: quantization forced via RUNE_POOL_QUANTIZE")
+            return True
+        if override in ("0", "false"):
+            return False
+
         dev_idx = int(self._device.split(":")[1]) if ":" in self._device else 0
         total = torch.cuda.get_device_properties(dev_idx).total_memory
-        allocated = torch.cuda.memory_allocated(dev_idx)
+        allocated = torch.cuda.memory_reserved(dev_idx)
         free = total - allocated
         bf16_bytes = param_count * 2
 
