@@ -87,11 +87,9 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    import mlflow
-
-    # sagemaker-mlflow plugin unconditionally claims in_context()=True then
-    # crashes parsing non-ARN tracking URIs; must suppress after import.
     logging.getLogger("mlflow.tracking.request_header.registry").setLevel(logging.ERROR)
+
+    import mlflow
 
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.config.enable_async_logging()

@@ -8,8 +8,10 @@ from pathlib import Path
 from shared.pipeline_config import (
     AdapterConfig,
     PipelineConfig,
+    ReasoningLoopConfig,
     default_config,
     load_config,
+    resolve_reasoning_loop_config,
 )
 
 
@@ -19,7 +21,7 @@ def test_default_config_values() -> None:
     assert cfg.adapter.use_bias is True
     assert cfg.adapter.max_length == 2048
     assert cfg.generation.temperature == 0.3
-    assert cfg.generation.repetition_penalty == 1.0
+    assert cfg.generation.repetition_penalty == 1.1
     assert cfg.prompt.style == "must_include"
     assert cfg.trajectory.style == "full_context"
     assert cfg.calibration.enabled is True
@@ -86,37 +88,74 @@ def test_config_is_frozen() -> None:
         pass
 
 
-def test_thinking_budget_default() -> None:
+def test_decompose_config_defaults() -> None:
     cfg = default_config()
-    assert cfg.generation.thinking_budget == 1024
+    assert hasattr(cfg, "decompose")
+    assert cfg.decompose.skip_threshold == 200
 
 
-def test_thinking_budget_override() -> None:
+def test_decompose_config_override() -> None:
     cfg = default_config()
-    updated = cfg.override(**{"generation.thinking_budget": 1024})
-    assert updated.generation.thinking_budget == 1024
+    updated = cfg.override(**{"decompose.skip_threshold": 100})
+    assert updated.decompose.skip_threshold == 100
 
 
-def test_phase_tokens_round_trip(tmp_path: Path) -> None:
-    cfg = default_config().override(
-        **{
-            "phase_tokens.max_tokens_plan": 512,
-            "phase_tokens.max_tokens_code": 4096,
-            "phase_tokens.max_tokens_integrate": 2048,
-            "phase_tokens.thinking_budget": 1024,
-        }
-    )
-    path = cfg.save(tmp_path / "phase_tokens.json")
+def test_decompose_config_round_trip(tmp_path: Path) -> None:
+    cfg = default_config()
+    path = cfg.save(tmp_path / "test_decompose.json")
     loaded = load_config(path)
-    assert loaded.phase_tokens.max_tokens_plan == 512
-    assert loaded.phase_tokens.max_tokens_code == 4096
-    assert loaded.phase_tokens.max_tokens_integrate == 2048
-    assert loaded.phase_tokens.thinking_budget == 1024
+    assert loaded.decompose.skip_threshold == 200
 
 
-def test_phase_tokens_defaults_are_none() -> None:
+def test_reasoning_loop_config_defaults():
+    cfg = ReasoningLoopConfig()
+    assert cfg.max_turns == 20
+    assert cfg.context_budget_ratio == 0.75
+    assert cfg.sliding_window_tokens == 1024
+    assert cfg.chunk_threshold == 1024
+    assert cfg.enable_chunk_composition is False
+    assert cfg.code_scaling_boost == 1.2
+    assert cfg.default_merge_method == "ties"
+    assert cfg.collapse_cosine_threshold == 0.95
+    assert cfg.collapse_norm_min == 0.1
+    assert cfg.collapse_norm_max == 10.0
+    assert cfg.collapse_repetition_threshold == 0.8
+
+
+def test_reasoning_loop_config_phase_windows():
+    cfg = ReasoningLoopConfig()
+    assert cfg.phase_sliding_windows == {
+        "decompose": 256,
+        "plan": 512,
+        "code": 1024,
+        "code_repair": 1536,
+        "integrate": 2048,
+        "diagnose": 512,
+    }
+
+
+def test_pipeline_config_has_reasoning_loop():
+    cfg = PipelineConfig()
+    assert isinstance(cfg.reasoning_loop, ReasoningLoopConfig)
+    assert cfg.reasoning_loop.max_turns == 20
+
+
+def test_reasoning_loop_env_overrides(monkeypatch):
+    monkeypatch.setenv("RUNE_MAX_REASONING_TURNS", "10")
+    monkeypatch.setenv("RUNE_CONTEXT_BUDGET_RATIO", "0.5")
+    monkeypatch.setenv("RUNE_SLIDING_WINDOW_TOKENS", "2048")
+    monkeypatch.setenv("RUNE_ENABLE_CHUNK_COMPOSITION", "true")
+    monkeypatch.setenv("RUNE_SLIDING_WINDOW_CODE", "512")
+    cfg = resolve_reasoning_loop_config(ReasoningLoopConfig())
+    assert cfg.max_turns == 10
+    assert cfg.context_budget_ratio == 0.5
+    assert cfg.sliding_window_tokens == 2048
+    assert cfg.enable_chunk_composition is True
+    assert cfg.phase_sliding_windows["code"] == 512
+
+
+def test_reasoning_loop_round_trip(tmp_path: Path) -> None:
     cfg = default_config()
-    assert cfg.phase_tokens.max_tokens_plan is None
-    assert cfg.phase_tokens.max_tokens_code is None
-    assert cfg.phase_tokens.max_tokens_integrate is None
-    assert cfg.phase_tokens.thinking_budget is None
+    path = cfg.save(tmp_path / "test_rl.json")
+    loaded = load_config(path)
+    assert loaded.reasoning_loop == cfg.reasoning_loop

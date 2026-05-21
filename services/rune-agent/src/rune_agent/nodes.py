@@ -8,43 +8,62 @@ from typing import Any
 
 from inference import GenerationResult, get_provider
 from model_training.trajectory import record_trajectory
-from pydantic import BaseModel
-from shared.rune_models import DecomposeResult, DiagnoseResult
-from shared.sandbox import count_test_results, get_sandbox_backend
+from shared.sandbox import count_test_results, get_sandbox_backend, has_unittest_classes
 
 from .state import RuneState
 
 logger = logging.getLogger(__name__)
 
-_SYS_CODE = (
-    "You are a code generator. Output ONLY valid executable code. "
-    "No explanation, no commentary, no markdown fencing."
-)
 _PHASE_SYSTEM_PROMPTS: dict[str, str] = {
     "decompose": (
         "You are a project decomposer. Break projects into subtasks. "
-        "Output ONLY valid JSON, no prose, no code."
+        "Output ONLY a numbered list, never code."
     ),
     "decompose_concise": (
         "You are a project decomposer. Break projects into subtasks. "
-        "Output ONLY valid JSON, no prose, no code."
+        "Output ONLY a numbered list, never code."
     ),
     "plan": (
         "You are a software architect. Output ONLY architecture plans "
         "with class signatures, data flow, and test strategy. Never output code."
     ),
+    "code": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
+    "code_retry": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
+    "code_continue": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
     "diagnose": (
         "You are a code diagnostician. Identify which subtasks have bugs. "
-        "Output ONLY valid JSON, no prose, no code."
+        "Output ONLY a numbered list, never code."
     ),
-    "code": _SYS_CODE,
-    "code_retry": _SYS_CODE,
-    "code_continue": _SYS_CODE,
-    "code_repair": _SYS_CODE,
-    "integrate": _SYS_CODE,
-    "integrate_retry": _SYS_CODE,
+    "code_repair": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
+    "integrate": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
+    "integrate_retry": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
+    "reasoning_continue": (
+        "You are a code generator. Output ONLY valid executable code. "
+        "No explanation, no commentary, no markdown fencing."
+    ),
 }
-DEFAULT_SYSTEM_PROMPT = _SYS_CODE
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a code generator. Output ONLY valid executable code. "
+    "No explanation, no commentary, no markdown fencing."
+)
 DEFAULT_TIMEOUT = 30
 DEFAULT_MODEL = "Qwen/Qwen3.5-9B"
 _TEXT_ONLY_PHASES = frozenset(
@@ -55,11 +74,6 @@ _TEXT_ONLY_PHASES = frozenset(
         "diagnose",
     }
 )
-_PHASE_SCHEMAS: dict[str, type[BaseModel]] = {
-    "decompose": DecomposeResult,
-    "decompose_concise": DecomposeResult,
-    "diagnose": DiagnoseResult,
-}
 
 
 def _build_prompt(state: RuneState) -> str:
@@ -229,41 +243,17 @@ async def generate_node(state: RuneState) -> dict[str, Any]:
     phase = state.get("phase")
     system_prompt = _PHASE_SYSTEM_PROMPTS.get(phase or "", DEFAULT_SYSTEM_PROMPT)
 
-    # Per-phase max_tokens: RUNE_MAX_TOKENS_CODE, RUNE_MAX_TOKENS_INTEGRATE, etc.
-    phase_key = (phase or "").upper().replace("-", "_")
-    max_tokens = int(
-        os.environ.get(f"RUNE_MAX_TOKENS_{phase_key}", "")
-        or os.environ.get("RUNE_MAX_TOKENS", "2048")
-    )
+    max_tokens = int(os.environ.get("RUNE_MAX_TOKENS", "1024"))
 
-    # Qwen3.5-9B ships with thinking disabled — the 9B was not tuned for
-    # thinking as its primary mode.  Forcing enable_thinking=True causes
-    # meta-reasoning about system prompts instead of following them.
-    enable_thinking = False
+    enable_thinking = phase in _TEXT_ONLY_PHASES
 
-    # Qwen3.5-9B recommended: temp=0.7, top_p=0.8 for non-thinking mode.
-    # Text-only phases (decompose, plan, diagnose) use slightly higher
-    # temperature for diversity; code phases keep the provider defaults.
-    if phase in _TEXT_ONLY_PHASES:
-        temperature: float | None = 0.7
-        top_p: float | None = 0.8
-    else:
-        temperature = None
-        top_p = None
-    thinking_budget = 0
-
-    schema = _PHASE_SCHEMAS.get(phase or "")
     result: GenerationResult = await provider.generate(
         prompt=user_prompt,
         model=model,
         adapter_id=adapter_id,
         max_tokens=max_tokens,
         system_prompt=system_prompt,
-        temperature=temperature,
-        top_p=top_p,
         enable_thinking=enable_thinking,
-        thinking_budget=thinking_budget,
-        json_schema=schema,
     )
 
     extracted = (
@@ -306,6 +296,12 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
 
     script = state["generated_code"] + "\n\n" + state["test_suite"]
 
+    # Auto-inject unittest.main() if TestCase classes exist but no runner
+    if has_unittest_classes(script) and not re.search(r"unittest\.main\s*\(", script):
+        script += (
+            "\n\nimport unittest\nif __name__ == '__main__':\n    unittest.main()\n"
+        )
+
     backend = get_sandbox_backend()
     result = backend.run(script, timeout=timeout)
 
@@ -313,10 +309,20 @@ async def execute_node(state: RuneState) -> dict[str, Any]:
     stderr = result.stderr
     exit_code = result.exit_code
 
-    tests_passed = exit_code == 0 and not result.is_timed_out
-
-    _passed_count, total_count = count_test_results(stdout, stderr)
+    # Determine test validation based on unittest output
+    combined = state["generated_code"] + "\n" + state["test_suite"]
+    has_tests = has_unittest_classes(combined)
+    passed_count, total_count = count_test_results(stdout, stderr)
     tests_ran = total_count > 0
+
+    if has_tests and tests_ran and exit_code == 0 and not result.is_timed_out:
+        tests_passed = True
+    elif has_tests and not tests_ran:
+        tests_passed = False
+    elif not has_tests:
+        tests_passed = False
+    else:
+        tests_passed = False
 
     logger.info(
         "execute_node: exit_code=%d, tests_passed=%s, test_count=%d, tests_ran=%s",

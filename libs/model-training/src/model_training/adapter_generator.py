@@ -137,9 +137,7 @@ def _save_adapter(
     target_modules = list(hc.lora_config.target_modules)
 
     if not lora_dict:
-        raise ValueError(
-            "generate_weights returned empty lora_dict — cannot save adapter"
-        )
+        raise ValueError("generate_weights returned empty lora_dict")
     first_mod = next(iter(lora_dict))
     actual_rank = lora_dict[first_mod]["A"].shape[-2]
 
@@ -286,11 +284,6 @@ def _generate_adapter_pool(
         layer_indices=list(hc.layer_indices),
         max_length=max_length,
     )
-
-    # Free fragmented CUDA memory before the perceiver forward pass.
-    # extract_activations materialises all hidden states then deletes most;
-    # the allocator still holds the freed blocks — empty_cache returns them.
-    torch.cuda.empty_cache()
 
     logger.info("Generating LoRA weights via HyperLoRA perceiver (pool mode)...")
     with torch.no_grad():
