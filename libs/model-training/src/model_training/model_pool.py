@@ -249,12 +249,15 @@ def get_pool() -> ModelPool:
 def set_pool(pool: ModelPool) -> None:
     """Register a ModelPool as the process-wide singleton.
 
-    Releases the previous pool (if any) before replacing it.
+    Releases the previous pool (if any) before replacing it. If *pool* is
+    already the registered singleton, this is a no-op (idempotent).
 
     Args:
         pool: The ModelPool instance to register.
     """
     global _POOL  # noqa: PLW0603
+    if _POOL is pool:
+        return
     if _POOL is not None:
         _POOL.release()
     _POOL = pool
