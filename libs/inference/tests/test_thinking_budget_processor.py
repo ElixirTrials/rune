@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock, patch
 
-import pytest
 import torch
 
 from inference.transformers_provider import _ThinkingBudgetProcessor

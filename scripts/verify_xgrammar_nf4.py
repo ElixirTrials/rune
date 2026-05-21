@@ -58,7 +58,7 @@ def main() -> None:
             model_id,
             quantization_config=bnb_config,
             device_map="auto",
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
         )
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         device = "mps"
@@ -66,14 +66,14 @@ def main() -> None:
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             device_map="auto",
-            dtype=torch.float32,
+            torch_dtype=torch.float32,
         )
     else:
         device = "cpu"
         print(f"Loading {model_id} on CPU...")
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            dtype=torch.float32,
+            torch_dtype=torch.float32,
         )
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -89,7 +89,6 @@ def main() -> None:
     )
     compiler = xgr.GrammarCompiler(tokenizer_info)
     compiled_grammar = compiler.compile_json_schema(DecomposeResult)
-    processor = xgr.contrib.hf.LogitsProcessor(compiled_grammar)
     print(
         "XGrammar compiled for schema:\n"
         f"{json.dumps(DecomposeResult.model_json_schema(), indent=2)}"
