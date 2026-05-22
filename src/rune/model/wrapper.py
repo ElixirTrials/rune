@@ -116,6 +116,7 @@ class ModelWrapper:
         system_prompt: str = "",
         output_schema: type[Any] | None = None,
         max_tokens: int = 2048,
+        temperature: float = 0.3,
     ) -> GenerationResult:
         """Generate text using the current model state.
 
@@ -125,6 +126,7 @@ class ModelWrapper:
             output_schema: Pydantic model for JSON-constrained output;
                 None for freeform.
             max_tokens: Maximum new tokens.
+            temperature: Sampling temperature for freeform generation.
 
         Returns:
             GenerationResult with text, thinking, and token count.
@@ -136,4 +138,5 @@ class ModelWrapper:
             system_prompt=system_prompt,
             output_schema=output_schema,
             max_tokens=max_tokens,
+            temperature=temperature,
         )

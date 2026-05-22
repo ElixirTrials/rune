@@ -23,19 +23,21 @@ def base_config() -> D2LTrainConfig:
 
 
 class TestRunOracleTraining:
-    def test_runs_without_error(self, base_config: D2LTrainConfig, tmp_path: Path) -> None:
+    def test_runs_without_error(
+        self, base_config: D2LTrainConfig, tmp_path: Path
+    ) -> None:
         _run_oracle_training(base_config, tmp_path)
 
 
 class TestRunSuccessGate:
     def test_pass(self) -> None:
-        baseline = {"humaneval": 50.0, "mbpp": 40.0, "apps": 30.0, "ds1000": 20.0}
+        baseline = {"humaneval": 0.50, "mbpp": 0.40, "apps": 0.30, "ds1000": 0.20}
         new = {
-            "humaneval": 55.0,
-            "mbpp": 45.0,
-            "apps": 35.0,
-            "ds1000": 25.0,
-            "swebench": 30.0,
+            "humaneval": 0.55,
+            "mbpp": 0.45,
+            "apps": 0.35,
+            "ds1000": 0.25,
+            "swebench": 0.30,
         }
         assert _run_success_gate(baseline, new) == 0
 
@@ -90,15 +92,14 @@ class TestRunTrainingPipeline:
 
         mock_mlflow_cb = MagicMock()
         mock_optuna_integration = MagicMock()
-        mock_optuna_integration.mlflow.MLflowCallback = mock_mlflow_cb
+        mock_optuna_integration.MLflowCallback = mock_mlflow_cb
 
         with (
             patch.dict(
                 sys.modules,
                 {
                     "optuna": mock_optuna,
-                    "optuna.integration": mock_optuna_integration,
-                    "optuna.integration.mlflow": mock_optuna_integration.mlflow,
+                    "optuna_integration": mock_optuna_integration,
                 },
             ),
             patch("rune.training.orchestrator._run_oracle_training"),

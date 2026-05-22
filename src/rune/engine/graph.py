@@ -49,24 +49,31 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     if not actions:
         return {"actions": [], "budget_remaining": state["budget_remaining"]}
 
-    results: list[tuple[Action, str, str]] = []
+    temperature = run_config.get("temperature", 0.3)
+    adapter_scaling = run_config.get("adapter_scaling", 1.0)
+
+    results: list[tuple[Action, str, str, str | None]] = []
     for action in actions:
         ctx = state_to_ctx(state)
         trajectory_text = render_template(action.trajectory_template, **ctx)
         prompt_text = render_template(action.prompt_template, **ctx)
 
         adapter = model.generate_adapter(trajectory_text)
-        model.hotswap_adapter(adapter.state_dict)
+        scaled_sd = {
+            k: v * adapter_scaling for k, v in adapter.state_dict.items()
+        }
+        model.hotswap_adapter(scaled_sd)
         result = await model.generate(
             prompt=prompt_text,
             system_prompt=action.system_prompt,
             output_schema=action.output_schema,
             max_tokens=run_config.get("max_tokens", 2048),
+            temperature=temperature,
         )
         target_name = action.target_subtask or ""
-        results.append((action, target_name, result.text))
+        results.append((action, target_name, result.text, adapter.adapter_id))
 
-    code_actions = [(a, name, text) for a, name, text in results if a.executes_code]
+    code_actions = [(a, name, text) for a, name, text, _ in results if a.executes_code]
     sandbox_results = await asyncio.gather(
         *[asyncio.to_thread(run_in_sandbox, text) for _, _, text in code_actions]
     )
@@ -76,7 +83,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     }
 
     updates: dict[str, Any] = {}
-    for action, target_name, raw in results:
+    for action, target_name, raw, _ in results:
         fb = feedback_map.get(target_name)
         partial = parse_output(action, raw, fb, dict(state))
         for k, v in partial.items():
@@ -90,12 +97,13 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             step=state["step"],
             action_name=a.name,
             target_subtask=name,
-            adapter_id=state["current_adapter"],
+            adapter_id=aid,
             feedback=feedback_map.get(name),
         )
-        for a, name, _ in results
+        for a, name, _, aid in results
     ]
     updates["actions"] = actions
+    updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
     updates["trajectory"] = state["trajectory"] + records
     updates["step"] = state["step"] + 1
     updates["budget_remaining"] = state["budget_remaining"] - 1

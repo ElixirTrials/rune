@@ -8,8 +8,8 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 MIN_BENCHMARKS_PASSING = 4
-MIN_IMPROVEMENT = 2.0
-MAX_REGRESSION = 1.0
+MIN_IMPROVEMENT = 0.02
+MAX_REGRESSION = 0.01
 
 
 @dataclass(frozen=True)

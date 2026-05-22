@@ -127,7 +127,7 @@ async def _run_hpo(
         Exit code from the best-trial pipeline run (0 pass / 1 fail).
     """
     import optuna  # noqa: PLC0415
-    from optuna.integration.mlflow import MLflowCallback  # noqa: PLC0415
+    from optuna_integration import MLflowCallback  # noqa: PLC0415
 
     mlflow_cb = MLflowCallback(
         tracking_uri=None,
