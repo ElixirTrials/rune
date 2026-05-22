@@ -1,0 +1,3 @@
+# Adapter
+
+::: rune.model.adapter

@@ -1,0 +1,3 @@
+# Config
+
+::: rune.config

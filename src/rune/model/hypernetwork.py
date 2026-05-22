@@ -1,3 +1,5 @@
+"""Hypernetwork loader and adapter-weight generator."""
+
 from __future__ import annotations
 
 import logging
@@ -9,11 +11,26 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class HypernetworkConfig:
+    """Configuration for loading a HyperLoRA checkpoint.
+
+    Attributes:
+        checkpoint_path: Path to the .pt checkpoint file.
+        model_config_name: Base model config identifier used during training.
+    """
+
     checkpoint_path: str
     model_config_name: str = "qwen3.5-9b"
 
 
 def load_hypernetwork(config: HypernetworkConfig) -> Any:
+    """Load a HyperLoRA model from a checkpoint and return it in eval mode.
+
+    Args:
+        config: Checkpoint path and model config name.
+
+    Returns:
+        HyperLoRA model in eval mode on CPU.
+    """
     import torch  # noqa: PLC0415
 
     logger.info("Loading hypernetwork from %s", config.checkpoint_path)
@@ -36,6 +53,19 @@ def generate_adapter_weights(
     layer_indices: list[int],
     max_length: int = 2048,
 ) -> dict[str, Any]:
+    """Generate LoRA weight dict from a trajectory string via the hypernetwork.
+
+    Args:
+        hypernet: Loaded HyperLoRA model.
+        trajectory_text: Serialised coding trajectory used as conditioning.
+        base_model: Base language model for activation extraction.
+        tokenizer: Tokenizer paired with base_model.
+        layer_indices: Which transformer layers to extract activations from.
+        max_length: Maximum token length for trajectory encoding.
+
+    Returns:
+        LoRA state dict suitable for PEFT hot-swap.
+    """
     import torch  # noqa: PLC0415
     from model_training.d2l_activations import (
         extract_activations_with_model,  # noqa: PLC0415

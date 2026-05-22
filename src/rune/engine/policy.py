@@ -1,3 +1,5 @@
+"""Deterministic action-selection policy and DAG execution-layer builder."""
+
 from __future__ import annotations
 
 from graphlib import TopologicalSorter
@@ -55,6 +57,15 @@ ACTIONS: dict[str, Action] = {
 
 
 def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
+    """Group subtasks into topologically-ordered execution layers.
+
+    Args:
+        subtasks: All subtasks with their dependency lists.
+
+    Returns:
+        List of layers; each layer is a sorted list of subtask names whose
+        dependencies all appear in earlier layers.
+    """
     graph: dict[str, set[str]] = {}
     for s in subtasks:
         graph[s.name] = set(s.depends_on)
@@ -70,6 +81,15 @@ def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
 
 
 def _with_target(action_name: str, target: str) -> Action:
+    """Clone a base Action with target_subtask set.
+
+    Args:
+        action_name: Key into ACTIONS.
+        target: Subtask name to assign as target_subtask.
+
+    Returns:
+        New Action identical to the base but with target_subtask set.
+    """
     base = ACTIONS[action_name]
     return Action(
         name=base.name,
@@ -83,6 +103,15 @@ def _with_target(action_name: str, target: str) -> Action:
 
 
 def select_action(state: dict[str, Any]) -> list[Action]:
+    """Select the next batch of actions given the current RunState.
+
+    Args:
+        state: Current RunState as a plain dict.
+
+    Returns:
+        List of Actions to execute next; empty list signals completion or
+        a stuck state (retry limit reached).
+    """
     subtasks: list[Subtask] = state["subtasks"]
     if not subtasks:
         return [ACTIONS["decompose"]]

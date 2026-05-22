@@ -1,3 +1,5 @@
+"""Single-node LangGraph engine: step_node + should_continue loop."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +16,7 @@ from rune.sandbox.executor import run_in_sandbox
 
 
 def state_to_ctx(state: RunState) -> dict[str, Any]:
+    """Extract template context variables from RunState."""
     return {
         "task": state["task"],
         "subtasks": state["subtasks"],
@@ -27,6 +30,17 @@ def state_to_ctx(state: RunState) -> dict[str, Any]:
 
 
 async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
+    """Execute one engine step: select actions, generate, sandbox, parse.
+
+    Args:
+        state: Current RunState.
+        config: LangGraph RunnableConfig with ``configurable.model`` and
+            optional ``configurable.run_config``.
+
+    Returns:
+        Partial state update dict with new actions, trajectory, step, and
+        budget_remaining.
+    """
     configurable: dict[str, Any] = config.get("configurable", {})
     model = configurable["model"]
     run_config: dict[str, Any] = configurable.get("run_config", {})
@@ -89,12 +103,22 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
 
 def should_continue(state: RunState) -> str:
+    """Conditional edge: return ``"continue"`` or ``"done"``.
+
+    Returns ``"done"`` when no actions remain or budget is exhausted.
+    """
     if not state["actions"] or state["budget_remaining"] <= 0:
         return "done"
     return "continue"
 
 
 def create_engine() -> CompiledStateGraph:  # type: ignore[type-arg]
+    """Build and compile the single-node LangGraph engine.
+
+    Returns:
+        Compiled StateGraph with a ``step`` node and ``should_continue``
+        conditional edge looping back to ``step`` or exiting to END.
+    """
     graph = StateGraph(RunState)
     graph.add_node("step", step_node)
     graph.set_entry_point("step")

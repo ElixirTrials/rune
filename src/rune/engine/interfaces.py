@@ -1,3 +1,5 @@
+"""Tree-sitter-based interface extraction for Python source files."""
+
 from __future__ import annotations
 
 import tree_sitter_python as tspython

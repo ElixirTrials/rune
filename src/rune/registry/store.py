@@ -1,3 +1,5 @@
+"""SQLite-backed registry for tracking LoRA adapter artifacts."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -8,6 +10,18 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class AdapterRecord:
+    """Metadata for a persisted LoRA adapter.
+
+    Attributes:
+        adapter_id: Unique identifier for this adapter.
+        disk_path: Absolute path to the saved safetensors file.
+        parent_id: ID of the adapter this was derived from, or None.
+        action: Engine action name that produced this adapter.
+        session_id: ID of the run session that produced this adapter.
+        generation: Lineage depth (0 = root).
+        created_at: Unix timestamp of creation.
+    """
+
     adapter_id: str
     disk_path: str
     parent_id: str | None
@@ -18,7 +32,17 @@ class AdapterRecord:
 
 
 class AdapterRegistry:
+    """Persistent registry of LoRA adapters backed by SQLite.
+
+    Uses WAL mode for concurrent read access.
+    """
+
     def __init__(self, conn: sqlite3.Connection) -> None:
+        """Initialise the registry and create the adapters table if needed.
+
+        Args:
+            conn: Open SQLite connection; ownership is transferred.
+        """
         self._conn = conn
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
@@ -36,6 +60,14 @@ class AdapterRegistry:
 
     @classmethod
     def create(cls, db_path: str | Path) -> AdapterRegistry:
+        """Open (or create) a registry at the given path.
+
+        Args:
+            db_path: File system path for the SQLite database.
+
+        Returns:
+            Initialised AdapterRegistry.
+        """
         conn = sqlite3.connect(str(db_path))
         return cls(conn)
 
@@ -48,6 +80,16 @@ class AdapterRegistry:
         session_id: str,
         generation: int,
     ) -> None:
+        """Insert a new adapter record with the current timestamp.
+
+        Args:
+            adapter_id: Unique identifier for the adapter.
+            disk_path: Absolute path to the safetensors file on disk.
+            parent_id: Parent adapter ID, or None for root adapters.
+            action: Engine action name that produced this adapter.
+            session_id: Run session that produced this adapter.
+            generation: Lineage depth.
+        """
         self._conn.execute(
             "INSERT INTO adapters VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
@@ -63,12 +105,28 @@ class AdapterRegistry:
         self._conn.commit()
 
     def get(self, adapter_id: str) -> AdapterRecord | None:
+        """Fetch a single adapter record by ID.
+
+        Args:
+            adapter_id: The adapter to look up.
+
+        Returns:
+            AdapterRecord if found, otherwise None.
+        """
         row = self._conn.execute(
             "SELECT * FROM adapters WHERE adapter_id = ?", (adapter_id,)
         ).fetchone()
         return AdapterRecord(*row) if row else None
 
     def lineage(self, adapter_id: str) -> list[AdapterRecord]:
+        """Walk the parent chain from an adapter to the root.
+
+        Args:
+            adapter_id: Starting adapter ID.
+
+        Returns:
+            Ordered list from the given adapter up to the root ancestor.
+        """
         chain: list[AdapterRecord] = []
         current: str | None = adapter_id
         while current:
@@ -80,6 +138,14 @@ class AdapterRegistry:
         return chain
 
     def list_by_session(self, session_id: str) -> list[AdapterRecord]:
+        """Return all adapters produced by a session, ordered by generation.
+
+        Args:
+            session_id: The session to filter on.
+
+        Returns:
+            List of AdapterRecord sorted by ascending generation.
+        """
         rows = self._conn.execute(
             "SELECT * FROM adapters WHERE session_id = ? ORDER BY generation",
             (session_id,),
@@ -87,6 +153,14 @@ class AdapterRegistry:
         return [AdapterRecord(*r) for r in rows]
 
     def prune(self, max_age_days: int = 7) -> int:
+        """Delete adapters older than max_age_days and remove their files.
+
+        Args:
+            max_age_days: Age threshold in days.
+
+        Returns:
+            Number of records deleted.
+        """
         cutoff = time.time() - (max_age_days * 86400)
         rows = self._conn.execute(
             "SELECT disk_path FROM adapters WHERE created_at < ?", (cutoff,)
@@ -100,6 +174,12 @@ class AdapterRegistry:
         return cursor.rowcount
 
     def _backdate(self, adapter_id: str, days: int) -> None:
+        """Set an adapter's created_at to days ago (test helper).
+
+        Args:
+            adapter_id: Adapter to modify.
+            days: Number of days to subtract from the current time.
+        """
         self._conn.execute(
             "UPDATE adapters SET created_at = ? WHERE adapter_id = ?",
             (time.time() - days * 86400, adapter_id),

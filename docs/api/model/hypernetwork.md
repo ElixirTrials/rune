@@ -1,0 +1,3 @@
+# Hypernetwork
+
+::: rune.model.hypernetwork

@@ -1,0 +1,61 @@
+site_name: Rune
+site_description: Local-first coding agent with hypernetwork-generated LoRA adapters
+repo_url: https://github.com/elixir-trials/rune
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: deep purple
+    accent: amber
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Engine: architecture/engine.md
+      - Model: architecture/model.md
+      - Training: architecture/training.md
+  - API Reference:
+      - Engine:
+          - State: api/engine/state.md
+          - Graph: api/engine/graph.md
+          - Policy: api/engine/policy.md
+          - Parse: api/engine/parse.md
+          - Interfaces: api/engine/interfaces.md
+      - Model:
+          - Inference: api/model/inference.md
+          - Hypernetwork: api/model/hypernetwork.md
+          - Adapter: api/model/adapter.md
+      - Config: api/config.md
+      - Registry: api/registry.md
+      - Sandbox: api/sandbox.md
+      - CLI: api/cli.md
+      - Benchmark: api/benchmark.md
+      - Training:
+          - Gate: api/training/gate.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            members_order: source
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true

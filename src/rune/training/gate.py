@@ -1,3 +1,5 @@
+"""Success gate: compare benchmark scores and determine pass/fail."""
+
 from __future__ import annotations
 
 import logging
@@ -12,6 +14,16 @@ MAX_REGRESSION = 1.0
 
 @dataclass(frozen=True)
 class GateResult:
+    """Outcome of a quality gate evaluation.
+
+    Attributes:
+        passed: True if the gate criteria were met.
+        passing_benchmarks: Number of benchmarks with sufficient improvement.
+        total_benchmarks: Total benchmarks evaluated.
+        improvements: Benchmark name → positive delta for improved tasks.
+        regressions: Benchmark name → negative delta for regressed tasks.
+    """
+
     passed: bool
     passing_benchmarks: int
     total_benchmarks: int
@@ -23,6 +35,15 @@ def evaluate_gate(
     baseline_scores: dict[str, float],
     new_scores: dict[str, float],
 ) -> GateResult:
+    """Compare new benchmark scores against a baseline and apply gate thresholds.
+
+    Args:
+        baseline_scores: Benchmark name → score before training.
+        new_scores: Benchmark name → score after training.
+
+    Returns:
+        GateResult indicating pass/fail and per-benchmark deltas.
+    """
     improvements: dict[str, float] = {}
     regressions: dict[str, float] = {}
 

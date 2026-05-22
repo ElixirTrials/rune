@@ -1,3 +1,5 @@
+"""Pipeline configuration dataclass and loader for Rune."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +11,24 @@ from typing import Any
 
 @dataclass(frozen=True)
 class PipelineConfig:
+    """Frozen configuration for the Rune inference and training pipeline.
+
+    Attributes:
+        model_id: HuggingFace model identifier.
+        adapter_scaling: LoRA adapter weight scaling factor.
+        temperature: Sampling temperature for freeform generation.
+        max_tokens: Maximum new tokens per generation call.
+        repetition_penalty: Repetition penalty applied during generation.
+        top_p: Nucleus sampling probability cutoff.
+        thinking_budget: Max tokens allocated to chain-of-thought thinking.
+        phase_max_tokens: Per-phase token overrides keyed by phase name.
+        max_phase_iterations: Maximum iterations before a phase is abandoned.
+        prompt_style: Template style identifier (e.g. "skeleton").
+        trajectory_style: Trajectory serialisation style (e.g. "prose").
+        adapter_ttl_days: Days before an adapter is eligible for pruning.
+        checkpoint_path: Path to the hypernetwork checkpoint file.
+    """
+
     model_id: str = "Qwen/Qwen3.5-9B"
     adapter_scaling: float = 0.075
     temperature: float = 0.3
@@ -24,20 +44,47 @@ class PipelineConfig:
     checkpoint_path: str = ""
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialise config to a plain dictionary.
+
+        Returns:
+            All config fields as a JSON-serialisable dict.
+        """
         return asdict(self)
 
     def save(self, path: Path) -> Path:
+        """Write config as indented JSON to disk.
+
+        Args:
+            path: Destination file path; parent directories are created.
+
+        Returns:
+            The path written to.
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.to_dict(), indent=2))
         return path
 
     def override(self, **kwargs: Any) -> PipelineConfig:
+        """Return a new config with the given fields replaced.
+
+        Args:
+            **kwargs: Field names and new values to apply.
+
+        Returns:
+            A new PipelineConfig with updated values.
+        """
         d = self.to_dict()
         d.update(kwargs)
         return PipelineConfig(**d)
 
     @classmethod
     def from_env(cls) -> PipelineConfig:
+        """Construct a config from RUNE_* environment variables.
+
+        Returns:
+            PipelineConfig with any recognised env vars applied as overrides,
+            or a default instance if none are set.
+        """
         overrides: dict[str, Any] = {}
         env_map: dict[str, tuple[str, type]] = {
             "RUNE_TEMPERATURE": ("temperature", float),
@@ -58,6 +105,14 @@ class PipelineConfig:
 
 
 def load_config(path: Path) -> PipelineConfig:
+    """Load a PipelineConfig from a JSON file, or return defaults if missing.
+
+    Args:
+        path: Path to a JSON config file.
+
+    Returns:
+        Parsed PipelineConfig, or a default instance if the file does not exist.
+    """
     if path.exists():
         d = json.loads(path.read_text())
         return PipelineConfig(**d)

@@ -1,3 +1,5 @@
+"""Model inference: freeform and structured (outlines) generation."""
+
 from __future__ import annotations
 
 import logging
@@ -9,6 +11,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GenerationResult:
+    """Output from a single model generation call.
+
+    Attributes:
+        text: Final decoded text (JSON string for structured outputs).
+        thinking: Chain-of-thought text produced before the answer, if any.
+        tokens_used: Approximate token count for the generation.
+    """
+
     text: str
     thinking: str
     tokens_used: int
@@ -25,7 +35,21 @@ async def generate(
     temperature: float = 0.3,
     thinking_budget: int = 1024,
 ) -> GenerationResult:
+    """Dispatch to structured or freeform generation based on output_schema.
 
+    Args:
+        model: PEFT-wrapped language model.
+        tokenizer: Paired tokenizer.
+        prompt: User prompt text.
+        system_prompt: Optional system role text.
+        output_schema: Pydantic model for JSON-constrained output; None for freeform.
+        max_tokens: Maximum new tokens to generate.
+        temperature: Sampling temperature (freeform only).
+        thinking_budget: Max tokens for chain-of-thought (structured only).
+
+    Returns:
+        GenerationResult with text, thinking, and token count.
+    """
     if output_schema is not None:
         return await _generate_structured(
             model,
@@ -55,6 +79,19 @@ async def _generate_freeform(
     max_tokens: int,
     temperature: float,
 ) -> GenerationResult:
+    """Run greedy/sampled generation without output constraints.
+
+    Args:
+        model: Language model.
+        tokenizer: Paired tokenizer.
+        prompt: User prompt.
+        system_prompt: System role text.
+        max_tokens: Maximum new tokens.
+        temperature: Sampling temperature.
+
+    Returns:
+        GenerationResult with decoded text and empty thinking field.
+    """
     import asyncio  # noqa: PLC0415
 
     def _run() -> GenerationResult:
@@ -92,6 +129,20 @@ async def _generate_structured(
     max_tokens: int,
     thinking_budget: int,
 ) -> GenerationResult:
+    """Run thinking-then-structured generation using outlines JSON constraints.
+
+    Args:
+        model: Language model.
+        tokenizer: Paired tokenizer.
+        prompt: User prompt.
+        system_prompt: System role text.
+        schema: Pydantic model class used as the JSON schema.
+        max_tokens: Maximum tokens for the structured answer phase.
+        thinking_budget: Maximum tokens for the chain-of-thought phase.
+
+    Returns:
+        GenerationResult with JSON text, thinking text, and token count.
+    """
     import asyncio  # noqa: PLC0415
 
     def _run() -> GenerationResult:

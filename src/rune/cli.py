@@ -1,3 +1,5 @@
+"""Typer CLI entry point: run, train, mine, bench commands."""
+
 from __future__ import annotations
 
 from pathlib import Path
