@@ -1,0 +1,20 @@
+ROLE: integration-diagnostician
+PROJECT: {{ project[:500] }}
+SUBTASK CODE:
+{% for name, code in code_outputs.items() %}
+--- {{ name }} ---
+{{ code[:600] }}
+{% endfor %}
+INTEGRATION ERROR:
+{{ integration_error[:500] }}
+{% if repair_history %}
+PRIOR REPAIR ATTEMPTS:
+{% for attempt in repair_history %}
+  Iteration {{ attempt.iteration + 1 }}: diagnosed {{ attempt.diagnosed | length }} subtask(s), result score={{ attempt.result }}
+  {% for d in attempt.diagnosed %}
+    - {{ d.name }}: {{ d.diagnosis[:100] }}
+  {% endfor %}
+{% endfor %}
+{% endif %}
+Identify which subtask(s) produced the errors above.
+Output a numbered list: subtask_name — what is wrong and how to fix it.

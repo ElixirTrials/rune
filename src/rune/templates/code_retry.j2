@@ -1,0 +1,25 @@
+ROLE: coder
+{% if project %}PROJECT: {{ project[:200] }}
+{% endif %}SUBTASK: {{ subtask.name }} (retry {{ attempt }}/{{ max_retries }})
+{% if subtask.description %}DESCRIPTION: {{ subtask.description[:200] }}
+{% endif %}
+{% if dependency_interfaces %}
+COMPLETED DEPENDENCIES (use these interfaces):
+{{ dependency_interfaces[:400] }}
+{% endif %}
+PLAN:
+{{ plan[:600] }}
+{% if existing_code %}
+EXISTING CODE:
+{{ existing_code[:600] }}
+{% endif %}
+TESTS: {{ passed }}/{{ total }} {{ "PASSING" if tests_passed else "FAILING" }}
+ERRORS:
+{{ error_summary[:300] }}
+{% if failed_tests %}
+FAILED: {{ failed_tests[:200] }}
+{% endif %}
+FIX: {{ fix_guidance }}
+{% if history %}
+HISTORY: {{ history }}
+{% endif %}
