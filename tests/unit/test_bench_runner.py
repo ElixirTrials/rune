@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -178,7 +179,7 @@ class TestRunBenchmarkConfigPropagation:
 
 
 class TestLoadTasks:
-    def test_load_tasks_from_json(self, tmp_path: pytest.TempPathFactory) -> None:  # type: ignore[misc]
+    def test_load_tasks_from_json(self, tmp_path: Path) -> None:
         data = [
             {
                 "task_id": "a",
@@ -187,7 +188,7 @@ class TestLoadTasks:
                 "entry_point": "solution",
             },
         ]
-        p = tmp_path / "tasks.json"  # type: ignore[operator]
+        p = tmp_path / "tasks.json"
         p.write_text(json.dumps(data))
         tasks = load_tasks(p)
         assert len(tasks) == 1

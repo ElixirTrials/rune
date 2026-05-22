@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -138,7 +139,7 @@ async def run_benchmark(
         full_code = generated_code + "\n\n" + task.test_code
 
         try:
-            sandbox_result = run_in_sandbox(full_code)
+            sandbox_result = await asyncio.to_thread(run_in_sandbox, full_code)
         except Exception:
             logger.exception("Sandbox failed for task %s", task.task_id)
             results.append(
