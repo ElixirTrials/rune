@@ -114,8 +114,12 @@ def mine(
     output_dir: Path = typer.Option(..., help="Output corpus directory"),
 ) -> None:
     """Mine coding sessions into training corpus."""
+    from rune.mining.miner import mine_corpus  # noqa: PLC0415
+
     typer.echo(f"Mining {sessions_dir} → {output_dir}")
-    raise NotImplementedError("Mining not yet implemented")
+    counts = mine_corpus(sessions_dir, output_dir)
+    for bin_key, count in sorted(counts.items()):
+        typer.echo(f"  {bin_key}: {count} records")
 
 
 @app.command()
