@@ -141,17 +141,21 @@ def bench(
         typer.echo("Error: --tasks-file is required", err=True)
         raise typer.Exit(1)
 
-    if hpo:
-        typer.echo("HPO not yet implemented; run without --hpo")
-        return
-
     cfg = load_config(config) if config else PipelineConfig()
     tasks = load_tasks(tasks_file)
-
-    typer.echo(f"Benchmarking {len(tasks)} task(s)")
-
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()
+
+    if hpo:
+        from rune.bench.hpo import run_hpo  # noqa: PLC0415
+
+        typer.echo(f"Running HPO: {n_trials} trials")
+        best = asyncio.run(run_hpo(tasks, engine, cfg, model, n_trials))
+        typer.echo(f"Best pass@1: {best['best_value']:.3f}")
+        typer.echo(f"Best params: {best['best_params']}")
+        return
+
+    typer.echo(f"Benchmarking {len(tasks)} task(s)")
 
     bench_config: dict[str, Any] = {
         "model": model,
