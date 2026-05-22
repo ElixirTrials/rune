@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rune.sandbox.executor import run_in_sandbox
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,7 +77,7 @@ def load_tasks(path: Path) -> list[BenchTask]:
     return [BenchTask(**t) for t in data]
 
 
-def run_benchmark(
+async def run_benchmark(
     tasks: list[BenchTask],
     engine: Any,
     config: dict[str, Any],
@@ -84,19 +86,85 @@ def run_benchmark(
 
     Args:
         tasks: Tasks to evaluate.
-        engine: Compiled LangGraph engine.
-        config: Engine run configuration dict.
+        engine: Compiled LangGraph engine (CompiledStateGraph).
+        config: Configurable dict passed to engine.ainvoke (contains
+            ``model`` and ``run_config`` keys).
 
     Returns:
         BenchResult with pass@1 and per-task details.
     """
+    if not tasks:
+        return BenchResult(pass_at_1=0.0, total_tasks=0, passed_tasks=0, per_task=[])
+
+    budget = config.get("run_config", {}).get("max_phase_iterations", 5)
     results: list[TaskResult] = []
-    for _task in tasks:
-        raise NotImplementedError("Benchmark execution not yet implemented")
-    passed = sum(1 for r in results if r.passed)
+
+    for task in tasks:
+        initial_state: dict[str, Any] = {
+            "task": task.description,
+            "subtasks": [],
+            "interfaces": {},
+            "plans": {},
+            "code_results": {},
+            "code_passed": {},
+            "retries": {},
+            "integrated_code": "",
+            "current_adapter": None,
+            "feedback": None,
+            "diagnosis": None,
+            "actions": [],
+            "trajectory": [],
+            "step": 0,
+            "budget_remaining": budget,
+        }
+
+        try:
+            final_state: dict[str, Any] = await engine.ainvoke(
+                initial_state, config={"configurable": config}
+            )
+        except Exception:
+            logger.exception("Engine failed for task %s", task.task_id)
+            results.append(
+                TaskResult(
+                    task_id=task.task_id, passed=False, code="", stderr="engine error"
+                )
+            )
+            continue
+
+        generated_code = final_state.get("integrated_code") or ""
+        if not generated_code:
+            generated_code = "\n".join(final_state.get("code_results", {}).values())
+
+        full_code = generated_code + "\n\n" + task.test_code
+
+        try:
+            sandbox_result = run_in_sandbox(full_code)
+        except Exception:
+            logger.exception("Sandbox failed for task %s", task.task_id)
+            results.append(
+                TaskResult(
+                    task_id=task.task_id,
+                    passed=False,
+                    code=generated_code,
+                    stderr="sandbox error",
+                )
+            )
+            continue
+
+        passed = sandbox_result.exit_code == 0
+        results.append(
+            TaskResult(
+                task_id=task.task_id,
+                passed=passed,
+                code=generated_code,
+                stderr=sandbox_result.stderr,
+            )
+        )
+
+    n_passed = sum(1 for r in results if r.passed)
     return BenchResult(
-        pass_at_1=passed / len(results) if results else 0.0,
+        pass_at_1=n_passed / len(results) if results else 0.0,
         total_tasks=len(results),
-        passed_tasks=passed,
+        passed_tasks=n_passed,
         per_task=results,
     )

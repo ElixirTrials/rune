@@ -101,8 +101,42 @@ def bench(
     n_trials: int = typer.Option(50, help="Number of HPO trials"),
 ) -> None:
     """Run benchmark suite, optionally with HPO."""
-    typer.echo(f"Benchmarking {'with HPO' if hpo else 'single pass'}")
-    raise NotImplementedError("Benchmarking not yet implemented")
+    import asyncio  # noqa: PLC0415
+
+    from rune.bench.runner import load_tasks, run_benchmark  # noqa: PLC0415
+    from rune.config import PipelineConfig, load_config  # noqa: PLC0415
+    from rune.engine.graph import create_engine  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
+
+    if tasks_file is None:
+        typer.echo("Error: --tasks-file is required", err=True)
+        raise typer.Exit(1)
+
+    if hpo:
+        typer.echo("HPO not yet implemented; run without --hpo")
+        return
+
+    cfg = load_config(config) if config else PipelineConfig()
+    tasks = load_tasks(tasks_file)
+
+    typer.echo(f"Benchmarking {len(tasks)} task(s)")
+
+    model = ModelWrapper.from_config(cfg)
+    engine = create_engine()
+
+    bench_config: dict[str, Any] = {
+        "model": model,
+        "run_config": cfg.to_dict(),
+    }
+
+    result = asyncio.run(run_benchmark(tasks, engine, bench_config))
+
+    typer.echo(
+        f"pass@1: {result.pass_at_1:.3f}  ({result.passed_tasks}/{result.total_tasks})"
+    )
+    for tr in result.per_task:
+        status = "PASS" if tr.passed else "FAIL"
+        typer.echo(f"  [{status}] {tr.task_id}")
 
 
 if __name__ == "__main__":
