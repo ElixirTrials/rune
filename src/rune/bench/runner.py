@@ -44,7 +44,7 @@ def run_benchmark(
     config: dict[str, Any],
 ) -> BenchResult:
     results: list[TaskResult] = []
-    for task in tasks:
+    for _task in tasks:
         raise NotImplementedError("Benchmark execution not yet implemented")
     passed = sum(1 for r in results if r.passed)
     return BenchResult(

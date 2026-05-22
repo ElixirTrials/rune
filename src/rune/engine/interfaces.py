@@ -25,7 +25,9 @@ def extract_interfaces(code: str) -> str:
 
     for node in tree.root_node.children:
         if node.type == "function_definition":
-            first_line = code[node.start_byte : node.end_byte].split("\n")[0]
+            first_line = code[node.start_byte : node.end_byte].split("\n", maxsplit=1)[
+                0
+            ]
             lines.append(first_line)
         elif node.type == "class_definition":
             class_code = code[node.start_byte : node.end_byte]
@@ -35,7 +37,9 @@ def extract_interfaces(code: str) -> str:
                 if child.type == "block":
                     for stmt in child.children:
                         if stmt.type == "function_definition":
-                            method_line = code[stmt.start_byte : stmt.end_byte].split("\n")[0]
+                            method_line = code[stmt.start_byte : stmt.end_byte].split(
+                                "\n", maxsplit=1
+                            )[0]
                             lines.append(method_line)
 
     return "\n".join(lines)

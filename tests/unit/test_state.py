@@ -1,4 +1,4 @@
-from rune.engine.state import Action, Subtask, StepRecord, Feedback, RunState
+from rune.engine.state import Action, Feedback, RunState, Subtask
 
 
 class TestSubtask:
@@ -8,7 +8,11 @@ class TestSubtask:
         assert s.depends_on == []
 
     def test_subtask_with_dependencies(self) -> None:
-        s = Subtask(name="validate", description="Validate parsed input", depends_on=["parse_input"])
+        s = Subtask(
+            name="validate",
+            description="Validate parsed input",
+            depends_on=["parse_input"],
+        )
         assert s.depends_on == ["parse_input"]
 
 

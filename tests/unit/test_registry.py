@@ -1,7 +1,6 @@
-import time
 from pathlib import Path
 
-from rune.registry.store import AdapterRecord, AdapterRegistry
+from rune.registry.store import AdapterRegistry
 
 
 class TestAdapterRegistry:

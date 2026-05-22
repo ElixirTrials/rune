@@ -1,5 +1,5 @@
-from rune.engine.policy import select_action, build_execution_layers, ACTIONS
-from rune.engine.state import RunState, Subtask
+from rune.engine.policy import build_execution_layers, select_action
+from rune.engine.state import Subtask
 
 
 def _make_state(**overrides: object) -> dict:
@@ -98,7 +98,11 @@ class TestBuildExecutionLayers:
         assert set(layers[0]) == {"a", "b"}
 
     def test_chain_dependency(self) -> None:
-        subtasks = [Subtask("a", "", []), Subtask("b", "", ["a"]), Subtask("c", "", ["b"])]
+        subtasks = [
+            Subtask("a", "", []),
+            Subtask("b", "", ["a"]),
+            Subtask("c", "", ["b"]),
+        ]
         layers = build_execution_layers(subtasks)
         assert len(layers) == 3
         assert layers[0] == ["a"]

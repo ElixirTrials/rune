@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langchain_core.runnables import RunnableConfig
 
 from rune.engine.parse import parse_output, render_template
 from rune.engine.policy import select_action
@@ -26,13 +26,12 @@ def state_to_ctx(state: RunState) -> dict[str, Any]:
     }
 
 
-async def step_node(state: RunState, config: RunnableConfig) -> dict:
-    configurable = config.get("configurable", {})
+async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
+    configurable: dict[str, Any] = config.get("configurable", {})
     model = configurable["model"]
-    registry = configurable.get("registry")
-    run_config = configurable.get("run_config", {})
+    run_config: dict[str, Any] = configurable.get("run_config", {})
 
-    actions = select_action(state)
+    actions = select_action(dict(state))
     if not actions:
         return {"actions": [], "budget_remaining": state["budget_remaining"]}
 
@@ -54,18 +53,18 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict:
         results.append((action, target_name, result.text))
 
     code_actions = [(a, name, text) for a, name, text in results if a.executes_code]
-    sandbox_results = await asyncio.gather(*[
-        asyncio.to_thread(run_in_sandbox, text) for _, _, text in code_actions
-    ])
+    sandbox_results = await asyncio.gather(
+        *[asyncio.to_thread(run_in_sandbox, text) for _, _, text in code_actions]
+    )
     feedback_map = {
         name: Feedback(stdout=fb.stdout, stderr=fb.stderr, exit_code=fb.exit_code)
-        for (_, name, _), fb in zip(code_actions, sandbox_results)
+        for (_, name, _), fb in zip(code_actions, sandbox_results, strict=True)
     }
 
     updates: dict[str, Any] = {}
     for action, target_name, raw in results:
         fb = feedback_map.get(target_name)
-        partial = parse_output(action, raw, fb, state)
+        partial = parse_output(action, raw, fb, dict(state))
         for k, v in partial.items():
             if isinstance(v, dict) and isinstance(updates.get(k), dict):
                 updates[k] = {**updates[k], **v}
@@ -95,12 +94,16 @@ def should_continue(state: RunState) -> str:
     return "continue"
 
 
-def create_engine() -> CompiledStateGraph:
+def create_engine() -> CompiledStateGraph:  # type: ignore[type-arg]
     graph = StateGraph(RunState)
     graph.add_node("step", step_node)
     graph.set_entry_point("step")
-    graph.add_conditional_edges("step", should_continue, {
-        "continue": "step",
-        "done": END,
-    })
+    graph.add_conditional_edges(
+        "step",
+        should_continue,
+        {
+            "continue": "step",
+            "done": END,
+        },
+    )
     return graph.compile()

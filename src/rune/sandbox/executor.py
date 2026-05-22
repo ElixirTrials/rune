@@ -17,7 +17,7 @@ class ExecutionResult:
 def extract_code(raw: str) -> str:
     blocks = re.findall(r"```(?:python)?\n(.*?)```", raw, re.DOTALL)
     if blocks:
-        return max(blocks, key=len).strip()
+        return str(max(blocks, key=len)).strip()
     return raw.strip()
 
 
@@ -32,6 +32,7 @@ def run_in_sandbox(code: str, *, timeout: int = 30) -> ExecutionResult:
             capture_output=True,
             text=True,
             timeout=timeout,
+            check=False,
         )
         return ExecutionResult(
             stdout=proc.stdout,

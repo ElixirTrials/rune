@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,9 @@ def generate_adapter_weights(
     max_length: int = 2048,
 ) -> dict[str, Any]:
     import torch  # noqa: PLC0415
-    from model_training.d2l_activations import extract_activations_with_model  # noqa: PLC0415
+    from model_training.d2l_activations import (
+        extract_activations_with_model,  # noqa: PLC0415
+    )
 
     features, attn_mask = extract_activations_with_model(
         text=trajectory_text,

@@ -50,7 +50,15 @@ class AdapterRegistry:
     ) -> None:
         self._conn.execute(
             "INSERT INTO adapters VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (adapter_id, disk_path, parent_id, action, session_id, generation, time.time()),
+            (
+                adapter_id,
+                disk_path,
+                parent_id,
+                action,
+                session_id,
+                generation,
+                time.time(),
+            ),
         )
         self._conn.commit()
 

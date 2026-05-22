@@ -40,7 +40,9 @@ def parse_output(
             result = DecomposeResult.model_validate_json(raw)
             return {
                 "subtasks": [
-                    Subtask(name=s.name, description=s.description, depends_on=s.depends_on)
+                    Subtask(
+                        name=s.name, description=s.description, depends_on=s.depends_on
+                    )
                     for s in result.subtasks
                 ]
             }
@@ -54,7 +56,10 @@ def parse_output(
             if action.name == "code_retry":
                 retries[target] = retries.get(target, 0) + 1
             return {
-                "code_results": {**state.get("code_results", {}), target: extract_code(raw)},
+                "code_results": {
+                    **state.get("code_results", {}),
+                    target: extract_code(raw),
+                },
                 "code_passed": {**state.get("code_passed", {}), target: passed},
                 "retries": retries,
                 "feedback": feedback,
@@ -67,6 +72,6 @@ def parse_output(
                 "diagnosis": None,
             }
         case "diagnose":
-            result = DiagnoseResult.model_validate_json(raw)
-            return {"diagnosis": result.fix_guidance}
+            diag = DiagnoseResult.model_validate_json(raw)
+            return {"diagnosis": diag.fix_guidance}
     return {}

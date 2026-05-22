@@ -1,6 +1,7 @@
-import json
 import os
 from pathlib import Path
+
+import pytest
 
 from rune.config import PipelineConfig, load_config
 
@@ -20,11 +21,8 @@ class TestPipelineConfig:
 
     def test_frozen(self) -> None:
         cfg = PipelineConfig()
-        try:
+        with pytest.raises(AttributeError):
             cfg.temperature = 0.5  # type: ignore[misc]
-            assert False, "Should raise"
-        except AttributeError:
-            pass
 
     def test_to_dict_roundtrip(self) -> None:
         cfg = PipelineConfig(temperature=0.5, adapter_scaling=0.1)

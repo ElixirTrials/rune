@@ -62,8 +62,21 @@ module = [
     "optuna_integration", "optuna_integration.*",
     "bitsandbytes", "bitsandbytes.*",
     "ctx_to_lora", "ctx_to_lora.*",
+    "trl", "trl.*",
+    "model_training", "model_training.*",
+    "adapter_registry", "adapter_registry.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "rune.training.diff_loss",
+    "rune.training.config",
+    "rune.training.oracle_cache",
+    "rune.model.hypernetwork",
+    "rune.model.inference",
+]
+disable_error_code = ["no-any-return", "misc", "unused-ignore", "import-untyped", "attr-defined"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -93,3 +106,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PLC", "PLE", "PLW"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/rune/training/diff_loss.py" = ["PLC0415", "PLW0603", "B905"]
+"src/rune/model/*.py" = ["PLC0415"]
+"tests/**" = ["E501"]

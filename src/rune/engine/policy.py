@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from graphlib import TopologicalSorter
+from typing import Any
 
 from rune.engine.parse import DecomposeResult, DiagnoseResult
 from rune.engine.state import Action, Subtask
@@ -8,12 +9,48 @@ from rune.engine.state import Action, Subtask
 MAX_RETRIES = 3
 
 ACTIONS: dict[str, Action] = {
-    "decompose": Action("decompose", "decompose", "prompt_decompose", "You are a project decomposer.", DecomposeResult, False, None),
-    "plan": Action("plan", "plan", "prompt_plan", "You are a project planner.", None, False, None),
-    "code": Action("code", "code", "prompt_code", "You are a code generator.", None, True, None),
-    "code_retry": Action("code_retry", "code_retry", "prompt_code_retry", "You are a code generator.", None, True, None),
-    "integrate": Action("integrate", "integrate", "prompt_integrate", "You are a code integrator.", None, True, None),
-    "diagnose": Action("diagnose", "diagnose", "prompt_diagnose", "You are a code diagnostician.", DiagnoseResult, False, None),
+    "decompose": Action(
+        "decompose",
+        "decompose",
+        "prompt_decompose",
+        "You are a project decomposer.",
+        DecomposeResult,
+        False,
+        None,
+    ),
+    "plan": Action(
+        "plan", "plan", "prompt_plan", "You are a project planner.", None, False, None
+    ),
+    "code": Action(
+        "code", "code", "prompt_code", "You are a code generator.", None, True, None
+    ),
+    "code_retry": Action(
+        "code_retry",
+        "code_retry",
+        "prompt_code_retry",
+        "You are a code generator.",
+        None,
+        True,
+        None,
+    ),
+    "integrate": Action(
+        "integrate",
+        "integrate",
+        "prompt_integrate",
+        "You are a code integrator.",
+        None,
+        True,
+        None,
+    ),
+    "diagnose": Action(
+        "diagnose",
+        "diagnose",
+        "prompt_diagnose",
+        "You are a code diagnostician.",
+        DiagnoseResult,
+        False,
+        None,
+    ),
 }
 
 
@@ -45,7 +82,7 @@ def _with_target(action_name: str, target: str) -> Action:
     )
 
 
-def select_action(state: dict) -> list[Action]:
+def select_action(state: dict[str, Any]) -> list[Action]:
     subtasks: list[Subtask] = state["subtasks"]
     if not subtasks:
         return [ACTIONS["decompose"]]
@@ -57,16 +94,14 @@ def select_action(state: dict) -> list[Action]:
         return [_with_target("plan", name) for name in layers[0]]
 
     # Code uncoded or failing subtasks
-    failing = [
-        s for s in subtasks
-        if not state["code_passed"].get(s.name)
-    ]
+    failing = [s for s in subtasks if not state["code_passed"].get(s.name)]
     if failing:
         layers = build_execution_layers(failing)
         ready_names = set(layers[0])
         # Only subtasks whose deps all pass
         ready = [
-            s for s in failing
+            s
+            for s in failing
             if s.name in ready_names
             and all(state["code_passed"].get(d, False) for d in s.depends_on)
         ]

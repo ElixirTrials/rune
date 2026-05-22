@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 
-app = typer.Typer(name="rune", help="Local-first coding agent with hypernetwork LoRA adapters")
+app = typer.Typer(
+    name="rune", help="Local-first coding agent with hypernetwork LoRA adapters"
+)
 
 
 @app.command()
 def run(
     task: str = typer.Argument(..., help="Task description"),
-    config: Optional[Path] = typer.Option(None, help="Path to config JSON"),
-    checkpoint: Optional[str] = typer.Option(None, help="Hypernetwork checkpoint path"),
+    config: Path | None = typer.Option(None, help="Path to config JSON"),
+    checkpoint: str | None = typer.Option(None, help="Hypernetwork checkpoint path"),
 ) -> None:
     """Run a single task through the engine."""
     from rune.config import PipelineConfig, load_config  # noqa: PLC0415
@@ -27,8 +28,8 @@ def run(
 
 @app.command()
 def train(
-    corpus_dir: Optional[Path] = typer.Option(None, help="Training corpus directory"),
-    config: Optional[Path] = typer.Option(None, help="Config JSON path"),
+    corpus_dir: Path | None = typer.Option(None, help="Training corpus directory"),
+    config: Path | None = typer.Option(None, help="Config JSON path"),
     hpo: bool = typer.Option(False, help="Run Optuna HPO"),
     n_trials: int = typer.Option(50, help="Number of HPO trials"),
 ) -> None:
@@ -49,8 +50,8 @@ def mine(
 
 @app.command()
 def bench(
-    tasks_file: Optional[Path] = typer.Option(None, help="Benchmark tasks JSON"),
-    config: Optional[Path] = typer.Option(None, help="Config JSON path"),
+    tasks_file: Path | None = typer.Option(None, help="Benchmark tasks JSON"),
+    config: Path | None = typer.Option(None, help="Config JSON path"),
     hpo: bool = typer.Option(False, help="Run Optuna HPO"),
     n_trials: int = typer.Option(50, help="Number of HPO trials"),
 ) -> None:

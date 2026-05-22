@@ -34,10 +34,7 @@ def evaluate_gate(
         elif delta < -MAX_REGRESSION:
             regressions[bench] = delta
 
-    passed = (
-        len(improvements) >= MIN_BENCHMARKS_PASSING
-        and len(regressions) == 0
-    )
+    passed = len(improvements) >= MIN_BENCHMARKS_PASSING and len(regressions) == 0
     return GateResult(
         passed=passed,
         passing_benchmarks=len(improvements),
