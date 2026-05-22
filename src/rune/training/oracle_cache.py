@@ -14,6 +14,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+class AdapterNotFoundError(Exception):
+    """Raised when an adapter ID is not present in the registry."""
+
+
 # {module_name: {"A": Tensor[L,r,in], "B": Tensor[L,r,out]}}
 LoraDict = dict[str, dict[str, Any]]
 
@@ -86,18 +91,12 @@ def lookup_oracle_path(bin_key: str, registry: Any) -> str | None:
     Returns:
         The adapter's ``file_path`` string, or ``None`` when missing / archived.
     """
-    from adapter_registry.exceptions import AdapterNotFoundError  # noqa: PLC0415
-
     adapter_id = f"{ORACLE_ID_PREFIX}{bin_key}"
-    try:
-        record = registry.retrieve_by_id(adapter_id)
-    except AdapterNotFoundError:
+    record = registry.get(adapter_id)
+    if record is None:
         logger.warning("Oracle adapter %r not found in registry", adapter_id)
         return None
-    if record.is_archived:
-        logger.warning("Oracle adapter %r is archived; ignoring", adapter_id)
-        return None
-    return str(record.file_path)
+    return str(record.disk_path)
 
 
 def audit_oracle_coverage(

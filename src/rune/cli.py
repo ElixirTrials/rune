@@ -79,8 +79,33 @@ def train(
     n_trials: int = typer.Option(50, help="Number of HPO trials"),
 ) -> None:
     """Train hypernetwork (oracle → distillation → gate)."""
+    import asyncio  # noqa: PLC0415
+    import json  # noqa: PLC0415
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    from rune.training.d2l_train import D2LTrainConfig  # noqa: PLC0415
+    from rune.training.orchestrator import run_training_pipeline  # noqa: PLC0415
+
     typer.echo(f"Training {'with HPO' if hpo else 'single run'}")
-    raise NotImplementedError("Training not yet implemented")
+
+    if config is not None:
+        raw = json.loads(_Path(config).read_text())
+        train_cfg = D2LTrainConfig(**raw)
+    else:
+        train_cfg = D2LTrainConfig()
+
+    if corpus_dir is None:
+        corpus_dir = _Path("./corpus")
+
+    exit_code = asyncio.run(
+        run_training_pipeline(
+            train_cfg,
+            corpus_dir,
+            hpo=hpo,
+            n_trials=n_trials,
+        )
+    )
+    raise typer.Exit(exit_code)
 
 
 @app.command()

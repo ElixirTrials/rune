@@ -60,6 +60,7 @@ module = [
     "safetensors", "safetensors.*",
     "tree_sitter", "tree_sitter.*",
     "tree_sitter_python", "tree_sitter_python.*",
+    "datasets", "datasets.*",
     "mlflow", "mlflow.*",
     "optuna", "optuna.*",
     "optuna_integration", "optuna_integration.*",
