@@ -142,4 +142,6 @@ class TestRunDistillation:
         ):
             run_distillation(cfg)
 
-        mock_trainer.train.assert_called_once_with(resume_from_checkpoint="/some/checkpoint")
+        mock_trainer.train.assert_called_once_with(
+            resume_from_checkpoint="/some/checkpoint"
+        )

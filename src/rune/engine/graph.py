@@ -59,9 +59,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         prompt_text = render_template(action.prompt_template, **ctx)
 
         adapter = model.generate_adapter(trajectory_text)
-        scaled_sd = {
-            k: v * adapter_scaling for k, v in adapter.state_dict.items()
-        }
+        scaled_sd = {k: v * adapter_scaling for k, v in adapter.state_dict.items()}
         model.hotswap_adapter(scaled_sd)
         result = await model.generate(
             prompt=prompt_text,

@@ -55,7 +55,15 @@ class TestRunHpoStudyCreation:
             ),
             patch("asyncio.to_thread", new_callable=AsyncMock),
         ):
-            asyncio.run(run_hpo([_make_task()], MagicMock(), PipelineConfig(), MagicMock(), n_trials=3))
+            asyncio.run(
+                run_hpo(
+                    [_make_task()],
+                    MagicMock(),
+                    PipelineConfig(),
+                    MagicMock(),
+                    n_trials=3,
+                )
+            )
 
         mock_create.assert_called_once_with(
             direction="maximize", study_name="rune-bench-hpo"
@@ -72,11 +80,15 @@ class TestRunHpoMlflowCallback:
 
         with (
             patch("optuna.create_study", return_value=mock_study),
-            patch("optuna_integration.MLflowCallback", return_value=mock_cb) as mock_cls,
+            patch(
+                "optuna_integration.MLflowCallback", return_value=mock_cb
+            ) as mock_cls,
             patch("optuna.logging.set_verbosity"),
             patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread,
         ):
-            asyncio.run(run_hpo([], MagicMock(), PipelineConfig(), MagicMock(), n_trials=1))
+            asyncio.run(
+                run_hpo([], MagicMock(), PipelineConfig(), MagicMock(), n_trials=1)
+            )
 
         mock_cls.assert_called_once_with(mlflow_kwargs={"nested": True})
         # Confirm the callback was passed as keyword arg to study.optimize via to_thread
@@ -112,7 +124,13 @@ class TestRunHpoObjectiveProducesFloat:
             ),
         ):
             asyncio.run(
-                run_hpo([_make_task()], MagicMock(), PipelineConfig(), MagicMock(), n_trials=1)
+                run_hpo(
+                    [_make_task()],
+                    MagicMock(),
+                    PipelineConfig(),
+                    MagicMock(),
+                    n_trials=1,
+                )
             )
 
         assert len(captured_objective) == 1

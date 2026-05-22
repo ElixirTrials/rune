@@ -49,7 +49,10 @@ def _sandbox_fail() -> MagicMock:
 class TestRunBenchmarkAllPass:
     def test_all_tasks_pass(self) -> None:
         tasks = [_make_task("t1"), _make_task("t2")]
-        final_state = {"integrated_code": "def add(a,b): return a+b", "code_results": {}}
+        final_state = {
+            "integrated_code": "def add(a,b): return a+b",
+            "code_results": {},
+        }
         engine = _make_engine(final_state)
 
         with patch("rune.bench.runner.run_in_sandbox", return_value=_sandbox_pass()):
@@ -64,7 +67,10 @@ class TestRunBenchmarkAllPass:
 class TestRunBenchmarkPartialPass:
     def test_some_tasks_fail(self) -> None:
         tasks = [_make_task("t1"), _make_task("t2")]
-        final_state = {"integrated_code": "def add(a,b): return a+b", "code_results": {}}
+        final_state = {
+            "integrated_code": "def add(a,b): return a+b",
+            "code_results": {},
+        }
         engine = _make_engine(final_state)
 
         sandbox_results = [_sandbox_pass(), _sandbox_fail()]
@@ -133,7 +139,9 @@ class TestRunBenchmarkCodeExtraction:
         final_state = {"integrated_code": "", "code_results": {}}
         engine = _make_engine(final_state)
 
-        with patch("rune.bench.runner.run_in_sandbox", return_value=_sandbox_fail()) as mock_sb:
+        with patch(
+            "rune.bench.runner.run_in_sandbox", return_value=_sandbox_fail()
+        ) as mock_sb:
             result = asyncio.run(run_benchmark([task], engine, {}))
 
         assert result.passed_tasks == 0
@@ -143,7 +151,10 @@ class TestRunBenchmarkCodeExtraction:
 class TestRunBenchmarkSandboxTimeout:
     def test_timeout_counts_as_fail(self) -> None:
         task = _make_task("t1")
-        final_state = {"integrated_code": "def add(a,b): return a+b", "code_results": {}}
+        final_state = {
+            "integrated_code": "def add(a,b): return a+b",
+            "code_results": {},
+        }
         engine = _make_engine(final_state)
 
         timeout_result = MagicMock()

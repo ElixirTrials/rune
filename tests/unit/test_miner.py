@@ -21,20 +21,44 @@ def _make_session(
 ) -> Path:
     session_dir = base / name
     session_dir.mkdir(parents=True)
-    (session_dir / "session.jsonl").write_text(
-        "\n".join(json.dumps(s) for s in steps)
-    )
+    (session_dir / "session.jsonl").write_text("\n".join(json.dumps(s) for s in steps))
     (session_dir / "metadata.json").write_text(json.dumps(metadata))
     return session_dir
 
 
 _STEPS = [
-    {"step": 0, "action": "decompose", "target": None, "input": "implement binary search", "output": "subtasks: a, b", "feedback": None},
-    {"step": 1, "action": "plan", "target": "subtask_a", "input": "plan subtask_a", "output": "plan text", "feedback": None},
-    {"step": 2, "action": "code", "target": "subtask_a", "input": "code subtask_a", "output": "def bs(): ...", "feedback": {"exit_code": 0, "stdout": "ok", "stderr": ""}},
+    {
+        "step": 0,
+        "action": "decompose",
+        "target": None,
+        "input": "implement binary search",
+        "output": "subtasks: a, b",
+        "feedback": None,
+    },
+    {
+        "step": 1,
+        "action": "plan",
+        "target": "subtask_a",
+        "input": "plan subtask_a",
+        "output": "plan text",
+        "feedback": None,
+    },
+    {
+        "step": 2,
+        "action": "code",
+        "target": "subtask_a",
+        "input": "code subtask_a",
+        "output": "def bs(): ...",
+        "feedback": {"exit_code": 0, "stdout": "ok", "stderr": ""},
+    },
 ]
 
-_META = {"task": "implement binary search", "benchmark": "humaneval", "problem_id": "HE_001", "timestamp": "2026-01-01T00:00:00"}
+_META = {
+    "task": "implement binary search",
+    "benchmark": "humaneval",
+    "problem_id": "HE_001",
+    "timestamp": "2026-01-01T00:00:00",
+}
 
 
 def test_scan_sessions(tmp_path: Path) -> None:
@@ -93,8 +117,22 @@ def test_mine_corpus(tmp_path: Path) -> None:
     output_dir = tmp_path / "corpus"
     _make_session(sessions_dir, "s1", _STEPS, _META)
 
-    steps2 = [{"step": 0, "action": "code", "target": None, "input": "mbpp input", "output": "mbpp output", "feedback": None}]
-    meta2 = {"task": "sort list", "benchmark": "mbpp", "problem_id": "MBPP_42", "timestamp": "2026-01-02T00:00:00"}
+    steps2 = [
+        {
+            "step": 0,
+            "action": "code",
+            "target": None,
+            "input": "mbpp input",
+            "output": "mbpp output",
+            "feedback": None,
+        }
+    ]
+    meta2 = {
+        "task": "sort list",
+        "benchmark": "mbpp",
+        "problem_id": "MBPP_42",
+        "timestamp": "2026-01-02T00:00:00",
+    }
     _make_session(sessions_dir, "s2", steps2, meta2)
 
     counts = mine_corpus(sessions_dir, output_dir)
