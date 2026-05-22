@@ -18,14 +18,58 @@ def run(
     checkpoint: str | None = typer.Option(None, help="Hypernetwork checkpoint path"),
 ) -> None:
     """Run a single task through the engine."""
+    import asyncio  # noqa: PLC0415
+
     from rune.config import PipelineConfig, load_config  # noqa: PLC0415
+    from rune.engine.graph import create_engine  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
     cfg = load_config(config) if config else PipelineConfig()
     if checkpoint:
         cfg = cfg.override(checkpoint_path=checkpoint)
 
     typer.echo(f"Running task: {task}")
-    raise NotImplementedError("Engine invocation not yet implemented")
+
+    model = ModelWrapper.from_config(cfg)
+
+    from typing import Any  # noqa: PLC0415
+
+    initial_state: dict[str, Any] = {
+        "task": task,
+        "subtasks": [],
+        "interfaces": {},
+        "plans": {},
+        "code_results": {},
+        "code_passed": {},
+        "retries": {},
+        "integrated_code": "",
+        "current_adapter": None,
+        "feedback": None,
+        "diagnosis": None,
+        "actions": [],
+        "trajectory": [],
+        "step": 0,
+        "budget_remaining": cfg.max_phase_iterations,
+    }
+
+    engine = create_engine()
+    final_state = asyncio.run(
+        engine.ainvoke(
+            initial_state,
+            config={
+                "configurable": {
+                    "model": model,
+                    "run_config": cfg.to_dict(),
+                }
+            },
+        )
+    )
+
+    output = final_state.get("integrated_code") or ""
+    if output:
+        typer.echo(output)
+    else:
+        typer.echo("Done (no integrated code produced)")
 
 
 @app.command()

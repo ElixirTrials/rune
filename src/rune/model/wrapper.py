@@ -1,0 +1,128 @@
+"""ModelWrapper: bridges step_node's model interface to the model layer stubs."""
+
+from __future__ import annotations
+
+import uuid
+from typing import TYPE_CHECKING, Any
+
+from rune.model.adapter import AdapterResult
+from rune.model.adapter import hotswap_adapter as hotswap_adapter_fn
+from rune.model.hypernetwork import generate_adapter_weights
+from rune.model.inference import GenerationResult
+from rune.model.inference import generate as inference_generate
+
+if TYPE_CHECKING:
+    from rune.config import PipelineConfig
+
+
+class ModelWrapper:
+    """Bridges step_node's model interface to the underlying model layer.
+
+    Accepts a base_model, tokenizer, and hypernet already loaded, so the
+    caller (or from_config) controls all GPU I/O.
+    """
+
+    def __init__(
+        self,
+        base_model: Any,
+        tokenizer: Any,
+        hypernet: Any,
+        *,
+        config: PipelineConfig,
+    ) -> None:
+        self._base_model = base_model
+        self._tokenizer = tokenizer
+        self._hypernet = hypernet
+        self._config = config
+        self._layer_indices: list[int] = getattr(
+            getattr(hypernet, "config", None), "layer_indices", []
+        )
+
+    @classmethod
+    def from_config(cls, config: PipelineConfig) -> ModelWrapper:
+        """Load model, tokenizer, and hypernet from config.
+
+        All heavy imports (torch, transformers, peft) are deferred inside this
+        method so the module stays importable in CPU-only CI.
+
+        Args:
+            config: Pipeline config; checkpoint_path must be non-empty.
+
+        Returns:
+            Initialised ModelWrapper.
+
+        Raises:
+            ValueError: If checkpoint_path is empty.
+        """
+        if not config.checkpoint_path:
+            raise ValueError(
+                "checkpoint_path must be set in config before calling from_config"
+            )
+
+        from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+        from rune.model.hypernetwork import (  # noqa: PLC0415
+            HypernetworkConfig,
+            load_hypernetwork,
+        )
+
+        base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
+        tokenizer = AutoTokenizer.from_pretrained(config.model_id)
+        hypernet = load_hypernetwork(
+            HypernetworkConfig(checkpoint_path=config.checkpoint_path)
+        )
+        return cls(base_model, tokenizer, hypernet, config=config)
+
+    def generate_adapter(self, trajectory_text: str) -> AdapterResult:
+        """Generate LoRA weights from a trajectory via the hypernetwork.
+
+        Args:
+            trajectory_text: Serialised coding trajectory used as conditioning.
+
+        Returns:
+            AdapterResult with a fresh UUID adapter_id and the generated state dict.
+        """
+        state_dict = generate_adapter_weights(
+            hypernet=self._hypernet,
+            trajectory_text=trajectory_text,
+            base_model=self._base_model,
+            tokenizer=self._tokenizer,
+            layer_indices=self._layer_indices,
+        )
+        return AdapterResult(adapter_id=uuid.uuid4().hex, state_dict=state_dict)
+
+    def hotswap_adapter(self, state_dict: dict[str, Any]) -> None:
+        """Hot-swap LoRA weights into the base model in-place.
+
+        Args:
+            state_dict: PEFT-compatible adapter weights.
+        """
+        hotswap_adapter_fn(self._base_model, state_dict)
+
+    async def generate(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        output_schema: type[Any] | None = None,
+        max_tokens: int = 2048,
+    ) -> GenerationResult:
+        """Generate text using the current model state.
+
+        Args:
+            prompt: User prompt text.
+            system_prompt: Optional system role text.
+            output_schema: Pydantic model for JSON-constrained output;
+                None for freeform.
+            max_tokens: Maximum new tokens.
+
+        Returns:
+            GenerationResult with text, thinking, and token count.
+        """
+        return await inference_generate(
+            self._base_model,
+            self._tokenizer,
+            prompt,
+            system_prompt=system_prompt,
+            output_schema=output_schema,
+            max_tokens=max_tokens,
+        )
