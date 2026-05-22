@@ -59,6 +59,7 @@ class ModelWrapper:
                 "checkpoint_path must be set in config before calling from_config"
             )
 
+        from peft import LoraConfig, get_peft_model  # noqa: PLC0415
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
         from rune.model.hypernetwork import (  # noqa: PLC0415
@@ -66,10 +67,20 @@ class ModelWrapper:
             load_hypernetwork,
         )
 
-        base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
+        _raw_model = AutoModelForCausalLM.from_pretrained(config.model_id)
+        lora_config = LoraConfig(
+            r=8,
+            lora_alpha=16,
+            target_modules="all-linear",
+            lora_dropout=0.0,
+        )
+        base_model: Any = get_peft_model(_raw_model, lora_config)
         tokenizer = AutoTokenizer.from_pretrained(config.model_id)
         hypernet = load_hypernetwork(
-            HypernetworkConfig(checkpoint_path=config.checkpoint_path)
+            HypernetworkConfig(
+                checkpoint_path=config.checkpoint_path,
+                model_config_name=config.model_id,
+            )
         )
         return cls(base_model, tokenizer, hypernet, config=config)
 

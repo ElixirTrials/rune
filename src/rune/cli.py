@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -31,8 +32,6 @@ def run(
     typer.echo(f"Running task: {task}")
 
     model = ModelWrapper.from_config(cfg)
-
-    from typing import Any  # noqa: PLC0415
 
     initial_state: dict[str, Any] = {
         "task": task,
