@@ -17,7 +17,7 @@ The adapter carries the memory, not the prompt. Prompt window stays constant reg
 
 ## Design Decisions
 
-**Sequence-based baseline stays.** The current `_try_completion` in `inference.py` remains as the single-shot fallback. The adapter-encoded continuation loop lives in `wrapper.py` and calls `_try_completion`-style logic only if the adapter path is unavailable (no hypernetwork loaded).
+**Single continuation path.** The adapter-encoded continuation loop lives in `wrapper.py`. A loaded hypernetwork is required; if missing, it is an error. The existing `_try_completion` in `inference.py` is removed.
 
 **Continuation trajectory format.** The hypernetwork input for a continuation is:
 
@@ -60,7 +60,7 @@ Defaults are starting points; actual values determined by HPO.
 - No prefill -- the model generates fresh tokens guided by adapter + grammar + short prompt.
 - The returned `GenerationResult.text` contains only the new tokens. The caller concatenates `grammar_prefix + result.text` to accumulate the full JSON.
 
-`_try_completion` is unchanged (remains as sequence-based fallback).
+`_try_completion` is removed. All continuation logic moves to `wrapper.py`.
 
 ### `adapter.py` -- extract `scale_lora_b()` helper
 
@@ -136,7 +136,7 @@ Test tasks: 2-3 generation tasks that reliably truncate at current `max_tokens`.
 ## Risks and Mitigations
 
 **Risk: Continuation adapter doesn't recover partial output well enough.**
-Mitigation: Sequence-based `_try_completion` remains as baseline. The adapter path is an experiment. HPO script validates empirically before committing to defaults.
+Mitigation: HPO script validates empirically before committing to defaults. If adapter conditioning proves insufficient, we tune scaling/prompt parameters rather than adding fallback paths.
 
 **Risk: Hypernetwork's 2048-token input limit truncates long partial outputs.**
 Mitigation: Continuation trajectory truncates code from the beginning, keeping the most recent output (which is what the model needs to continue from). Goal summary is kept short.
