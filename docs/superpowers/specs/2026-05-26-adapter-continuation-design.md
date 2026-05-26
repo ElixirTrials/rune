@@ -32,7 +32,7 @@ This is deliberately different from the initial task trajectory. We embed *what 
 
 **Adapter scaling.** Continuation adapters are scaled by `adapter_scaling * continuation_scaling_multiplier`. The multiplier is a fixed config value determined empirically via HPO. Intuition: the model needs stronger conditioning to recover partial output from the adapter alone.
 
-**Assistant-turn prefill.** The partial JSON is tokenized and concatenated onto the chat-encoded prompt as an assistant turn prefix. This is the real resume point -- the short prompt in the user turn provides informational context, but the prefill ensures the model continues from the exact byte where it left off.
+**No full prefill.** The partial JSON is NOT prefilled into the assistant turn -- that would grow the context window linearly, defeating the purpose. Instead, three mechanisms provide continuity: (1) the grammar matcher advanced past the partial JSON enforces structural validity, (2) the adapter encodes the full semantic context, (3) the short prompt provides the last N lines as a local anchor. The model generates new tokens constrained by grammar, and we concatenate `partial_json + new_tokens` on the caller side.
 
 **Skip thinking on continuation.** The thinking phase (unconstrained generation until `</think>`) is skipped for continuation calls. The model has already thought; we just need it to keep writing JSON.
 
@@ -57,8 +57,8 @@ Defaults are starting points; actual values determined by HPO.
 `generate()` gains `grammar_prefix: str | None = None`. When set:
 - Thinking phase is skipped entirely.
 - The grammar matcher is advanced past `grammar_prefix` before constrained generation begins.
-- The prefix is tokenized and appended to the encoded prompt as assistant-turn prefill.
-- The returned `GenerationResult.text` contains `grammar_prefix + new_tokens` (the full accumulated JSON), so callers can pass it directly to the next continuation.
+- No prefill -- the model generates fresh tokens guided by adapter + grammar + short prompt.
+- The returned `GenerationResult.text` contains only the new tokens. The caller concatenates `grammar_prefix + result.text` to accumulate the full JSON.
 
 `_try_completion` is unchanged (remains as sequence-based fallback).
 
@@ -76,24 +76,28 @@ Currently this logic is inline in `graph.py:step_node`. Extract once, call from 
 `generate()` gains `goal_summary: str = ""`. After calling `inference_generate()`, if `result.truncated` and `self._hypernet is not None`:
 
 ```
+accumulated = result.text
 for attempt in range(max_continuations):
     continuation_trajectory = format_continuation_trajectory(
-        attempt, max_continuations, goal_summary, result.text
+        attempt, max_continuations, goal_summary, accumulated
     )
     adapter = generate_adapter_weights(hypernet, continuation_trajectory, ...)
     scaled = scale_lora_b(adapter, adapter_scaling * continuation_scaling_multiplier)
     hotswap_adapter(model, scaled)
+    short_prompt = last_n_lines(accumulated, continuation_prompt_lines)
     result = inference_generate(
         model, tokenizer, short_prompt,
-        grammar_prefix=result.text,
+        grammar_prefix=accumulated,
         max_tokens=max_tokens,
         ...
     )
+    accumulated += result.text
     if not result.truncated:
         break
+result = result._replace(text=accumulated)
 ```
 
-The `short_prompt` is the last `continuation_prompt_lines` lines of `result.text`.
+The `short_prompt` is the last `continuation_prompt_lines` lines of the accumulated output. The grammar matcher is advanced past `accumulated` so the model only generates structurally valid continuations, while the adapter carries the full semantic context. Prompt window stays constant.
 
 ### `graph.py` -- truncation guard
 
@@ -116,6 +120,8 @@ Modeled after `tools/adapter_scaling_hpo.py`. Uses Optuna to sweep:
 - `continuation_scaling_multiplier`: [0.8, 2.5]
 - `continuation_prompt_lines`: [1, 10]
 - Balance between adapter conditioning vs prompt context
+
+Additionally, a categorical trial parameter to compare: adapter-only (no prefill) vs adapter + bounded prefill (last N tokens). This determines empirically whether the adapter is sufficient or if some prefill is needed for quality.
 
 Test tasks: 2-3 generation tasks that reliably truncate at current `max_tokens`. Metrics: JSON completion rate, code correctness (sandbox pass), token efficiency.
 
