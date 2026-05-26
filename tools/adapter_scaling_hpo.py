@@ -1,8 +1,8 @@
-# benchmarks/adapter_scaling_hpo.py
+# tools/adapter_scaling_hpo.py
 """Optuna HPO for adapter_scaling (B-only) to find the sweet spot.
 
 Run:
-  uv run python benchmarks/adapter_scaling_hpo.py \
+  uv run python tools/adapter_scaling_hpo.py \
       [--config benchmarks/bench.yaml] [--n-trials 30]
 
 All generation params and search ranges come from bench.yaml.

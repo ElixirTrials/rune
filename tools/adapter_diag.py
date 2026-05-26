@@ -1,7 +1,7 @@
-# benchmarks/adapter_diag.py
+# tools/adapter_diag.py
 """Quick adapter diagnostics — checks why adapters may have zero effect.
 
-Run: uv run python benchmarks/adapter_diag.py [--config benchmarks/bench.yaml]
+Run: uv run python tools/adapter_diag.py [--config benchmarks/bench.yaml]
 
 All generation params and sweep values come from bench.yaml.
 

@@ -10,7 +10,7 @@ class TestPipelineConfig:
     def test_defaults(self) -> None:
         cfg = PipelineConfig()
         assert cfg.model_id == "Qwen/Qwen3.5-9B"
-        assert cfg.adapter_scaling == 0.075
+        assert cfg.adapter_scaling == 1.0
         assert cfg.temperature == 0.3
         assert cfg.max_tokens == 2048
         assert cfg.thinking_budget == 1024

@@ -87,7 +87,7 @@ class ModelWrapper:
         ).to(device)
         lora_config = LoraConfig(
             r=rank,
-            lora_alpha=alpha,
+            lora_alpha=alpha * rank,
             target_modules=target_modules,
             lora_dropout=0.0,
         )

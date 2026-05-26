@@ -1,7 +1,7 @@
-# benchmarks/adapter_probe.py
+# tools/adapter_probe.py
 """Adapter retrievability probe: verify hypernetwork adapters influence generation.
 
-Run: uv run python benchmarks/adapter_probe.py [--config benchmarks/bench.yaml]
+Run: uv run python tools/adapter_probe.py [--config benchmarks/bench.yaml]
 
 All generation params and sweep values come from bench.yaml.
 Results logged to MLflow experiment 'adapter-probe'.

@@ -29,7 +29,7 @@ class PipelineConfig:
     """
 
     model_id: str = "Qwen/Qwen3.5-9B"
-    adapter_scaling: float = 0.075
+    adapter_scaling: float = 1.0
     temperature: float = 0.3
     max_tokens: int = 2048
     repetition_penalty: float = 1.1
