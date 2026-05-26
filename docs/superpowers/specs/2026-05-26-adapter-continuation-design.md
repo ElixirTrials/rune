@@ -139,7 +139,7 @@ Each scenario runs the full continuation loop: generate initial output, truncate
 
 **Parameters swept:**
 
-- `continuation_scaling_multiplier`: [0.8, 2.5] -- how much to upscale continuation adapter
+- `continuation_scaling_multiplier`: [0.8, 10.0] -- how much to upscale continuation adapter (wide range includes Doc2LoRA-level scaling where the adapter dominates generation)
 - `continuation_prompt_first_lines`: [0, 5] -- lines from beginning of output in prompt (goal/structure context)
 - `continuation_prompt_last_lines`: [1, 10] -- lines from end of output in prompt (continuation anchor)
 - `prefill_mode`: categorical ["none", "bounded_256", "bounded_512"] -- whether to also prefill last N tokens into assistant turn (validates whether adapter alone is sufficient)
