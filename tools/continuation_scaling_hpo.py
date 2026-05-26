@@ -93,17 +93,26 @@ def _scale_b_only(sd: dict[str, Any], factor: float) -> dict[str, Any]:
     return {k: v * factor if "lora_B" in k else v for k, v in sd.items()}
 
 
+_TRAJ_CODE_CAP = 4000
+
+
+def _cap_code(accumulated: str) -> str:
+    if len(accumulated) <= _TRAJ_CODE_CAP:
+        return accumulated
+    return "...\n" + accumulated[-_TRAJ_CODE_CAP:]
+
+
 # --- Trajectory flavors: what the hypernetwork sees ---
 
 def _traj_minimal(task: str, accumulated: str, attempt: int, max_cont: int) -> str:
-    return f"GOAL: {task[:200]}\nCODE SO FAR:\n{accumulated}"
+    return f"GOAL: {task[:200]}\nCODE SO FAR:\n{_cap_code(accumulated)}"
 
 
 def _traj_with_counter(task: str, accumulated: str, attempt: int, max_cont: int) -> str:
     return (
         f"CONTINUATION {attempt + 1}/{max_cont}\n"
         f"GOAL: {task[:200]}\n"
-        f"CODE SO FAR:\n{accumulated}"
+        f"CODE SO FAR:\n{_cap_code(accumulated)}"
     )
 
 
@@ -118,7 +127,7 @@ def _traj_with_structure(
         f"CONTINUATION {attempt + 1}/{max_cont}\n"
         f"GOAL: {task[:200]}\n"
         f"STRUCTURE: {n_lines} lines, {n_classes} classes, {n_defs} functions\n"
-        f"CODE SO FAR:\n{accumulated}"
+        f"CODE SO FAR:\n{_cap_code(accumulated)}"
     )
 
 
@@ -259,6 +268,7 @@ def _run_continuation_trial(
             "note": "completed_without_continuation",
         }
 
+    torch.cuda.empty_cache()
     base_model_obj = model._base_model
     tokenizer = model._tokenizer
 
@@ -290,6 +300,7 @@ def _run_continuation_trial(
         sampling = {"do_sample": False}
 
     for attempt in range(max_continuations):
+        torch.cuda.empty_cache()
         trajectory_text = traj_fn(task.task, accumulated, attempt, max_continuations)
         cont_adapter = model.generate_adapter(trajectory_text)
         model.hotswap_adapter(
@@ -340,6 +351,7 @@ def _run_continuation_trial(
         continuation = tokenizer.decode(new_tokens, skip_special_tokens=True)
         n_new = len(new_tokens)
         total_tokens += n_new
+        del output, input_ids, attention_mask, new_tokens
 
         coh = _coherence_at_boundary(accumulated, continuation)
         coherence_scores.append(coh)
