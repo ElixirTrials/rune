@@ -14,50 +14,31 @@ _env = Environment(loader=PackageLoader("rune", "templates"), undefined=StrictUn
 
 
 def render_template(template_name: str, **kwargs: Any) -> str:
-    """Render a Jinja2 template from the rune/templates package directory.
-
-    Args:
-        template_name: Base name of the template (without .j2 extension).
-        **kwargs: Context variables passed to the template.
-
-    Returns:
-        Rendered template string.
-    """
     return _env.get_template(f"{template_name}.j2").render(**kwargs)
 
 
 class SubtaskSchema(BaseModel):
-    """Pydantic schema for a single subtask in decompose output.
-
-    Attributes:
-        name: Unique subtask identifier.
-        description: What the subtask should implement.
-        depends_on: Names of prerequisite subtasks.
-    """
-
     name: str
     description: str
     depends_on: list[str] = []
 
 
 class DecomposeResult(BaseModel):
-    """Structured output from the decompose action.
-
-    Attributes:
-        subtasks: Ordered list of subtask schemas.
-    """
-
     subtasks: list[SubtaskSchema]
 
 
-class DiagnoseResult(BaseModel):
-    """Structured output from the diagnose action.
-
-    Attributes:
-        fix_guidance: Actionable guidance for fixing the failing code.
-    """
-
+class DiagnosisEntry(BaseModel):
+    subtask_name: str
+    error_type: str
+    location: str
     fix_guidance: str
+
+
+class DiagnoseResult(BaseModel):
+    entries: list[DiagnosisEntry]
+
+
+_FIX_GUIDANCE_CAP = 150
 
 
 def parse_output(
@@ -66,17 +47,6 @@ def parse_output(
     feedback: Feedback | None,
     state: dict[str, Any],
 ) -> dict[str, Any]:
-    """Parse raw model output into a partial RunState update dict.
-
-    Args:
-        action: The action that produced the raw output.
-        raw: Raw text (or JSON) returned by the model.
-        feedback: Sandbox result if the action executed code, otherwise None.
-        state: Current RunState as a plain dict for reading existing values.
-
-    Returns:
-        Partial dict suitable for merging into RunState.
-    """
     match action.name:
         case "decompose":
             result = DecomposeResult.model_validate_json(raw)
@@ -91,12 +61,18 @@ def parse_output(
         case "plan":
             target = action.target_subtask
             return {"plans": {**state.get("plans", {}), target: raw}}
-        case "code" | "code_retry":
+        case "code":
             target = action.target_subtask
             passed = feedback is not None and feedback.exit_code == 0
             retries = dict(state.get("retries", {}))
-            if action.name == "code_retry":
-                retries[target] = retries.get(target, 0) + 1
+            diagnosis = dict(state.get("diagnosis", {}))
+            fb_map = dict(state.get("feedback", {}))
+            is_resample = target in state.get("code_results", {})
+            if is_resample:
+                retries[target] = 0
+            diagnosis.pop(target, None)
+            if feedback:
+                fb_map[target] = feedback
             return {
                 "code_results": {
                     **state.get("code_results", {}),
@@ -104,16 +80,40 @@ def parse_output(
                 },
                 "code_passed": {**state.get("code_passed", {}), target: passed},
                 "retries": retries,
-                "feedback": feedback,
+                "feedback": fb_map,
+                "diagnosis": diagnosis,
+            }
+        case "repair":
+            target = action.target_subtask
+            passed = feedback is not None and feedback.exit_code == 0
+            retries = dict(state.get("retries", {}))
+            retries[target] = retries.get(target, 0) + 1
+            diagnosis = dict(state.get("diagnosis", {}))
+            diagnosis.pop(target, None)
+            fb_map = dict(state.get("feedback", {}))
+            if feedback:
+                fb_map[target] = feedback
+            return {
+                "code_results": {
+                    **state.get("code_results", {}),
+                    target: extract_code(raw),
+                },
+                "code_passed": {**state.get("code_passed", {}), target: passed},
+                "retries": retries,
+                "feedback": fb_map,
+                "diagnosis": diagnosis,
             }
         case "integrate":
             passed = feedback is not None and feedback.exit_code == 0
             return {
                 "integrated_code": extract_code(raw) if passed else "",
-                "feedback": feedback,
-                "diagnosis": None,
+                "integration_feedback": feedback,
+                "diagnosis": {},
             }
         case "diagnose":
-            diag = DiagnoseResult.model_validate_json(raw)
-            return {"diagnosis": diag.fix_guidance}
+            result = DiagnoseResult.model_validate_json(raw)
+            diagnosis = dict(state.get("diagnosis", {}))
+            for entry in result.entries:
+                diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
+            return {"diagnosis": diagnosis}
     return {}
