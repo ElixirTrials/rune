@@ -1,5 +1,9 @@
-from rune.engine.policy import build_execution_layers, select_action
-from rune.engine.state import Subtask
+from rune.engine.policy import (
+    build_execution_layers,
+    is_simple_task,
+    select_action,
+)
+from rune.engine.state import Feedback, Subtask
 
 
 def _make_state(**overrides: object) -> dict:
@@ -13,8 +17,9 @@ def _make_state(**overrides: object) -> dict:
         "retries": {},
         "integrated_code": "",
         "current_adapter": None,
-        "feedback": None,
-        "diagnosis": None,
+        "feedback": {},
+        "integration_feedback": None,
+        "diagnosis": {},
         "actions": [],
         "trajectory": [],
         "step": 0,
@@ -24,9 +29,34 @@ def _make_state(**overrides: object) -> dict:
     return base
 
 
+class TestIsSimpleTask:
+    def test_simple_function_task(self) -> None:
+        assert is_simple_task("Write a function that adds two numbers") is True
+
+    def test_simple_method_task(self) -> None:
+        assert is_simple_task("Implement a method to sort a list") is True
+
+    def test_complex_long_task(self) -> None:
+        long_task = " ".join(["word"] * 201)
+        assert is_simple_task(long_task) is False
+
+    def test_complex_no_signal(self) -> None:
+        assert is_simple_task("Build a web API with authentication and database") is False
+
+    def test_short_but_no_signal(self) -> None:
+        assert is_simple_task("Deploy the application to production") is False
+
+
 class TestSelectAction:
-    def test_empty_subtasks_returns_decompose(self) -> None:
-        actions = select_action(_make_state())
+    def test_empty_subtasks_complex_returns_decompose(self) -> None:
+        state = _make_state(task="Build a web API with endpoints and database")
+        actions = select_action(state)
+        assert len(actions) == 1
+        assert actions[0].name == "decompose"
+
+    def test_empty_subtasks_simple_returns_decompose(self) -> None:
+        state = _make_state(task="Write a function that adds two numbers")
+        actions = select_action(state)
         assert len(actions) == 1
         assert actions[0].name == "decompose"
 
@@ -34,7 +64,7 @@ class TestSelectAction:
         subtasks = [Subtask("a", "do a", []), Subtask("b", "do b", [])]
         actions = select_action(_make_state(subtasks=subtasks))
         assert all(a.name == "plan" for a in actions)
-        assert len(actions) == 2  # both are independent
+        assert len(actions) == 2
 
     def test_uncoded_subtask_returns_code(self) -> None:
         subtasks = [Subtask("a", "do a", [])]
@@ -42,29 +72,52 @@ class TestSelectAction:
         assert len(actions) == 1
         assert actions[0].name == "code"
 
-    def test_failed_code_returns_code_retry(self) -> None:
+    def test_failed_no_diagnosis_returns_diagnose(self) -> None:
         subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="NameError", exit_code=1)
         state = _make_state(
             subtasks=subtasks,
             plans={"a": "plan"},
             code_results={"a": "bad code"},
             code_passed={"a": False},
-            retries={"a": 1},
+            feedback={"a": fb},
         )
         actions = select_action(state)
-        assert actions[0].name == "code_retry"
+        assert len(actions) == 1
+        assert actions[0].name == "diagnose"
+        assert actions[0].target_subtask == "a"
 
-    def test_max_retries_returns_empty(self) -> None:
+    def test_failed_with_diagnosis_returns_repair(self) -> None:
         subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="NameError", exit_code=1)
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan"},
+            code_results={"a": "bad code"},
+            code_passed={"a": False},
+            feedback={"a": fb},
+            diagnosis={"a": "Fix the import"},
+        )
+        actions = select_action(state)
+        assert len(actions) == 1
+        assert actions[0].name == "repair"
+        assert actions[0].target_subtask == "a"
+
+    def test_two_repairs_failed_returns_code_resample(self) -> None:
+        subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="err", exit_code=1)
         state = _make_state(
             subtasks=subtasks,
             plans={"a": "plan"},
             code_results={"a": "bad"},
             code_passed={"a": False},
-            retries={"a": 3},
+            retries={"a": 2},
+            feedback={"a": fb},
         )
         actions = select_action(state)
-        assert actions == []
+        assert len(actions) == 1
+        assert actions[0].name == "code"
+        assert actions[0].target_subtask == "a"
 
     def test_all_passing_returns_integrate(self) -> None:
         subtasks = [Subtask("a", "do a", [])]
@@ -88,6 +141,33 @@ class TestSelectAction:
         )
         actions = select_action(state)
         assert actions == []
+
+    def test_integration_failure_returns_diagnose(self) -> None:
+        subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan"},
+            code_results={"a": "good"},
+            code_passed={"a": True},
+            integration_feedback=fb,
+        )
+        actions = select_action(state)
+        assert actions[0].name == "diagnose"
+
+    def test_integration_failure_with_diagnosis_returns_integrate(self) -> None:
+        subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan"},
+            code_results={"a": "good"},
+            code_passed={"a": True},
+            integration_feedback=fb,
+            diagnosis={"a": "Fix the import"},
+        )
+        actions = select_action(state)
+        assert actions[0].name == "integrate"
 
 
 class TestBuildExecutionLayers:
@@ -122,7 +202,6 @@ class TestBuildExecutionLayers:
         assert layers[2] == ["d"]
 
     def test_phantom_dependency_excluded(self) -> None:
-        """depends_on referencing a non-existent subtask must not appear in layers."""
         subtasks = [
             Subtask("a", "do a", []),
             Subtask("b", "do b", ["phantom"]),
@@ -135,7 +214,6 @@ class TestBuildExecutionLayers:
 
 class TestSelectActionPhantomDep:
     def test_plan_action_never_targets_phantom(self) -> None:
-        """Plan actions must only target real subtasks, not phantom deps."""
         subtasks = [
             Subtask("a", "do a", []),
             Subtask("b", "do b", ["nonexistent"]),

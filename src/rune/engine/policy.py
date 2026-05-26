@@ -8,13 +8,24 @@ from typing import Any
 from rune.engine.parse import DecomposeResult, DiagnoseResult
 from rune.engine.state import Action, Subtask
 
-MAX_RETRIES = 3
+MAX_REPAIRS = 2
+_SIMPLE_WORD_THRESHOLD = 200
+_SIMPLE_SIGNALS = [
+    "write a function",
+    "implement a function",
+    "create a function",
+    "write a method",
+    "implement a method",
+    "write a class",
+    "implement a class",
+    "create a class",
+]
 
 ACTIONS: dict[str, Action] = {
     "decompose": Action(
         "decompose",
         "decompose",
-        "prompt_decompose",
+        "prompt_decompose_concise",
         "You are a project decomposer.",
         DecomposeResult,
         False,
@@ -26,10 +37,10 @@ ACTIONS: dict[str, Action] = {
     "code": Action(
         "code", "code", "prompt_code", "You are a code generator.", None, True, None
     ),
-    "code_retry": Action(
-        "code_retry",
-        "code_retry",
-        "prompt_code_retry",
+    "repair": Action(
+        "repair",
+        "code_repair",
+        "prompt_code_repair",
         "You are a code generator.",
         None,
         True,
@@ -56,16 +67,14 @@ ACTIONS: dict[str, Action] = {
 }
 
 
+def is_simple_task(task: str) -> bool:
+    if len(task.split()) > _SIMPLE_WORD_THRESHOLD:
+        return False
+    task_lower = task.lower()
+    return any(signal in task_lower for signal in _SIMPLE_SIGNALS)
+
+
 def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
-    """Group subtasks into topologically-ordered execution layers.
-
-    Args:
-        subtasks: All subtasks with their dependency lists.
-
-    Returns:
-        List of layers; each layer is a sorted list of subtask names whose
-        dependencies all appear in earlier layers.
-    """
     known = {s.name for s in subtasks}
     graph: dict[str, set[str]] = {}
     for s in subtasks:
@@ -84,15 +93,6 @@ def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
 
 
 def _with_target(action_name: str, target: str) -> Action:
-    """Clone a base Action with target_subtask set.
-
-    Args:
-        action_name: Key into ACTIONS.
-        target: Subtask name to assign as target_subtask.
-
-    Returns:
-        New Action identical to the base but with target_subtask set.
-    """
     base = ACTIONS[action_name]
     return Action(
         name=base.name,
@@ -106,15 +106,6 @@ def _with_target(action_name: str, target: str) -> Action:
 
 
 def select_action(state: dict[str, Any]) -> list[Action]:
-    """Select the next batch of actions given the current RunState.
-
-    Args:
-        state: Current RunState as a plain dict.
-
-    Returns:
-        List of Actions to execute next; empty list signals completion or
-        a stuck state (retry limit reached).
-    """
     subtasks: list[Subtask] = state["subtasks"]
     if not subtasks:
         return [ACTIONS["decompose"]]
@@ -125,12 +116,11 @@ def select_action(state: dict[str, Any]) -> list[Action]:
         layers = build_execution_layers(unplanned)
         return [_with_target("plan", name) for name in layers[0]]
 
-    # Code uncoded or failing subtasks
+    # Handle uncoded or failing subtasks
     failing = [s for s in subtasks if not state["code_passed"].get(s.name)]
     if failing:
         layers = build_execution_layers(failing)
         ready_names = set(layers[0])
-        # Only subtasks whose deps all pass
         ready = [
             s
             for s in failing
@@ -139,18 +129,27 @@ def select_action(state: dict[str, Any]) -> list[Action]:
         ]
         actions: list[Action] = []
         for s in ready:
-            if state["retries"].get(s.name, 0) >= MAX_RETRIES:
-                return []  # stuck
-            action_name = "code_retry" if s.name in state["code_results"] else "code"
-            actions.append(_with_target(action_name, s.name))
+            repairs = state["retries"].get(s.name, 0)
+            has_code = s.name in state["code_results"]
+            has_diagnosis = s.name in state.get("diagnosis", {})
+
+            if not has_code:
+                actions.append(_with_target("code", s.name))
+            elif repairs >= MAX_REPAIRS:
+                actions.append(_with_target("code", s.name))
+            elif has_diagnosis:
+                actions.append(_with_target("repair", s.name))
+            else:
+                actions.append(_with_target("diagnose", s.name))
         return actions if actions else []
 
-    # All passing — integrate or done
+    # All subtasks pass — integrate or done
     if state["integrated_code"]:
         return []
 
-    if state.get("diagnosis"):
-        return [ACTIONS["integrate"]]
-    if state.get("feedback") and state["feedback"].exit_code != 0:
+    integration_fb = state.get("integration_feedback")
+    if integration_fb and integration_fb.exit_code != 0:
+        if state.get("diagnosis"):
+            return [ACTIONS["integrate"]]
         return [ACTIONS["diagnose"]]
     return [ACTIONS["integrate"]]
