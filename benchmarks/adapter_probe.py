@@ -1,0 +1,228 @@
+# benchmarks/adapter_probe.py
+"""Adapter retrievability probe: verify hypernetwork adapters influence generation.
+
+Run: uv run python benchmarks/adapter_probe.py --checkpoint <path> [--model-id Qwen/Qwen3.5-9B]
+
+Results logged to MLflow experiment 'adapter-probe'. All outputs, timing,
+token counts, and comparison tables are logged as artifacts and metrics.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import time
+from dataclasses import asdict, dataclass, field
+
+logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+SCALING_SWEEP = [0.01, 0.05, 0.1, 0.2, 0.5, 1.0]
+GENERATION_KWARGS = {"max_tokens": 256, "temperature": 0.0}
+
+
+@dataclass
+class ProbeResult:
+    condition: str
+    trajectory: str
+    prompt: str
+    output: str
+    adapter_scaling: float
+    tokens_used: int = 0
+    elapsed_s: float = 0.0
+    tags: dict[str, str] = field(default_factory=dict)
+
+
+def _run_condition(
+    model: object,
+    condition: str,
+    trajectory: str,
+    prompt: str,
+    system_prompt: str,
+    scaling: float,
+    tags: dict[str, str] | None = None,
+) -> ProbeResult:
+    import asyncio
+
+    t0 = time.monotonic()
+    adapter = model.generate_adapter(trajectory)
+    scaled_sd = {k: v * scaling for k, v in adapter.state_dict.items()}
+    model.hotswap_adapter(scaled_sd)
+    out = asyncio.run(
+        model.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            **GENERATION_KWARGS,
+        )
+    )
+    elapsed = time.monotonic() - t0
+    return ProbeResult(
+        condition=condition,
+        trajectory=trajectory,
+        prompt=prompt,
+        output=out.text,
+        adapter_scaling=scaling,
+        tokens_used=out.tokens_used,
+        elapsed_s=round(elapsed, 3),
+        tags=tags or {},
+    )
+
+
+def run_probe(checkpoint_path: str, model_id: str) -> list[ProbeResult]:
+    import torch
+    from rune.config import PipelineConfig
+    from rune.model.wrapper import ModelWrapper
+
+    cfg = PipelineConfig(checkpoint_path=checkpoint_path, model_id=model_id)
+    model = ModelWrapper.from_config(cfg)
+
+    task_prompt = "Write a Python function add(a, b) that returns a + b."
+    task_trajectory = f"ROLE: coder\nTASK: {task_prompt}\nPLAN: Implement add function."
+    enriched_trajectory = (
+        f"ROLE: coder\nTASK: {task_prompt}\n"
+        "PLAN: Implement add(a, b) -> int returning a + b.\n"
+        "INTERFACE: def add(a: int, b: int) -> int\n"
+        "ERROR: NameError: name 'ad' is not defined\n"
+        "FIX: Correct the typo in the function name."
+    )
+    contradictory_trajectory = (
+        "ROLE: coder\nTASK: Sort a list of integers in ascending order.\n"
+        "PLAN: Implement bubble sort with early termination.\n"
+        "INTERFACE: def sort_list(items: list[int]) -> list[int]"
+    )
+
+    system_prompt = "You are a code generator."
+    results: list[ProbeResult] = []
+
+    logger.info("Condition 1/5: Baseline (adapter_scaling=0)")
+    results.append(_run_condition(
+        model, "baseline", task_trajectory, task_prompt, system_prompt, 0.0,
+        tags={"phase": "baseline"},
+    ))
+
+    logger.info("Condition 2/5: Task trajectory (adapter_scaling=0.075)")
+    results.append(_run_condition(
+        model, "task_trajectory", task_trajectory, task_prompt, system_prompt, 0.075,
+        tags={"phase": "task_trajectory"},
+    ))
+
+    logger.info("Condition 3/5: Enriched trajectory (adapter_scaling=0.075)")
+    results.append(_run_condition(
+        model, "enriched_trajectory", enriched_trajectory, task_prompt, system_prompt, 0.075,
+        tags={"phase": "enriched_trajectory"},
+    ))
+
+    logger.info("Condition 4/5: Contradictory trajectory (adapter_scaling=0.075)")
+    results.append(_run_condition(
+        model, "contradictory", contradictory_trajectory, task_prompt, system_prompt, 0.075,
+        tags={"phase": "contradictory"},
+    ))
+
+    for scale in SCALING_SWEEP:
+        logger.info("Condition 5/5: Scaling sweep (adapter_scaling=%.3f)", scale)
+        results.append(_run_condition(
+            model, f"scaling_{scale}", task_trajectory, task_prompt, system_prompt, scale,
+            tags={"phase": "scaling_sweep", "sweep_value": str(scale)},
+        ))
+
+    return results
+
+
+def log_to_mlflow(
+    results: list[ProbeResult],
+    checkpoint_path: str,
+    model_id: str,
+) -> None:
+    import mlflow
+    from rune.tracking import configure_mlflow, tracked_run
+
+    configure_mlflow("adapter-probe")
+
+    params = {
+        "model_id": model_id,
+        "checkpoint_path": checkpoint_path,
+        "n_conditions": len(results),
+        "generation_max_tokens": GENERATION_KWARGS["max_tokens"],
+        "generation_temperature": GENERATION_KWARGS["temperature"],
+        "scaling_sweep_values": json.dumps(SCALING_SWEEP),
+    }
+
+    with tracked_run("adapter-probe", params=params) as run:
+        mlflow.set_tags({
+            "experiment_type": "adapter_retrievability_probe",
+            "phase": "0",
+        })
+
+        baseline_output = results[0].output
+
+        # Per-condition artifacts and metrics
+        for r in results:
+            differs = r.output != baseline_output
+            mlflow.log_text(
+                json.dumps(asdict(r), indent=2),
+                f"probe/{r.condition}.json",
+            )
+            mlflow.log_metrics({
+                f"differs_from_baseline/{r.condition}": int(differs),
+                f"tokens_used/{r.condition}": r.tokens_used,
+                f"elapsed_s/{r.condition}": r.elapsed_s,
+                f"output_len/{r.condition}": len(r.output),
+            })
+            logger.info(
+                "%s (scale=%.3f): differs=%s, tokens=%d, elapsed=%.1fs, len=%d",
+                r.condition, r.adapter_scaling, differs,
+                r.tokens_used, r.elapsed_s, len(r.output),
+            )
+
+        # Gate metrics
+        task_differs = results[1].output != baseline_output
+        enriched_differs = results[2].output != results[1].output
+        contradictory_differs = results[3].output != results[1].output
+        mlflow.log_metrics({
+            "gate/adapter_has_any_effect": int(task_differs),
+            "gate/enriched_trajectory_differs": int(enriched_differs),
+            "gate/contradictory_shows_contamination": int(contradictory_differs),
+        })
+
+        # Comparison table artifact for easy review in MLflow UI
+        header = "| Condition | Scaling | Differs | Tokens | Time (s) | Output (first 120 chars) |"
+        separator = "|---|---|---|---|---|---|"
+        rows = [header, separator]
+        for r in results:
+            differs = r.output != baseline_output
+            preview = r.output[:120].replace("\n", " ").replace("|", "\\|")
+            rows.append(
+                f"| {r.condition} | {r.adapter_scaling} | {differs} "
+                f"| {r.tokens_used} | {r.elapsed_s} | {preview} |"
+            )
+        mlflow.log_text("\n".join(rows), "probe/comparison_table.md")
+
+        # Full outputs artifact
+        all_outputs = {r.condition: r.output for r in results}
+        mlflow.log_text(json.dumps(all_outputs, indent=2), "probe/all_outputs.json")
+
+        logger.info("=== GATE RESULTS ===")
+        logger.info("Adapter has any effect: %s", task_differs)
+        logger.info("Enriched trajectory differs: %s", enriched_differs)
+        logger.info("Contradictory shows contamination: %s", contradictory_differs)
+        logger.info("MLflow run ID: %s", run.info.run_id)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Adapter retrievability probe")
+    parser.add_argument("--checkpoint", required=True, help="Hypernetwork checkpoint path")
+    parser.add_argument("--model-id", default="Qwen/Qwen3.5-9B", help="Base model ID")
+    args = parser.parse_args()
+
+    results = run_probe(args.checkpoint, args.model_id)
+
+    print("\n=== OUTPUTS ===")
+    for r in results:
+        print(f"\n--- {r.condition} (scale={r.adapter_scaling}, {r.tokens_used} tokens, {r.elapsed_s}s) ---")
+        print(r.output[:200])
+
+    log_to_mlflow(results, args.checkpoint, args.model_id)
+
+
+if __name__ == "__main__":
+    main()
