@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from jinja2 import Environment, PackageLoader
+from jinja2 import Environment, PackageLoader, StrictUndefined
 from pydantic import BaseModel
 
 from rune.engine.state import Action, Feedback, Subtask
 from rune.sandbox.executor import extract_code
 
-_env = Environment(loader=PackageLoader("rune", "templates"))
+_env = Environment(loader=PackageLoader("rune", "templates"), undefined=StrictUndefined)
 
 
 def render_template(template_name: str, **kwargs: Any) -> str:

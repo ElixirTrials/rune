@@ -3,10 +3,10 @@ name = "rune"
 version = "0.1.0"
 description = "Local-first coding agent with hypernetwork-generated LoRA adapters"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "langgraph>=0.4.0",
-    "outlines>=0.2.0",
+    "xgrammar>=0.2.0",
     "transformers>=4.48.0",
     "peft>=0.14.0",
     "torch>=2.5.0",
@@ -22,8 +22,29 @@ dependencies = [
     "httpx>=0.28.0",
     "python-dotenv>=1.2.0",
     "bitsandbytes>=0.45.0",
+    "ctx-to-lora>=0.0.1",
+    "einops>=0.8.0",
+    "jaxtyping>=0.3.9",
+    "datasets>=4.0.0",
+    "boto3>=1.35.0",
+    "pyyaml>=6.0",
+    "langchain>=1.3.1",
 ]
 
+[project.optional-dependencies]
+gpu = [
+    "bitsandbytes>=0.45.0; sys_platform == 'linux'",
+    "trl>=0.16.0; sys_platform == 'linux'",
+    "flash-attn>=2.8.0; sys_platform == 'linux'",
+    "flash-attn-3>=3.0.0; sys_platform == 'linux'",
+    # Mamba-block fast kernels for Qwen3.5's hybrid linear-attn layers.
+    # Without these, the model falls back to the slow torch implementation
+    # that's 2-5× slower for inference (matters a lot for benchmarking).
+    # These compile from source against our cu130 torch — see
+    # ``no-build-isolation-package`` below for the build-environment fix.
+    "causal-conv1d>=1.6.0; sys_platform == 'linux'",
+    "flash-linear-attention>=0.1.0; sys_platform == 'linux'",
+]
 [project.scripts]
 rune = "rune.cli:app"
 
@@ -34,6 +55,7 @@ dev = [
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=6.0.0",
     "pytest-xdist>=3.8.0",
+    "types-PyYAML>=6.0",
     "ruff>=0.14.0",
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.6.0",
@@ -42,8 +64,27 @@ dev = [
 
 [tool.uv]
 package = true
+required-environments = [
+    "sys_platform == 'linux'",
+]
+no-build-isolation-package = [
+    "causal-conv1d",
+    "flash-linear-attention",
+]
+
+[tool.uv.extra-build-dependencies]
+causal-conv1d = ["setuptools"]
+flash-linear-attention = ["setuptools"]
 
 [tool.uv.sources]
+ctx-to-lora = { git = "https://github.com/SakanaAI/doc-to-lora.git" }
+flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl" }
+flash-attn-3 = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn_3-3.0.0+cu130torch2.11gite2743ab-cp39-abi3-linux_x86_64.whl" }
+
+[[tool.uv.dependency-metadata]]
+name = "ctx-to-lora"
+version = "0.0.1"
+requires-dist = []
 
 [tool.mypy]
 exclude = "^(site|tests)/"
@@ -53,7 +94,7 @@ strict = true
 module = [
     "langgraph", "langgraph.*",
     "langchain_core", "langchain_core.*",
-    "outlines", "outlines.*",
+    "xgrammar", "xgrammar.*",
     "peft", "peft.*",
     "torch", "torch.*",
     "transformers", "transformers.*",
@@ -69,6 +110,8 @@ module = [
     "trl", "trl.*",
     "model_training", "model_training.*",
     "adapter_registry", "adapter_registry.*",
+    "flash_attn", "flash_attn.*",
+    "apache_tvm_ffi", "apache_tvm_ffi.*",
 ]
 ignore_missing_imports = true
 
@@ -79,8 +122,9 @@ module = [
     "rune.training.oracle_cache",
     "rune.model.hypernetwork",
     "rune.model.inference",
+    "rune.model.wrapper",
 ]
-disable_error_code = ["no-any-return", "misc", "unused-ignore", "import-untyped", "attr-defined"]
+disable_error_code = ["no-any-return", "misc", "unused-ignore", "import-untyped", "attr-defined", "index", "has-type", "arg-type"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

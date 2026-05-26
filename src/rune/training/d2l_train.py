@@ -121,6 +121,7 @@ def run_distillation(config: D2LTrainConfig) -> None:
         save_steps=config.save_steps,
         eval_steps=config.eval_steps,
         run_name=config.experiment_name,
+        report_to=["mlflow"],
     )
 
     dataset = hf_datasets.Dataset.from_list(records)

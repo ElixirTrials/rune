@@ -66,6 +66,7 @@ def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
         List of layers; each layer is a sorted list of subtask names whose
         dependencies all appear in earlier layers.
     """
+    known = {s.name for s in subtasks}
     graph: dict[str, set[str]] = {}
     for s in subtasks:
         graph[s.name] = set(s.depends_on)
@@ -73,9 +74,11 @@ def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
     sorter.prepare()
     layers: list[list[str]] = []
     while sorter.is_active():
-        ready = sorted(sorter.get_ready())
-        layers.append(ready)
-        for node in ready:
+        batch = sorter.get_ready()
+        real = sorted(n for n in batch if n in known)
+        if real:
+            layers.append(real)
+        for node in batch:
             sorter.done(node)
     return layers
 

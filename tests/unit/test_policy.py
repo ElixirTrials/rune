@@ -120,3 +120,26 @@ class TestBuildExecutionLayers:
         assert layers[0] == ["a"]
         assert set(layers[1]) == {"b", "c"}
         assert layers[2] == ["d"]
+
+    def test_phantom_dependency_excluded(self) -> None:
+        """depends_on referencing a non-existent subtask must not appear in layers."""
+        subtasks = [
+            Subtask("a", "do a", []),
+            Subtask("b", "do b", ["phantom"]),
+        ]
+        layers = build_execution_layers(subtasks)
+        all_names = [name for layer in layers for name in layer]
+        assert "phantom" not in all_names
+        assert set(all_names) == {"a", "b"}
+
+
+class TestSelectActionPhantomDep:
+    def test_plan_action_never_targets_phantom(self) -> None:
+        """Plan actions must only target real subtasks, not phantom deps."""
+        subtasks = [
+            Subtask("a", "do a", []),
+            Subtask("b", "do b", ["nonexistent"]),
+        ]
+        actions = select_action(_make_state(subtasks=subtasks))
+        for a in actions:
+            assert a.target_subtask in {"a", "b"}

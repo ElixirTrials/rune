@@ -59,6 +59,7 @@ class ModelWrapper:
                 "checkpoint_path must be set in config before calling from_config"
             )
 
+        import torch  # noqa: PLC0415
         from peft import LoraConfig, get_peft_model  # noqa: PLC0415
         from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
@@ -67,21 +68,31 @@ class ModelWrapper:
             load_hypernetwork,
         )
 
-        _raw_model = AutoModelForCausalLM.from_pretrained(config.model_id)
-        lora_config = LoraConfig(
-            r=8,
-            lora_alpha=16,
-            target_modules="all-linear",
-            lora_dropout=0.0,
-        )
-        base_model: Any = get_peft_model(_raw_model, lora_config)
-        tokenizer = AutoTokenizer.from_pretrained(config.model_id)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
         hypernet = load_hypernetwork(
             HypernetworkConfig(
                 checkpoint_path=config.checkpoint_path,
                 model_config_name=config.model_id,
-            )
+            ),
+            device=device,
         )
+
+        hc = hypernet.config
+        target_modules = list(hc.lora_config.target_modules)
+        rank = hc.lora_config.r
+        alpha = getattr(hc.lora_config, "lora_alpha", rank * 2)
+        _raw_model = AutoModelForCausalLM.from_pretrained(
+            config.model_id, dtype=torch.bfloat16,
+        ).to(device)
+        lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=alpha,
+            target_modules=target_modules,
+            lora_dropout=0.0,
+        )
+        base_model: Any = get_peft_model(_raw_model, lora_config)
+        tokenizer = AutoTokenizer.from_pretrained(config.model_id)
         return cls(base_model, tokenizer, hypernet, config=config)
 
     def generate_adapter(self, trajectory_text: str) -> AdapterResult:

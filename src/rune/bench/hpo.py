@@ -12,6 +12,7 @@ async def run_hpo(
     base_config: Any,
     model: Any,
     n_trials: int = 50,
+    parent_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Run Optuna HPO study tuning engine params to maximise pass@1.
 
@@ -54,7 +55,10 @@ async def run_hpo(
         result = asyncio.run(run_benchmark(tasks, engine, bench_config))
         return result.pass_at_1
 
-    mlflow_callback = MLflowCallback(mlflow_kwargs={"nested": True})
+    mlflow_kwargs: dict[str, Any] = {"nested": True}
+    if parent_run_id:
+        mlflow_kwargs["tags"] = {"mlflow.parentRunId": parent_run_id}
+    mlflow_callback = MLflowCallback(mlflow_kwargs=mlflow_kwargs)
     study = optuna.create_study(direction="maximize", study_name="rune-bench-hpo")
 
     # Run optimize in a thread so the outer async event loop stays alive and

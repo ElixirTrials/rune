@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -52,7 +51,7 @@ class PipelineConfig:
         return asdict(self)
 
     def save(self, path: Path) -> Path:
-        """Write config as indented JSON to disk.
+        """Write config as YAML to disk.
 
         Args:
             path: Destination file path; parent directories are created.
@@ -60,8 +59,10 @@ class PipelineConfig:
         Returns:
             The path written to.
         """
+        import yaml  # noqa: PLC0415
+
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict(), indent=2))
+        path.write_text(yaml.dump(self.to_dict(), default_flow_style=False))
         return path
 
     def override(self, **kwargs: Any) -> PipelineConfig:
@@ -105,15 +106,17 @@ class PipelineConfig:
 
 
 def load_config(path: Path) -> PipelineConfig:
-    """Load a PipelineConfig from a JSON file, or return defaults if missing.
+    """Load a PipelineConfig from a YAML file, or return defaults if missing.
 
     Args:
-        path: Path to a JSON config file.
+        path: Path to a YAML config file.
 
     Returns:
         Parsed PipelineConfig, or a default instance if the file does not exist.
     """
     if path.exists():
-        d = json.loads(path.read_text())
+        import yaml  # noqa: PLC0415
+
+        d = yaml.safe_load(path.read_text())
         return PipelineConfig(**d)
     return PipelineConfig()

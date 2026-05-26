@@ -99,14 +99,19 @@ async def _generate_freeform(
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        input_ids = tokenizer.apply_chat_template(messages, return_tensors="pt").to(
-            model.device
-        )
+        encoded = tokenizer.apply_chat_template(messages, return_tensors="pt")
+        if hasattr(encoded, "input_ids"):
+            input_ids = encoded["input_ids"].to(model.device)
+        else:
+            input_ids = encoded.to(model.device)
         import torch  # noqa: PLC0415
 
+        attention_mask = torch.ones_like(input_ids)
         with torch.no_grad():
             output = model.generate(
                 input_ids,
+                attention_mask=attention_mask,
+                pad_token_id=tokenizer.eos_token_id,
                 max_new_tokens=max_tokens,
                 temperature=temperature,
                 do_sample=True,
@@ -129,10 +134,10 @@ async def _generate_structured(
     max_tokens: int,
     thinking_budget: int,
 ) -> GenerationResult:
-    """Run thinking-then-structured generation using outlines JSON constraints.
+    """Run thinking-then-structured generation using xgrammar JSON constraints.
 
     Args:
-        model: Language model.
+        model: Language model (may be PEFT-wrapped).
         tokenizer: Paired tokenizer.
         prompt: User prompt.
         system_prompt: System role text.
@@ -146,44 +151,73 @@ async def _generate_structured(
     import asyncio  # noqa: PLC0415
 
     def _run() -> GenerationResult:
+        import torch  # noqa: PLC0415
+        import xgrammar as xgr  # noqa: PLC0415
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        input_ids = tokenizer.apply_chat_template(messages, return_tensors="pt").to(
-            model.device
-        )
+        encoded = tokenizer.apply_chat_template(messages, return_tensors="pt")
+        if hasattr(encoded, "input_ids"):
+            input_ids = encoded["input_ids"].to(model.device)
+        else:
+            input_ids = encoded.to(model.device)
 
+        # Phase 1: thinking (unconstrained until </think>)
         think_token_id = tokenizer.encode("</think>", add_special_tokens=False)
-        import torch  # noqa: PLC0415
-
+        attention_mask = torch.ones_like(input_ids)
         with torch.no_grad():
             thinking_output = model.generate(
                 input_ids,
+                attention_mask=attention_mask,
+                pad_token_id=tokenizer.eos_token_id,
                 max_new_tokens=thinking_budget,
                 eos_token_id=think_token_id,
                 do_sample=False,
             )
-        thinking_text = tokenizer.decode(
-            thinking_output[0][input_ids.shape[1] :], skip_special_tokens=False
-        )
+        new_tokens = thinking_output[0][input_ids.shape[1] :]
+        thinking_text = tokenizer.decode(new_tokens, skip_special_tokens=False)
 
-        import outlines  # noqa: PLC0415
+        # Phase 2: JSON-constrained generation with xgrammar
+        base_model = getattr(model, "base_model", model)
+        model_config = getattr(base_model, "config", None)
+        text_cfg = getattr(model_config, "text_config", model_config)
+        vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
 
-        generator = outlines.generate.json(model, schema)
-        full_prefix = prompt + thinking_text
-        if not full_prefix.endswith("</think>\n"):
-            full_prefix += "</think>\n"
-        structured_text = generator(full_prefix)
-        result_json = (
-            structured_text
-            if isinstance(structured_text, str)
-            else structured_text.model_dump_json()
+        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+            tokenizer, vocab_size=vocab_size
         )
+        compiler = xgr.GrammarCompiler(tokenizer_info)
+        compiled = compiler.compile_json_schema(schema)
+        logits_processor = xgr.contrib.hf.LogitsProcessor(compiled)
+
+        # Build prefix: original prompt + thinking output + closing tag
+        if not thinking_text.rstrip().endswith("</think>"):
+            suffix_ids = tokenizer.encode(
+                "</think>\n", add_special_tokens=False, return_tensors="pt"
+            ).to(model.device)
+            prefix_ids = torch.cat([thinking_output, suffix_ids], dim=-1)
+        else:
+            prefix_ids = thinking_output
+
+        prefix_mask = torch.ones_like(prefix_ids)
+        with torch.no_grad():
+            structured_output = model.generate(
+                prefix_ids,
+                attention_mask=prefix_mask,
+                pad_token_id=tokenizer.eos_token_id,
+                max_new_tokens=max_tokens,
+                do_sample=False,
+                logits_processor=[logits_processor],
+            )
+        json_tokens = structured_output[0][prefix_ids.shape[1] :]
+        result_json = tokenizer.decode(json_tokens, skip_special_tokens=True)
+        total_tokens = thinking_output.shape[1] + len(json_tokens)
         return GenerationResult(
             text=result_json,
             thinking=thinking_text,
-            tokens_used=len(thinking_text.split()),
+            tokens_used=total_tokens,
         )
 
     return await asyncio.to_thread(_run)

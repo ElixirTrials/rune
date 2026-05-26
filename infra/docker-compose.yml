@@ -21,17 +21,59 @@ services:
       retries: 5
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.16.2
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
     ports:
       - "${MLFLOW_PORT:-5000}:5000"
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow
+    environment:
+      AWS_DEFAULT_REGION: eu-west-2
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////data/mlflow/mlflow.db
+      --default-artifact-root mlflow-artifacts:/
+      --artifacts-destination s3://elixirtrials-949678234935-eu-west-2-artifacts/mlflow/artifacts/
+      --serve-artifacts
     volumes:
-      - mlflow_data:/mlflow
+      - mlflow_data:/data/mlflow
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      litestream-restore:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
+
+  litestream-restore:
+    image: litestream/litestream:0.3.13
+    environment:
+      AWS_DEFAULT_REGION: eu-west-2
+    volumes:
+      - mlflow_data:/data/mlflow
+      - ./litestream/litestream.yml:/etc/litestream.yml:ro
+      - ${HOME}/.aws:/root/.aws:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        mkdir -p /data/mlflow
+        litestream restore -if-replica-exists -config /etc/litestream.yml /data/mlflow/mlflow.db
+
+  litestream:
+    image: litestream/litestream:0.3.13
+    restart: unless-stopped
+    environment:
+      AWS_DEFAULT_REGION: eu-west-2
+    volumes:
+      - mlflow_data:/data/mlflow
+      - ./litestream/litestream.yml:/etc/litestream.yml:ro
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      litestream-restore:
+        condition: service_completed_successfully
+    command: replicate -config /etc/litestream.yml
 
   pubsub-emulator:
     image: 3apag/pubsub-emulator:latest

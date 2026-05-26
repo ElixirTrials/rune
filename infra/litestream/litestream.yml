@@ -1,0 +1,9 @@
+dbs:
+  - path: /data/mlflow/mlflow.db
+    replicas:
+      - type: s3
+        bucket: elixirtrials-949678234935-eu-west-2-artifacts
+        path: mlflow/db
+        region: eu-west-2
+        sync-interval: 1s
+        retention: 168h

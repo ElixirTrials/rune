@@ -99,7 +99,13 @@ async def run_training_pipeline(
     corpus_dir = Path(corpus_dir)
 
     if hpo:
-        return await _run_hpo(config, corpus_dir, n_trials=n_trials)
+        import mlflow  # noqa: PLC0415
+
+        active = mlflow.active_run()
+        parent_id = active.info.run_id if active else None
+        return await _run_hpo(
+            config, corpus_dir, n_trials=n_trials, parent_run_id=parent_id,
+        )
 
     _run_oracle_training(config, corpus_dir)
     _run_hypernetwork_distillation(config)
@@ -115,6 +121,7 @@ async def _run_hpo(
     corpus_dir: Path,
     *,
     n_trials: int,
+    parent_run_id: str | None = None,
 ) -> int:
     """Run Optuna HPO study over key training hyperparameters.
 
@@ -129,9 +136,13 @@ async def _run_hpo(
     import optuna  # noqa: PLC0415
     from optuna_integration import MLflowCallback  # noqa: PLC0415
 
+    mlflow_kwargs: dict[str, Any] = {"nested": True}
+    if parent_run_id:
+        mlflow_kwargs["tags"] = {"mlflow.parentRunId": parent_run_id}
     mlflow_cb = MLflowCallback(
         tracking_uri=None,
         metric_name="gate_exit_code",
+        mlflow_kwargs=mlflow_kwargs,
     )
 
     def objective(trial: Any) -> float:

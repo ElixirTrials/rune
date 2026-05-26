@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import typer
+
+logging.basicConfig(
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    level=logging.INFO,
+)
 
 app = typer.Typer(
     name="rune", help="Local-first coding agent with hypernetwork LoRA adapters"
@@ -24,11 +30,13 @@ def run(
     from rune.config import PipelineConfig, load_config  # noqa: PLC0415
     from rune.engine.graph import create_engine  # noqa: PLC0415
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
+    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
 
     cfg = load_config(config) if config else PipelineConfig()
     if checkpoint:
         cfg = cfg.override(checkpoint_path=checkpoint)
 
+    configure_mlflow("rune-run")
     typer.echo(f"Running task: {task}")
 
     model = ModelWrapper.from_config(cfg)
@@ -52,17 +60,18 @@ def run(
     }
 
     engine = create_engine()
-    final_state = asyncio.run(
-        engine.ainvoke(
-            initial_state,
-            config={
-                "configurable": {
-                    "model": model,
-                    "run_config": cfg.to_dict(),
-                }
-            },
+    with tracked_run("run", params=cfg.to_dict()):
+        final_state = asyncio.run(
+            engine.ainvoke(
+                initial_state,
+                config={
+                    "configurable": {
+                        "model": model,
+                        "run_config": cfg.to_dict(),
+                    }
+                },
+            )
         )
-    )
 
     output = final_state.get("integrated_code") or ""
     if output:
@@ -71,40 +80,47 @@ def run(
         typer.echo("Done (no integrated code produced)")
 
 
+def _load_train_config(path: Path) -> Any:
+    """Load D2LTrainConfig from YAML."""
+    import yaml  # noqa: PLC0415
+
+    from rune.training.d2l_train import D2LTrainConfig  # noqa: PLC0415
+
+    return D2LTrainConfig(**yaml.safe_load(path.read_text()))
+
+
 @app.command()
 def train(
     corpus_dir: Path | None = typer.Option(None, help="Training corpus directory"),
-    config: Path | None = typer.Option(None, help="Config JSON path"),
+    config: Path | None = typer.Option(None, help="Config YAML path"),
     hpo: bool = typer.Option(False, help="Run Optuna HPO"),
     n_trials: int = typer.Option(50, help="Number of HPO trials"),
 ) -> None:
     """Train hypernetwork (oracle → distillation → gate)."""
     import asyncio  # noqa: PLC0415
-    import json  # noqa: PLC0415
     from pathlib import Path as _Path  # noqa: PLC0415
 
+    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
     from rune.training.d2l_train import D2LTrainConfig  # noqa: PLC0415
     from rune.training.orchestrator import run_training_pipeline  # noqa: PLC0415
 
     typer.echo(f"Training {'with HPO' if hpo else 'single run'}")
 
-    if config is not None:
-        raw = json.loads(_Path(config).read_text())
-        train_cfg = D2LTrainConfig(**raw)
-    else:
-        train_cfg = D2LTrainConfig()
+    train_cfg = _load_train_config(config) if config is not None else D2LTrainConfig()
 
     if corpus_dir is None:
         corpus_dir = _Path("./corpus")
 
-    exit_code = asyncio.run(
-        run_training_pipeline(
-            train_cfg,
-            corpus_dir,
-            hpo=hpo,
-            n_trials=n_trials,
+    configure_mlflow("rune-train")
+    with tracked_run("train", params=train_cfg.model_dump()):
+        exit_code = asyncio.run(
+            run_training_pipeline(
+                train_cfg,
+                corpus_dir,
+                hpo=hpo,
+                n_trials=n_trials,
+            )
         )
-    )
     raise typer.Exit(exit_code)
 
 
@@ -114,10 +130,17 @@ def mine(
     output_dir: Path = typer.Option(..., help="Output corpus directory"),
 ) -> None:
     """Mine coding sessions into training corpus."""
-    from rune.mining.miner import mine_corpus  # noqa: PLC0415
+    import mlflow as _mlflow  # noqa: PLC0415
 
+    from rune.mining.miner import mine_corpus  # noqa: PLC0415
+    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
+
+    configure_mlflow("rune-mine")
     typer.echo(f"Mining {sessions_dir} → {output_dir}")
-    counts = mine_corpus(sessions_dir, output_dir)
+    mine_params = {"sessions_dir": str(sessions_dir), "output_dir": str(output_dir)}
+    with tracked_run("mine", params=mine_params):
+        counts = mine_corpus(sessions_dir, output_dir)
+        _mlflow.log_metrics({f"bin/{k}": v for k, v in counts.items()})
     for bin_key, count in sorted(counts.items()):
         typer.echo(f"  {bin_key}: {count} records")
 
@@ -125,7 +148,7 @@ def mine(
 @app.command()
 def bench(
     tasks_file: Path | None = typer.Option(None, help="Benchmark tasks JSON"),
-    config: Path | None = typer.Option(None, help="Config JSON path"),
+    config: Path | None = typer.Option(None, help="Config YAML path"),
     hpo: bool = typer.Option(False, help="Run Optuna HPO"),
     n_trials: int = typer.Option(50, help="Number of HPO trials"),
 ) -> None:
@@ -141,16 +164,25 @@ def bench(
         typer.echo("Error: --tasks-file is required", err=True)
         raise typer.Exit(1)
 
+    import mlflow as _mlflow  # noqa: PLC0415
+
+    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
+
     cfg = load_config(config) if config else PipelineConfig()
     tasks = load_tasks(tasks_file)
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()
+    configure_mlflow("rune-bench")
 
     if hpo:
         from rune.bench.hpo import run_hpo  # noqa: PLC0415
 
         typer.echo(f"Running HPO: {n_trials} trials")
-        best = asyncio.run(run_hpo(tasks, engine, cfg, model, n_trials))
+        with tracked_run("bench-hpo", params=cfg.to_dict()) as parent:
+            best = asyncio.run(
+                run_hpo(tasks, engine, cfg, model, n_trials,
+                        parent_run_id=parent.info.run_id)
+            )
         typer.echo(f"Best pass@1: {best['best_value']:.3f}")
         typer.echo(f"Best params: {best['best_params']}")
         return
@@ -162,7 +194,11 @@ def bench(
         "run_config": cfg.to_dict(),
     }
 
-    result = asyncio.run(run_benchmark(tasks, engine, bench_config))
+    with tracked_run("bench", params=cfg.to_dict()):
+        result = asyncio.run(run_benchmark(tasks, engine, bench_config))
+        _mlflow.log_metric("pass_at_1", result.pass_at_1)
+        _mlflow.log_metric("passed_tasks", result.passed_tasks)
+        _mlflow.log_metric("total_tasks", result.total_tasks)
 
     typer.echo(
         f"pass@1: {result.pass_at_1:.3f}  ({result.passed_tasks}/{result.total_tasks})"

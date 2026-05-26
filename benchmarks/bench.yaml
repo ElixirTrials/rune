@@ -1,0 +1,1 @@
+checkpoint_path: "s3://elixirtrials-949678234935-eu-west-2-artifacts/checkpoints/hypernet_hpo/checkpoint.pt"

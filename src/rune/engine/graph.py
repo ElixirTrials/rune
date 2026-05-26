@@ -15,18 +15,85 @@ from rune.engine.state import Action, Feedback, RunState, StepRecord
 from rune.sandbox.executor import run_in_sandbox
 
 
-def state_to_ctx(state: RunState) -> dict[str, Any]:
-    """Extract template context variables from RunState."""
-    return {
-        "task": state["task"],
-        "subtasks": state["subtasks"],
-        "plans": state["plans"],
-        "code": state.get("code_results", {}),
+def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any]:
+    """Extract template context variables from RunState for a given action."""
+    subtasks = state["subtasks"]
+    plans = state.get("plans", {})
+    code_results = state.get("code_results", {})
+    interfaces = state.get("interfaces", {})
+    feedback = state["feedback"]
+    retries = state.get("retries", {})
+    task = state["task"]
+
+    ctx: dict[str, Any] = {
+        "task": task,
+        "project": task,
+        "task_description": task,
+        "project_label": task[:200],
+        "subtasks": subtasks,
+        "plans": plans,
+        "code": code_results,
+        "code_results": code_results,
         "integrated_code": state["integrated_code"],
-        "feedback": state["feedback"],
+        "feedback": feedback,
         "diagnosis": state["diagnosis"],
-        "interfaces": state["interfaces"],
+        "interfaces": interfaces,
+        "subtask_count": len(subtasks),
     }
+
+    _SUBTASK_ACTIONS = {"plan", "code", "code_retry"}
+    if action and action.name in _SUBTASK_ACTIONS and not action.target_subtask:
+        raise ValueError(
+            f"Action {action.name!r} requires target_subtask but got "
+            f"{action.target_subtask!r}"
+        )
+
+    if action and action.target_subtask:
+        target_name = action.target_subtask
+        subtask_obj = next((s for s in subtasks if s.name == target_name), None)
+        if subtask_obj is None:
+            raise ValueError(f"Action targets unknown subtask {target_name!r}")
+        subtask_idx = next(
+            (i for i, s in enumerate(subtasks) if s.name == target_name), 0
+        )
+        ctx["subtask"] = subtask_obj
+        ctx["subtask_name"] = target_name
+        ctx["subtask_index"] = subtask_idx + 1
+        ctx["total_subtasks"] = len(subtasks)
+        ctx["plan"] = plans.get(target_name, "")
+
+        dep_ifaces: list[str] = []
+        if subtask_obj:
+            for dep in subtask_obj.depends_on:
+                if dep in interfaces:
+                    dep_ifaces.append(f"# {dep}\n{interfaces[dep]}")
+        ctx["dependency_interfaces"] = "\n".join(dep_ifaces)
+        ctx["existing_code"] = code_results.get(target_name, "")
+
+        # Retry context
+        ctx["attempt"] = retries.get(target_name, 0) + 1
+        ctx["max_retries"] = 3
+        passed_count = sum(1 for v in state.get("code_passed", {}).values() if v)
+        ctx["passed"] = passed_count
+        ctx["total"] = len(subtasks)
+        ctx["tests_passed"] = state.get("code_passed", {}).get(target_name, False)
+        ctx["error_summary"] = (feedback.stderr if feedback else "")[:300]
+        err_lines = feedback.stderr.split("\n") if feedback and feedback.stderr else []
+        ctx["error_line"] = err_lines[-2] if len(err_lines) >= 2 else ""
+        ctx["failed_tests"] = ""
+        ctx["fix_guidance"] = state["diagnosis"] or ""
+        ctx["history"] = ""
+
+    # Integration context
+    ctx["integration_doc"] = "\n".join(
+        f"- {s.name}: {s.description}" for s in subtasks
+    )
+    ctx["skeletons"] = code_results
+    ctx["code_outputs"] = code_results
+    ctx["integration_error"] = (feedback.stderr if feedback else "")
+    ctx["repair_history"] = []
+
+    return ctx
 
 
 async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
@@ -54,7 +121,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
     results: list[tuple[Action, str, str, str | None]] = []
     for action in actions:
-        ctx = state_to_ctx(state)
+        ctx = state_to_ctx(state, action)
         trajectory_text = render_template(action.trajectory_template, **ctx)
         prompt_text = render_template(action.prompt_template, **ctx)
 
