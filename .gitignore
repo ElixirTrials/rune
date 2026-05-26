@@ -340,6 +340,10 @@ charts/*.tgz
 qodo_cache/
 qodo.log
 
+# Local agent/editor state (not repo content)
+.claude/
+.entire/
+
 # Auditing files
 *.pos
 *.wal
@@ -366,11 +370,14 @@ node_modules
 .ralph/PROMPT.md
 
 .planning/
-
-# Claude Code runtime artifacts
-.claude/runs/
-.claude/cache/
-.claude/.template-version
-
-# code-review-graph local index (rebuildable; auto-refreshed by post-commit hook)
+instructions/
+trained_d2l/
+evaluation_results/
+hpo_artifacts/
+artifacts/
+optuna_*.db
+*.optuna.db
+# Added by code-review-graph
 .code-review-graph/
+
+*.pt
