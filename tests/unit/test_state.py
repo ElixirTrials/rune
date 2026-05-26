@@ -1,4 +1,4 @@
-from rune.engine.state import Action, Feedback, RunState, Subtask
+from rune.engine.state import Action, Feedback, RunState, StepRecord, Subtask
 
 
 class TestSubtask:
@@ -65,8 +65,9 @@ class TestRunState:
             "retries": {},
             "integrated_code": "",
             "current_adapter": None,
-            "feedback": None,
-            "diagnosis": None,
+            "feedback": {},
+            "integration_feedback": None,
+            "diagnosis": {},
             "actions": [],
             "trajectory": [],
             "step": 0,
@@ -75,3 +76,52 @@ class TestRunState:
         assert state["task"] == "build a calculator"
         assert state["budget_remaining"] == 20
         assert state["actions"] == []
+        assert state["feedback"] == {}
+        assert state["integration_feedback"] is None
+        assert state["diagnosis"] == {}
+
+    def test_per_subtask_feedback(self) -> None:
+        fb_a = Feedback(stdout="ok", stderr="", exit_code=0)
+        fb_b = Feedback(stdout="", stderr="err", exit_code=1)
+        state: RunState = {
+            "task": "test",
+            "subtasks": [],
+            "interfaces": {},
+            "plans": {},
+            "code_results": {},
+            "code_passed": {},
+            "retries": {},
+            "integrated_code": "",
+            "current_adapter": None,
+            "feedback": {"subtask_a": fb_a, "subtask_b": fb_b},
+            "integration_feedback": None,
+            "diagnosis": {},
+            "actions": [],
+            "trajectory": [],
+            "step": 0,
+            "budget_remaining": 20,
+        }
+        assert state["feedback"]["subtask_a"].exit_code == 0
+        assert state["feedback"]["subtask_b"].exit_code == 1
+
+    def test_per_subtask_diagnosis(self) -> None:
+        state: RunState = {
+            "task": "test",
+            "subtasks": [],
+            "interfaces": {},
+            "plans": {},
+            "code_results": {},
+            "code_passed": {},
+            "retries": {},
+            "integrated_code": "",
+            "current_adapter": None,
+            "feedback": {},
+            "integration_feedback": None,
+            "diagnosis": {"subtask_a": "Fix the import", "subtask_b": "Add return statement"},
+            "actions": [],
+            "trajectory": [],
+            "step": 0,
+            "budget_remaining": 20,
+        }
+        assert state["diagnosis"]["subtask_a"] == "Fix the import"
+        assert len(state["diagnosis"]) == 2

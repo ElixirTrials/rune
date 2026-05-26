@@ -91,8 +91,9 @@ class RunState(TypedDict):
         retries: Mapping of subtask name to retry count.
         integrated_code: Final merged source after all subtasks pass.
         current_adapter: ID of the active LoRA adapter, or None.
-        feedback: Most recent sandbox feedback, or None.
-        diagnosis: Fix guidance from the last diagnose action, or None.
+        feedback: Per-subtask sandbox feedback, keyed by subtask name.
+        integration_feedback: Sandbox feedback from the integration step, or None.
+        diagnosis: Per-subtask fix guidance from diagnose actions, keyed by subtask name.
         actions: Actions selected in the most recent step.
         trajectory: Ordered list of step records for the full run.
         step: Current step index.
@@ -108,8 +109,9 @@ class RunState(TypedDict):
     retries: dict[str, int]
     integrated_code: str
     current_adapter: str | None
-    feedback: Feedback | None
-    diagnosis: str | None
+    feedback: dict[str, Feedback]
+    integration_feedback: Feedback | None
+    diagnosis: dict[str, str]
     actions: list[Action]
     trajectory: list[StepRecord]
     step: int
