@@ -381,3 +381,4 @@ optuna_*.db
 .code-review-graph/
 
 *.pt
+*.json
