@@ -36,7 +36,7 @@ class PipelineConfig:
     top_p: float = 0.9
     thinking_budget: int = 1024
     phase_max_tokens: dict[str, int] = field(default_factory=dict)
-    max_phase_iterations: int = 5
+    max_phase_iterations: int = 10
     prompt_style: str = "skeleton"
     trajectory_style: str = "prose"
     adapter_ttl_days: int = 7
