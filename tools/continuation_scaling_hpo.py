@@ -449,7 +449,10 @@ def main() -> None:
     hpo = cfg.hpo
     n_trials = args.n_trials or hpo.get("n_trials", 20)
 
+    from rune.engine.parse import CodeResult  # noqa: PLC0415
+
     gen_kwargs: dict[str, Any] = {
+        "output_schema": CodeResult,
         "max_tokens": _CONT_MAX_TOKENS,
         "temperature": cfg.bench.get("gen_temperature", 0.01),
         "repetition_penalty": cfg.repetition_penalty,
