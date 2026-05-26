@@ -42,6 +42,10 @@ This is deliberately different from the initial task trajectory. We embed *what 
 
 **`goal_summary` passed explicitly.** `wrapper.generate()` accepts an optional `goal_summary: str` parameter (populated from `subtask.description` by `step_node`). This avoids re-deriving the goal from the prompt.
 
+## Implementation Order
+
+The HPO script (`tools/continuation_scaling_hpo.py`) is implemented and run **first**, before any production code changes. It validates whether the adapter can actually recover partial output well enough for continuation to work. If the HPO results show the approach is not feasible (low completion rates, poor coherence), we stop — no production code is written. Only after HPO confirms viability do we proceed to implement the changes in `config.py`, `inference.py`, `adapter.py`, `wrapper.py`, and `graph.py`.
+
 ## Files Changed
 
 ### `config.py` -- 3 new fields
