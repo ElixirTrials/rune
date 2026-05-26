@@ -10,18 +10,17 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from rune.engine.parse import parse_output, render_template
-from rune.engine.policy import select_action
-from rune.engine.state import Action, Feedback, RunState, StepRecord
+from rune.engine.policy import is_simple_task, select_action
+from rune.engine.state import Action, Feedback, RunState, StepRecord, Subtask
 from rune.sandbox.executor import run_in_sandbox
 
 
 def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any]:
-    """Extract template context variables from RunState for a given action."""
     subtasks = state["subtasks"]
     plans = state.get("plans", {})
     code_results = state.get("code_results", {})
     interfaces = state.get("interfaces", {})
-    feedback = state["feedback"]
+    feedback_map = state.get("feedback", {})
     retries = state.get("retries", {})
     task = state["task"]
 
@@ -35,14 +34,19 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         "code": code_results,
         "code_results": code_results,
         "integrated_code": state["integrated_code"],
-        "feedback": feedback,
-        "diagnosis": state["diagnosis"],
+        "feedback": feedback_map,
+        "diagnosis": state.get("diagnosis", {}),
         "interfaces": interfaces,
         "subtask_count": len(subtasks),
     }
 
-    _SUBTASK_ACTIONS = {"plan", "code", "code_retry"}
-    if action and action.name in _SUBTASK_ACTIONS and not action.target_subtask:
+    _SUBTASK_ACTIONS = {"plan", "code", "repair", "diagnose"}
+    if (
+        action
+        and action.name in _SUBTASK_ACTIONS
+        and not action.target_subtask
+        and action.name != "diagnose"
+    ):
         raise ValueError(
             f"Action {action.name!r} requires target_subtask but got "
             f"{action.target_subtask!r}"
@@ -61,6 +65,7 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["subtask_index"] = subtask_idx + 1
         ctx["total_subtasks"] = len(subtasks)
         ctx["plan"] = plans.get(target_name, "")
+        ctx["target_subtask"] = target_name
 
         dep_ifaces: list[str] = []
         if subtask_obj:
@@ -70,19 +75,41 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["dependency_interfaces"] = "\n".join(dep_ifaces)
         ctx["existing_code"] = code_results.get(target_name, "")
 
-        # Retry context
         ctx["attempt"] = retries.get(target_name, 0) + 1
-        ctx["max_retries"] = 3
+        ctx["max_retries"] = 2
         passed_count = sum(1 for v in state.get("code_passed", {}).values() if v)
         ctx["passed"] = passed_count
         ctx["total"] = len(subtasks)
         ctx["tests_passed"] = state.get("code_passed", {}).get(target_name, False)
-        ctx["error_summary"] = (feedback.stderr if feedback else "")[:300]
-        err_lines = feedback.stderr.split("\n") if feedback and feedback.stderr else []
+
+        # Per-subtask feedback
+        subtask_fb = feedback_map.get(target_name)
+        ctx["error_summary"] = (subtask_fb.stderr if subtask_fb else "")[:500]
+        stderr = subtask_fb.stderr if subtask_fb and subtask_fb.stderr else ""
+        err_lines = stderr.split("\n") if stderr else []
         ctx["error_line"] = err_lines[-2] if len(err_lines) >= 2 else ""
         ctx["failed_tests"] = ""
-        ctx["fix_guidance"] = state["diagnosis"] or ""
-        ctx["history"] = ""
+
+        # Per-subtask diagnosis
+        ctx["fix_guidance"] = state.get("diagnosis", {}).get(target_name, "")
+
+        # Bounded repair history: last 2 iterations from trajectory
+        repair_history: list[str] = []
+        for rec in state.get("trajectory", []):
+            if (
+                rec.target_subtask == target_name
+                and rec.feedback
+                and rec.feedback.exit_code != 0
+            ):
+                repair_history.append(rec.feedback.stderr[:200])
+        ctx["repair_history"] = repair_history[-2:]
+        ctx["history"] = "; ".join(repair_history[-2:])
+    else:
+        ctx["target_subtask"] = None
+        ctx["error_summary"] = ""
+        ctx["error_line"] = ""
+        ctx["fix_guidance"] = ""
+        ctx["repair_history"] = []
 
     # Integration context
     ctx["integration_doc"] = "\n".join(
@@ -90,27 +117,25 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     )
     ctx["skeletons"] = code_results
     ctx["code_outputs"] = code_results
-    ctx["integration_error"] = (feedback.stderr if feedback else "")
-    ctx["repair_history"] = []
+    int_fb = state.get("integration_feedback")
+    ctx["integration_error"] = (int_fb.stderr if int_fb else "")
 
     return ctx
 
 
 async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
-    """Execute one engine step: select actions, generate, sandbox, parse.
-
-    Args:
-        state: Current RunState.
-        config: LangGraph RunnableConfig with ``configurable.model`` and
-            optional ``configurable.run_config``.
-
-    Returns:
-        Partial state update dict with new actions, trajectory, step, and
-        budget_remaining.
-    """
     configurable: dict[str, Any] = config.get("configurable", {})
     model = configurable["model"]
     run_config: dict[str, Any] = configurable.get("run_config", {})
+
+    # Complexity gate: inject synthetic subtask for simple tasks
+    gate_fired = not state["subtasks"] and is_simple_task(state["task"])
+    if gate_fired:
+        state = {
+            **state,
+            "subtasks": [Subtask("_main", state["task"], [])],
+            "plans": {"_main": state["task"]},
+        }
 
     actions = select_action(dict(state))
     if not actions:
@@ -157,6 +182,14 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             else:
                 updates[k] = v
 
+    # Inject synthetic subtask into updates if complexity gate fired
+    if gate_fired:
+        updates.setdefault("subtasks", [Subtask("_main", state["task"], [])])
+        if "_main" not in updates.get("plans", {}):
+            plans = updates.get("plans", {})
+            plans["_main"] = state["task"]
+            updates["plans"] = plans
+
     records = [
         StepRecord(
             step=state["step"],
@@ -176,22 +209,12 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
 
 def should_continue(state: RunState) -> str:
-    """Conditional edge: return ``"continue"`` or ``"done"``.
-
-    Returns ``"done"`` when no actions remain or budget is exhausted.
-    """
     if not state["actions"] or state["budget_remaining"] <= 0:
         return "done"
     return "continue"
 
 
 def create_engine() -> CompiledStateGraph:  # type: ignore[type-arg]
-    """Build and compile the single-node LangGraph engine.
-
-    Returns:
-        Compiled StateGraph with a ``step`` node and ``should_continue``
-        conditional edge looping back to ``step`` or exiting to END.
-    """
     graph = StateGraph(RunState)
     graph.add_node("step", step_node)
     graph.set_entry_point("step")
