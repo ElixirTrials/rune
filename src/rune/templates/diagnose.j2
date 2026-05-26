@@ -1,5 +1,12 @@
-ROLE: integration-diagnostician
+ROLE: diagnostician
 PROJECT: {{ project[:500] }}
+{% if target_subtask %}
+FAILING SUBTASK: {{ target_subtask }}
+SUBTASK CODE:
+{{ existing_code[:2000] }}
+ERROR OUTPUT:
+{{ error_summary[:500] }}
+{% else %}
 SUBTASK CODE:
 {% for name, code in code_outputs.items() %}
 --- {{ name }} ---
@@ -7,14 +14,13 @@ SUBTASK CODE:
 {% endfor %}
 INTEGRATION ERROR:
 {{ integration_error[:500] }}
+{% endif %}
 {% if repair_history %}
 PRIOR REPAIR ATTEMPTS:
-{% for attempt in repair_history %}
-  Iteration {{ attempt.iteration + 1 }}: diagnosed {{ attempt.diagnosed | length }} subtask(s), result score={{ attempt.result }}
-  {% for d in attempt.diagnosed %}
-    - {{ d.name }}: {{ d.diagnosis[:100] }}
-  {% endfor %}
+{% for attempt in repair_history[-2:] %}
+  Attempt {{ loop.index }}: {{ attempt[:200] }}
 {% endfor %}
 {% endif %}
-Identify which subtask(s) produced the errors above.
-Output a numbered list: subtask_name — what is wrong and how to fix it.
+Identify what failed and why. Classify the error type.
+Output JSON with this schema:
+{"entries": [{"subtask_name": "...", "error_type": "syntax|name|type|assertion|integration", "location": "...", "fix_guidance": "..."}]}

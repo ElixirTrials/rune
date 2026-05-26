@@ -1,5 +1,4 @@
 You are repairing the subtask: {{ subtask_name }}
 Project: {{ project_label }}
-Diagnosis: {{ diagnosis }}
+Diagnosis: {{ fix_guidance[:150] }}
 Fix the identified issues. Keep working code intact.
-End with: if __name__ == '__main__': unittest.main()
