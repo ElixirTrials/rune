@@ -14,7 +14,7 @@ class TestPipelineConfig:
         assert cfg.temperature == 0.3
         assert cfg.max_tokens == 2048
         assert cfg.thinking_budget == 1024
-        assert cfg.max_phase_iterations == 5
+        assert cfg.max_phase_iterations == 10
         assert cfg.prompt_style == "skeleton"
         assert cfg.trajectory_style == "prose"
         assert cfg.adapter_ttl_days == 7

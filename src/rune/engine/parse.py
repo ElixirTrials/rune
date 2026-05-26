@@ -111,9 +111,9 @@ def parse_output(
                 "diagnosis": {},
             }
         case "diagnose":
-            result = DiagnoseResult.model_validate_json(raw)
+            diag_result = DiagnoseResult.model_validate_json(raw)
             diagnosis = dict(state.get("diagnosis", {}))
-            for entry in result.entries:
+            for entry in diag_result.entries:
                 diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
             return {"diagnosis": diagnosis}
     return {}

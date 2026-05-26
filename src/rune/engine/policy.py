@@ -133,9 +133,7 @@ def select_action(state: dict[str, Any]) -> list[Action]:
             has_code = s.name in state["code_results"]
             has_diagnosis = s.name in state.get("diagnosis", {})
 
-            if not has_code:
-                actions.append(_with_target("code", s.name))
-            elif repairs >= MAX_REPAIRS:
+            if not has_code or repairs >= MAX_REPAIRS:
                 actions.append(_with_target("code", s.name))
             elif has_diagnosis:
                 actions.append(_with_target("repair", s.name))

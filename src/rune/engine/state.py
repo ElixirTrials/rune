@@ -93,7 +93,7 @@ class RunState(TypedDict):
         current_adapter: ID of the active LoRA adapter, or None.
         feedback: Per-subtask sandbox feedback, keyed by subtask name.
         integration_feedback: Sandbox feedback from the integration step, or None.
-        diagnosis: Per-subtask fix guidance from diagnose actions, keyed by subtask name.
+        diagnosis: Per-subtask fix guidance from diagnose actions.
         actions: Actions selected in the most recent step.
         trajectory: Ordered list of step records for the full run.
         step: Current step index.
