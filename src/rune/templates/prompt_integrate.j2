@@ -2,3 +2,8 @@ You are integrating {{ subtask_count }} completed subtasks.
 Project: {{ project_label }}
 Combine all implementations from your context into one cohesive module.
 Include integration tests that exercise end-to-end workflows.
+{% if integration_error %}
+The previous integration attempt failed:
+{{ integration_error[:300] }}
+Fix the errors above while preserving correct logic.
+{% endif %}

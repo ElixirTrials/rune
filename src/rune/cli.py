@@ -150,7 +150,7 @@ def bench(
     tasks_file: Path | None = typer.Option(None, help="Benchmark tasks JSON"),
     config: Path | None = typer.Option(None, help="Config YAML path"),
     hpo: bool = typer.Option(False, help="Run Optuna HPO"),
-    n_trials: int = typer.Option(50, help="Number of HPO trials"),
+    n_trials: int | None = typer.Option(None, help="Override hpo.n_trials from config"),
 ) -> None:
     """Run benchmark suite, optionally with HPO."""
     import asyncio  # noqa: PLC0415
@@ -177,10 +177,11 @@ def bench(
     if hpo:
         from rune.bench.hpo import run_hpo  # noqa: PLC0415
 
-        typer.echo(f"Running HPO: {n_trials} trials")
+        trials = n_trials or cfg.hpo["n_trials"]
+        typer.echo(f"Running HPO: {trials} trials")
         with tracked_run("bench-hpo", params=cfg.to_dict()) as parent:
             best = asyncio.run(
-                run_hpo(tasks, engine, cfg, model, n_trials,
+                run_hpo(tasks, engine, cfg, model, trials,
                         parent_run_id=parent.info.run_id)
             )
         typer.echo(f"Best pass@1: {best['best_value']:.3f}")

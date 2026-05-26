@@ -97,7 +97,7 @@ async def run_benchmark(
     if not tasks:
         return BenchResult(pass_at_1=0.0, total_tasks=0, passed_tasks=0, per_task=[])
 
-    budget = config.get("run_config", {}).get("max_phase_iterations", 5)
+    budget = config["run_config"]["max_phase_iterations"]
     results: list[TaskResult] = []
 
     for task in tasks:

@@ -21,32 +21,17 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     code_results = state.get("code_results", {})
     interfaces = state.get("interfaces", {})
     feedback_map = state.get("feedback", {})
-    retries = state.get("retries", {})
     task = state["task"]
 
     ctx: dict[str, Any] = {
-        "task": task,
         "project": task,
         "task_description": task,
         "project_label": task[:200],
-        "subtasks": subtasks,
-        "plans": plans,
-        "code": code_results,
-        "code_results": code_results,
-        "integrated_code": state["integrated_code"],
-        "feedback": feedback_map,
-        "diagnosis": state.get("diagnosis", {}),
-        "interfaces": interfaces,
         "subtask_count": len(subtasks),
     }
 
-    _SUBTASK_ACTIONS = {"plan", "code", "repair", "diagnose"}
-    if (
-        action
-        and action.name in _SUBTASK_ACTIONS
-        and not action.target_subtask
-        and action.name != "diagnose"
-    ):
+    _TARGETED_ACTIONS = {"plan", "code", "repair"}
+    if action and action.name in _TARGETED_ACTIONS and not action.target_subtask:
         raise ValueError(
             f"Action {action.name!r} requires target_subtask but got "
             f"{action.target_subtask!r}"
@@ -68,32 +53,20 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["target_subtask"] = target_name
 
         dep_ifaces: list[str] = []
-        if subtask_obj:
-            for dep in subtask_obj.depends_on:
-                if dep in interfaces:
-                    dep_ifaces.append(f"# {dep}\n{interfaces[dep]}")
+        for dep in subtask_obj.depends_on:
+            if dep in interfaces:
+                dep_ifaces.append(f"# {dep}\n{interfaces[dep]}")
         ctx["dependency_interfaces"] = "\n".join(dep_ifaces)
         ctx["existing_code"] = code_results.get(target_name, "")
 
-        ctx["attempt"] = retries.get(target_name, 0) + 1
-        ctx["max_retries"] = 2
-        passed_count = sum(1 for v in state.get("code_passed", {}).values() if v)
-        ctx["passed"] = passed_count
-        ctx["total"] = len(subtasks)
-        ctx["tests_passed"] = state.get("code_passed", {}).get(target_name, False)
-
-        # Per-subtask feedback
         subtask_fb = feedback_map.get(target_name)
-        ctx["error_summary"] = (subtask_fb.stderr if subtask_fb else "")[:500]
-        stderr = subtask_fb.stderr if subtask_fb and subtask_fb.stderr else ""
-        err_lines = stderr.split("\n") if stderr else []
-        ctx["error_line"] = err_lines[-2] if len(err_lines) >= 2 else ""
-        ctx["failed_tests"] = ""
+        ctx["error_summary"] = (
+            subtask_fb.stderr[:500] if subtask_fb else ""
+        )
+        ctx["fix_guidance"] = (
+            state.get("diagnosis", {}).get(target_name, "")
+        )
 
-        # Per-subtask diagnosis
-        ctx["fix_guidance"] = state.get("diagnosis", {}).get(target_name, "")
-
-        # Bounded repair history: last 2 iterations from trajectory
         repair_history: list[str] = []
         for rec in state.get("trajectory", []):
             if (
@@ -103,22 +76,19 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
             ):
                 repair_history.append(rec.feedback.stderr[:200])
         ctx["repair_history"] = repair_history[-2:]
-        ctx["history"] = "; ".join(repair_history[-2:])
     else:
         ctx["target_subtask"] = None
         ctx["error_summary"] = ""
-        ctx["error_line"] = ""
         ctx["fix_guidance"] = ""
         ctx["repair_history"] = []
 
-    # Integration context
     ctx["integration_doc"] = "\n".join(
         f"- {s.name}: {s.description}" for s in subtasks
     )
     ctx["skeletons"] = code_results
     ctx["code_outputs"] = code_results
     int_fb = state.get("integration_feedback")
-    ctx["integration_error"] = (int_fb.stderr if int_fb else "")
+    ctx["integration_error"] = int_fb.stderr if int_fb else ""
 
     return ctx
 
@@ -128,7 +98,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     model = configurable["model"]
     run_config: dict[str, Any] = configurable.get("run_config", {})
 
-    # Complexity gate: inject synthetic subtask for simple tasks
     gate_fired = not state["subtasks"] and is_simple_task(state["task"])
     if gate_fired:
         state = {
@@ -151,7 +120,10 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         prompt_text = render_template(action.prompt_template, **ctx)
 
         adapter = model.generate_adapter(trajectory_text)
-        scaled_sd = {k: v * adapter_scaling for k, v in adapter.state_dict.items()}
+        scaled_sd = {
+            k: v * adapter_scaling if "lora_B" in k else v
+            for k, v in adapter.state_dict.items()
+        }
         model.hotswap_adapter(scaled_sd)
         result = await model.generate(
             prompt=prompt_text,
@@ -182,7 +154,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             else:
                 updates[k] = v
 
-    # Inject synthetic subtask into updates if complexity gate fired
     if gate_fired:
         updates.setdefault("subtasks", [Subtask("_main", state["task"], [])])
         if "_main" not in updates.get("plans", {}):
@@ -201,7 +172,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         for a, name, _, aid in results
     ]
     updates["actions"] = actions
-    updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
+    updates["current_adapter"] = (
+        results[-1][3] if results else state["current_adapter"]
+    )
     updates["trajectory"] = state["trajectory"] + records
     updates["step"] = state["step"] + 1
     updates["budget_remaining"] = state["budget_remaining"] - 1

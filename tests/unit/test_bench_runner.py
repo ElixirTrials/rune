@@ -18,6 +18,10 @@ from rune.bench.runner import (
 )
 
 
+def _bench_config(budget: int = 10) -> dict:  # type: ignore[type-arg]
+    return {"run_config": {"max_phase_iterations": budget}}
+
+
 def _make_task(
     task_id: str = "t1",
     description: str = "write add",
@@ -56,7 +60,7 @@ class TestRunBenchmarkAllPass:
         engine = _make_engine(final_state)
 
         with patch("rune.bench.runner.run_in_sandbox", return_value=_sandbox_pass()):
-            result = asyncio.run(run_benchmark(tasks, engine, {}))
+            result = asyncio.run(run_benchmark(tasks, engine, _bench_config()))
 
         assert result.pass_at_1 == 1.0
         assert result.total_tasks == 2
@@ -75,7 +79,7 @@ class TestRunBenchmarkPartialPass:
 
         sandbox_results = [_sandbox_pass(), _sandbox_fail()]
         with patch("rune.bench.runner.run_in_sandbox", side_effect=sandbox_results):
-            result = asyncio.run(run_benchmark(tasks, engine, {}))
+            result = asyncio.run(run_benchmark(tasks, engine, _bench_config()))
 
         assert result.pass_at_1 == pytest.approx(0.5)
         assert result.total_tasks == 2
@@ -109,7 +113,7 @@ class TestRunBenchmarkCodeExtraction:
             return _sandbox_pass()
 
         with patch("rune.bench.runner.run_in_sandbox", side_effect=capture_sandbox):
-            asyncio.run(run_benchmark([task], engine, {}))
+            asyncio.run(run_benchmark([task], engine, _bench_config()))
 
         assert "def solution(): return 42" in captured[0]
         assert "assert solution() == 42" in captured[0]
@@ -129,7 +133,7 @@ class TestRunBenchmarkCodeExtraction:
             return _sandbox_pass()
 
         with patch("rune.bench.runner.run_in_sandbox", side_effect=capture_sandbox):
-            asyncio.run(run_benchmark([task], engine, {}))
+            asyncio.run(run_benchmark([task], engine, _bench_config()))
 
         assert "def add(a,b): return a+b" in captured[0]
         assert "assert add(1,2)==3" in captured[0]
@@ -142,7 +146,7 @@ class TestRunBenchmarkCodeExtraction:
         with patch(
             "rune.bench.runner.run_in_sandbox", return_value=_sandbox_fail()
         ) as mock_sb:
-            result = asyncio.run(run_benchmark([task], engine, {}))
+            result = asyncio.run(run_benchmark([task], engine, _bench_config()))
 
         assert result.passed_tasks == 0
         mock_sb.assert_called_once()
@@ -162,7 +166,7 @@ class TestRunBenchmarkSandboxTimeout:
         timeout_result.stderr = "Timeout"
 
         with patch("rune.bench.runner.run_in_sandbox", return_value=timeout_result):
-            result = asyncio.run(run_benchmark([task], engine, {}))
+            result = asyncio.run(run_benchmark([task], engine, _bench_config()))
 
         assert result.passed_tasks == 0
         assert not result.per_task[0].passed

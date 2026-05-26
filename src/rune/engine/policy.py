@@ -9,6 +9,7 @@ from rune.engine.parse import DecomposeResult, DiagnoseResult
 from rune.engine.state import Action, Subtask
 
 MAX_REPAIRS = 2
+MAX_RETRIES = MAX_REPAIRS * 2
 _SIMPLE_WORD_THRESHOLD = 200
 _SIMPLE_SIGNALS = [
     "write a function",
@@ -130,6 +131,8 @@ def select_action(state: dict[str, Any]) -> list[Action]:
         actions: list[Action] = []
         for s in ready:
             repairs = state["retries"].get(s.name, 0)
+            if repairs >= MAX_RETRIES:
+                continue
             has_code = s.name in state["code_results"]
             has_diagnosis = s.name in state.get("diagnosis", {})
 

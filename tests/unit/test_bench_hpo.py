@@ -11,6 +11,18 @@ from rune.bench.hpo import run_hpo
 from rune.bench.runner import BenchResult, BenchTask
 from rune.config import PipelineConfig
 
+_HPO_RANGES = {
+    "n_trials": 30,
+    "adapter_scaling": {"low": 1.5, "high": 10.0, "log": True},
+    "temperature": {"low": 0.1, "high": 1.0},
+    "max_tokens": {"low": 512, "high": 4096, "step": 256},
+    "max_phase_iterations": {"low": 3, "high": 10},
+}
+
+
+def _cfg() -> PipelineConfig:
+    return PipelineConfig(hpo=_HPO_RANGES)
+
 
 def _make_task(task_id: str = "t1") -> BenchTask:
     return BenchTask(task_id=task_id, description="write add", test_code="assert True")
@@ -59,7 +71,7 @@ class TestRunHpoStudyCreation:
                 run_hpo(
                     [_make_task()],
                     MagicMock(),
-                    PipelineConfig(),
+                    _cfg(),
                     MagicMock(),
                     n_trials=3,
                 )
@@ -87,7 +99,7 @@ class TestRunHpoMlflowCallback:
             patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread,
         ):
             asyncio.run(
-                run_hpo([], MagicMock(), PipelineConfig(), MagicMock(), n_trials=1)
+                run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=1)
             )
 
         mock_cls.assert_called_once_with(mlflow_kwargs={"nested": True})
@@ -127,7 +139,7 @@ class TestRunHpoObjectiveProducesFloat:
                 run_hpo(
                     [_make_task()],
                     MagicMock(),
-                    PipelineConfig(),
+                    _cfg(),
                     MagicMock(),
                     n_trials=1,
                 )
@@ -156,7 +168,7 @@ class TestRunHpoBestParamsReturned:
             patch("asyncio.to_thread", new_callable=AsyncMock),
         ):
             result = asyncio.run(
-                run_hpo([], MagicMock(), PipelineConfig(), MagicMock(), n_trials=2)
+                run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=2)
             )
 
         assert result["best_params"] == expected_params
@@ -183,7 +195,7 @@ class TestRunHpoNTrialsPropagated:
             patch("asyncio.to_thread", side_effect=fake_to_thread),
         ):
             asyncio.run(
-                run_hpo([], MagicMock(), PipelineConfig(), MagicMock(), n_trials=7)
+                run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=7)
             )
 
         # args[0]=objective_fn, args[1]=n_trials

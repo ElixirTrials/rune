@@ -41,6 +41,37 @@ class DiagnoseResult(BaseModel):
 _FIX_GUIDANCE_CAP = 150
 
 
+def _parse_code_action(
+    target: str | None,
+    raw: str,
+    feedback: Feedback | None,
+    state: dict[str, Any],
+    *,
+    retries_delta: int,
+) -> dict[str, Any]:
+    passed = feedback is not None and feedback.exit_code == 0
+    retries = dict(state.get("retries", {}))
+    retries[target] = retries.get(target, 0) + retries_delta
+    diagnosis = dict(state.get("diagnosis", {}))
+    diagnosis.pop(target, None)
+    fb_map = dict(state.get("feedback", {}))
+    if feedback:
+        fb_map[target] = feedback
+    return {
+        "code_results": {
+            **state.get("code_results", {}),
+            target: extract_code(raw),
+        },
+        "code_passed": {
+            **state.get("code_passed", {}),
+            target: passed,
+        },
+        "retries": retries,
+        "feedback": fb_map,
+        "diagnosis": diagnosis,
+    }
+
+
 def parse_output(
     action: Action,
     raw: str,
@@ -53,7 +84,9 @@ def parse_output(
             return {
                 "subtasks": [
                     Subtask(
-                        name=s.name, description=s.description, depends_on=s.depends_on
+                        name=s.name,
+                        description=s.description,
+                        depends_on=s.depends_on,
                     )
                     for s in result.subtasks
                 ]
@@ -62,47 +95,15 @@ def parse_output(
             target = action.target_subtask
             return {"plans": {**state.get("plans", {}), target: raw}}
         case "code":
-            target = action.target_subtask
-            passed = feedback is not None and feedback.exit_code == 0
-            retries = dict(state.get("retries", {}))
-            diagnosis = dict(state.get("diagnosis", {}))
-            fb_map = dict(state.get("feedback", {}))
-            is_resample = target in state.get("code_results", {})
-            if is_resample:
-                retries[target] = 0
-            diagnosis.pop(target, None)
-            if feedback:
-                fb_map[target] = feedback
-            return {
-                "code_results": {
-                    **state.get("code_results", {}),
-                    target: extract_code(raw),
-                },
-                "code_passed": {**state.get("code_passed", {}), target: passed},
-                "retries": retries,
-                "feedback": fb_map,
-                "diagnosis": diagnosis,
-            }
+            return _parse_code_action(
+                action.target_subtask, raw, feedback, state,
+                retries_delta=0,
+            )
         case "repair":
-            target = action.target_subtask
-            passed = feedback is not None and feedback.exit_code == 0
-            retries = dict(state.get("retries", {}))
-            retries[target] = retries.get(target, 0) + 1
-            diagnosis = dict(state.get("diagnosis", {}))
-            diagnosis.pop(target, None)
-            fb_map = dict(state.get("feedback", {}))
-            if feedback:
-                fb_map[target] = feedback
-            return {
-                "code_results": {
-                    **state.get("code_results", {}),
-                    target: extract_code(raw),
-                },
-                "code_passed": {**state.get("code_passed", {}), target: passed},
-                "retries": retries,
-                "feedback": fb_map,
-                "diagnosis": diagnosis,
-            }
+            return _parse_code_action(
+                action.target_subtask, raw, feedback, state,
+                retries_delta=1,
+            )
         case "integrate":
             passed = feedback is not None and feedback.exit_code == 0
             return {
@@ -114,6 +115,8 @@ def parse_output(
             diag_result = DiagnoseResult.model_validate_json(raw)
             diagnosis = dict(state.get("diagnosis", {}))
             for entry in diag_result.entries:
-                diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
+                diagnosis[entry.subtask_name] = (
+                    entry.fix_guidance[:_FIX_GUIDANCE_CAP]
+                )
             return {"diagnosis": diagnosis}
     return {}

@@ -41,6 +41,8 @@ class PipelineConfig:
     trajectory_style: str = "prose"
     adapter_ttl_days: int = 7
     checkpoint_path: str = ""
+    bench: dict[str, Any] = field(default_factory=dict)
+    hpo: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise config to a plain dictionary.

@@ -11,34 +11,48 @@ async def run_hpo(
     engine: Any,
     base_config: Any,
     model: Any,
-    n_trials: int = 50,
+    n_trials: int,
     parent_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Run Optuna HPO study tuning engine params to maximise pass@1.
 
-    Args:
-        tasks: BenchTask list to evaluate each trial against.
-        engine: Compiled LangGraph engine.
-        base_config: PipelineConfig used as the baseline; fields are overridden
-            per trial.
-        model: ModelWrapper passed through to the benchmark runner.
-        n_trials: Number of Optuna trials.
-
-    Returns:
-        Dict with ``best_params`` and ``best_value`` (best pass@1).
+    All search ranges come from ``base_config.hpo``.
     """
     import optuna  # noqa: PLC0415
     from optuna_integration import MLflowCallback  # noqa: PLC0415
 
     from rune.bench.runner import run_benchmark  # noqa: PLC0415
 
+    hpo = base_config.hpo
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+    def _suggest(
+        trial: optuna.Trial,
+        name: str,
+        int_param: bool = False,
+    ) -> float | int:
+        spec = hpo[name]
+        if int_param:
+            return trial.suggest_int(
+                name,
+                spec["low"],
+                spec["high"],
+                step=spec.get("step", 1),
+            )
+        return trial.suggest_float(
+            name,
+            spec["low"],
+            spec["high"],
+            log=spec.get("log", False),
+        )
+
     def objective(trial: optuna.Trial) -> float:
-        adapter_scaling = trial.suggest_float("adapter_scaling", 0.01, 0.2)
-        temperature = trial.suggest_float("temperature", 0.1, 1.0)
-        max_tokens = trial.suggest_int("max_tokens", 512, 4096, step=256)
-        max_phase_iterations = trial.suggest_int("max_phase_iterations", 3, 10)
+        adapter_scaling = _suggest(trial, "adapter_scaling")
+        temperature = _suggest(trial, "temperature")
+        max_tokens = _suggest(trial, "max_tokens", int_param=True)
+        max_phase_iterations = _suggest(
+            trial, "max_phase_iterations", int_param=True,
+        )
 
         cfg = base_config.override(
             adapter_scaling=adapter_scaling,
@@ -57,12 +71,14 @@ async def run_hpo(
 
     mlflow_kwargs: dict[str, Any] = {"nested": True}
     if parent_run_id:
-        mlflow_kwargs["tags"] = {"mlflow.parentRunId": parent_run_id}
+        mlflow_kwargs["tags"] = {
+            "mlflow.parentRunId": parent_run_id,
+        }
     mlflow_callback = MLflowCallback(mlflow_kwargs=mlflow_kwargs)
-    study = optuna.create_study(direction="maximize", study_name="rune-bench-hpo")
+    study = optuna.create_study(
+        direction="maximize", study_name="rune-bench-hpo",
+    )
 
-    # Run optimize in a thread so the outer async event loop stays alive and
-    # the sync objective can call asyncio.run() without nesting conflicts.
     await asyncio.to_thread(
         study.optimize,
         objective,
@@ -70,4 +86,7 @@ async def run_hpo(
         callbacks=[mlflow_callback],
     )
 
-    return {"best_params": study.best_params, "best_value": study.best_value}
+    return {
+        "best_params": study.best_params,
+        "best_value": study.best_value,
+    }

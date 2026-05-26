@@ -1,4 +1,4 @@
-from rune.engine.state import Action, Feedback, RunState, StepRecord, Subtask
+from rune.engine.state import Action, Feedback, RunState, Subtask
 
 
 class TestSubtask:

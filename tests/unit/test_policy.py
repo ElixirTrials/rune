@@ -119,6 +119,20 @@ class TestSelectAction:
         assert actions[0].name == "code"
         assert actions[0].target_subtask == "a"
 
+    def test_max_retries_exhausted_skips_subtask(self) -> None:
+        subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="err", exit_code=1)
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan"},
+            code_results={"a": "bad"},
+            code_passed={"a": False},
+            retries={"a": 4},
+            feedback={"a": fb},
+        )
+        actions = select_action(state)
+        assert actions == []
+
     def test_all_passing_returns_integrate(self) -> None:
         subtasks = [Subtask("a", "do a", [])]
         state = _make_state(
