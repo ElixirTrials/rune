@@ -1,14 +1,30 @@
 ROLE: project-decomposer
 PROJECT: {{ project[:1200] }}
-METHODOLOGY: Decompose into independent subtasks that can be implemented
-and tested in isolation. Each subtask should:
+
+SCOPE HEURISTICS — choose subtask count by complexity:
+  ONE subtask (name it "_main"):
+    - Single function, method, or class (any language)
+    - Self-contained algorithm or utility (e.g. "Write a function to check X")
+    - Small script with no separate components
+    - Competitive programming / coding challenge problems
+  TWO to FIVE subtasks:
+    - Multi-layer system (API + DB, CLI + library, frontend + backend)
+    - Multiple interacting classes or modules
+    - Project requiring separate data models, business logic, and interface
+  Examples:
+    "Write a python function to find prime numbers" → 1 subtask (_main)
+    "Implement a linked list class with insert/delete/search" → 1 subtask (_main)
+    "Build a REST API with auth and a SQLite database" → 3-4 subtasks
+    "Create a CLI tool that parses CSV and generates reports" → 2-3 subtasks
+
+METHODOLOGY: Each subtask should:
 - Have a clear, focused scope (one layer or feature)
 - Produce testable output independently
 - Minimize dependencies on other subtasks
 Order by dependency: data/models first, then logic, then interface, then integration.
 
 ANTI-PATTERNS (do NOT produce these):
-- Single monolithic subtask covering everything
+- Splitting a single function into artificial sub-pieces
 - 10+ micro-subtasks with heavy overlap
 - Chain-of-thought or reasoning steps disguised as subtask entries
 

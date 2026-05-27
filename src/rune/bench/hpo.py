@@ -46,12 +46,16 @@ async def run_hpo(
             log=spec.get("log", False),
         )
 
+    outer_loop = asyncio.get_running_loop()
+
     def objective(trial: optuna.Trial) -> float:
         adapter_scaling = _suggest(trial, "adapter_scaling")
         temperature = _suggest(trial, "temperature")
         max_tokens = _suggest(trial, "max_tokens", int_param=True)
         max_phase_iterations = _suggest(
-            trial, "max_phase_iterations", int_param=True,
+            trial,
+            "max_phase_iterations",
+            int_param=True,
         )
 
         cfg = base_config.override(
@@ -66,8 +70,10 @@ async def run_hpo(
             "run_config": cfg.to_dict(),
         }
 
-        result = asyncio.run(run_benchmark(tasks, engine, bench_config))
-        return result.pass_at_1
+        future = asyncio.run_coroutine_threadsafe(
+            run_benchmark(tasks, engine, bench_config), outer_loop
+        )
+        return future.result().pass_at_1
 
     mlflow_kwargs: dict[str, Any] = {"nested": True}
     if parent_run_id:
@@ -76,7 +82,8 @@ async def run_hpo(
         }
     mlflow_callback = MLflowCallback(mlflow_kwargs=mlflow_kwargs)
     study = optuna.create_study(
-        direction="maximize", study_name="rune-bench-hpo",
+        direction="maximize",
+        study_name="rune-bench-hpo",
     )
 
     await asyncio.to_thread(

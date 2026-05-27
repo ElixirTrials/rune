@@ -83,7 +83,8 @@ class ModelWrapper:
         rank = hc.lora_config.r
         alpha = getattr(hc.lora_config, "lora_alpha", rank * 2)
         _raw_model = AutoModelForCausalLM.from_pretrained(
-            config.model_id, dtype=torch.bfloat16,
+            config.model_id,
+            dtype=torch.bfloat16,
         ).to(device)
         lora_config = LoraConfig(
             r=rank,
@@ -95,11 +96,15 @@ class ModelWrapper:
         tokenizer = AutoTokenizer.from_pretrained(config.model_id)
         return cls(base_model, tokenizer, hypernet, config=config)
 
-    def generate_adapter(self, trajectory_text: str) -> AdapterResult:
+    def generate_adapter(
+        self, trajectory_text: str, *, offload_base: bool = False,
+    ) -> AdapterResult:
         """Generate LoRA weights from a trajectory via the hypernetwork.
 
         Args:
             trajectory_text: Serialised coding trajectory used as conditioning.
+            offload_base: Move base model to CPU during the hypernetwork forward
+                pass to free GPU memory.
 
         Returns:
             AdapterResult with a fresh UUID adapter_id and the generated state dict.
@@ -110,6 +115,7 @@ class ModelWrapper:
             base_model=self._base_model,
             tokenizer=self._tokenizer,
             layer_indices=self._layer_indices,
+            offload_base=offload_base,
         )
         return AdapterResult(adapter_id=uuid.uuid4().hex, state_dict=state_dict)
 
@@ -128,20 +134,9 @@ class ModelWrapper:
         output_schema: type[Any] | None = None,
         max_tokens: int = 2048,
         temperature: float = 0.3,
+        repetition_penalty: float = 1.1,
+        top_p: float = 0.9,
     ) -> GenerationResult:
-        """Generate text using the current model state.
-
-        Args:
-            prompt: User prompt text.
-            system_prompt: Optional system role text.
-            output_schema: Pydantic model for JSON-constrained output;
-                None for freeform.
-            max_tokens: Maximum new tokens.
-            temperature: Sampling temperature for freeform generation.
-
-        Returns:
-            GenerationResult with text, thinking, and token count.
-        """
         return await inference_generate(
             self._base_model,
             self._tokenizer,
@@ -150,4 +145,6 @@ class ModelWrapper:
             output_schema=output_schema,
             max_tokens=max_tokens,
             temperature=temperature,
+            repetition_penalty=repetition_penalty,
+            top_p=top_p,
         )

@@ -1,6 +1,5 @@
 from rune.engine.policy import (
     build_execution_layers,
-    is_simple_task,
     select_action,
 )
 from rune.engine.state import Feedback, Subtask
@@ -27,24 +26,6 @@ def _make_state(**overrides: object) -> dict:
     }
     base.update(overrides)
     return base
-
-
-class TestIsSimpleTask:
-    def test_simple_function_task(self) -> None:
-        assert is_simple_task("Write a function that adds two numbers") is True
-
-    def test_simple_method_task(self) -> None:
-        assert is_simple_task("Implement a method to sort a list") is True
-
-    def test_complex_long_task(self) -> None:
-        long_task = " ".join(["word"] * 201)
-        assert is_simple_task(long_task) is False
-
-    def test_complex_no_signal(self) -> None:
-        assert is_simple_task("Build a web API with authentication and database") is False
-
-    def test_short_but_no_signal(self) -> None:
-        assert is_simple_task("Deploy the application to production") is False
 
 
 class TestSelectAction:

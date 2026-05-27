@@ -6,6 +6,7 @@ Run: uv run python tools/adapter_probe.py [--config benchmarks/bench.yaml]
 All generation params and sweep values come from bench.yaml.
 Results logged to MLflow experiment 'adapter-probe'.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,8 +53,7 @@ def _run_condition(
     t0 = time.monotonic()
     adapter = model.generate_adapter(trajectory)
     scaled_sd = {
-        k: v * scaling if "lora_B" in k else v
-        for k, v in adapter.state_dict.items()
+        k: v * scaling if "lora_B" in k else v for k, v in adapter.state_dict.items()
     }
     model.hotswap_adapter(scaled_sd)
     out = asyncio.run(
@@ -88,13 +88,8 @@ def run_probe(cfg: Any) -> list[ProbeResult]:
         "temperature": bench["gen_temperature"],
     }
 
-    task_prompt = (
-        "Write a Python function add(a, b) that returns a + b."
-    )
-    task_trajectory = (
-        f"ROLE: coder\nTASK: {task_prompt}\n"
-        "PLAN: Implement add function."
-    )
+    task_prompt = "Write a Python function add(a, b) that returns a + b."
+    task_trajectory = f"ROLE: coder\nTASK: {task_prompt}\nPLAN: Implement add function."
     enriched_trajectory = (
         f"ROLE: coder\nTASK: {task_prompt}\n"
         "PLAN: Implement add(a, b) -> int returning a + b.\n"
@@ -113,55 +108,90 @@ def run_probe(cfg: Any) -> list[ProbeResult]:
     results: list[ProbeResult] = []
 
     logger.info("Condition 1/5: Baseline (adapter_scaling=0)")
-    results.append(_run_condition(
-        model, "baseline", task_trajectory, task_prompt,
-        system_prompt, 0.0, gen_kwargs,
-        tags={"phase": "baseline"},
-    ))
+    results.append(
+        _run_condition(
+            model,
+            "baseline",
+            task_trajectory,
+            task_prompt,
+            system_prompt,
+            0.0,
+            gen_kwargs,
+            tags={"phase": "baseline"},
+        )
+    )
 
     logger.info(
         "Condition 2/5: Task trajectory (scaling=%.3f)",
         default_scaling,
     )
-    results.append(_run_condition(
-        model, "task_trajectory", task_trajectory, task_prompt,
-        system_prompt, default_scaling, gen_kwargs,
-        tags={"phase": "task_trajectory"},
-    ))
+    results.append(
+        _run_condition(
+            model,
+            "task_trajectory",
+            task_trajectory,
+            task_prompt,
+            system_prompt,
+            default_scaling,
+            gen_kwargs,
+            tags={"phase": "task_trajectory"},
+        )
+    )
 
     logger.info(
         "Condition 3/5: Enriched trajectory (scaling=%.3f)",
         default_scaling,
     )
-    results.append(_run_condition(
-        model, "enriched_trajectory", enriched_trajectory,
-        task_prompt, system_prompt, default_scaling, gen_kwargs,
-        tags={"phase": "enriched_trajectory"},
-    ))
+    results.append(
+        _run_condition(
+            model,
+            "enriched_trajectory",
+            enriched_trajectory,
+            task_prompt,
+            system_prompt,
+            default_scaling,
+            gen_kwargs,
+            tags={"phase": "enriched_trajectory"},
+        )
+    )
 
     logger.info(
         "Condition 4/5: Contradictory trajectory (scaling=%.3f)",
         default_scaling,
     )
-    results.append(_run_condition(
-        model, "contradictory", contradictory_trajectory,
-        task_prompt, system_prompt, default_scaling, gen_kwargs,
-        tags={"phase": "contradictory"},
-    ))
+    results.append(
+        _run_condition(
+            model,
+            "contradictory",
+            contradictory_trajectory,
+            task_prompt,
+            system_prompt,
+            default_scaling,
+            gen_kwargs,
+            tags={"phase": "contradictory"},
+        )
+    )
 
     for scale in scaling_sweep:
         logger.info(
             "Condition 5/5: Scaling sweep (adapter_scaling=%.3f)",
             scale,
         )
-        results.append(_run_condition(
-            model, f"scaling_{scale}", task_trajectory, task_prompt,
-            system_prompt, scale, gen_kwargs,
-            tags={
-                "phase": "scaling_sweep",
-                "sweep_value": str(scale),
-            },
-        ))
+        results.append(
+            _run_condition(
+                model,
+                f"scaling_{scale}",
+                task_trajectory,
+                task_prompt,
+                system_prompt,
+                scale,
+                gen_kwargs,
+                tags={
+                    "phase": "scaling_sweep",
+                    "sweep_value": str(scale),
+                },
+            )
+        )
 
     return results
 
@@ -189,10 +219,12 @@ def log_to_mlflow(results: list[ProbeResult], cfg: Any) -> None:
     }
 
     with tracked_run("adapter-probe", params=params) as run:
-        mlflow.set_tags({
-            "experiment_type": "adapter_retrievability_probe",
-            "phase": "0",
-        })
+        mlflow.set_tags(
+            {
+                "experiment_type": "adapter_retrievability_probe",
+                "phase": "0",
+            }
+        )
 
         baseline_output = results[0].output
 
@@ -202,35 +234,38 @@ def log_to_mlflow(results: list[ProbeResult], cfg: Any) -> None:
                 json.dumps(asdict(r), indent=2),
                 f"probe/{r.condition}.json",
             )
-            mlflow.log_metrics({
-                f"differs_from_baseline/{r.condition}": int(differs),
-                f"tokens_used/{r.condition}": r.tokens_used,
-                f"elapsed_s/{r.condition}": r.elapsed_s,
-                f"output_len/{r.condition}": len(r.output),
-            })
+            mlflow.log_metrics(
+                {
+                    f"differs_from_baseline/{r.condition}": int(differs),
+                    f"tokens_used/{r.condition}": r.tokens_used,
+                    f"elapsed_s/{r.condition}": r.elapsed_s,
+                    f"output_len/{r.condition}": len(r.output),
+                }
+            )
             logger.info(
-                "%s (scale=%.3f): differs=%s, tokens=%d,"
-                " elapsed=%.1fs, len=%d",
-                r.condition, r.adapter_scaling, differs,
-                r.tokens_used, r.elapsed_s, len(r.output),
+                "%s (scale=%.3f): differs=%s, tokens=%d, elapsed=%.1fs, len=%d",
+                r.condition,
+                r.adapter_scaling,
+                differs,
+                r.tokens_used,
+                r.elapsed_s,
+                len(r.output),
             )
 
         task_differs = results[1].output != baseline_output
-        enriched_differs = (
-            results[2].output != results[1].output
+        enriched_differs = results[2].output != results[1].output
+        contradictory_differs = results[3].output != results[1].output
+        mlflow.log_metrics(
+            {
+                "gate/adapter_has_any_effect": int(task_differs),
+                "gate/enriched_trajectory_differs": int(
+                    enriched_differs,
+                ),
+                "gate/contradictory_shows_contamination": int(
+                    contradictory_differs,
+                ),
+            }
         )
-        contradictory_differs = (
-            results[3].output != results[1].output
-        )
-        mlflow.log_metrics({
-            "gate/adapter_has_any_effect": int(task_differs),
-            "gate/enriched_trajectory_differs": int(
-                enriched_differs,
-            ),
-            "gate/contradictory_shows_contamination": int(
-                contradictory_differs,
-            ),
-        })
 
         header = (
             "| Condition | Scaling | Differs "
@@ -240,9 +275,7 @@ def log_to_mlflow(results: list[ProbeResult], cfg: Any) -> None:
         rows = [header, separator]
         for r in results:
             differs = r.output != baseline_output
-            preview = (
-                r.output[:120].replace("\n", " ").replace("|", "\\|")
-            )
+            preview = r.output[:120].replace("\n", " ").replace("|", "\\|")
             rows.append(
                 f"| {r.condition} | {r.adapter_scaling} "
                 f"| {differs} "
@@ -250,7 +283,8 @@ def log_to_mlflow(results: list[ProbeResult], cfg: Any) -> None:
                 f"| {preview} |"
             )
         mlflow.log_text(
-            "\n".join(rows), "probe/comparison_table.md",
+            "\n".join(rows),
+            "probe/comparison_table.md",
         )
 
         all_outputs = {r.condition: r.output for r in results}
@@ -261,10 +295,12 @@ def log_to_mlflow(results: list[ProbeResult], cfg: Any) -> None:
 
         logger.info("=== GATE RESULTS ===")
         logger.info(
-            "Adapter has any effect: %s", task_differs,
+            "Adapter has any effect: %s",
+            task_differs,
         )
         logger.info(
-            "Enriched trajectory differs: %s", enriched_differs,
+            "Enriched trajectory differs: %s",
+            enriched_differs,
         )
         logger.info(
             "Contradictory shows contamination: %s",
@@ -280,7 +316,9 @@ def main() -> None:
         description="Adapter retrievability probe",
     )
     parser.add_argument(
-        "--config", type=Path, default=_DEFAULT_CONFIG,
+        "--config",
+        type=Path,
+        default=_DEFAULT_CONFIG,
         help=f"Config YAML path (default: {_DEFAULT_CONFIG})",
     )
     args = parser.parse_args()
@@ -291,7 +329,9 @@ def main() -> None:
 
     logger.info(
         "Config: model_id=%s, checkpoint=%s, adapter_scaling=%.3f",
-        cfg.model_id, cfg.checkpoint_path, cfg.adapter_scaling,
+        cfg.model_id,
+        cfg.checkpoint_path,
+        cfg.adapter_scaling,
     )
 
     results = run_probe(cfg)

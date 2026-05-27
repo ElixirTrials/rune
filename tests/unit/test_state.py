@@ -117,7 +117,10 @@ class TestRunState:
             "current_adapter": None,
             "feedback": {},
             "integration_feedback": None,
-            "diagnosis": {"subtask_a": "Fix the import", "subtask_b": "Add return statement"},
+            "diagnosis": {
+                "subtask_a": "Fix the import",
+                "subtask_b": "Add return statement",
+            },
             "actions": [],
             "trajectory": [],
             "step": 0,

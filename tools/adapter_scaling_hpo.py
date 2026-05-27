@@ -8,6 +8,7 @@ Run:
 All generation params and search ranges come from bench.yaml.
 Results logged to MLflow experiment 'adapter-scaling-hpo'.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -107,7 +108,9 @@ def _run_trial(
 
     for p in PROMPTS:
         traj = _trajectory(
-            "coder", p.task, f"Implement {p.fn_name}.",
+            "coder",
+            p.task,
+            f"Implement {p.fn_name}.",
         )
         adapter = model.generate_adapter(traj)
         raw_sd = adapter.state_dict
@@ -116,14 +119,18 @@ def _run_trial(
         model.hotswap_adapter(zero_sd)
         baseline = asyncio.run(
             model.generate(
-                p.task, system_prompt=p.system_prompt, **gen_kwargs,
+                p.task,
+                system_prompt=p.system_prompt,
+                **gen_kwargs,
             )
         )
 
         model.hotswap_adapter(_scale_b_only(raw_sd, scaling))
         adapted = asyncio.run(
             model.generate(
-                p.task, system_prompt=p.system_prompt, **gen_kwargs,
+                p.task,
+                system_prompt=p.system_prompt,
+                **gen_kwargs,
             )
         )
 
@@ -134,7 +141,9 @@ def _run_trial(
         )
         enriched = asyncio.run(
             model.generate(
-                p.task, system_prompt=p.system_prompt, **gen_kwargs,
+                p.task,
+                system_prompt=p.system_prompt,
+                **gen_kwargs,
             )
         )
 
@@ -146,7 +155,9 @@ def _run_trial(
         )
         contradictory = asyncio.run(
             model.generate(
-                p.task, system_prompt=p.system_prompt, **gen_kwargs,
+                p.task,
+                system_prompt=p.system_prompt,
+                **gen_kwargs,
             )
         )
 
@@ -187,7 +198,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Adapter scaling HPO")
     parser.add_argument(
-        "--config", type=Path, default=_DEFAULT_CONFIG,
+        "--config",
+        type=Path,
+        default=_DEFAULT_CONFIG,
         help=f"Config YAML path (default: {_DEFAULT_CONFIG})",
     )
     parser.add_argument("--n-trials", type=int, default=None)
@@ -224,7 +237,8 @@ def main() -> None:
         )
         logger.info(
             "Trial %d: adapter_scaling=%.3f",
-            trial.number, scaling,
+            trial.number,
+            scaling,
         )
 
         metrics = _run_trial(model, scaling, gen_kwargs)
@@ -239,8 +253,7 @@ def main() -> None:
             mlflow.log_metrics(metrics)
 
         logger.info(
-            "Trial %d: obj=%.4f (coh=%.2f, diff=%.2f,"
-            " sens=%.2f, contra=%.2f)",
+            "Trial %d: obj=%.4f (coh=%.2f, diff=%.2f, sens=%.2f, contra=%.2f)",
             trial.number,
             metrics["objective"],
             metrics["avg/coherence"],
@@ -256,30 +269,29 @@ def main() -> None:
     )
 
     with mlflow.start_run(run_name="adapter-scaling-hpo"):
-        mlflow.log_params({
-            "n_trials": n_trials,
-            "search_low": hpo_as["low"],
-            "search_high": hpo_as["high"],
-            "n_prompts": len(PROMPTS),
-            "max_tokens": gen_kwargs["max_tokens"],
-            "temperature": gen_kwargs["temperature"],
-        })
+        mlflow.log_params(
+            {
+                "n_trials": n_trials,
+                "search_low": hpo_as["low"],
+                "search_high": hpo_as["high"],
+                "n_prompts": len(PROMPTS),
+                "max_tokens": gen_kwargs["max_tokens"],
+                "temperature": gen_kwargs["temperature"],
+            }
+        )
         study.optimize(objective, n_trials=n_trials)
 
-        mlflow.log_params({
-            f"best/{k}": v for k, v in study.best_params.items()
-        })
+        mlflow.log_params({f"best/{k}": v for k, v in study.best_params.items()})
         mlflow.log_metric("best/objective", study.best_value)
 
     print("\n=== BEST ===")
-    print(
-        f"  adapter_scaling:"
-        f" {study.best_params['adapter_scaling']:.4f}"
-    )
+    print(f"  adapter_scaling: {study.best_params['adapter_scaling']:.4f}")
     print(f"  objective: {study.best_value:.4f}")
     print("\n=== ALL TRIALS ===")
     for t in sorted(
-        study.trials, key=lambda t: t.value or 0, reverse=True,
+        study.trials,
+        key=lambda t: t.value or 0,
+        reverse=True,
     ):
         print(
             f"  #{t.number}:"

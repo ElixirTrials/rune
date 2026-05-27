@@ -59,23 +59,17 @@ class Feedback:
     exit_code: int
 
 
+_CODE_HISTORY_CAP = 1500
+
+
 @dataclass(frozen=True)
 class StepRecord:
-    """Immutable record of one engine step for trajectory logging.
-
-    Attributes:
-        step: Zero-based step index within the run.
-        action_name: Name of the action executed.
-        target_subtask: Subtask targeted by this step, or None.
-        adapter_id: ID of the active LoRA adapter, or None.
-        feedback: Sandbox result if code was executed, otherwise None.
-    """
-
     step: int
     action_name: str
     target_subtask: str | None
     adapter_id: str | None
     feedback: Feedback | None
+    generated_code: str | None = None
 
 
 class RunState(TypedDict):

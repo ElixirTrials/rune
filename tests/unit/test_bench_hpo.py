@@ -98,9 +98,7 @@ class TestRunHpoMlflowCallback:
             patch("optuna.logging.set_verbosity"),
             patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread,
         ):
-            asyncio.run(
-                run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=1)
-            )
+            asyncio.run(run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=1))
 
         mock_cls.assert_called_once_with(mlflow_kwargs={"nested": True})
         # Confirm the callback was passed as keyword arg to study.optimize via to_thread
@@ -111,16 +109,19 @@ class TestRunHpoMlflowCallback:
 
 class TestRunHpoObjectiveProducesFloat:
     def test_objective_returns_pass_at_1_float(self) -> None:
-        captured_objective: list = []
+        captured_value: list[float] = []
 
-        async def fake_to_thread(fn: object, *args: object, **kwargs: object) -> None:
-            # to_thread(study.optimize, objective, n_trials, callbacks=[...])
-            # fn=study.optimize; args[0]=objective, args[1]=n_trials
-            captured_objective.append(args[0])
+        def fake_optimize(
+            objective_fn: object, n_trials: object, **kwargs: object
+        ) -> None:
+            trial = _make_trial()
+            value = objective_fn(trial)
+            captured_value.append(value)
 
         mock_study = MagicMock()
         mock_study.best_params = {"temperature": 0.5}
         mock_study.best_value = 0.6
+        mock_study.optimize = fake_optimize
 
         bench_result = _make_bench_result(pass_at_1=0.6)
 
@@ -128,7 +129,6 @@ class TestRunHpoObjectiveProducesFloat:
             patch("optuna.create_study", return_value=mock_study),
             patch("optuna_integration.MLflowCallback"),
             patch("optuna.logging.set_verbosity"),
-            patch("asyncio.to_thread", side_effect=fake_to_thread),
             patch(
                 "rune.bench.runner.run_benchmark",
                 new_callable=AsyncMock,
@@ -145,11 +145,9 @@ class TestRunHpoObjectiveProducesFloat:
                 )
             )
 
-        assert len(captured_objective) == 1
-        trial = _make_trial()
-        value = captured_objective[0](trial)
-        assert isinstance(value, float)
-        assert value == pytest.approx(0.6)
+        assert len(captured_value) == 1
+        assert isinstance(captured_value[0], float)
+        assert captured_value[0] == pytest.approx(0.6)
 
 
 class TestRunHpoBestParamsReturned:
@@ -194,9 +192,7 @@ class TestRunHpoNTrialsPropagated:
             patch("optuna.logging.set_verbosity"),
             patch("asyncio.to_thread", side_effect=fake_to_thread),
         ):
-            asyncio.run(
-                run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=7)
-            )
+            asyncio.run(run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=7))
 
         # args[0]=objective_fn, args[1]=n_trials
         assert captured[0][1] == 7

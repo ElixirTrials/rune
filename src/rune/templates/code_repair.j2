@@ -2,6 +2,14 @@ ROLE: coder (repair)
 {% if project %}PROJECT: {{ project[:300] }}
 {% endif %}SUBTASK: {{ subtask.name }}
 DIAGNOSIS: {{ fix_guidance[:150] }}
+{% if code_trajectory %}
+CODE TRAJECTORY (what was tried → what happened):
+{% for entry in code_trajectory[-3:] %}
+--- Step {{ entry.step }} ({{ entry.action }}){% if entry.passed %} PASSED{% endif %} ---
+{{ entry.code[:600] }}
+{% if entry.error %}ERROR: {{ entry.error[:200] }}{% endif %}
+{% endfor %}
+{% endif %}
 YOUR CURRENT CODE:
 {{ existing_code[:2000] }}
 SIBLING SUBTASKS (your code must be compatible with these):
@@ -9,12 +17,6 @@ SIBLING SUBTASKS (your code must be compatible with these):
 --- {{ name }} ---
 {{ skeleton[:400] }}
 {% endfor %}
-{% if repair_history %}
-PRIOR REPAIR ATTEMPTS (last 2 only):
-{% for attempt in repair_history[-2:] %}
-  - Attempt {{ loop.index }}: {{ attempt[:200] }}
-{% endfor %}
-{% endif %}
 ERROR CONTEXT:
 {{ error_summary[:500] }}
 PRACTICES: Fix the diagnosed issues. Ensure all types and functions are

@@ -8,7 +8,6 @@ from jinja2 import Environment, PackageLoader, StrictUndefined
 from pydantic import BaseModel
 
 from rune.engine.state import Action, Feedback, Subtask
-from rune.sandbox.executor import extract_code
 
 _env = Environment(loader=PackageLoader("rune", "templates"), undefined=StrictUndefined)
 
@@ -25,6 +24,18 @@ class SubtaskSchema(BaseModel):
 
 class DecomposeResult(BaseModel):
     subtasks: list[SubtaskSchema]
+
+
+class PlanResult(BaseModel):
+    plan: str
+
+
+class CodeResult(BaseModel):
+    code: str
+
+
+class IntegrateResult(BaseModel):
+    code: str
 
 
 class DiagnosisEntry(BaseModel):
@@ -49,6 +60,7 @@ def _parse_code_action(
     *,
     retries_delta: int,
 ) -> dict[str, Any]:
+    code = CodeResult.model_validate_json(raw).code
     passed = feedback is not None and feedback.exit_code == 0
     retries = dict(state.get("retries", {}))
     retries[target] = retries.get(target, 0) + retries_delta
@@ -60,7 +72,7 @@ def _parse_code_action(
     return {
         "code_results": {
             **state.get("code_results", {}),
-            target: extract_code(raw),
+            target: code,
         },
         "code_passed": {
             **state.get("code_passed", {}),
@@ -93,21 +105,29 @@ def parse_output(
             }
         case "plan":
             target = action.target_subtask
-            return {"plans": {**state.get("plans", {}), target: raw}}
+            plan_text = PlanResult.model_validate_json(raw).plan
+            return {"plans": {**state.get("plans", {}), target: plan_text}}
         case "code":
             return _parse_code_action(
-                action.target_subtask, raw, feedback, state,
+                action.target_subtask,
+                raw,
+                feedback,
+                state,
                 retries_delta=0,
             )
         case "repair":
             return _parse_code_action(
-                action.target_subtask, raw, feedback, state,
+                action.target_subtask,
+                raw,
+                feedback,
+                state,
                 retries_delta=1,
             )
         case "integrate":
+            code = IntegrateResult.model_validate_json(raw).code
             passed = feedback is not None and feedback.exit_code == 0
             return {
-                "integrated_code": extract_code(raw) if passed else "",
+                "integrated_code": code if passed else "",
                 "integration_feedback": feedback,
                 "diagnosis": {},
             }
@@ -115,8 +135,6 @@ def parse_output(
             diag_result = DiagnoseResult.model_validate_json(raw)
             diagnosis = dict(state.get("diagnosis", {}))
             for entry in diag_result.entries:
-                diagnosis[entry.subtask_name] = (
-                    entry.fix_guidance[:_FIX_GUIDANCE_CAP]
-                )
+                diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
             return {"diagnosis": diagnosis}
     return {}

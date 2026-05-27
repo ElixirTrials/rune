@@ -2,7 +2,15 @@ ROLE: diagnostician
 PROJECT: {{ project[:500] }}
 {% if target_subtask %}
 FAILING SUBTASK: {{ target_subtask }}
-SUBTASK CODE:
+{% if code_trajectory %}
+CODE TRAJECTORY:
+{% for entry in code_trajectory[-3:] %}
+--- Step {{ entry.step }} ({{ entry.action }}) ---
+{{ entry.code[:500] }}
+{% if entry.error %}ERROR: {{ entry.error[:200] }}{% endif %}
+{% endfor %}
+{% endif %}
+CURRENT CODE:
 {{ existing_code[:2000] }}
 ERROR OUTPUT:
 {{ error_summary[:500] }}
@@ -14,12 +22,6 @@ SUBTASK CODE:
 {% endfor %}
 INTEGRATION ERROR:
 {{ integration_error[:500] }}
-{% endif %}
-{% if repair_history %}
-PRIOR REPAIR ATTEMPTS:
-{% for attempt in repair_history[-2:] %}
-  Attempt {{ loop.index }}: {{ attempt[:200] }}
-{% endfor %}
 {% endif %}
 Identify what failed and why. Classify the error type.
 Output JSON with this schema:

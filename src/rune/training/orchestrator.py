@@ -104,7 +104,10 @@ async def run_training_pipeline(
         active = mlflow.active_run()
         parent_id = active.info.run_id if active else None
         return await _run_hpo(
-            config, corpus_dir, n_trials=n_trials, parent_run_id=parent_id,
+            config,
+            corpus_dir,
+            n_trials=n_trials,
+            parent_run_id=parent_id,
         )
 
     _run_oracle_training(config, corpus_dir)

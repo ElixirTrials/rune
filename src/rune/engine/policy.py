@@ -5,22 +5,17 @@ from __future__ import annotations
 from graphlib import TopologicalSorter
 from typing import Any
 
-from rune.engine.parse import DecomposeResult, DiagnoseResult
+from rune.engine.parse import (
+    CodeResult,
+    DecomposeResult,
+    DiagnoseResult,
+    IntegrateResult,
+    PlanResult,
+)
 from rune.engine.state import Action, Subtask
 
 MAX_REPAIRS = 2
 MAX_RETRIES = MAX_REPAIRS * 2
-_SIMPLE_WORD_THRESHOLD = 200
-_SIMPLE_SIGNALS = [
-    "write a function",
-    "implement a function",
-    "create a function",
-    "write a method",
-    "implement a method",
-    "write a class",
-    "implement a class",
-    "create a class",
-]
 
 ACTIONS: dict[str, Action] = {
     "decompose": Action(
@@ -33,17 +28,29 @@ ACTIONS: dict[str, Action] = {
         None,
     ),
     "plan": Action(
-        "plan", "plan", "prompt_plan", "You are a project planner.", None, False, None
+        "plan",
+        "plan",
+        "prompt_plan",
+        "You are a project planner.",
+        PlanResult,
+        False,
+        None,
     ),
     "code": Action(
-        "code", "code", "prompt_code", "You are a code generator.", None, True, None
+        "code",
+        "code",
+        "prompt_code",
+        "You are a code generator.",
+        CodeResult,
+        True,
+        None,
     ),
     "repair": Action(
         "repair",
         "code_repair",
         "prompt_code_repair",
         "You are a code generator.",
-        None,
+        CodeResult,
         True,
         None,
     ),
@@ -52,7 +59,7 @@ ACTIONS: dict[str, Action] = {
         "integrate",
         "prompt_integrate",
         "You are a code integrator.",
-        None,
+        IntegrateResult,
         True,
         None,
     ),
@@ -66,13 +73,6 @@ ACTIONS: dict[str, Action] = {
         None,
     ),
 }
-
-
-def is_simple_task(task: str) -> bool:
-    if len(task.split()) > _SIMPLE_WORD_THRESHOLD:
-        return False
-    task_lower = task.lower()
-    return any(signal in task_lower for signal in _SIMPLE_SIGNALS)
 
 
 def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:

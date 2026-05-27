@@ -3,16 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
+import mlflow
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from rune.engine.parse import parse_output, render_template
-from rune.engine.policy import is_simple_task, select_action
-from rune.engine.state import Action, Feedback, RunState, StepRecord, Subtask
+from rune.engine.parse import CodeResult, IntegrateResult, parse_output, render_template
+from rune.engine.policy import select_action
+from rune.engine.state import (
+    _CODE_HISTORY_CAP,
+    Action,
+    Feedback,
+    RunState,
+    StepRecord,
+)
 from rune.sandbox.executor import run_in_sandbox
+
+logger = logging.getLogger(__name__)
 
 
 def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any]:
@@ -60,31 +70,40 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["existing_code"] = code_results.get(target_name, "")
 
         subtask_fb = feedback_map.get(target_name)
-        ctx["error_summary"] = (
-            subtask_fb.stderr[:500] if subtask_fb else ""
-        )
-        ctx["fix_guidance"] = (
-            state.get("diagnosis", {}).get(target_name, "")
-        )
+        ctx["error_summary"] = subtask_fb.stderr[:500] if subtask_fb else ""
+        ctx["fix_guidance"] = state.get("diagnosis", {}).get(target_name, "")
 
         repair_history: list[str] = []
+        code_trajectory: list[dict[str, Any]] = []
         for rec in state.get("trajectory", []):
-            if (
-                rec.target_subtask == target_name
-                and rec.feedback
-                and rec.feedback.exit_code != 0
-            ):
+            if rec.target_subtask != target_name:
+                continue
+            if rec.feedback and rec.feedback.exit_code != 0:
                 repair_history.append(rec.feedback.stderr[:200])
+            if rec.generated_code:
+                code_trajectory.append({
+                    "step": rec.step,
+                    "action": rec.action_name,
+                    "code": rec.generated_code[:_CODE_HISTORY_CAP],
+                    "error": (
+                        rec.feedback.stderr[:300]
+                        if rec.feedback and rec.feedback.exit_code != 0
+                        else ""
+                    ),
+                    "passed": bool(
+                        rec.feedback and rec.feedback.exit_code == 0
+                    ),
+                })
         ctx["repair_history"] = repair_history[-2:]
+        ctx["code_trajectory"] = code_trajectory
     else:
         ctx["target_subtask"] = None
         ctx["error_summary"] = ""
         ctx["fix_guidance"] = ""
         ctx["repair_history"] = []
+        ctx["code_trajectory"] = []
 
-    ctx["integration_doc"] = "\n".join(
-        f"- {s.name}: {s.description}" for s in subtasks
-    )
+    ctx["integration_doc"] = "\n".join(f"- {s.name}: {s.description}" for s in subtasks)
     ctx["skeletons"] = code_results
     ctx["code_outputs"] = code_results
     int_fb = state.get("integration_feedback")
@@ -98,20 +117,14 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     model = configurable["model"]
     run_config: dict[str, Any] = configurable.get("run_config", {})
 
-    gate_fired = not state["subtasks"] and is_simple_task(state["task"])
-    if gate_fired:
-        state = {
-            **state,
-            "subtasks": [Subtask("_main", state["task"], [])],
-            "plans": {"_main": state["task"]},
-        }
-
     actions = select_action(dict(state))
     if not actions:
         return {"actions": [], "budget_remaining": state["budget_remaining"]}
 
     temperature = run_config.get("temperature", 0.3)
     adapter_scaling = run_config.get("adapter_scaling", 1.0)
+    repetition_penalty = run_config.get("repetition_penalty", 1.1)
+    top_p = run_config.get("top_p", 0.9)
 
     results: list[tuple[Action, str, str, str | None]] = []
     for action in actions:
@@ -131,17 +144,46 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             output_schema=action.output_schema,
             max_tokens=run_config.get("max_tokens", 2048),
             temperature=temperature,
+            repetition_penalty=repetition_penalty,
+            top_p=top_p,
         )
+        if result.truncated:
+            logger.warning(
+                "Truncated output for %s/%s after completion retry",
+                action.name, action.target_subtask or "",
+            )
         target_name = action.target_subtask or ""
         results.append((action, target_name, result.text, adapter.adapter_id))
 
-    code_actions = [(a, name, text) for a, name, text, _ in results if a.executes_code]
+        if mlflow.active_run() is not None:
+            prefix = f"step_{state['step']}/{action.name}"
+            if action.target_subtask:
+                prefix += f"_{action.target_subtask}"
+            mlflow.log_text(trajectory_text, f"{prefix}/trajectory.txt")
+            mlflow.log_text(prompt_text, f"{prefix}/prompt.txt")
+            mlflow.log_text(result.text, f"{prefix}/output.txt")
+
+    def _extract_code(action: Action, raw_json: str) -> str:
+        if action.name == "integrate":
+            return IntegrateResult.model_validate_json(raw_json).code
+        return CodeResult.model_validate_json(raw_json).code
+
+    code_map: dict[str, str] = {}
+    code_action_names: list[str] = []
+    for a, name, text, _ in results:
+        if a.executes_code:
+            code_map[name] = _extract_code(a, text)
+            code_action_names.append(name)
+
     sandbox_results = await asyncio.gather(
-        *[asyncio.to_thread(run_in_sandbox, text) for _, _, text in code_actions]
+        *[
+            asyncio.to_thread(run_in_sandbox, code_map[name])
+            for name in code_action_names
+        ]
     )
     feedback_map = {
         name: Feedback(stdout=fb.stdout, stderr=fb.stderr, exit_code=fb.exit_code)
-        for (_, name, _), fb in zip(code_actions, sandbox_results, strict=True)
+        for name, fb in zip(code_action_names, sandbox_results, strict=True)
     }
 
     updates: dict[str, Any] = {}
@@ -154,13 +196,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             else:
                 updates[k] = v
 
-    if gate_fired:
-        updates.setdefault("subtasks", [Subtask("_main", state["task"], [])])
-        if "_main" not in updates.get("plans", {}):
-            plans = updates.get("plans", {})
-            plans["_main"] = state["task"]
-            updates["plans"] = plans
-
     records = [
         StepRecord(
             step=state["step"],
@@ -168,13 +203,12 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             target_subtask=name,
             adapter_id=aid,
             feedback=feedback_map.get(name),
+            generated_code=code_map.get(name, "")[:_CODE_HISTORY_CAP] or None,
         )
         for a, name, _, aid in results
     ]
     updates["actions"] = actions
-    updates["current_adapter"] = (
-        results[-1][3] if results else state["current_adapter"]
-    )
+    updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
     updates["trajectory"] = state["trajectory"] + records
     updates["step"] = state["step"] + 1
     updates["budget_remaining"] = state["budget_remaining"] - 1

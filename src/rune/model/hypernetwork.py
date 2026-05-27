@@ -52,16 +52,22 @@ def _patch_flash_attention() -> None:
         attention_mask: Any = None,
         position_ids: Any = None,
     ) -> Any:
-        bsz = context.shape[0] if position_ids is None else int(
-            torch.where(position_ids == 0, 1, 0).sum().item()
+        bsz = (
+            context.shape[0]
+            if position_ids is None
+            else int(torch.where(position_ids == 0, 1, 0).sum().item())
         )
         latents = self_.latents_q.unsqueeze(0).expand((bsz, *self_.latents_q.size()))
         compressed = latents
         for layer in self_.layers:
             out = layer(
-                latents=compressed, context=context, attention_mask=None,
-                position_ids=None, past_key_value=None,
-                output_attentions=False, use_cache=False,
+                latents=compressed,
+                context=context,
+                attention_mask=None,
+                position_ids=None,
+                past_key_value=None,
+                output_attentions=False,
+                use_cache=False,
             )
             compressed = out[0]
         return self_.layernorm(compressed)
@@ -93,14 +99,17 @@ def _patch_flash_attention() -> None:
             if self_.shared_weights:
                 x_attn = (
                     Idefics2PerceiverLayer(config, is_cross_attn=True)
-                    if blk == 1 else x_attn  # type: ignore[possibly-undefined]  # noqa: F821
+                    if blk == 1
+                    else x_attn  # type: ignore[possibly-undefined]  # noqa: F821
                 )
             else:
                 x_attn = Idefics2PerceiverLayer(config, is_cross_attn=True)
             self_.layers.append(x_attn)
             for i in range(config.num_self_attn_per_block):
-                sa = first_self[i] if self_.shared_weights else Idefics2PerceiverLayer(
-                    config, is_cross_attn=False
+                sa = (
+                    first_self[i]
+                    if self_.shared_weights
+                    else Idefics2PerceiverLayer(config, is_cross_attn=False)
                 )
                 self_.layers.append(sa)
         self_.layernorm = Idefics2RMSNorm(self_.hidden_size, eps=self_.rms_norm_eps)
@@ -290,6 +299,7 @@ def generate_adapter_weights(
     tokenizer: Any,
     layer_indices: list[int],
     max_length: int = 2048,
+    offload_base: bool = False,
 ) -> dict[str, Any]:
     """Generate LoRA weight dict from a trajectory string via the hypernetwork.
 
@@ -300,10 +310,15 @@ def generate_adapter_weights(
         tokenizer: Tokenizer paired with base_model.
         layer_indices: Which transformer layers to extract activations from.
         max_length: Maximum token length for trajectory encoding.
+        offload_base: Move base_model to CPU during the hypernetwork forward
+            pass to free GPU memory.  Adds transfer latency but prevents OOM
+            when both models don't fit simultaneously.
 
     Returns:
         PEFT-compatible flat state dict for hot-swap.
     """
+    import gc  # noqa: PLC0415
+
     import torch  # noqa: PLC0415
 
     features, attn_mask = extract_activations_with_model(
@@ -313,12 +328,23 @@ def generate_adapter_weights(
         layer_indices=layer_indices,
         max_length=max_length,
     )
+
+    base_device: torch.device | None = None
+    if offload_base:
+        base_device = next(base_model.parameters()).device
+        base_model.to("cpu")
+        gc.collect()
+        torch.cuda.empty_cache()
+
     hypernet_device = next(hypernet.parameters()).device
     hypernet_dtype = next(hypernet.parameters()).dtype
     features = features.to(device=hypernet_device, dtype=hypernet_dtype)
     attn_mask = attn_mask.to(device=hypernet_device)
     with torch.no_grad():
         lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
+
+    if base_device is not None:
+        base_model.to(base_device)
 
     hc = hypernet.config
     target_modules = list(hc.lora_config.target_modules)

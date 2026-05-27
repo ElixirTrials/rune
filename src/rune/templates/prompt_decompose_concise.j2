@@ -2,6 +2,11 @@ Decompose into subtasks with dependencies.
 Output JSON matching {"subtasks": [{"name": "...", "description": "...", "depends_on": []}]}.
 No preamble, no analysis, no reasoning.
 
+If the project is a single function, method, or class with no external orchestration,
+return exactly one subtask named "_main" covering the whole task.
+Otherwise, return 2-5 subtasks in dependency order.
+
 BAD: "Analyze the request" / "Numbered list? Yes" — these are reasoning, NOT subtasks.
+BAD: Splitting "Write a function to X" into multiple sub-pieces.
 
 Project: {{ task_description }}

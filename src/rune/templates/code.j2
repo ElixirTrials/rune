@@ -9,6 +9,14 @@ COMPLETED DEPENDENCIES (use these interfaces in your code):
 {% endif %}
 PLAN:
 {{ plan[:1200] }}
+{% if code_trajectory %}
+PRIOR ATTEMPTS:
+{% for entry in code_trajectory[-3:] %}
+--- Step {{ entry.step }} ({{ entry.action }}){% if entry.passed %} PASSED{% endif %} ---
+{{ entry.code[:600] }}
+{% if entry.error %}ERROR: {{ entry.error[:200] }}{% endif %}
+{% endfor %}
+{% endif %}
 {% if existing_code %}
 EXISTING CODE:
 {{ existing_code[:2000] }}

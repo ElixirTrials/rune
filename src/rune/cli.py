@@ -181,8 +181,9 @@ def bench(
         typer.echo(f"Running HPO: {trials} trials")
         with tracked_run("bench-hpo", params=cfg.to_dict()) as parent:
             best = asyncio.run(
-                run_hpo(tasks, engine, cfg, model, trials,
-                        parent_run_id=parent.info.run_id)
+                run_hpo(
+                    tasks, engine, cfg, model, trials, parent_run_id=parent.info.run_id
+                )
             )
         typer.echo(f"Best pass@1: {best['best_value']:.3f}")
         typer.echo(f"Best params: {best['best_params']}")

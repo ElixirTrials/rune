@@ -1,4 +1,4 @@
-"""Model inference: freeform and structured (outlines) generation."""
+"""Model inference: structured (xgrammar) generation with thinking phase."""
 
 from __future__ import annotations
 
@@ -8,20 +8,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_MAX_WHITESPACE = 16
+
 
 @dataclass
 class GenerationResult:
-    """Output from a single model generation call.
-
-    Attributes:
-        text: Final decoded text (JSON string for structured outputs).
-        thinking: Chain-of-thought text produced before the answer, if any.
-        tokens_used: Approximate token count for the generation.
-    """
-
     text: str
     thinking: str
     tokens_used: int
+    truncated: bool = False
 
 
 async def generate(
@@ -33,126 +28,26 @@ async def generate(
     output_schema: type[Any] | None = None,
     max_tokens: int = 2048,
     temperature: float = 0.3,
+    top_p: float = 0.9,
+    repetition_penalty: float = 1.1,
     thinking_budget: int = 1024,
 ) -> GenerationResult:
-    """Dispatch to structured or freeform generation based on output_schema.
-
-    Args:
-        model: PEFT-wrapped language model.
-        tokenizer: Paired tokenizer.
-        prompt: User prompt text.
-        system_prompt: Optional system role text.
-        output_schema: Pydantic model for JSON-constrained output; None for freeform.
-        max_tokens: Maximum new tokens to generate.
-        temperature: Sampling temperature (freeform only).
-        thinking_budget: Max tokens for chain-of-thought (structured only).
-
-    Returns:
-        GenerationResult with text, thinking, and token count.
-    """
-    if output_schema is not None:
-        return await _generate_structured(
-            model,
-            tokenizer,
-            prompt,
-            system_prompt=system_prompt,
-            schema=output_schema,
-            max_tokens=max_tokens,
-            thinking_budget=thinking_budget,
+    if output_schema is None:
+        raise ValueError(
+            "output_schema is required — all actions must use structured output"
         )
-    return await _generate_freeform(
-        model,
-        tokenizer,
-        prompt,
-        system_prompt=system_prompt,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-
-
-async def _generate_freeform(
-    model: Any,
-    tokenizer: Any,
-    prompt: str,
-    *,
-    system_prompt: str,
-    max_tokens: int,
-    temperature: float,
-) -> GenerationResult:
-    """Run greedy/sampled generation without output constraints.
-
-    Args:
-        model: Language model.
-        tokenizer: Paired tokenizer.
-        prompt: User prompt.
-        system_prompt: System role text.
-        max_tokens: Maximum new tokens.
-        temperature: Sampling temperature.
-
-    Returns:
-        GenerationResult with decoded text and empty thinking field.
-    """
     import asyncio  # noqa: PLC0415
 
-    def _run() -> GenerationResult:
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-        encoded = tokenizer.apply_chat_template(messages, return_tensors="pt")
-        if hasattr(encoded, "input_ids"):
-            input_ids = encoded["input_ids"].to(model.device)
-        else:
-            input_ids = encoded.to(model.device)
-        import torch  # noqa: PLC0415
-
-        attention_mask = torch.ones_like(input_ids)
-        with torch.no_grad():
-            output = model.generate(
-                input_ids,
-                attention_mask=attention_mask,
-                pad_token_id=tokenizer.eos_token_id,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                do_sample=True,
-            )
-        text = tokenizer.decode(
-            output[0][input_ids.shape[1] :], skip_special_tokens=True
-        )
-        return GenerationResult(text=text, thinking="", tokens_used=output.shape[1])
-
-    return await asyncio.to_thread(_run)
-
-
-async def _generate_structured(
-    model: Any,
-    tokenizer: Any,
-    prompt: str,
-    *,
-    system_prompt: str,
-    schema: type[Any],
-    max_tokens: int,
-    thinking_budget: int,
-) -> GenerationResult:
-    """Run thinking-then-structured generation using xgrammar JSON constraints.
-
-    Args:
-        model: Language model (may be PEFT-wrapped).
-        tokenizer: Paired tokenizer.
-        prompt: User prompt.
-        system_prompt: System role text.
-        schema: Pydantic model class used as the JSON schema.
-        max_tokens: Maximum tokens for the structured answer phase.
-        thinking_budget: Maximum tokens for the chain-of-thought phase.
-
-    Returns:
-        GenerationResult with JSON text, thinking text, and token count.
-    """
-    import asyncio  # noqa: PLC0415
+    def _sampling_kwargs() -> dict[str, Any]:
+        if temperature > 0:
+            return {"do_sample": True, "temperature": temperature, "top_p": top_p}
+        return {"do_sample": False}
 
     def _run() -> GenerationResult:
         import torch  # noqa: PLC0415
         import xgrammar as xgr  # noqa: PLC0415
+
+        sampling = _sampling_kwargs()
 
         messages = []
         if system_prompt:
@@ -174,7 +69,8 @@ async def _generate_structured(
                 pad_token_id=tokenizer.eos_token_id,
                 max_new_tokens=thinking_budget,
                 eos_token_id=think_token_id,
-                do_sample=False,
+                repetition_penalty=repetition_penalty,
+                **sampling,
             )
         new_tokens = thinking_output[0][input_ids.shape[1] :]
         thinking_text = tokenizer.decode(new_tokens, skip_special_tokens=False)
@@ -189,10 +85,11 @@ async def _generate_structured(
             tokenizer, vocab_size=vocab_size
         )
         compiler = xgr.GrammarCompiler(tokenizer_info)
-        compiled = compiler.compile_json_schema(schema)
+        compiled = compiler.compile_json_schema(
+            output_schema, max_whitespace_cnt=_MAX_WHITESPACE
+        )
         logits_processor = xgr.contrib.hf.LogitsProcessor(compiled)
 
-        # Build prefix: original prompt + thinking output + closing tag
         if not thinking_text.rstrip().endswith("</think>"):
             suffix_ids = tokenizer.encode(
                 "</think>\n", add_special_tokens=False, return_tensors="pt"
@@ -208,16 +105,89 @@ async def _generate_structured(
                 attention_mask=prefix_mask,
                 pad_token_id=tokenizer.eos_token_id,
                 max_new_tokens=max_tokens,
-                do_sample=False,
+                repetition_penalty=repetition_penalty,
                 logits_processor=[logits_processor],
+                **sampling,
             )
         json_tokens = structured_output[0][prefix_ids.shape[1] :]
         result_json = tokenizer.decode(json_tokens, skip_special_tokens=True)
         total_tokens = thinking_output.shape[1] + len(json_tokens)
+
+        truncated = len(json_tokens) >= max_tokens
+        if truncated:
+            result_json, extra, completed = _try_completion(
+                model, tokenizer, result_json, structured_output,
+                compiled, max_tokens, repetition_penalty, sampling,
+            )
+            total_tokens += extra
+            truncated = not completed
+
         return GenerationResult(
             text=result_json,
             thinking=thinking_text,
             tokens_used=total_tokens,
+            truncated=truncated,
         )
 
     return await asyncio.to_thread(_run)
+
+
+def _try_completion(
+    model: Any,
+    tokenizer: Any,
+    partial_json: str,
+    prior_output: Any,
+    compiled: Any,
+    max_tokens: int,
+    repetition_penalty: float,
+    sampling: dict[str, Any],
+) -> tuple[str, int, bool]:
+    """Continue a truncated generation from the model's own output sequence.
+
+    Uses the full prior_output tensor (prompt + thinking + partial JSON) so the
+    model — with its adapter still loaded — continues from its own context
+    rather than a cold re-prompt.  The xgrammar matcher is advanced past
+    partial_json so the grammar constraint picks up where it left off.
+
+    Returns (full_json, extra_tokens_used, completed).
+    """
+    import torch  # noqa: PLC0415
+    import xgrammar as xgr  # noqa: PLC0415
+
+    logger.warning(
+        "JSON output truncated, attempting continuation (%d chars so far)",
+        len(partial_json),
+    )
+
+    matcher = xgr.GrammarMatcher(compiled)
+    if not matcher.accept_string(partial_json):
+        logger.error("Cannot advance grammar for continuation — partial JSON invalid")
+        return partial_json, 0, False
+
+    adv_processor = xgr.contrib.hf.LogitsProcessor(compiled)
+    adv_processor.matchers = [matcher]
+    adv_processor.token_bitmask = xgr.allocate_token_bitmask(  # type: ignore[assignment]
+        1, adv_processor.full_vocab_size
+    )
+    adv_processor.prefilled = False
+    adv_processor.batch_size = 1
+
+    cont_mask = torch.ones_like(prior_output)
+    with torch.no_grad():
+        cont_output = model.generate(
+            prior_output,
+            attention_mask=cont_mask,
+            pad_token_id=tokenizer.eos_token_id,
+            max_new_tokens=max_tokens,
+            repetition_penalty=repetition_penalty,
+            logits_processor=[adv_processor],
+            **sampling,
+        )
+    cont_tokens = cont_output[0][prior_output.shape[1] :]
+    continuation = tokenizer.decode(cont_tokens, skip_special_tokens=True)
+    completed = matcher.is_completed()
+    logger.info(
+        "Continuation produced %d extra tokens (completed=%s)",
+        len(cont_tokens), completed,
+    )
+    return partial_json + continuation, len(cont_tokens), completed
