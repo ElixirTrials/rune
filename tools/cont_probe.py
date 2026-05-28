@@ -21,6 +21,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from rune.engine.continuation import dedup_code as _dedup_code
+from rune.engine.continuation import extract_code as _extract_code
+
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 # ---------------------------------------------------------------------------
@@ -390,7 +393,7 @@ SCENARIOS: dict[str, tuple[str, Any]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Helpers (copied from continuation_scaling_hpo.py to avoid its imports)
+# Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -805,64 +808,6 @@ def _summarize_think(think_text: str) -> str:
     summary = " ".join(sentences[:3])
     return summary[:200]
 
-
-
-def _dedup_code(new_code: str, accumulated: str) -> str:
-    """Remove class/function re-definitions and __main__ blocks."""
-    existing_defs: set[str] = set()
-    for line in accumulated.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("class ") or stripped.startswith("def "):
-            name = stripped.split("(")[0].split(":")[0]
-            name = name.replace("class ", "").replace("def ", "").strip()
-            existing_defs.add(name)
-    lines = new_code.splitlines(keepends=True)
-    result: list[str] = []
-    skip_until_dedent = False
-    skip_indent: int | None = None
-    for line in lines:
-        stripped = line.strip()
-        if skip_until_dedent:
-            indent = len(line) - len(line.lstrip()) if line.strip() else 999
-            if indent <= skip_indent and stripped:  # type: ignore[operator]
-                skip_until_dedent = False
-                skip_indent = None
-            else:
-                continue
-        if stripped.startswith('if __name__'):
-            skip_until_dedent = True
-            skip_indent = len(line) - len(line.lstrip())
-            continue
-        if stripped.startswith("class ") or stripped.startswith("def "):
-            name = stripped.split("(")[0].split(":")[0]
-            name = name.replace("class ", "").replace("def ", "").strip()
-            if name in existing_defs:
-                skip_until_dedent = True
-                skip_indent = len(line) - len(line.lstrip())
-                continue
-        result.append(line)
-    return "".join(result)
-
-
-def _extract_code(raw: str) -> str:
-    """Strip <think> blocks, markdown fences, and 'assistant' prefix. Never pull code from inside think."""
-    text = re.sub(r"^assistant\s*", "", raw.strip())
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    if "<think>" in text:
-        text = text[:text.index("<think>")]
-    text = text.strip()
-    text = re.sub(r"^Here(?:'s| is)[^\n]*\n", "", text).strip()
-    blocks = re.findall(r"```(?:python)?\n(.*?)```", text, re.DOTALL)
-    if not blocks:
-        m = re.search(r"```(?:python)?\n(.*)", text, re.DOTALL)
-        if m:
-            blocks = [m.group(1)]
-    if blocks:
-        return "\n".join(b.rstrip() for b in blocks)
-    if text:
-        lines = text.splitlines()
-        return "\n".join(l for l in lines if not l.startswith("```")).rstrip()
-    return ""
 
 
 # ---------------------------------------------------------------------------
