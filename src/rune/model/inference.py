@@ -115,7 +115,6 @@ async def generate(
                 pad_token_id=tokenizer.eos_token_id,
                 max_new_tokens=max_tokens,
                 repetition_penalty=repetition_penalty,
-                no_repeat_ngram_size=no_repeat_ngram_size,
                 logits_processor=[logits_processor],
                 **sampling,
             )
