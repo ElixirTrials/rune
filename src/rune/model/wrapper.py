@@ -136,6 +136,8 @@ class ModelWrapper:
         temperature: float = 0.3,
         repetition_penalty: float = 1.1,
         top_p: float = 0.9,
+        no_repeat_ngram_size: int = 0,
+        thinking_budget: int = 1024,
     ) -> GenerationResult:
         return await inference_generate(
             self._base_model,
@@ -147,4 +149,6 @@ class ModelWrapper:
             temperature=temperature,
             repetition_penalty=repetition_penalty,
             top_p=top_p,
+            no_repeat_ngram_size=no_repeat_ngram_size,
+            thinking_budget=thinking_budget,
         )

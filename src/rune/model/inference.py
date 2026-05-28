@@ -31,11 +31,8 @@ async def generate(
     top_p: float = 0.9,
     repetition_penalty: float = 1.1,
     thinking_budget: int = 1024,
+    no_repeat_ngram_size: int = 0,
 ) -> GenerationResult:
-    if output_schema is None:
-        raise ValueError(
-            "output_schema is required — all actions must use structured output"
-        )
     import asyncio  # noqa: PLC0415
 
     def _sampling_kwargs() -> dict[str, Any]:
@@ -49,81 +46,99 @@ async def generate(
 
         sampling = _sampling_kwargs()
 
-        messages = []
+        messages: list[dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        encoded = tokenizer.apply_chat_template(messages, return_tensors="pt")
-        if hasattr(encoded, "input_ids"):
-            input_ids = encoded["input_ids"].to(model.device)
-        else:
-            input_ids = encoded.to(model.device)
 
-        # Phase 1: thinking (unconstrained until </think>)
-        think_token_id = tokenizer.encode("</think>", add_special_tokens=False)
-        attention_mask = torch.ones_like(input_ids)
-        with torch.no_grad():
-            thinking_output = model.generate(
-                input_ids,
-                attention_mask=attention_mask,
-                pad_token_id=tokenizer.eos_token_id,
-                max_new_tokens=thinking_budget,
-                eos_token_id=think_token_id,
-                repetition_penalty=repetition_penalty,
-                **sampling,
+        if thinking_budget > 0:
+            encoded = tokenizer.apply_chat_template(messages, return_tensors="pt")
+            if hasattr(encoded, "input_ids"):
+                input_ids = encoded["input_ids"].to(model.device)
+            else:
+                input_ids = encoded.to(model.device)
+
+            # Phase 1: thinking (unconstrained until </think>)
+            think_token_id = tokenizer.encode("</think>", add_special_tokens=False)
+            attention_mask = torch.ones_like(input_ids)
+            with torch.no_grad():
+                thinking_output = model.generate(
+                    input_ids,
+                    attention_mask=attention_mask,
+                    pad_token_id=tokenizer.eos_token_id,
+                    max_new_tokens=thinking_budget,
+                    eos_token_id=think_token_id,
+                    repetition_penalty=repetition_penalty,
+                    **sampling,
+                )
+            new_tokens = thinking_output[0][input_ids.shape[1] :]
+            thinking_text = tokenizer.decode(new_tokens, skip_special_tokens=False)
+
+            if not thinking_text.rstrip().endswith("</think>"):
+                suffix_ids = tokenizer.encode(
+                    "</think>\n", add_special_tokens=False, return_tensors="pt"
+                ).to(model.device)
+                prefix_ids = torch.cat([thinking_output, suffix_ids], dim=-1)
+            else:
+                prefix_ids = thinking_output
+        else:
+            encoded = tokenizer.apply_chat_template(
+                messages, return_tensors="pt",
+                enable_thinking=False, add_generation_prompt=True,
             )
-        new_tokens = thinking_output[0][input_ids.shape[1] :]
-        thinking_text = tokenizer.decode(new_tokens, skip_special_tokens=False)
+            if hasattr(encoded, "input_ids"):
+                prefix_ids = encoded["input_ids"].to(model.device)
+            else:
+                prefix_ids = encoded.to(model.device)
+            thinking_text = ""
 
-        # Phase 2: JSON-constrained generation with xgrammar
-        base_model = getattr(model, "base_model", model)
-        model_config = getattr(base_model, "config", None)
-        text_cfg = getattr(model_config, "text_config", model_config)
-        vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
+        # Phase 2: constrained generation (xgrammar when schema provided)
+        logits_processor_list: list[Any] = []
+        compiled: Any = None
+        if output_schema is not None:
+            base_model = getattr(model, "base_model", model)
+            model_config = getattr(base_model, "config", None)
+            text_cfg = getattr(model_config, "text_config", model_config)
+            vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
 
-        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-            tokenizer, vocab_size=vocab_size
-        )
-        compiler = xgr.GrammarCompiler(tokenizer_info)
-        compiled = compiler.compile_json_schema(
-            output_schema, max_whitespace_cnt=_MAX_WHITESPACE
-        )
-        logits_processor = xgr.contrib.hf.LogitsProcessor(compiled)
-
-        if not thinking_text.rstrip().endswith("</think>"):
-            suffix_ids = tokenizer.encode(
-                "</think>\n", add_special_tokens=False, return_tensors="pt"
-            ).to(model.device)
-            prefix_ids = torch.cat([thinking_output, suffix_ids], dim=-1)
-        else:
-            prefix_ids = thinking_output
+            tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+                tokenizer, vocab_size=vocab_size
+            )
+            compiler = xgr.GrammarCompiler(tokenizer_info)
+            compiled = compiler.compile_json_schema(
+                output_schema, max_whitespace_cnt=_MAX_WHITESPACE
+            )
+            logits_processor_list = [xgr.contrib.hf.LogitsProcessor(compiled)]
 
         prefix_mask = torch.ones_like(prefix_ids)
-        with torch.no_grad():
-            structured_output = model.generate(
-                prefix_ids,
-                attention_mask=prefix_mask,
-                pad_token_id=tokenizer.eos_token_id,
-                max_new_tokens=max_tokens,
-                repetition_penalty=repetition_penalty,
-                logits_processor=[logits_processor],
-                **sampling,
-            )
-        json_tokens = structured_output[0][prefix_ids.shape[1] :]
-        result_json = tokenizer.decode(json_tokens, skip_special_tokens=True)
-        total_tokens = thinking_output.shape[1] + len(json_tokens)
+        generate_kwargs: dict[str, Any] = {
+            "attention_mask": prefix_mask,
+            "pad_token_id": tokenizer.eos_token_id,
+            "max_new_tokens": max_tokens,
+            "repetition_penalty": repetition_penalty,
+            "no_repeat_ngram_size": no_repeat_ngram_size,
+            **sampling,
+        }
+        if logits_processor_list:
+            generate_kwargs["logits_processor"] = logits_processor_list
 
-        truncated = len(json_tokens) >= max_tokens
-        if truncated:
-            result_json, extra, completed = _try_completion(
-                model, tokenizer, result_json, structured_output,
+        with torch.no_grad():
+            structured_output = model.generate(prefix_ids, **generate_kwargs)
+        result_tokens = structured_output[0][prefix_ids.shape[1] :]
+        result_text = tokenizer.decode(result_tokens, skip_special_tokens=True)
+        total_tokens = prefix_ids.shape[1] + len(result_tokens)
+
+        truncated = len(result_tokens) >= max_tokens
+        if truncated and compiled is not None:
+            result_text, extra, completed = _try_completion(
+                model, tokenizer, result_text, structured_output,
                 compiled, max_tokens, repetition_penalty, sampling,
             )
             total_tokens += extra
             truncated = not completed
 
         return GenerationResult(
-            text=result_json,
+            text=result_text,
             thinking=thinking_text,
             tokens_used=total_tokens,
             truncated=truncated,
