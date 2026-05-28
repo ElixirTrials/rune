@@ -13,11 +13,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from rune.engine.continuation import (
-    dedup_code,
     degeneration_score,
-    extract_code,
     extract_partial_code,
-    merge_overlap,
+    validate_syntax,
 )
 from rune.engine.parse import CodeResult, IntegrateResult, parse_output, render_template
 from rune.engine.policy import select_action
@@ -220,6 +218,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 "no markdown fences. Continue exactly from where the code "
                 "left off."
             )
+            cont_user = ctx.get("task_description", "")[:200]
 
             while cont_budget > 0 and empty_rounds < 2:
                 import torch  # noqa: PLC0415
@@ -232,50 +231,50 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     "resume_tail": "\n".join(accumulated_code.splitlines()[-4:]),
                 }
                 cont_traj = render_template("code_continue", **cont_ctx)
-                cont_prompt = render_template("prompt_code_continue", **cont_ctx)
 
                 cont_adapter = model.generate_adapter(cont_traj)
                 cont_sd = scale_lora_b(cont_adapter.state_dict, cont_scaling)
                 model.hotswap_adapter(cont_sd)
                 del cont_adapter, cont_sd
 
-                result = await model.generate(
-                    prompt=cont_prompt,
+                result = await model.generate_continuation(
                     system_prompt=cont_sys,
-                    output_schema=None,
+                    user_prompt=cont_user,
+                    assistant_prefix=accumulated_code,
                     max_tokens=run_config.get("max_tokens", 2048),
                     temperature=temperature,
                     repetition_penalty=repetition_penalty,
                     top_p=top_p,
                     no_repeat_ngram_size=cont_no_repeat,
-                    thinking_budget=0,
-                    skip_completion_retry=True,
                 )
 
-                chunk = extract_code(result.text)
-                chunk = merge_overlap(accumulated_code, chunk)
-                chunk = dedup_code(chunk, accumulated_code)
-
-                degen = degeneration_score(chunk)
+                new_chunk = result.text
+                degen = degeneration_score(new_chunk)
                 logger.info(
                     "continuation round: +%d chars, degen=%.2f",
-                    len(chunk),
+                    len(new_chunk),
                     degen,
                 )
 
-                if chunk.strip():
-                    accumulated_code = (
-                        accumulated_code.rstrip()
-                        + "\n"
-                        + chunk.strip()
-                        + "\n"
+                if degen > 0.5:
+                    logger.warning(
+                        "Degeneration detected (%.2f), stopping continuation",
+                        degen,
                     )
+                    break
+
+                if new_chunk.strip():
+                    accumulated_code += new_chunk
                     empty_rounds = 0
                 else:
                     empty_rounds += 1
 
                 cont_budget -= 1
                 cont_budget_spent += 1
+
+                if validate_syntax(accumulated_code):
+                    logger.info("Accumulated code validates — exiting continuation")
+                    break
 
                 if not result.truncated:
                     break
