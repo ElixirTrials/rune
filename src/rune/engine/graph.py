@@ -121,6 +121,7 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["repair_history"] = repair_history[-2:]
         ctx["code_trajectory"] = code_trajectory
     else:
+        ctx["subtask"] = None
         ctx["target_subtask"] = None
         ctx["error_summary"] = ""
         ctx["fix_guidance"] = ""
