@@ -199,6 +199,10 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             empty_rounds = 0
 
             while result.truncated and budget > 0 and empty_rounds < 2:
+                import torch  # noqa: PLC0415
+
+                torch.cuda.empty_cache()
+
                 cont_ctx = {
                     **ctx,
                     "accumulated_code": accumulated_code,
