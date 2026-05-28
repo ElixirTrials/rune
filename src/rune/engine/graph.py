@@ -19,10 +19,33 @@ from rune.engine.state import (
     Feedback,
     RunState,
     StepRecord,
+    Subtask,
 )
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
+
+_SIMPLE_SIGNALS = (
+    "write a function",
+    "implement a function",
+    "implement a method",
+    "create a function",
+    "write a method",
+    "create a method",
+    "write a class",
+    "implement a class",
+    "create a class",
+)
+
+_SIMPLE_WORD_LIMIT = 200
+
+
+def _is_simple_task(task: str) -> bool:
+    """Heuristic: short task with a single-unit signal skips decomposition."""
+    if len(task.split()) >= _SIMPLE_WORD_LIMIT:
+        return False
+    lower = task.lower()
+    return any(sig in lower for sig in _SIMPLE_SIGNALS)
 
 
 def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any]:
@@ -117,6 +140,17 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     model = configurable["model"]
     run_config: dict[str, Any] = configurable.get("run_config", {})
 
+    # Complexity gate: simple tasks skip decomposition
+    gate_fired = False
+    if not state["subtasks"] and _is_simple_task(state["task"]):
+        synthetic = Subtask(
+            name="_main",
+            description=state["task"],
+            depends_on=[],
+        )
+        state = {**state, "subtasks": [synthetic], "plans": {"_main": state["task"]}}
+        gate_fired = True
+
     actions = select_action(dict(state))
     if not actions:
         return {"actions": [], "budget_remaining": state["budget_remaining"]}
@@ -207,6 +241,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         )
         for a, name, _, aid in results
     ]
+    if gate_fired:
+        updates.setdefault("subtasks", state["subtasks"])
+        updates.setdefault("plans", state["plans"])
     updates["actions"] = actions
     updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
     updates["trajectory"] = state["trajectory"] + records
