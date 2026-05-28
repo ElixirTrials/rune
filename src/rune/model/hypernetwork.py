@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 _flash_patched = False
 
 
+_MLP_CHUNK_SIZE = 2048
+
+
 def _patch_flash_attention() -> None:
     """Patch ctx_to_lora's idefics2 to use eager attention on this GPU."""
     global _flash_patched  # noqa: PLW0603
@@ -20,6 +23,7 @@ def _patch_flash_attention() -> None:
     import ctx_to_lora.modeling.idefics2 as idefics2_mod  # noqa: PLC0415
     import torch  # noqa: PLC0415
     from ctx_to_lora.modeling.idefics2 import (  # noqa: PLC0415
+        Idefics2MLP,
         Idefics2Perceiver,
         Idefics2PerceiverAttention,
         Idefics2PerceiverConfig,
@@ -27,6 +31,23 @@ def _patch_flash_attention() -> None:
         Idefics2PerceiverResampler,
         Idefics2RMSNorm,
     )
+
+    # Chunk the gated MLP forward to cap peak memory.  The modality_projection
+    # receives (1, n_layers*seq_len, dim) which can be 20k+ tokens; the 4×
+    # expansion intermediate would need ~1.5 GiB.  Chunking along the sequence
+    # dim keeps peak under ~150 MB with no quality change.
+    _orig_mlp_fwd = Idefics2MLP.forward
+
+    def _chunked_mlp_forward(self_: Any, x: Any) -> Any:
+        seq = x.shape[-2]
+        if seq <= _MLP_CHUNK_SIZE:
+            return _orig_mlp_fwd(self_, x)
+        parts = []
+        for i in range(0, seq, _MLP_CHUNK_SIZE):
+            parts.append(_orig_mlp_fwd(self_, x[..., i : i + _MLP_CHUNK_SIZE, :]))
+        return torch.cat(parts, dim=-2)
+
+    Idefics2MLP.forward = _chunked_mlp_forward  # type: ignore[assignment]
 
     idefics2_mod.IDEFICS2_PERCEIVER_ATTENTION_CLASSES["eager"] = (
         Idefics2PerceiverAttention

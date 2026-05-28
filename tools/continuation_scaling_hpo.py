@@ -268,10 +268,20 @@ def _prompt_instruction_wrapped(
     )
 
 
+def _prompt_bare(
+    accumulated: str, first_lines: int, last_lines: int, task: str,
+) -> str:
+    tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
+    if tail:
+        return f"Continue the code:\n{tail}"
+    return "Continue writing code."
+
+
 PROMPT_STRATEGIES: dict[str, Any] = {
     "head_tail": _prompt_head_tail,
     "tail_only": _prompt_tail_only,
     "instruction_wrapped": _prompt_instruction_wrapped,
+    "bare": _prompt_bare,
 }
 
 
@@ -309,19 +319,15 @@ def _edit_distance(a: str, b: str) -> float:
     return 1.0 - SequenceMatcher(None, a, b).ratio()
 
 
-def _coherence_at_boundary(before: str, after: str) -> float:
-    if not before or not after:
+def _degeneration_score(text: str, n: int = 4) -> float:
+    """Fraction of repeated n-grams. 0 = no repetition, 1 = all repeated."""
+    words = text.split()
+    if len(words) < n:
         return 0.0
-    last_line = before.rstrip().splitlines()[-1] if before.strip() else ""
-    first_line = after.lstrip().splitlines()[0] if after.strip() else ""
-    if not last_line or not first_line:
+    ngrams = [tuple(words[i : i + n]) for i in range(len(words) - n + 1)]
+    if not ngrams:
         return 0.0
-    indent_before = len(last_line) - len(last_line.lstrip())
-    indent_after = len(first_line) - len(first_line.lstrip())
-    indent_ok = 1.0 if abs(indent_before - indent_after) <= 8 else 0.0
-    printable = sum(1 for c in after if c.isprintable() or c in "\n\t")
-    ascii_ratio = printable / max(len(after), 1)
-    return indent_ok * 0.5 + ascii_ratio * 0.5
+    return 1.0 - len(set(ngrams)) / len(ngrams)
 
 
 def _run_continuation_trial(
@@ -346,8 +352,11 @@ def _run_continuation_trial(
     _log_memory(f"task {task.name} pre-adapter")
     initial_adapter = model.generate_adapter(
         f"ROLE: coder\nTASK: {task.task}\nPLAN: Implement with tests.",
-        offload_base=True,
+        offload_base=False,
     )
+    adapter_template = {
+        k: torch.zeros_like(v) for k, v in initial_adapter.state_dict.items()
+    }
     model.hotswap_adapter(
         _scale_b_only_inplace(initial_adapter.state_dict, scaling),
     )
@@ -380,7 +389,8 @@ def _run_continuation_trial(
             },
             "total_tokens": initial_result.tokens_used,
             "accumulated_chars": len(initial_result.text),
-            "coherence": 1.0,
+            "degeneration": 0.0,
+            "adapter_diff": 0.0,
             "note": "completed_without_continuation",
         }
 
@@ -392,7 +402,7 @@ def _run_continuation_trial(
     total_tokens = initial_result.tokens_used
     initial_text = initial_result.text
     del initial_result
-    coherence_scores: list[float] = []
+    degen_scores: list[float] = []
     traj_fn = TRAJECTORY_FLAVORS[trajectory_flavor]
     prompt_fn = PROMPT_STRATEGIES[prompt_strategy]
     completed = False
@@ -416,7 +426,7 @@ def _run_continuation_trial(
         _log_memory(f"task {task.name} cont {attempt}")
         _force_gc()
         trajectory_text = traj_fn(task.task, accumulated, attempt, max_continuations)
-        cont_adapter = model.generate_adapter(trajectory_text, offload_base=True)
+        cont_adapter = model.generate_adapter(trajectory_text, offload_base=False)
         model.hotswap_adapter(
             _scale_b_only_inplace(cont_adapter.state_dict, scaling),
         )
@@ -445,11 +455,9 @@ def _run_continuation_trial(
             {"role": "system", "content": task.system_prompt},
             {"role": "user", "content": short_prompt},
         ]
-        # TODO: enable_thinking=True could let the adapter continue
-        # thinking past the context window — test once code continuation
-        # is proven.
         encoded = tokenizer.apply_chat_template(
             messages, return_tensors="pt", enable_thinking=False,
+            add_generation_prompt=True,
         )
         if hasattr(encoded, "input_ids"):
             input_ids = encoded["input_ids"].to(base_model_obj.device)
@@ -478,8 +486,8 @@ def _run_continuation_trial(
         total_tokens += n_new
         del output, input_ids, attention_mask, new_tokens, adv_processor
 
-        coh = _coherence_at_boundary(accumulated, continuation)
-        coherence_scores.append(coh)
+        degen = _degeneration_score(continuation)
+        degen_scores.append(degen)
 
         accumulated += continuation
 
@@ -489,16 +497,31 @@ def _run_continuation_trial(
         del matcher
 
         logger.info(
-            "Task %s cont %d: +%d tokens, coh=%.2f, signals=%s",
-            task.name, attempt, n_new, coh, completion_signals,
+            "Task %s cont %d: +%d tokens, degen=%.2f, signals=%s",
+            task.name, attempt, n_new, degen, completion_signals,
         )
 
         if completed:
             break
 
+    # Zero-adapter baseline: same prompt, no adapter influence.
     _force_gc()
-    avg_coherence = (
-        sum(coherence_scores) / len(coherence_scores) if coherence_scores else 0.0
+    model.hotswap_adapter(adapter_template)
+
+    baseline_prompt = prompt_fn(initial_text, first_lines, last_lines, task.task)
+    baseline_result = asyncio.run(
+        model.generate(
+            baseline_prompt,
+            system_prompt=task.system_prompt,
+            **initial_gen_kwargs,
+        )
+    )
+    adapter_diff = _edit_distance(baseline_result.text, accumulated)
+    del baseline_result, adapter_template
+    _force_gc()
+
+    avg_degen = (
+        sum(degen_scores) / len(degen_scores) if degen_scores else 0.0
     )
 
     return {
@@ -511,7 +534,8 @@ def _run_continuation_trial(
         "completion_signals": completion_signals,
         "total_tokens": total_tokens,
         "accumulated_chars": len(accumulated),
-        "coherence": round(avg_coherence, 4),
+        "degeneration": round(avg_degen, 4),
+        "adapter_diff": round(adapter_diff, 4),
     }
 
 
@@ -528,7 +552,8 @@ def _run_trial(
 ) -> dict[str, float]:
     metrics: dict[str, float] = {}
     completion_count = 0
-    coherence_scores: list[float] = []
+    degen_scores: list[float] = []
+    diff_scores: list[float] = []
     token_counts: list[int] = []
 
     for task in TASKS:
@@ -548,7 +573,8 @@ def _run_trial(
         prefix = f"task/{task.name}"
         metrics[f"{prefix}/completed"] = float(result["completed"])
         metrics[f"{prefix}/continuations"] = float(result["continuations_used"])
-        metrics[f"{prefix}/coherence"] = result["coherence"]
+        metrics[f"{prefix}/degeneration"] = result["degeneration"]
+        metrics[f"{prefix}/adapter_diff"] = result["adapter_diff"]
         metrics[f"{prefix}/total_tokens"] = float(result["total_tokens"])
         metrics[f"{prefix}/accumulated_chars"] = float(result["accumulated_chars"])
 
@@ -557,19 +583,27 @@ def _run_trial(
 
         if result["completed"]:
             completion_count += 1
-        coherence_scores.append(result["coherence"])
+        degen_scores.append(result["degeneration"])
+        diff_scores.append(result["adapter_diff"])
         token_counts.append(result["total_tokens"])
         _force_gc()
 
     n = len(TASKS)
     completion_rate = completion_count / n
-    avg_coherence = sum(coherence_scores) / n
+    avg_degen = sum(degen_scores) / n
+    avg_diff = sum(diff_scores) / n
     avg_tokens = sum(token_counts) / n
 
     metrics["avg/completion_rate"] = round(completion_rate, 4)
-    metrics["avg/coherence"] = round(avg_coherence, 4)
+    metrics["avg/degeneration"] = round(avg_degen, 4)
+    metrics["avg/adapter_diff"] = round(avg_diff, 4)
     metrics["avg/total_tokens"] = round(avg_tokens, 1)
-    metrics["objective"] = round(completion_rate * 0.7 + avg_coherence * 0.3, 4)
+    metrics["objective"] = round(
+        completion_rate * 0.4
+        + (1.0 - avg_degen) * 0.3
+        + avg_diff * 0.3,
+        4,
+    )
 
     return metrics
 
@@ -761,11 +795,12 @@ def main() -> None:
             mlflow.log_metrics(metrics)
 
         logger.info(
-            "Trial %d: obj=%.4f (completion=%.0f%% coherence=%.2f)",
+            "Trial %d: obj=%.4f (completion=%.0f%% degen=%.2f diff=%.2f)",
             trial.number,
             metrics["objective"],
             metrics["avg/completion_rate"] * 100,
-            metrics["avg/coherence"],
+            metrics["avg/degeneration"],
+            metrics["avg/adapter_diff"],
         )
         _status(f"trial {trial.number} done: obj={metrics['objective']:.4f}")
         return metrics["objective"]

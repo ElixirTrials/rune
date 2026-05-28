@@ -215,6 +215,8 @@ def main() -> None:
     gen_kwargs = {
         "max_tokens": bench["gen_max_tokens"],
         "temperature": bench["gen_temperature"],
+        "repetition_penalty": cfg.repetition_penalty,
+        "top_p": cfg.top_p,
     }
     n_trials = args.n_trials or hpo["n_trials"]
 

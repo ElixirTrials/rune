@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -101,6 +102,216 @@ TASK_CROSS_FN = (
     "Include comprehensive tests for all functions."
 )
 
+SEED_LARGE = '''\
+"""Data pipeline: load, validate, transform, and export records."""
+
+from __future__ import annotations
+
+import csv
+import json
+import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+@dataclass
+class Record:
+    """A single data record with validation metadata."""
+
+    id: str
+    timestamp: datetime
+    payload: dict[str, Any]
+    tags: list[str] = field(default_factory=list)
+    valid: bool = True
+    errors: list[str] = field(default_factory=list)
+
+    def add_error(self, msg: str) -> None:
+        self.errors.append(msg)
+        self.valid = False
+
+
+class ValidationError(Exception):
+    pass
+
+
+class Pipeline:
+    """Configurable ETL pipeline for Record objects."""
+
+    def __init__(self, strict: bool = False) -> None:
+        self._strict = strict
+        self._records: list[Record] = []
+        self._transforms: list[Any] = []
+        self._stats: dict[str, int] = {
+            "loaded": 0, "valid": 0, "invalid": 0, "exported": 0,
+        }
+
+    @property
+    def stats(self) -> dict[str, int]:
+        return dict(self._stats)
+
+    def load_json(self, path: Path) -> list[Record]:
+        with open(path) as f:
+            raw = json.load(f)
+        records = []
+        for item in raw:
+            rec = Record(
+                id=item["id"],
+                timestamp=datetime.fromisoformat(item["timestamp"]),
+                payload=item.get("payload", {}),
+                tags=item.get("tags", []),
+            )
+            records.append(rec)
+        self._records.extend(records)
+        self._stats["loaded"] += len(records)
+        return records
+
+    def load_csv(self, path: Path, delimiter: str = ",") -> list[Record]:
+        records = []
+        with open(path, newline="") as f:
+            reader = csv.DictReader(f, delimiter=delimiter)
+            for row in reader:
+                rec = Record(
+                    id=row["id"],
+                    timestamp=datetime.fromisoformat(row["timestamp"]),
+                    payload={k: v for k, v in row.items()
+                             if k not in ("id", "timestamp")},
+                )
+                records.append(rec)
+        self._records.extend(records)
+        self._stats["loaded"] += len(records)
+        return records
+
+    def validate(self, records: list[Record] | None = None) -> list[Record]:
+        targets = records if records is not None else self._records
+        for rec in targets:
+            if not rec.id or not rec.id.strip():
+                rec.add_error("Missing id")
+            if not re.match(r"^[A-Za-z0-9_-]+$", rec.id):
+                rec.add_error(f"Invalid id format: {rec.id}")
+            if rec.timestamp > datetime.now():
+                rec.add_error("Timestamp in the future")
+            if not rec.payload:
+                rec.add_error("Empty payload")
+        valid = [r for r in targets if r.valid]
+        invalid = [r for r in targets if not r.valid]
+        self._stats["valid"] += len(valid)
+        self._stats["invalid"] += len(invalid)
+        if self._strict and invalid:
+            raise ValidationError(
+                f"{len(invalid)} records failed validation"
+            )
+        return valid
+
+    def add_transform(self, fn: Any) -> None:
+        self._transforms.append(fn)
+
+    def transform(self, records: list[Record] | None = None) -> list[Record]:
+        targets = records if records is not None else self._records
+        for fn in self._transforms:
+            targets = [fn(r) for r in targets]
+        return targets
+
+    def filter_by_tags(
+        self, records: list[Record], required: set[str],
+    ) -> list[Record]:
+        return [r for r in records if required.issubset(set(r.tags))]
+
+    def deduplicate(self, records: list[Record]) -> list[Record]:
+        seen: set[str] = set()
+        result: list[Record] = []
+        for rec in records:
+            if rec.id not in seen:
+                seen.add(rec.id)
+                result.append(rec)
+        return result
+
+    def sort_by_timestamp(
+        self, records: list[Record], reverse: bool = False,
+    ) -> list[Record]:
+        return sorted(records, key=lambda r: r.timestamp, reverse=reverse)
+
+    def export_json(self, records: list[Record], path: Path) -> int:
+        data = []
+        for rec in records:
+            data.append({
+                "id": rec.id,
+                "timestamp": rec.timestamp.isoformat(),
+                "payload": rec.payload,
+                "tags": rec.tags,
+                "valid": rec.valid,
+            })
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+        self._stats["exported"] += len(data)
+        return len(data)
+
+    def export_csv(self, records: list[Record], path: Path) -> int:
+        if not records:
+            return 0
+        fieldnames = ["id", "timestamp", "valid"]
+        payload_keys = set()
+        for rec in records:
+            payload_keys.update(rec.payload.keys())
+        fieldnames.extend(sorted(payload_keys))
+        with open(path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for rec in records:
+                row: dict[str, Any] = {
+                    "id": rec.id,
+                    "timestamp": rec.timestamp.isoformat(),
+                    "valid": rec.valid,
+                }
+                row.update(rec.payload)
+                writer.writerow(row)
+        self._stats["exported"] += len(records)
+        return len(records)
+
+    def summary(self) -> str:
+        return (
+            f"Pipeline: {self._stats[\'loaded\']} loaded, "
+            f"{self._stats[\'valid\']} valid, "
+            f"{self._stats[\'invalid\']} invalid, "
+            f"{self._stats[\'exported\']} exported"
+        )
+
+
+def merge_pipelines(*pipelines: Pipeline) -> Pipeline:
+    merged = Pipeline()
+    for p in pipelines:
+        merged._records.extend(p._records)
+        for k in merged._stats:
+            merged._stats[k] += p._stats.get(k, 0)
+    return merged
+
+
+def batch_process(
+    paths: list[Path], strict: bool = False,
+) -> tuple[list[Record], dict[str, int]]:
+    pipe = Pipeline(strict=strict)
+    all_records: list[Record] = []
+    for path in paths:
+        if path.suffix == ".json":
+            records = pipe.load_json(path)
+        elif path.suffix == ".csv":
+            records = pipe.load_csv(path)
+        else:
+            continue
+        valid = pipe.validate(records)
+        all_records.extend(valid)
+    return all_records, pipe.stats
+'''
+
+TASK_LARGE = (
+    "Write a Python data pipeline module with a Record dataclass and a "
+    "Pipeline class supporting load_json, load_csv, validate (with strict "
+    "mode), transform, filter_by_tags, deduplicate, sort_by_timestamp, "
+    "export_json, export_csv, and a summary method. Include merge_pipelines "
+    "and batch_process helper functions."
+)
+
 # ---------------------------------------------------------------------------
 # Truncation helpers (where we "cut" the seed code)
 # ---------------------------------------------------------------------------
@@ -143,9 +354,39 @@ def _truncate_cross_fn() -> tuple[str, str]:
     return SEED_CROSS_FN, accumulated
 
 
+_LARGE_CUT_POINTS = {
+    "small": "def filter_by_tags",
+    "medium": "def export_json",
+    "large": "def merge_pipelines",
+    "full": None,
+}
+
+
+def _truncate_large(cut: str = "medium") -> tuple[str, str]:
+    """Cut the large pipeline module at a named boundary.
+
+    cut: 'small' (~2000 chars), 'medium' (~3200 chars), 'large' (~4500 chars), 'full' (all ~5200 chars).
+    Returns (full_seed, accumulated_before).
+    """
+    marker = _LARGE_CUT_POINTS.get(cut)
+    if marker is None:
+        return SEED_LARGE, SEED_LARGE
+    lines = SEED_LARGE.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.strip().startswith(marker):
+            cut_idx = i - 1 if i > 0 and lines[i - 1].strip() == "" else i
+            accumulated = "".join(lines[:cut_idx])
+            return SEED_LARGE, accumulated
+    return SEED_LARGE, SEED_LARGE
+
+
 SCENARIOS: dict[str, tuple[str, Any]] = {
     "mid_fn": (TASK_MID_FN, _truncate_mid_fn),
     "cross_fn": (TASK_CROSS_FN, _truncate_cross_fn),
+    "large_small": (TASK_LARGE, lambda: _truncate_large("small")),
+    "large_medium": (TASK_LARGE, lambda: _truncate_large("medium")),
+    "large_large": (TASK_LARGE, lambda: _truncate_large("large")),
+    "large_full": (TASK_LARGE, lambda: _truncate_large("full")),
 }
 
 # ---------------------------------------------------------------------------
@@ -200,7 +441,7 @@ def _regenerated_existing(continuation: str, accumulated_tail: str) -> bool:
 # Trajectory builders (what the hypernetwork sees)
 # ---------------------------------------------------------------------------
 
-_TRAJ_CODE_CAP = 4000
+_TRAJ_CODE_CAP = 3500
 
 
 def _cap_code(accumulated: str) -> str:
@@ -239,17 +480,22 @@ def _traj_with_structure(task: str, accumulated: str, window: int) -> str:
     )
 
 
+_LAST_THINK_SUMMARY = ""
+
+
 def _traj_code_template(task: str, accumulated: str, window: int) -> str:
-    """Matches the code.j2 template format the hypernetwork was trained on."""
+    """Match code.j2 layout, maximize code density for hypernetwork."""
+    reasoning = ""
+    if _LAST_THINK_SUMMARY:
+        reasoning = f"\nPRIOR REASONING:\n{_LAST_THINK_SUMMARY}\n"
     return (
         f"ROLE: coder\n"
         f"PROJECT: {task[:300]}\n"
         f"SUBTASK: continuation (1/1)\n"
         f"DESCRIPTION: Continue generating code from where it left off.\n"
         f"\n"
-        f"PLAN:\n"
-        f"Continue the implementation. The code below is partially complete.\n"
-        f"\n"
+        f"PLAN:\nContinue implementing remaining functionality.\n"
+        f"{reasoning}"
         f"EXISTING CODE:\n"
         f"{_cap_code(accumulated)}\n"
         f"PRACTICES: Clean layered architecture, no stubs or placeholders, no dead\n"
@@ -300,11 +546,60 @@ def _prompt_minimal(
     return f"Continue writing code for: {task[:150]}"
 
 
+def _prompt_bare(
+    accumulated: str, first_lines: int, last_lines: int, task: str,
+) -> str:
+    tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
+    if tail:
+        return f"Continue the code:\n{tail}"
+    return "Continue writing code."
+
+
+def _prompt_bare_directed(
+    accumulated: str, first_lines: int, last_lines: int, task: str,
+) -> str:
+    tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
+    if tail:
+        return f"Continue implementing the module.\n{tail}"
+    return "Continue implementing the module."
+
+
+def _prompt_structural(
+    accumulated: str, first_lines: int, last_lines: int, task: str,
+) -> str:
+    """Task + what's done + tail. Model infers what's missing."""
+    funcs = []
+    current_class = None
+    for line in accumulated.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("class "):
+            current_class = stripped.split("(")[0].split(":")[0].replace("class ", "").strip()
+        elif stripped.startswith("def "):
+            name = stripped.split("(")[0].replace("def ", "").strip()
+            if current_class and (line.startswith("    ") or line.startswith("\t")):
+                funcs.append(f"{current_class}.{name}")
+            else:
+                funcs.append(name)
+                current_class = None
+
+    tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
+    parts = [f"Task: {task[:200]}"]
+    if funcs:
+        parts.append(f"Done: {', '.join(funcs[-8:])}.")
+    parts.append("Write ONLY the next unimplemented method. No redefinitions.")
+    if tail:
+        parts.append(f"Resume:\n{tail}")
+    return "\n".join(parts)
+
+
 PROMPT_TEMPLATES: dict[str, Any] = {
     "tail": _prompt_tail,
     "head_tail": _prompt_head_tail,
     "instruction": _prompt_instruction,
     "minimal": _prompt_minimal,
+    "bare": _prompt_bare,
+    "bare_directed": _prompt_bare_directed,
+    "structural": _prompt_structural,
 }
 
 # ---------------------------------------------------------------------------
@@ -338,11 +633,9 @@ def _generate_plaintext(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
-    # TODO: enable_thinking=True could let the adapter continue
-    # thinking past the context window — test once code continuation
-    # is proven.
     encoded = tokenizer.apply_chat_template(
         messages, return_tensors="pt", enable_thinking=False,
+        add_generation_prompt=True,
     )
     if hasattr(encoded, "input_ids"):
         input_ids = encoded["input_ids"].to(base_model.device)
@@ -412,6 +705,7 @@ def _generate_schema(
     ]
     encoded = tokenizer.apply_chat_template(
         messages, return_tensors="pt", enable_thinking=False,
+        add_generation_prompt=True,
     )
     if hasattr(encoded, "input_ids"):
         input_ids = encoded["input_ids"].to(base_model.device)
@@ -479,6 +773,85 @@ def _diagnose(
     }
 
 
+def _extract_think(raw: str) -> str:
+    """Extract content from <think> blocks."""
+    blocks = re.findall(r"<think>(.*?)</think>", raw, re.DOTALL)
+    if blocks:
+        return "\n".join(b.strip() for b in blocks)
+    m = re.search(r"<think>(.*)", raw, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
+def _summarize_think(think_text: str) -> str:
+    """Condense think block to key observations (first 3 sentences, max 200 chars)."""
+    if not think_text:
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", think_text.strip())
+    summary = " ".join(sentences[:3])
+    return summary[:200]
+
+
+
+def _dedup_code(new_code: str, accumulated: str) -> str:
+    """Remove class/function re-definitions and __main__ blocks."""
+    existing_defs: set[str] = set()
+    for line in accumulated.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("class ") or stripped.startswith("def "):
+            name = stripped.split("(")[0].split(":")[0]
+            name = name.replace("class ", "").replace("def ", "").strip()
+            existing_defs.add(name)
+    lines = new_code.splitlines(keepends=True)
+    result: list[str] = []
+    skip_until_dedent = False
+    skip_indent: int | None = None
+    for line in lines:
+        stripped = line.strip()
+        if skip_until_dedent:
+            indent = len(line) - len(line.lstrip()) if line.strip() else 999
+            if indent <= skip_indent and stripped:  # type: ignore[operator]
+                skip_until_dedent = False
+                skip_indent = None
+            else:
+                continue
+        if stripped.startswith('if __name__'):
+            skip_until_dedent = True
+            skip_indent = len(line) - len(line.lstrip())
+            continue
+        if stripped.startswith("class ") or stripped.startswith("def "):
+            name = stripped.split("(")[0].split(":")[0]
+            name = name.replace("class ", "").replace("def ", "").strip()
+            if name in existing_defs:
+                skip_until_dedent = True
+                skip_indent = len(line) - len(line.lstrip())
+                continue
+        result.append(line)
+    return "".join(result)
+
+
+def _extract_code(raw: str) -> str:
+    """Strip <think> blocks, markdown fences, and 'assistant' prefix. Never pull code from inside think."""
+    text = re.sub(r"^assistant\s*", "", raw.strip())
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    if "<think>" in text:
+        text = text[:text.index("<think>")]
+    text = text.strip()
+    text = re.sub(r"^Here(?:'s| is)[^\n]*\n", "", text).strip()
+    blocks = re.findall(r"```(?:python)?\n(.*?)```", text, re.DOTALL)
+    if not blocks:
+        m = re.search(r"```(?:python)?\n(.*)", text, re.DOTALL)
+        if m:
+            blocks = [m.group(1)]
+    if blocks:
+        return "\n".join(b.rstrip() for b in blocks)
+    if text:
+        lines = text.splitlines()
+        return "\n".join(l for l in lines if not l.startswith("```")).rstrip()
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -489,7 +862,7 @@ def main() -> None:
         description="Single-shot continuation probe",
     )
     parser.add_argument(
-        "--scenario", choices=["mid_fn", "cross_fn"], required=True,
+        "--scenario", choices=list(SCENARIOS.keys()), required=True,
     )
     parser.add_argument("--scaling", type=float, default=5.0)
     parser.add_argument(
@@ -510,6 +883,7 @@ def main() -> None:
     parser.add_argument(
         "--config", type=Path, default=Path("benchmarks/bench.yaml"),
     )
+    parser.add_argument("--rounds", type=int, default=1)
     args = parser.parse_args()
 
     from rune.config import load_config  # noqa: PLC0415
@@ -525,62 +899,106 @@ def main() -> None:
     tokenizer = model._tokenizer
 
     task_text, truncate_fn = SCENARIOS[args.scenario]
-    full_seed, accumulated_before = truncate_fn()
+    _full_seed, accumulated = truncate_fn()
 
-    traj_fn = TRAJECTORY_FLAVORS[args.trajectory]
-    trajectory = traj_fn(task_text, accumulated_before, args.traj_window)
-
-    print("Generating adapter...", file=sys.stderr, flush=True)
-    adapter = model.generate_adapter(trajectory, offload_base=False)
-    model.hotswap_adapter(
-        _scale_b_only_inplace(adapter.state_dict, args.scaling),
+    system_prompt = (
+        "Output only Python code. No commentary, no explanations, "
+        "no markdown fences. Continue exactly from where the code left off."
     )
-
-    prompt_fn = PROMPT_TEMPLATES[args.prompt_template]
-    prompt = prompt_fn(accumulated_before, args.first_lines, args.last_lines, task_text)
-
-    system_prompt = "You are a code generator."
-
     no_repeat_ngram = cfg.hpo.get("no_repeat_ngram_size", 12)
+    traj_fn = TRAJECTORY_FLAVORS[args.trajectory]
+    prompt_fn = PROMPT_TEMPLATES[args.prompt_template]
 
-    print("Generating continuation...", file=sys.stderr, flush=True)
-    if args.no_schema:
-        continuation, n_tokens = _generate_plaintext(
-            base_model, tokenizer, prompt, system_prompt,
-            args.max_tokens, cfg.temperature, cfg.repetition_penalty,
-            cfg.top_p, cfg.top_k, no_repeat_ngram,
-        )
-    else:
-        continuation, n_tokens = _generate_schema(
-            base_model, tokenizer, prompt, system_prompt,
-            args.max_tokens, cfg.temperature, cfg.repetition_penalty,
-            cfg.top_p, cfg.top_k, no_repeat_ngram,
-        )
-
-    diagnosis = _diagnose(
-        continuation, accumulated_before, args.traj_window,
-        n_tokens, args.max_tokens, args.scaling,
-        args.no_schema, args.prompt_template,
-    )
-
-    # Dump artifacts
     ts = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
     run_dir = Path("runs") / "cont_probe" / ts
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    (run_dir / "00_seed_code.txt").write_text(full_seed)
-    (run_dir / "01_accumulated_before.txt").write_text(accumulated_before)
-    (run_dir / "02_trajectory.txt").write_text(trajectory)
-    (run_dir / "03_prompt.txt").write_text(prompt)
-    (run_dir / "04_continuation.txt").write_text(continuation)
-    (run_dir / "05_diagnosis.json").write_text(
-        json.dumps(diagnosis, indent=2) + "\n",
-    )
+    import torch  # noqa: PLC0415
+
+    empty_rounds = 0
+    for rnd in range(args.rounds):
+        torch.cuda.empty_cache()
+        print(f"\n--- Round {rnd + 1}/{args.rounds} ({len(accumulated)} chars) ---",
+              file=sys.stderr, flush=True)
+
+        trajectory = traj_fn(task_text, accumulated, args.traj_window)
+
+        print("Generating adapter...", file=sys.stderr, flush=True)
+        adapter = model.generate_adapter(trajectory, offload_base=False)
+        model.hotswap_adapter(
+            _scale_b_only_inplace(adapter.state_dict, args.scaling),
+        )
+
+        prompt = prompt_fn(accumulated, args.first_lines, args.last_lines, task_text)
+
+        print("Generating continuation...", file=sys.stderr, flush=True)
+        if args.no_schema:
+            continuation, n_tokens = _generate_plaintext(
+                base_model, tokenizer, prompt, system_prompt,
+                args.max_tokens, cfg.temperature, cfg.repetition_penalty,
+                cfg.top_p, cfg.top_k, no_repeat_ngram,
+            )
+        else:
+            continuation, n_tokens = _generate_schema(
+                base_model, tokenizer, prompt, system_prompt,
+                args.max_tokens, cfg.temperature, cfg.repetition_penalty,
+                cfg.top_p, cfg.top_k, no_repeat_ngram,
+            )
+
+        diagnosis = _diagnose(
+            continuation, accumulated, args.traj_window,
+            n_tokens, args.max_tokens, args.scaling,
+            args.no_schema, args.prompt_template,
+        )
+
+        prefix = f"{rnd:02d}"
+        (run_dir / f"{prefix}_accumulated.txt").write_text(accumulated)
+        (run_dir / f"{prefix}_trajectory.txt").write_text(trajectory)
+        (run_dir / f"{prefix}_prompt.txt").write_text(prompt)
+        (run_dir / f"{prefix}_raw_continuation.txt").write_text(continuation)
+        (run_dir / f"{prefix}_diagnosis.json").write_text(
+            json.dumps(diagnosis, indent=2) + "\n",
+        )
+
+        code = _extract_code(continuation)
+        if args.rounds > 1:
+            code = _dedup_code(code, accumulated)
+        (run_dir / f"{prefix}_code.txt").write_text(code)
+
+        global _LAST_THINK_SUMMARY  # noqa: PLW0603
+        think_raw = _extract_think(continuation)
+        _LAST_THINK_SUMMARY = _summarize_think(think_raw)
+
+        print(f"Round {rnd + 1}: {n_tokens} tokens, "
+              f"stopped_early={diagnosis['stopped_early']}", flush=True)
+        if _LAST_THINK_SUMMARY:
+            print(f"Think summary: {_LAST_THINK_SUMMARY[:100]}", flush=True)
+        print(f"Code extracted ({len(code)} chars):", flush=True)
+        print(code[:300], flush=True)
+
+        if args.rounds > 1 and code.strip():
+            accumulated = accumulated.rstrip() + "\n" + code.strip() + "\n"
+            empty_rounds = 0
+        elif args.rounds > 1:
+            empty_rounds += 1
+
+        if args.rounds > 1 and diagnosis["stopped_early"]:
+            print(f"Model stopped early (EOS) — task complete after round {rnd + 1}.",
+                  flush=True)
+            break
+
+        if args.rounds > 1 and empty_rounds >= 2:
+            print(f"No new code for {empty_rounds} consecutive rounds — stopping.",
+                  flush=True)
+            break
+
+    (run_dir / "final_accumulated.txt").write_text(accumulated)
 
     print(f"\n{'='*60}", flush=True)
     print(f"Run saved to: {run_dir}", flush=True)
     print(f"{'='*60}", flush=True)
-    print(json.dumps(diagnosis, indent=2), flush=True)
+    if args.rounds == 1:
+        print(json.dumps(diagnosis, indent=2), flush=True)
 
 
 if __name__ == "__main__":
