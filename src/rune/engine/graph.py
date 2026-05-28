@@ -195,10 +195,10 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             cont_no_repeat = run_config.get("no_repeat_ngram_size", 12)
             cont_scaling = adapter_scaling * cont_multiplier
             accumulated_code = extract_partial_code(result.text)
-            budget = state["budget_remaining"] - 1
+            cont_budget = run_config.get("cont_budget", 5)
             empty_rounds = 0
 
-            while result.truncated and budget > 0 and empty_rounds < 2:
+            while result.truncated and cont_budget > 0 and empty_rounds < 2:
                 import torch  # noqa: PLC0415
 
                 torch.cuda.empty_cache()
@@ -253,7 +253,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 else:
                     empty_rounds += 1
 
-                budget -= 1
+                cont_budget -= 1
                 cont_budget_spent += 1
 
             raw_text = json.dumps({"code": accumulated_code})
@@ -325,7 +325,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
     updates["trajectory"] = state["trajectory"] + records
     updates["step"] = state["step"] + 1
-    updates["budget_remaining"] = state["budget_remaining"] - 1 - cont_budget_spent
+    updates["budget_remaining"] = state["budget_remaining"] - 1
     return updates
 
 
