@@ -162,6 +162,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     top_p = run_config.get("top_p", 0.9)
 
     results: list[tuple[Action, str, str, str | None]] = []
+    cont_budget_spent = 0
     for action in actions:
         ctx = state_to_ctx(state, action)
         trajectory_text = render_template(action.trajectory_template, **ctx)
@@ -183,7 +184,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             top_p=top_p,
         )
         raw_text = result.text
-        if action.executes_code and result.truncated:
+        if action.name in ("code", "repair") and result.truncated:
             cont_multiplier = run_config.get("cont_multiplier", 1.53)
             cont_max_tokens = run_config.get("cont_max_tokens", 128)
             cont_scaling = adapter_scaling * cont_multiplier
@@ -220,6 +221,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 )
                 accumulated_code += result.text
                 budget -= 1
+                cont_budget_spent += 1
 
             raw_text = json.dumps({"code": accumulated_code})
         elif result.truncated:
@@ -290,7 +292,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
     updates["trajectory"] = state["trajectory"] + records
     updates["step"] = state["step"] + 1
-    updates["budget_remaining"] = state["budget_remaining"] - 1
+    updates["budget_remaining"] = state["budget_remaining"] - 1 - cont_budget_spent
     return updates
 
 
