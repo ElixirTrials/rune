@@ -112,6 +112,10 @@ def validate_syntax(code: str, *, language: str = "python") -> bool:
 
 
 def _treesitter_check(code: str, language: str) -> bool:
+    if language != "python":
+        raise NotImplementedError(
+            f"tree-sitter check not implemented for {language!r}"
+        )
     import tree_sitter_python as tspython  # noqa: PLC0415
     from tree_sitter import Language, Parser  # noqa: PLC0415
 

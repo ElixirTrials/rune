@@ -168,7 +168,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     top_p = run_config.get("top_p", 0.9)
 
     results: list[tuple[Action, str, str, str | None]] = []
-    cont_budget_spent = 0
     for action in actions:
         import torch  # noqa: PLC0415
 
@@ -270,7 +269,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     empty_rounds += 1
 
                 cont_budget -= 1
-                cont_budget_spent += 1
 
                 if validate_syntax(accumulated_code):
                     logger.info("Accumulated code validates — exiting continuation")
