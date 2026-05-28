@@ -93,38 +93,52 @@ async def generate(
                 prefix_ids = encoded.to(model.device)
             thinking_text = ""
 
-        # Phase 2: JSON-constrained generation with xgrammar
-        base_model = getattr(model, "base_model", model)
-        model_config = getattr(base_model, "config", None)
-        text_cfg = getattr(model_config, "text_config", model_config)
-        vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
+        # Phase 2: generation
+        gen_kwargs: dict[str, Any] = {
+            "pad_token_id": tokenizer.eos_token_id,
+            "max_new_tokens": max_tokens,
+            "repetition_penalty": repetition_penalty,
+            **sampling,
+        }
 
-        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-            tokenizer, vocab_size=vocab_size
-        )
-        compiler = xgr.GrammarCompiler(tokenizer_info)
-        compiled = compiler.compile_json_schema(
-            output_schema, max_whitespace_cnt=_MAX_WHITESPACE
-        )
-        logits_processor = xgr.contrib.hf.LogitsProcessor(compiled)
+        compiled = None
+        if output_schema is None:
+            # Raw mode: continuation rounds use this so the model can EOS naturally.
+            # no_repeat_ngram_size is only safe here — it conflicts with xgrammar.
+            if no_repeat_ngram_size > 0:
+                gen_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
+        else:
+            base_model = getattr(model, "base_model", model)
+            model_config = getattr(base_model, "config", None)
+            text_cfg = getattr(model_config, "text_config", model_config)
+            vocab_size = (
+                getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
+            )
+            tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+                tokenizer, vocab_size=vocab_size
+            )
+            compiler = xgr.GrammarCompiler(tokenizer_info)
+            compiled = compiler.compile_json_schema(
+                output_schema,
+                any_whitespace=False,
+            )
+            gen_kwargs["logits_processor"] = [
+                xgr.contrib.hf.LogitsProcessor(compiled)
+            ]
 
         prefix_mask = torch.ones_like(prefix_ids)
         with torch.no_grad():
             structured_output = model.generate(
                 prefix_ids,
                 attention_mask=prefix_mask,
-                pad_token_id=tokenizer.eos_token_id,
-                max_new_tokens=max_tokens,
-                repetition_penalty=repetition_penalty,
-                logits_processor=[logits_processor],
-                **sampling,
+                **gen_kwargs,
             )
         result_tokens = structured_output[0][prefix_ids.shape[1] :]
         result_text = tokenizer.decode(result_tokens, skip_special_tokens=True)
         total_tokens = prefix_ids.shape[1] + len(result_tokens)
 
         truncated = len(result_tokens) >= max_tokens
-        if truncated and not skip_completion_retry:
+        if truncated and not skip_completion_retry and compiled is not None:
             result_text, extra, completed = _try_completion(
                 model, tokenizer, result_text, structured_output,
                 compiled, max_tokens, repetition_penalty, sampling,

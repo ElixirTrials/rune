@@ -15,6 +15,7 @@ from langgraph.graph.state import CompiledStateGraph
 from rune.engine.continuation import (
     dedup_code,
     degeneration_score,
+    extract_code,
     extract_partial_code,
     merge_overlap,
 )
@@ -198,6 +199,12 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             cont_budget = run_config.get("cont_budget", 5)
             empty_rounds = 0
 
+            cont_sys = (
+                "Output only Python code. No commentary, no explanations, "
+                "no markdown fences. Continue exactly from where the code "
+                "left off."
+            )
+
             while result.truncated and cont_budget > 0 and empty_rounds < 2:
                 import torch  # noqa: PLC0415
 
@@ -220,8 +227,8 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
                 result = await model.generate(
                     prompt=cont_prompt,
-                    system_prompt=action.system_prompt,
-                    output_schema=CodeResult,
+                    system_prompt=cont_sys,
+                    output_schema=None,
                     max_tokens=run_config.get("max_tokens", 2048),
                     temperature=temperature,
                     repetition_penalty=repetition_penalty,
@@ -231,7 +238,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     skip_completion_retry=True,
                 )
 
-                chunk = extract_partial_code(result.text)
+                chunk = extract_code(result.text)
                 chunk = merge_overlap(accumulated_code, chunk)
                 chunk = dedup_code(chunk, accumulated_code)
 
