@@ -24,6 +24,7 @@ class PipelineConfig:
     cont_multiplier: float = 1.53
     cont_budget: int = 5
     no_repeat_ngram_size: int = 12
+    presence_penalty: float = 1.5
     checkpoint_path: str = ""
     bench: dict[str, Any] = field(default_factory=dict)
     hpo: dict[str, Any] = field(default_factory=dict)

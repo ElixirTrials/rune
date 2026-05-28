@@ -89,8 +89,12 @@ def merge_overlap(accumulated: str, new_chunk: str) -> str:
     return new_chunk
 
 
+_NUM_RE = re.compile(r"\b\d+\b")
+
+
 def degeneration_score(text: str, n: int = 4) -> float:
-    words = text.split()
+    normalized = _NUM_RE.sub("<N>", text)
+    words = normalized.split()
     if len(words) < n:
         return 0.0
     ngrams = [tuple(words[i : i + n]) for i in range(len(words) - n + 1)]

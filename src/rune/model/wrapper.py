@@ -140,6 +140,7 @@ class ModelWrapper:
         repetition_penalty: float = 1.1,
         top_p: float = 0.9,
         no_repeat_ngram_size: int = 0,
+        presence_penalty: float = 0.0,
         thinking_budget: int = 1024,
         skip_completion_retry: bool = False,
     ) -> GenerationResult:
@@ -154,6 +155,7 @@ class ModelWrapper:
             repetition_penalty=repetition_penalty,
             top_p=top_p,
             no_repeat_ngram_size=no_repeat_ngram_size,
+            presence_penalty=presence_penalty,
             thinking_budget=thinking_budget,
             skip_completion_retry=skip_completion_retry,
         )
@@ -168,6 +170,7 @@ class ModelWrapper:
         repetition_penalty: float = 1.1,
         top_p: float = 0.9,
         no_repeat_ngram_size: int = 0,
+        presence_penalty: float = 0.0,
     ) -> GenerationResult:
         return await inference_generate_continuation(
             self._base_model,
@@ -180,4 +183,5 @@ class ModelWrapper:
             repetition_penalty=repetition_penalty,
             top_p=top_p,
             no_repeat_ngram_size=no_repeat_ngram_size,
+            presence_penalty=presence_penalty,
         )

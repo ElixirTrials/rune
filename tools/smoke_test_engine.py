@@ -51,9 +51,8 @@ async def run() -> None:
     log.info("Loading config from %s", cfg_path)
     cfg = load_config(cfg_path)
 
-    # Low max_tokens forces truncation on code generation so
-    # the engine enters the continuation sub-loop.
-    max_tokens = 512
+    no_cont = "--no-cont" in sys.argv
+    max_tokens = 2048 if no_cont else 512
 
     log.info("Loading model: %s  %s", cfg.model_id, _mem())
     t0 = time.monotonic()
@@ -62,13 +61,17 @@ async def run() -> None:
 
     engine = create_engine()
 
-    # Task hits _is_simple_task gate (starts with "Write a class"),
-    # so decomposition is skipped → synthetic _main subtask.
-    task = (
-        "Write a class LinkedList with methods: append, prepend, delete, "
-        "find, reverse, to_list, __len__, and __repr__. Include a Node "
-        "inner class. Write tests for each method."
-    )
+    if no_cont:
+        task = (
+            "Write a function called fibonacci(n) that returns the nth "
+            "Fibonacci number. Include 3 tests."
+        )
+    else:
+        task = (
+            "Write a class LinkedList with methods: append, prepend, delete, "
+            "find, reverse, to_list, __len__, and __repr__. Include a Node "
+            "inner class. Write tests for each method."
+        )
 
     initial_state: dict[str, Any] = {
         "task": task,
@@ -91,6 +94,8 @@ async def run() -> None:
 
     run_config = cfg.to_dict()
     run_config["max_tokens"] = max_tokens
+    if no_cont:
+        run_config["cont_budget"] = 0
 
     config = {"model": model, "run_config": run_config}
 
@@ -155,9 +160,12 @@ async def run() -> None:
     print(f"  Steps (outer loop): {final_state['step']}", flush=True)
     print(f"  Budget spent: {budget_spent}", flush=True)
     print(flush=True)
-    print("  NOTE: Continuation rounds are internal to step_node and do not", flush=True)
-    print("  consume outer budget. Check engine logs for 'continuation round'", flush=True)
-    print("  messages to verify continuation fired.", flush=True)
+    print(
+        "  NOTE: Continuation rounds are internal to step_node and"
+        " do not consume outer budget. Check engine logs for"
+        " 'continuation round' messages to verify.",
+        flush=True,
+    )
     print(flush=True)
 
     # --- Integrated code ---

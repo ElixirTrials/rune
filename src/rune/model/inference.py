@@ -9,6 +9,28 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+class PresencePenaltyLogitsProcessor:
+    """Additive presence penalty: subtract a flat penalty from logits of any
+    token that has appeared in the sequence so far (after ``prompt_length``).
+
+    HuggingFace transformers lacks native support; Qwen3.5-9B's model card
+    recommends ``presence_penalty=1.5`` for non-thinking instruct mode.
+    """
+
+    def __init__(self, penalty: float, prompt_length: int = 0) -> None:
+        self.penalty = penalty
+        self.prompt_length = prompt_length
+
+    def __call__(self, input_ids: Any, scores: Any) -> Any:
+        if self.penalty == 0.0:
+            return scores
+        gen_ids = input_ids[:, self.prompt_length:]
+        for i in range(gen_ids.shape[0]):
+            seen = gen_ids[i].unique()
+            scores[i, seen] -= self.penalty
+        return scores
+
+
 @dataclass
 class GenerationResult:
     text: str
@@ -30,6 +52,7 @@ async def generate(
     repetition_penalty: float = 1.1,
     thinking_budget: int = 1024,
     no_repeat_ngram_size: int = 0,
+    presence_penalty: float = 0.0,
     skip_completion_retry: bool = False,
 ) -> GenerationResult:
     import asyncio  # noqa: PLC0415
@@ -100,10 +123,16 @@ async def generate(
             **sampling,
         }
 
+        processors: list[Any] = []
+        if presence_penalty > 0.0:
+            processors.append(
+                PresencePenaltyLogitsProcessor(
+                    presence_penalty, prompt_length=prefix_ids.shape[1],
+                )
+            )
+
         compiled = None
         if output_schema is None:
-            # Raw mode: continuation rounds use this so the model can EOS naturally.
-            # no_repeat_ngram_size is only safe here — it conflicts with xgrammar.
             if no_repeat_ngram_size > 0:
                 gen_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
         else:
@@ -121,9 +150,10 @@ async def generate(
                 output_schema,
                 any_whitespace=False,
             )
-            gen_kwargs["logits_processor"] = [
-                xgr.contrib.hf.LogitsProcessor(compiled)
-            ]
+            processors.append(xgr.contrib.hf.LogitsProcessor(compiled))
+
+        if processors:
+            gen_kwargs["logits_processor"] = processors
 
         prefix_mask = torch.ones_like(prefix_ids)
         with torch.no_grad():
@@ -141,6 +171,8 @@ async def generate(
             result_text, extra, completed = _try_completion(
                 model, tokenizer, result_text, structured_output,
                 compiled, max_tokens, repetition_penalty, sampling,
+                presence_penalty=presence_penalty,
+                prompt_length=prefix_ids.shape[1],
             )
             total_tokens += extra
             truncated = not completed
@@ -164,6 +196,9 @@ def _try_completion(
     max_tokens: int,
     repetition_penalty: float,
     sampling: dict[str, Any],
+    *,
+    presence_penalty: float = 0.0,
+    prompt_length: int = 0,
 ) -> tuple[str, int, bool]:
     """Continue a truncated generation from the model's own output sequence.
 
@@ -195,15 +230,22 @@ def _try_completion(
     adv_processor.prefilled = False
     adv_processor.batch_size = 1
 
+    processors: list[Any] = [adv_processor]
+    if presence_penalty > 0.0:
+        processors.append(
+            PresencePenaltyLogitsProcessor(presence_penalty, prompt_length)
+        )
+
     cont_mask = torch.ones_like(prior_output)
+    retry_budget = max(max_tokens, 2048)
     with torch.no_grad():
         cont_output = model.generate(
             prior_output,
             attention_mask=cont_mask,
             pad_token_id=tokenizer.eos_token_id,
-            max_new_tokens=max_tokens,
+            max_new_tokens=retry_budget,
             repetition_penalty=repetition_penalty,
-            logits_processor=[adv_processor],
+            logits_processor=processors,
             **sampling,
         )
     cont_tokens = cont_output[0][prior_output.shape[1] :]
@@ -228,6 +270,7 @@ async def generate_continuation(
     top_p: float = 0.9,
     repetition_penalty: float = 1.1,
     no_repeat_ngram_size: int = 0,
+    presence_penalty: float = 0.0,
 ) -> GenerationResult:
     import asyncio  # noqa: PLC0415
 
@@ -265,6 +308,10 @@ async def generate_continuation(
         }
         if no_repeat_ngram_size > 0:
             gen_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
+        if presence_penalty > 0.0:
+            gen_kwargs["logits_processor"] = [
+                PresencePenaltyLogitsProcessor(presence_penalty, prompt_length=0)
+            ]
 
         attention_mask = torch.ones_like(template_ids)
         with torch.no_grad():

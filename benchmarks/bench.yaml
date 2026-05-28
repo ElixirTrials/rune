@@ -10,6 +10,7 @@ repetition_penalty: 1.1
 top_p: 0.9
 top_k: 20
 no_repeat_ngram_size: 12
+presence_penalty: 1.5
 thinking_budget: 1024
 max_phase_iterations: 10
 

@@ -166,6 +166,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     adapter_scaling = run_config.get("adapter_scaling", 1.0)
     repetition_penalty = run_config.get("repetition_penalty", 1.1)
     top_p = run_config.get("top_p", 0.9)
+    presence_penalty = run_config.get("presence_penalty", 0.0)
 
     results: list[tuple[Action, str, str, str | None]] = []
     for action in actions:
@@ -190,26 +191,17 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             temperature=temperature,
             repetition_penalty=repetition_penalty,
             top_p=top_p,
+            presence_penalty=presence_penalty,
         )
         raw_text = result.text
         needs_continuation = result.truncated
-        if action.name in ("code", "repair") and not needs_continuation:
-            _initial_code = extract_partial_code(result.text)
-            try:
-                compile(_initial_code, "<check>", "exec")
-            except SyntaxError:
-                logger.info(
-                    "JSON grammar completed but Python has SyntaxError — "
-                    "entering continuation for %s/%s",
-                    action.name, action.target_subtask or "",
-                )
-                needs_continuation = True
-        if action.name in ("code", "repair") and needs_continuation:
+        if action.name in ("code", "repair", "integrate") and needs_continuation:
             cont_multiplier = run_config.get("cont_multiplier", 1.53)
             cont_no_repeat = run_config.get("no_repeat_ngram_size", 12)
             cont_scaling = adapter_scaling * cont_multiplier
             accumulated_code = extract_partial_code(result.text)
             cont_budget = run_config.get("cont_budget", 5)
+            cont_round = 0
             empty_rounds = 0
 
             cont_sys = (
@@ -223,6 +215,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 import torch  # noqa: PLC0415
 
                 torch.cuda.empty_cache()
+                cont_round += 1
 
                 cont_ctx = {
                     **ctx,
@@ -245,14 +238,15 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     repetition_penalty=repetition_penalty,
                     top_p=top_p,
                     no_repeat_ngram_size=cont_no_repeat,
+                    presence_penalty=presence_penalty,
                 )
 
                 new_chunk = result.text
                 degen = degeneration_score(new_chunk)
                 logger.info(
-                    "continuation round: +%d chars, degen=%.2f",
-                    len(new_chunk),
-                    degen,
+                    "continuation round %d: +%d chars, degen=%.2f, "
+                    "truncated=%s",
+                    cont_round, len(new_chunk), degen, result.truncated,
                 )
 
                 if degen > 0.5:
@@ -277,6 +271,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 if not result.truncated:
                     break
 
+            logger.info(
+                "continuation done: %d rounds, %d chars, syntax_valid=%s",
+                cont_round, len(accumulated_code),
+                validate_syntax(accumulated_code),
+            )
             raw_text = json.dumps({"code": accumulated_code})
         elif result.truncated:
             logger.warning(

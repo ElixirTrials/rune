@@ -1,6 +1,6 @@
 ROLE: coder
 {% if project %}PROJECT: {{ project[:300] }}
-{% endif %}SUBTASK: {{ subtask.name }} (continuation)
+{% endif %}{% if subtask %}SUBTASK: {{ subtask.name }} (continuation){% else %}ACTION: integrate (continuation){% endif %}
 DESCRIPTION: Continue generating code from where it left off.
 
 PLAN:
