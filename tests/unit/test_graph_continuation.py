@@ -71,7 +71,7 @@ class TestStepNodeContinuation:
             mock_sandbox.return_value = MagicMock(
                 stdout="", stderr="", exit_code=0,
             )
-            result = asyncio.run(step_node(state, config))
+            asyncio.run(step_node(state, config))
 
         model.generate_continuation.assert_called()
         call_kwargs = model.generate_continuation.call_args.kwargs
@@ -113,6 +113,6 @@ class TestStepNodeContinuation:
             mock_sandbox.return_value = MagicMock(
                 stdout="", stderr="", exit_code=0,
             )
-            result = asyncio.run(step_node(state, config))
+            asyncio.run(step_node(state, config))
 
         assert model.generate_continuation.call_count == 1

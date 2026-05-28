@@ -10,7 +10,9 @@ from rune.model.adapter import hotswap_adapter as hotswap_adapter_fn
 from rune.model.hypernetwork import generate_adapter_weights
 from rune.model.inference import GenerationResult
 from rune.model.inference import generate as inference_generate
-from rune.model.inference import generate_continuation as inference_generate_continuation
+from rune.model.inference import (
+    generate_continuation as inference_generate_continuation,
+)
 
 if TYPE_CHECKING:
     from rune.config import PipelineConfig
