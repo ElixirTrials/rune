@@ -282,9 +282,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             mlflow.log_text(result.text, f"{prefix}/output.txt")
 
     def _parse_action_code(action: Action, raw_json: str) -> str:
-        if action.name == "integrate":
-            return IntegrateResult.model_validate_json(raw_json).code
-        return CodeResult.model_validate_json(raw_json).code
+        schema = IntegrateResult if action.name == "integrate" else CodeResult
+        try:
+            return schema.model_validate_json(raw_json).code
+        except Exception:
+            return extract_partial_code(raw_json)
 
     code_map: dict[str, str] = {}
     code_action_names: list[str] = []
