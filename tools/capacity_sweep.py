@@ -18,7 +18,7 @@ from typing import Any
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-from tools.cont_probe import (
+from tools.cont_probe import (  # noqa: E402  # isort: skip
     PROMPT_TEMPLATES,
     SCENARIOS,
     TRAJECTORY_FLAVORS,
@@ -99,8 +99,8 @@ def _check_syntax(code: str) -> bool:
 
 
 def main() -> None:
-    from rune.config import load_config
-    from rune.model.wrapper import ModelWrapper
+    from rune.config import load_config  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
     cfg = load_config(Path("benchmarks/bench.yaml"))
     print("Loading model...", file=sys.stderr, flush=True)
@@ -122,7 +122,7 @@ def main() -> None:
 
     results = []
 
-    import torch
+    import torch  # noqa: PLC0415
 
     for conf in CONFIGS:
         scenario = conf["scenario"]
@@ -142,7 +142,10 @@ def main() -> None:
                 trajectory, truncation=True, max_length=2048, return_tensors="pt",
             )
             actual_traj_tokens = traj_tokens["input_ids"].shape[1]
-            print(f"Trajectory tokens: {actual_traj_tokens}/2048", file=sys.stderr, flush=True)
+            print(
+                f"Trajectory tokens: {actual_traj_tokens}/2048",
+                file=sys.stderr, flush=True,
+            )
 
             adapter = model.generate_adapter(trajectory, offload_base=False)
             model.hotswap_adapter(
@@ -185,7 +188,8 @@ def main() -> None:
             }
             results.append(row)
 
-            print(f"  Tokens: {n_tokens}, stopped_early={n_tokens < MAX_TOKENS}", flush=True)
+            stopped = n_tokens < MAX_TOKENS
+            print(f"  Tokens: {n_tokens}, stopped_early={stopped}", flush=True)
             if think_summary:
                 print(f"  Think: {think_summary[:80]}", flush=True)
             print(f"  Code: {len(code)} chars", flush=True)
@@ -196,9 +200,13 @@ def main() -> None:
     (run_dir / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
 
     print(f"\n{'='*60}", flush=True)
-    print(f"CAPACITY SWEEP RESULTS", flush=True)
+    print("CAPACITY SWEEP RESULTS", flush=True)
     print(f"{'='*60}", flush=True)
-    print(f"{'Name':<30} {'Tok':>5} {'TrTok':>5} {'Funcs':>10} {'Cov':>5} {'Redef':>6} {'Syn':>4}", flush=True)
+    hdr = (
+        f"{'Name':<30} {'Tok':>5} {'TrTok':>5} "
+        f"{'Funcs':>10} {'Cov':>5} {'Redef':>6} {'Syn':>4}"
+    )
+    print(hdr, flush=True)
     print("-" * 70, flush=True)
     for r in results:
         funcs = f"{len(r['found_funcs'])}/{len(r['expected_funcs'])}"

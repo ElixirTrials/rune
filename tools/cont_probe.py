@@ -368,7 +368,7 @@ _LARGE_CUT_POINTS = {
 def _truncate_large(cut: str = "medium") -> tuple[str, str]:
     """Cut the large pipeline module at a named boundary.
 
-    cut: 'small' (~2000 chars), 'medium' (~3200 chars), 'large' (~4500 chars), 'full' (all ~5200 chars).
+    cut: 'small' (~2k), 'medium' (~3.2k), 'large' (~4.5k), 'full' (~5.2k chars).
     Returns (full_seed, accumulated_before).
     """
     marker = _LARGE_CUT_POINTS.get(cut)
@@ -576,7 +576,9 @@ def _prompt_structural(
     for line in accumulated.splitlines():
         stripped = line.strip()
         if stripped.startswith("class "):
-            current_class = stripped.split("(")[0].split(":")[0].replace("class ", "").strip()
+            current_class = (
+                stripped.split("(")[0].split(":")[0].replace("class ", "").strip()
+            )
         elif stripped.startswith("def "):
             name = stripped.split("(")[0].replace("def ", "").strip()
             if current_class and (line.startswith("    ") or line.startswith("\t")):
