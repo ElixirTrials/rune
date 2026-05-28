@@ -10,10 +10,6 @@ CODE SKELETONS:
 --- {{ name }} ---
 {{ skeleton[:1000] }}
 {% endfor %}
-{% if integration_error %}
-PREVIOUS INTEGRATION ERROR:
-{{ integration_error[:500] }}
-{% endif %}
 METHODOLOGY: Assemble all subtask implementations into a single cohesive
 module. Resolve import dependencies, ensure consistent naming across
 modules, wire up cross-layer calls, and add integration tests that

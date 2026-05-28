@@ -1,12 +1,4 @@
 You are repairing the subtask: {{ subtask_name }}
 Project: {{ project_label }}
 Diagnosis: {{ fix_guidance[:150] }}
-
-Current code:
-{{ existing_code[:2000] }}
-{% if error_summary %}
-Error:
-{{ error_summary[:300] }}
-{% endif %}
 Fix the identified issues. Keep working code intact.
-Output JSON: {"code": "<your complete fixed Python source>"}

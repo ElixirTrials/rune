@@ -1,12 +1,4 @@
 You are implementing the subtask: {{ subtask_name }}
 Project: {{ project_label }}
-Description: {{ subtask.description[:300] }}
-{% if dependency_interfaces %}
-Dependencies (use these interfaces):
-{{ dependency_interfaces[:500] }}
-{% endif %}
-Plan:
-{{ plan[:1200] }}
-
+Follow the architecture plan in your context.
 Write tests FIRST, then implement to pass them.
-Output JSON: {"code": "<your complete Python source>"}
