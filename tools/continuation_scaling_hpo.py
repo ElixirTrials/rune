@@ -16,7 +16,6 @@ Results logged to MLflow experiment 'continuation-scaling-hpo'.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import faulthandler
 import json
 import os
@@ -126,14 +125,20 @@ class ContinuationTask:
     expected_min_chars: int
 
 
+_SYSTEM_PROMPT = (
+    "Output only Python code. No commentary, no explanations, "
+    "no markdown fences. Continue exactly from where the code left off."
+)
+
 TASKS = [
     ContinuationTask(
         name="calculator_divide",
         task=(
             "Write a Python Calculator class with add, subtract, multiply, "
-            "divide (with ZeroDivisionError), and a history method."
+            "divide (with ZeroDivisionError), power, and a history method "
+            "that returns the last 10 operations."
         ),
-        system_prompt="You are a code generator.",
+        system_prompt=_SYSTEM_PROMPT,
         expected_min_chars=400,
     ),
     ContinuationTask(
@@ -142,7 +147,7 @@ TASKS = [
             "Write a Python Stack class with push, pop, peek, is_empty, "
             "and size methods using a list internally."
         ),
-        system_prompt="You are a code generator.",
+        system_prompt=_SYSTEM_PROMPT,
         expected_min_chars=300,
     ),
     ContinuationTask(
@@ -151,7 +156,7 @@ TASKS = [
             "Write Python functions: validate_email, validate_phone, "
             "validate_url. Each returns True/False. Use regex."
         ),
-        system_prompt="You are a code generator.",
+        system_prompt=_SYSTEM_PROMPT,
         expected_min_chars=300,
     ),
 ]
@@ -277,40 +282,25 @@ def _prompt_bare(
     return "Continue writing code."
 
 
+def _prompt_task_only(
+    accumulated: str, first_lines: int, last_lines: int, task: str,
+) -> str:
+    """Task spec + tail. Adapter carries what's done."""
+    tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
+    parts = [f"Task: {task[:200]}"]
+    parts.append("Write ONLY the next unimplemented method. No redefinitions.")
+    if tail:
+        parts.append(f"Resume:\n{tail}")
+    return "\n".join(parts)
+
+
 PROMPT_STRATEGIES: dict[str, Any] = {
     "head_tail": _prompt_head_tail,
     "tail_only": _prompt_tail_only,
     "instruction_wrapped": _prompt_instruction_wrapped,
     "bare": _prompt_bare,
+    "task_only": _prompt_task_only,
 }
-
-
-def _check_completion(
-    accumulated: str,
-    matcher: Any,
-    new_token_count: int,
-    max_tokens: int,
-) -> tuple[bool, dict[str, bool]]:
-    grammar_done = matcher.is_completed()
-
-    schema_valid = False
-    try:
-        from rune.engine.parse import CodeResult  # noqa: PLC0415
-
-        CodeResult.model_validate_json(accumulated)
-        schema_valid = True
-    except Exception:
-        pass
-
-    gen_stopped_early = new_token_count < max_tokens
-
-    signals = {
-        "grammar_completed": grammar_done,
-        "schema_valid": schema_valid,
-        "gen_stopped_early": gen_stopped_early,
-    }
-    all_agree = grammar_done and schema_valid and gen_stopped_early
-    return all_agree, signals
 
 
 def _edit_distance(a: str, b: str) -> float:
@@ -330,6 +320,65 @@ def _degeneration_score(text: str, n: int = 4) -> float:
     return 1.0 - len(set(ngrams)) / len(ngrams)
 
 
+def _extract_code(raw: str) -> str:
+    """Strip <think> blocks, markdown fences, and assistant prefix."""
+    import re as _re  # noqa: PLC0415
+    text = _re.sub(r"^assistant\s*", "", raw.strip())
+    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL)
+    if "<think>" in text:
+        text = text[:text.index("<think>")]
+    text = text.strip()
+    text = _re.sub(r"^Here(?:'s| is)[^\n]*\n", "", text).strip()
+    blocks = _re.findall(r"```(?:python)?\n(.*?)```", text, _re.DOTALL)
+    if not blocks:
+        m = _re.search(r"```(?:python)?\n(.*)", text, _re.DOTALL)
+        if m:
+            blocks = [m.group(1)]
+    if blocks:
+        return "\n".join(b.rstrip() for b in blocks)
+    if text:
+        lines = text.splitlines()
+        return "\n".join(l for l in lines if not l.startswith("```")).rstrip()
+    return ""
+
+
+def _dedup_code(new_code: str, accumulated: str) -> str:
+    """Remove class/function re-definitions and __main__ blocks."""
+    existing_defs: set[str] = set()
+    for line in accumulated.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("class ") or stripped.startswith("def "):
+            name = stripped.split("(")[0].split(":")[0]
+            name = name.replace("class ", "").replace("def ", "").strip()
+            existing_defs.add(name)
+    lines = new_code.splitlines(keepends=True)
+    result: list[str] = []
+    skip_until_dedent = False
+    skip_indent: int | None = None
+    for line in lines:
+        stripped = line.strip()
+        if skip_until_dedent:
+            indent = len(line) - len(line.lstrip()) if line.strip() else 999
+            if indent <= skip_indent and stripped:  # type: ignore[operator]
+                skip_until_dedent = False
+                skip_indent = None
+            else:
+                continue
+        if stripped.startswith('if __name__'):
+            skip_until_dedent = True
+            skip_indent = len(line) - len(line.lstrip())
+            continue
+        if stripped.startswith("class ") or stripped.startswith("def "):
+            name = stripped.split("(")[0].split(":")[0]
+            name = name.replace("class ", "").replace("def ", "").strip()
+            if name in existing_defs:
+                skip_until_dedent = True
+                skip_indent = len(line) - len(line.lstrip())
+                continue
+        result.append(line)
+    return "".join(result)
+
+
 def _run_continuation_trial(
     model: Any,
     task: ContinuationTask,
@@ -341,19 +390,22 @@ def _run_continuation_trial(
     gen_kwargs: dict[str, Any],
     initial_gen_kwargs: dict[str, Any],
     compiled_grammar: Any,
-    max_continuations: int = 2,
+    max_continuations: int = 5,
 ) -> dict[str, Any]:
     import torch  # noqa: PLC0415
-    import xgrammar as xgr  # noqa: PLC0415
 
     _check_rss_limit()
 
+    base_model_obj = model._base_model
+    tokenizer = model._tokenizer
+
     _status(f"task {task.name}: generating initial adapter")
     _log_memory(f"task {task.name} pre-adapter")
-    initial_adapter = model.generate_adapter(
-        f"ROLE: coder\nTASK: {task.task}\nPLAN: Implement with tests.",
-        offload_base=False,
-    )
+    traj_fn = TRAJECTORY_FLAVORS[trajectory_flavor]
+    prompt_fn = PROMPT_STRATEGIES[prompt_strategy]
+
+    initial_traj = traj_fn(task.task, "", 0, max_continuations)
+    initial_adapter = model.generate_adapter(initial_traj, offload_base=False)
     adapter_template = {
         k: torch.zeros_like(v) for k, v in initial_adapter.state_dict.items()
     }
@@ -362,51 +414,6 @@ def _run_continuation_trial(
     )
     del initial_adapter
     _force_gc()
-
-    _status(f"task {task.name}: initial generation")
-    _log_memory(f"task {task.name} pre-generate")
-    initial_result = asyncio.run(
-        model.generate(
-            task.task,
-            system_prompt=task.system_prompt,
-            **initial_gen_kwargs,
-        )
-    )
-    logger.info(
-        "task %s: initial gen done, %d tokens, truncated=%s, %d chars",
-        task.name, initial_result.tokens_used, initial_result.truncated,
-        len(initial_result.text),
-    )
-
-    if not initial_result.truncated:
-        return {
-            "completed": True,
-            "continuations_used": 0,
-            "completion_signals": {
-                "grammar_completed": True,
-                "schema_valid": True,
-                "gen_stopped_early": True,
-            },
-            "total_tokens": initial_result.tokens_used,
-            "accumulated_chars": len(initial_result.text),
-            "degeneration": 0.0,
-            "adapter_diff": 0.0,
-            "note": "completed_without_continuation",
-        }
-
-    _force_gc()
-    base_model_obj = model._base_model
-    tokenizer = model._tokenizer
-
-    accumulated = initial_result.text
-    total_tokens = initial_result.tokens_used
-    initial_text = initial_result.text
-    del initial_result
-    degen_scores: list[float] = []
-    traj_fn = TRAJECTORY_FLAVORS[trajectory_flavor]
-    prompt_fn = PROMPT_STRATEGIES[prompt_strategy]
-    completed = False
-    completion_signals: dict[str, bool] = {}
 
     sampling: dict[str, Any] = {}
     temp = gen_kwargs.get("temperature", 0.7)
@@ -420,11 +427,18 @@ def _run_continuation_trial(
     else:
         sampling = {"do_sample": False}
 
+    cont_max = gen_kwargs.get("max_tokens", _CONT_MAX_TOKENS)
+    accumulated = ""
+    total_tokens = 0
+    degen_scores: list[float] = []
+    empty_rounds = 0
+
     for attempt in range(max_continuations):
         _check_rss_limit()
-        _status(f"task {task.name}: continuation {attempt}/{max_continuations}")
-        _log_memory(f"task {task.name} cont {attempt}")
+        _status(f"task {task.name}: round {attempt}/{max_continuations}")
+        _log_memory(f"task {task.name} round {attempt}")
         _force_gc()
+
         trajectory_text = traj_fn(task.task, accumulated, attempt, max_continuations)
         cont_adapter = model.generate_adapter(trajectory_text, offload_base=False)
         model.hotswap_adapter(
@@ -432,23 +446,6 @@ def _run_continuation_trial(
         )
         del cont_adapter
         _force_gc()
-
-        matcher = xgr.GrammarMatcher(compiled_grammar)
-        if not matcher.accept_string(accumulated):
-            logger.error(
-                "Grammar reject at continuation %d for %s",
-                attempt, task.name,
-            )
-            del matcher
-            break
-
-        adv_processor = xgr.contrib.hf.LogitsProcessor(compiled_grammar)
-        adv_processor.matchers = [matcher]
-        adv_processor.token_bitmask = xgr.allocate_token_bitmask(  # type: ignore[assignment]
-            1, adv_processor.full_vocab_size,
-        )
-        adv_processor.prefilled = False
-        adv_processor.batch_size = 1
 
         short_prompt = prompt_fn(accumulated, first_lines, last_lines, task.task)
         messages = [
@@ -464,10 +461,8 @@ def _run_continuation_trial(
         else:
             input_ids = encoded.to(base_model_obj.device)
 
-        cont_max = gen_kwargs.get("max_tokens", _CONT_MAX_TOKENS)
         attention_mask = torch.ones_like(input_ids)
-        _status(f"task {task.name}: cont {attempt} generating ({cont_max} max tokens)")
-        _log_memory(f"task {task.name} cont {attempt} pre-generate")
+        _status(f"task {task.name}: round {attempt} generating ({cont_max} tokens)")
         with torch.no_grad():
             output = base_model_obj.generate(
                 input_ids,
@@ -476,62 +471,87 @@ def _run_continuation_trial(
                 max_new_tokens=cont_max,
                 repetition_penalty=gen_kwargs.get("repetition_penalty", 1.0),
                 no_repeat_ngram_size=gen_kwargs.get("no_repeat_ngram_size", 12),
-                logits_processor=[adv_processor],
                 **sampling,
             )
 
         new_tokens = output[0][input_ids.shape[1]:]
-        continuation = tokenizer.decode(new_tokens, skip_special_tokens=True)
+        raw_continuation = tokenizer.decode(new_tokens, skip_special_tokens=True)
         n_new = len(new_tokens)
         total_tokens += n_new
-        del output, input_ids, attention_mask, new_tokens, adv_processor
+        stopped_early = n_new < cont_max
+        del output, input_ids, attention_mask, new_tokens
 
-        degen = _degeneration_score(continuation)
+        code = _extract_code(raw_continuation)
+        code = _dedup_code(code, accumulated)
+
+        degen = _degeneration_score(raw_continuation)
         degen_scores.append(degen)
 
-        accumulated += continuation
-
-        completed, completion_signals = _check_completion(
-            accumulated, matcher, n_new, cont_max,
-        )
-        del matcher
+        if code.strip():
+            accumulated = accumulated.rstrip() + "\n" + code.strip() + "\n" if accumulated else code.strip() + "\n"
+            empty_rounds = 0
+        else:
+            empty_rounds += 1
 
         logger.info(
-            "Task %s cont %d: +%d tokens, degen=%.2f, signals=%s",
-            task.name, attempt, n_new, degen, completion_signals,
+            "Task %s round %d: +%d tokens, %d code chars, degen=%.2f, eos=%s",
+            task.name, attempt, n_new, len(code), degen, stopped_early,
         )
 
-        if completed:
+        if stopped_early:
+            break
+        if empty_rounds >= 2:
             break
 
-    # Zero-adapter baseline: same prompt, no adapter influence.
+    # Zero-adapter baseline: same prompt from start, no adapter.
     _force_gc()
     model.hotswap_adapter(adapter_template)
-
-    baseline_prompt = prompt_fn(initial_text, first_lines, last_lines, task.task)
-    baseline_result = asyncio.run(
-        model.generate(
-            baseline_prompt,
-            system_prompt=task.system_prompt,
-            **initial_gen_kwargs,
-        )
+    baseline_prompt = prompt_fn("", first_lines, last_lines, task.task)
+    messages = [
+        {"role": "system", "content": task.system_prompt},
+        {"role": "user", "content": baseline_prompt},
+    ]
+    encoded = tokenizer.apply_chat_template(
+        messages, return_tensors="pt", enable_thinking=False,
+        add_generation_prompt=True,
     )
-    adapter_diff = _edit_distance(baseline_result.text, accumulated)
-    del baseline_result, adapter_template
+    if hasattr(encoded, "input_ids"):
+        input_ids = encoded["input_ids"].to(base_model_obj.device)
+    else:
+        input_ids = encoded.to(base_model_obj.device)
+    attention_mask = torch.ones_like(input_ids)
+    with torch.no_grad():
+        output = base_model_obj.generate(
+            input_ids,
+            attention_mask=attention_mask,
+            pad_token_id=tokenizer.eos_token_id,
+            max_new_tokens=cont_max,
+            repetition_penalty=gen_kwargs.get("repetition_penalty", 1.0),
+            **sampling,
+        )
+    baseline_tokens = output[0][input_ids.shape[1]:]
+    baseline_text = _extract_code(
+        tokenizer.decode(baseline_tokens, skip_special_tokens=True),
+    )
+    del output, input_ids, attention_mask, baseline_tokens
+    adapter_diff = _edit_distance(baseline_text, accumulated)
+    del baseline_text, adapter_template
     _force_gc()
 
     avg_degen = (
         sum(degen_scores) / len(degen_scores) if degen_scores else 0.0
     )
 
+    completed = len(accumulated) >= task.expected_min_chars
+
     return {
         "completed": completed,
-        "continuations_used": (
-            min(attempt + 1, max_continuations)
-            if accumulated != initial_text
-            else 0
-        ),
-        "completion_signals": completion_signals,
+        "continuations_used": attempt + 1,
+        "completion_signals": {
+            "gen_stopped_early": stopped_early,
+            "enough_chars": completed,
+            "empty_rounds": empty_rounds,
+        },
         "total_tokens": total_tokens,
         "accumulated_chars": len(accumulated),
         "degeneration": round(avg_degen, 4),
@@ -548,7 +568,7 @@ def _run_trial(
     trajectory_flavor: str,
     gen_kwargs: dict[str, Any],
     initial_gen_kwargs: dict[str, Any],
-    compiled_grammar: Any,
+    compiled_grammar: Any = None,
 ) -> dict[str, float]:
     metrics: dict[str, float] = {}
     completion_count = 0
@@ -644,12 +664,9 @@ def main() -> None:
     n_trials = args.n_trials or hpo.get("n_trials", 20)
     logger.info("Config loaded: model=%s, n_trials=%d", cfg.model_id, n_trials)
 
-    from rune.engine.parse import CodeResult  # noqa: PLC0415
-
     cont_max = cfg.hpo.get("cont_max_tokens", _CONT_MAX_TOKENS)
     no_repeat_ngram = cfg.hpo.get("no_repeat_ngram_size", 12)
     gen_kwargs: dict[str, Any] = {
-        "output_schema": CodeResult,
         "max_tokens": cont_max,
         "temperature": cfg.temperature,
         "repetition_penalty": cfg.repetition_penalty,
@@ -658,7 +675,6 @@ def main() -> None:
         "no_repeat_ngram_size": no_repeat_ngram,
     }
     initial_gen_kwargs: dict[str, Any] = {
-        "output_schema": CodeResult,
         "max_tokens": cont_max,
         "temperature": cfg.temperature,
         "repetition_penalty": cfg.repetition_penalty,
@@ -666,7 +682,6 @@ def main() -> None:
 
     import mlflow  # noqa: PLC0415
     import optuna  # noqa: PLC0415
-    import xgrammar as xgr  # noqa: PLC0415
 
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
     from rune.tracking import configure_mlflow  # noqa: PLC0415
@@ -679,23 +694,6 @@ def main() -> None:
     model = ModelWrapper.from_config(cfg)
     _status("model loaded")
     _log_memory("post-model-load")
-
-    _status("compiling grammar (reused across all trials)")
-    base_model_obj = model._base_model
-    tokenizer = model._tokenizer
-    base_model_inner = getattr(base_model_obj, "base_model", base_model_obj)
-    model_config = getattr(base_model_inner, "config", None)
-    text_cfg = getattr(model_config, "text_config", model_config)
-    vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
-    tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-        tokenizer, vocab_size=vocab_size,
-    )
-    grammar_compiler = xgr.GrammarCompiler(tokenizer_info)
-    schema_json = json.dumps(CodeResult.model_json_schema())
-    compiled_grammar = grammar_compiler.compile_json_schema(
-        schema_json, max_whitespace_cnt=16,
-    )
-    del tokenizer_info, grammar_compiler
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -713,7 +711,8 @@ def main() -> None:
     print(f"  n_trials: {n_trials}", flush=True)
     task_names = ", ".join(t.name for t in TASKS)
     print(f"  n_tasks: {len(TASKS)} ({task_names})", flush=True)
-    print("  max_continuations: 2", flush=True)
+    print("  max_continuations: 5", flush=True)
+    print("  mode: plaintext (no xgrammar)", flush=True)
     print("  --- fixed generation params ---", flush=True)
     print(f"  temperature: {cfg.temperature}", flush=True)
     print(f"  repetition_penalty: {cfg.repetition_penalty}", flush=True)
@@ -721,14 +720,14 @@ def main() -> None:
     print(f"  top_k: {cfg.top_k}", flush=True)
     print(f"  cont_max_tokens: {cont_max}", flush=True)
     print(f"  no_repeat_ngram_size: {no_repeat_ngram}", flush=True)
-    print("  enable_thinking: False", flush=True)
+    print("  enable_thinking: False (add_generation_prompt=True)", flush=True)
+    print("  stop: EOS or 2 consecutive empty rounds", flush=True)
     print("  --- search ranges ---", flush=True)
     print(
         f"  scaling: [{scaling_low}, {scaling_high}] log=True",
         flush=True,
     )
-    print("  first_lines: [0, 5]", flush=True)
-    print("  last_lines: [1, 10]", flush=True)
+    print("  last_lines: [2, 8]", flush=True)
     ps = list(PROMPT_STRATEGIES.keys())
     tf = list(TRAJECTORY_FLAVORS.keys())
     print(f"  prompt_strategies: {ps}", flush=True)
@@ -741,8 +740,7 @@ def main() -> None:
         scaling = trial.suggest_float(
             "continuation_scaling", scaling_low, scaling_high, log=True,
         )
-        first_lines = trial.suggest_int("first_lines", 0, 5)
-        last_lines = trial.suggest_int("last_lines", 1, 10)
+        last_lines = trial.suggest_int("last_lines", 2, 8)
         prompt_strategy = trial.suggest_categorical(
             "prompt_strategy", list(PROMPT_STRATEGIES.keys()),
         )
@@ -752,7 +750,7 @@ def main() -> None:
 
         _status(
             f"trial {trial.number}: scaling={scaling:.2f} "
-            f"first={first_lines} last={last_lines} "
+            f"last={last_lines} "
             f"prompt={prompt_strategy} traj={trajectory_flavor} "
             f"RSS={_rss_gb():.1f}GB"
         )
@@ -761,13 +759,12 @@ def main() -> None:
             metrics = _run_trial(
                 model=model,
                 scaling=scaling,
-                first_lines=first_lines,
+                first_lines=0,
                 last_lines=last_lines,
                 prompt_strategy=prompt_strategy,
                 trajectory_flavor=trajectory_flavor,
                 gen_kwargs=gen_kwargs,
                 initial_gen_kwargs=initial_gen_kwargs,
-                compiled_grammar=compiled_grammar,
             )
         except MemoryError:
             logger.error("Trial %d aborted: RSS limit exceeded", trial.number)
@@ -786,7 +783,6 @@ def main() -> None:
         ):
             mlflow.log_params({
                 "continuation_scaling": scaling,
-                "first_lines": first_lines,
                 "last_lines": last_lines,
                 "prompt_strategy": prompt_strategy,
                 "trajectory_flavor": trajectory_flavor,
@@ -864,7 +860,6 @@ def main() -> None:
         print("  Adapter cannot recover partial output reliably.", flush=True)
     print("\n=== BEST CONFIG ===", flush=True)
     print(f"  continuation_scaling: {best['continuation_scaling']:.4f}", flush=True)
-    print(f"  first_lines: {best['first_lines']}", flush=True)
     print(f"  last_lines: {best['last_lines']}", flush=True)
     print(f"  prompt_strategy: {best['prompt_strategy']}", flush=True)
     print(f"  trajectory_flavor: {best['trajectory_flavor']}", flush=True)
@@ -877,7 +872,6 @@ def main() -> None:
         print(
             f"  #{t.number}:"
             f" scaling={t.params['continuation_scaling']:.2f}"
-            f" first={t.params['first_lines']}"
             f" last={t.params['last_lines']}"
             f" prompt={t.params['prompt_strategy']}"
             f" traj={t.params['trajectory_flavor']}"

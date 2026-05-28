@@ -592,6 +592,18 @@ def _prompt_structural(
     return "\n".join(parts)
 
 
+def _prompt_task_only(
+    accumulated: str, first_lines: int, last_lines: int, task: str,
+) -> str:
+    """Task spec + tail. Adapter carries what's done."""
+    tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
+    parts = [f"Task: {task[:200]}"]
+    parts.append("Write ONLY the next unimplemented method. No redefinitions.")
+    if tail:
+        parts.append(f"Resume:\n{tail}")
+    return "\n".join(parts)
+
+
 PROMPT_TEMPLATES: dict[str, Any] = {
     "tail": _prompt_tail,
     "head_tail": _prompt_head_tail,
@@ -600,6 +612,7 @@ PROMPT_TEMPLATES: dict[str, Any] = {
     "bare": _prompt_bare,
     "bare_directed": _prompt_bare_directed,
     "structural": _prompt_structural,
+    "task_only": _prompt_task_only,
 }
 
 # ---------------------------------------------------------------------------
