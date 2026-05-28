@@ -8,6 +8,7 @@ from rune.engine.continuation import (
     extract_code,
     extract_partial_code,
     merge_overlap,
+    validate_syntax,
 )
 
 
@@ -178,3 +179,38 @@ class TestDegenerationScore:
         # 5 ngrams, 4 unique -> 1 - 4/5 = 0.2
         score = degeneration_score("a b c d a b c d")
         assert abs(score - 0.2) < 0.01
+
+
+class TestValidateSyntax:
+    def test_valid_python(self) -> None:
+        assert validate_syntax("def foo():\n    return 1\n") is True
+
+    def test_syntax_error(self) -> None:
+        assert validate_syntax("def foo(\n") is False
+
+    def test_incomplete_class(self) -> None:
+        code = "class Foo:\n    def bar(self):\n        x = 1\n        return"
+        assert validate_syntax(code) is True
+
+    def test_return_outside_function(self) -> None:
+        code = "class Foo:\n    pass\nreturn 1"
+        assert validate_syntax(code) is False
+
+    def test_empty_string(self) -> None:
+        assert validate_syntax("") is False
+
+    def test_indentation_error(self) -> None:
+        code = "def foo():\nreturn 1"
+        assert validate_syntax(code) is False
+
+    def test_valid_multiclass(self) -> None:
+        code = (
+            "class Node:\n"
+            "    def __init__(self, data):\n"
+            "        self.data = data\n"
+            "\n"
+            "class LinkedList:\n"
+            "    def __init__(self):\n"
+            "        self.head = None\n"
+        )
+        assert validate_syntax(code) is True

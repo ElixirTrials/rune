@@ -97,3 +97,25 @@ def degeneration_score(text: str, n: int = 4) -> float:
     if not ngrams:
         return 0.0
     return 1.0 - len(set(ngrams)) / len(ngrams)
+
+
+def validate_syntax(code: str, *, language: str = "python") -> bool:
+    if not code or not code.strip():
+        return False
+    if language == "python":
+        try:
+            compile(code, "<check>", "exec")
+            return True
+        except SyntaxError:
+            return False
+    return _treesitter_check(code, language)
+
+
+def _treesitter_check(code: str, language: str) -> bool:
+    import tree_sitter_python as tspython  # noqa: PLC0415
+    from tree_sitter import Language, Parser  # noqa: PLC0415
+
+    lang = Language(tspython.language())
+    parser = Parser(lang)
+    tree = parser.parse(code.encode())
+    return not tree.root_node.has_error
