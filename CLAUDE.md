@@ -1,6 +1,6 @@
 # Rune
 
-Local-first coding agent that encodes coding trajectories into LoRA adapters via a perceiver hypernetwork. Single-loop LangGraph engine with four concerns: mine, train, run, benchmark.
+Local-first coding agent that encodes coding trajectories into LoRA adapters via a perceiver hypernetwork (ctx-to-lora / HyperLoRA). Single-loop LangGraph engine with four concerns: mine, train, run, benchmark.
 
 ## Read first
 - **`PRODUCT.md`** — read before any non-trivial change. If missing or contains `<!-- TODO -->` stubs, stop and ask the user to fill it in.
@@ -8,8 +8,9 @@ Local-first coding agent that encodes coding trajectories into LoRA adapters via
 ## Stack
 - `uv` Python 3.12 single package.
 - Engine: LangGraph single-loop (`src/rune/engine/`).
-- Model: outlines + PEFT + transformers (`src/rune/model/`).
-- Training: oracle + hypernetwork distillation + DiffAwareSFTTrainer (`src/rune/training/`).
+- Model: xgrammar (structured output) + PEFT + transformers (`src/rune/model/`).
+- Training: hypernetwork distillation via DiffAwareSFTTrainer (`src/rune/training/`).
+- Base model: Qwen/Qwen3.5-9B.
 - Quality: ruff, mypy (strict), pytest.
 
 ## Hard rules
@@ -33,8 +34,33 @@ uv run mypy src/                    # type check
 - No emoji unless asked. No comments unless the *why* is non-obvious.
 - Always use `uv run` to launch Python.
 
+## Architecture
+
+### Engine loop (`src/rune/engine/`)
+Single `step_node` in a LangGraph StateGraph. Each iteration: `select_action` → render Jinja2 templates → generate adapter via hypernetwork → hot-swap LoRA weights → model.generate → sandbox execution → parse output → update state. Loop terminates when budget exhausted or all subtasks integrated.
+
+Action sequence: `decompose → plan → code → [diagnose → repair]* → integrate`.
+
+Subtask dependencies form a DAG; independent subtasks in the same layer run in parallel.
+
+### Hypernetwork (`src/rune/model/`)
+`ctx-to-lora` HyperLoRA perceiver: trajectory text → base model activations → per-layer LoRA A/B weights → PEFT hot-swap. Continuation rounds use scaled adapter (`cont_multiplier ≈ 1.53` over base scaling).
+
+### Training (`src/rune/training/`)
+Three-stage pipeline: oracle QLoRA → hypernetwork distillation (DiffAwareSFTTrainer + KL+CE) → success gate. Oracle stage is currently a stub.
+
+### Mining (`src/rune/mining/`)
+Session scanner → trajectory extractor → per-action JSONL shards, keyed by `{action}_{benchmark}`.
+
 ## Key Entry Points
 - `src/rune/cli.py` — typer CLI: `rune run`, `rune train`, `rune mine`, `rune bench`
-- `src/rune/engine/graph.py` — LangGraph StateGraph with single step_node
+- `src/rune/engine/graph.py` — LangGraph StateGraph with single step_node + continuation sub-loop
 - `src/rune/engine/policy.py` — deterministic action selection + DAG layer grouping
+- `src/rune/engine/state.py` — RunState TypedDict, Action/Subtask/Feedback dataclasses
 - `src/rune/config.py` — PipelineConfig frozen dataclass
+- `src/rune/model/wrapper.py` — ModelWrapper bridges engine to hypernetwork + inference
+- `src/rune/model/hypernetwork.py` — HyperLoRA loader + adapter weight generation
+- `src/rune/model/inference.py` — xgrammar-constrained generation with thinking phase
+- `src/rune/training/orchestrator.py` — three-stage training pipeline
+- `src/rune/bench/runner.py` — benchmark runner with pass@1 scoring
+- `src/rune/bench/hpo.py` — Optuna HPO over engine params
