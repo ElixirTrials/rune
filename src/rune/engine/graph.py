@@ -171,6 +171,10 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     results: list[tuple[Action, str, str, str | None]] = []
     cont_budget_spent = 0
     for action in actions:
+        import torch  # noqa: PLC0415
+
+        torch.cuda.empty_cache()
+
         ctx = state_to_ctx(state, action)
         trajectory_text = render_template(action.trajectory_template, **ctx)
         prompt_text = render_template(action.prompt_template, **ctx)
@@ -181,6 +185,8 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             for k, v in adapter.state_dict.items()
         }
         model.hotswap_adapter(scaled_sd)
+        adapter_id = adapter.adapter_id
+        del adapter, scaled_sd
         result = await model.generate(
             prompt=prompt_text,
             system_prompt=action.system_prompt,
@@ -224,6 +230,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     for k, v in cont_adapter.state_dict.items()
                 }
                 model.hotswap_adapter(cont_sd)
+                del cont_adapter, cont_sd
 
                 result = await model.generate(
                     prompt=cont_prompt,
@@ -271,7 +278,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             )
 
         target_name = action.target_subtask or ""
-        results.append((action, target_name, raw_text, adapter.adapter_id))
+        results.append((action, target_name, raw_text, adapter_id))
 
         if mlflow.active_run() is not None:
             prefix = f"step_{state['step']}/{action.name}"
