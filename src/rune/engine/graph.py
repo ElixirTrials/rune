@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -181,13 +182,54 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             repetition_penalty=repetition_penalty,
             top_p=top_p,
         )
-        if result.truncated:
+        raw_text = result.text
+        if action.executes_code and result.truncated:
+            cont_multiplier = run_config.get("cont_multiplier", 1.53)
+            cont_max_tokens = run_config.get("cont_max_tokens", 128)
+            cont_scaling = adapter_scaling * cont_multiplier
+            try:
+                accumulated_code = CodeResult.model_validate_json(result.text).code
+            except Exception:
+                accumulated_code = result.text
+            budget = state["budget_remaining"] - 1
+
+            while result.truncated and budget > 0:
+                cont_ctx = {
+                    **ctx,
+                    "accumulated_code": accumulated_code,
+                    "resume_tail": "\n".join(accumulated_code.splitlines()[-4:]),
+                }
+                cont_traj = render_template("code_continue", **cont_ctx)
+                cont_prompt = render_template("prompt_code_continue", **cont_ctx)
+
+                cont_adapter = model.generate_adapter(cont_traj)
+                cont_sd = {
+                    k: v * cont_scaling if "lora_B" in k else v
+                    for k, v in cont_adapter.state_dict.items()
+                }
+                model.hotswap_adapter(cont_sd)
+
+                result = await model.generate(
+                    prompt=cont_prompt,
+                    system_prompt=action.system_prompt,
+                    output_schema=None,
+                    max_tokens=cont_max_tokens,
+                    temperature=temperature,
+                    repetition_penalty=repetition_penalty,
+                    top_p=top_p,
+                )
+                accumulated_code += result.text
+                budget -= 1
+
+            raw_text = json.dumps({"code": accumulated_code})
+        elif result.truncated:
             logger.warning(
                 "Truncated output for %s/%s after completion retry",
                 action.name, action.target_subtask or "",
             )
+
         target_name = action.target_subtask or ""
-        results.append((action, target_name, result.text, adapter.adapter_id))
+        results.append((action, target_name, raw_text, adapter.adapter_id))
 
         if mlflow.active_run() is not None:
             prefix = f"step_{state['step']}/{action.name}"

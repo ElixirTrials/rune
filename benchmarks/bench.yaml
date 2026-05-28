@@ -35,9 +35,9 @@ hpo:
   max_phase_iterations:
     low: 3
     high: 10
-  continuation_scaling:
-    low: 0.3
-    high: 1.0
-    log: true
-  cont_max_tokens: 512
+  cont_multiplier:
+    low: 1.0
+    high: 2.5
+    log: false
+  cont_max_tokens: 128
   no_repeat_ngram_size: 12

@@ -41,6 +41,8 @@ class PipelineConfig:
     prompt_style: str = "skeleton"
     trajectory_style: str = "prose"
     adapter_ttl_days: int = 7
+    cont_multiplier: float = 1.53
+    cont_max_tokens: int = 128
     checkpoint_path: str = ""
     bench: dict[str, Any] = field(default_factory=dict)
     hpo: dict[str, Any] = field(default_factory=dict)
