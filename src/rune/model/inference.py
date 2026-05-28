@@ -92,44 +92,39 @@ async def generate(
                 prefix_ids = encoded.to(model.device)
             thinking_text = ""
 
-        # Phase 2: constrained generation (xgrammar when schema provided)
-        logits_processor_list: list[Any] = []
-        compiled: Any = None
-        if output_schema is not None:
-            base_model = getattr(model, "base_model", model)
-            model_config = getattr(base_model, "config", None)
-            text_cfg = getattr(model_config, "text_config", model_config)
-            vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
+        # Phase 2: JSON-constrained generation with xgrammar
+        base_model = getattr(model, "base_model", model)
+        model_config = getattr(base_model, "config", None)
+        text_cfg = getattr(model_config, "text_config", model_config)
+        vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
 
-            tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-                tokenizer, vocab_size=vocab_size
-            )
-            compiler = xgr.GrammarCompiler(tokenizer_info)
-            compiled = compiler.compile_json_schema(
-                output_schema, max_whitespace_cnt=_MAX_WHITESPACE
-            )
-            logits_processor_list = [xgr.contrib.hf.LogitsProcessor(compiled)]
+        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+            tokenizer, vocab_size=vocab_size
+        )
+        compiler = xgr.GrammarCompiler(tokenizer_info)
+        compiled = compiler.compile_json_schema(
+            output_schema, max_whitespace_cnt=_MAX_WHITESPACE
+        )
+        logits_processor = xgr.contrib.hf.LogitsProcessor(compiled)
 
         prefix_mask = torch.ones_like(prefix_ids)
-        generate_kwargs: dict[str, Any] = {
-            "attention_mask": prefix_mask,
-            "pad_token_id": tokenizer.eos_token_id,
-            "max_new_tokens": max_tokens,
-            "repetition_penalty": repetition_penalty,
-            "no_repeat_ngram_size": no_repeat_ngram_size,
-            **sampling,
-        }
-        if logits_processor_list:
-            generate_kwargs["logits_processor"] = logits_processor_list
-
         with torch.no_grad():
-            structured_output = model.generate(prefix_ids, **generate_kwargs)
+            structured_output = model.generate(
+                prefix_ids,
+                attention_mask=prefix_mask,
+                pad_token_id=tokenizer.eos_token_id,
+                max_new_tokens=max_tokens,
+                repetition_penalty=repetition_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+                logits_processor=[logits_processor],
+                **sampling,
+            )
         result_tokens = structured_output[0][prefix_ids.shape[1] :]
         result_text = tokenizer.decode(result_tokens, skip_special_tokens=True)
         total_tokens = prefix_ids.shape[1] + len(result_tokens)
 
         truncated = len(result_tokens) >= max_tokens
-        if truncated and compiled is not None:
+        if truncated:
             result_text, extra, completed = _try_completion(
                 model, tokenizer, result_text, structured_output,
                 compiled, max_tokens, repetition_penalty, sampling,
