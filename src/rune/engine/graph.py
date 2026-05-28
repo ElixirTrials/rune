@@ -12,6 +12,12 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from rune.engine.continuation import (
+    dedup_code,
+    degeneration_score,
+    extract_partial_code,
+    merge_overlap,
+)
 from rune.engine.parse import CodeResult, IntegrateResult, parse_output, render_template
 from rune.engine.policy import select_action
 from rune.engine.state import (
@@ -186,15 +192,13 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         raw_text = result.text
         if action.name in ("code", "repair") and result.truncated:
             cont_multiplier = run_config.get("cont_multiplier", 1.53)
-            cont_max_tokens = run_config.get("cont_max_tokens", 128)
+            cont_no_repeat = run_config.get("no_repeat_ngram_size", 12)
             cont_scaling = adapter_scaling * cont_multiplier
-            try:
-                accumulated_code = CodeResult.model_validate_json(result.text).code
-            except Exception:
-                accumulated_code = result.text
+            accumulated_code = extract_partial_code(result.text)
             budget = state["budget_remaining"] - 1
+            empty_rounds = 0
 
-            while result.truncated and budget > 0:
+            while result.truncated and budget > 0 and empty_rounds < 2:
                 cont_ctx = {
                     **ctx,
                     "accumulated_code": accumulated_code,
@@ -213,13 +217,37 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 result = await model.generate(
                     prompt=cont_prompt,
                     system_prompt=action.system_prompt,
-                    output_schema=None,
-                    max_tokens=cont_max_tokens,
+                    output_schema=CodeResult,
+                    max_tokens=run_config.get("max_tokens", 2048),
                     temperature=temperature,
                     repetition_penalty=repetition_penalty,
                     top_p=top_p,
+                    no_repeat_ngram_size=cont_no_repeat,
+                    thinking_budget=0,
                 )
-                accumulated_code += result.text
+
+                chunk = extract_partial_code(result.text)
+                chunk = merge_overlap(accumulated_code, chunk)
+                chunk = dedup_code(chunk, accumulated_code)
+
+                degen = degeneration_score(chunk)
+                logger.info(
+                    "continuation round: +%d chars, degen=%.2f",
+                    len(chunk),
+                    degen,
+                )
+
+                if chunk.strip():
+                    accumulated_code = (
+                        accumulated_code.rstrip()
+                        + "\n"
+                        + chunk.strip()
+                        + "\n"
+                    )
+                    empty_rounds = 0
+                else:
+                    empty_rounds += 1
+
                 budget -= 1
                 cont_budget_spent += 1
 
@@ -241,7 +269,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             mlflow.log_text(prompt_text, f"{prefix}/prompt.txt")
             mlflow.log_text(result.text, f"{prefix}/output.txt")
 
-    def _extract_code(action: Action, raw_json: str) -> str:
+    def _parse_action_code(action: Action, raw_json: str) -> str:
         if action.name == "integrate":
             return IntegrateResult.model_validate_json(raw_json).code
         return CodeResult.model_validate_json(raw_json).code
@@ -250,7 +278,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     code_action_names: list[str] = []
     for a, name, text, _ in results:
         if a.executes_code:
-            code_map[name] = _extract_code(a, text)
+            code_map[name] = _parse_action_code(a, text)
             code_action_names.append(name)
 
     sandbox_results = await asyncio.gather(
