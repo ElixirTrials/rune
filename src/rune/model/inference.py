@@ -214,3 +214,75 @@ def _try_completion(
         len(cont_tokens), completed,
     )
     return partial_json + continuation, len(cont_tokens), completed
+
+
+async def generate_continuation(
+    model: Any,
+    tokenizer: Any,
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    assistant_prefix: str,
+    max_tokens: int = 2048,
+    temperature: float = 0.3,
+    top_p: float = 0.9,
+    repetition_penalty: float = 1.1,
+    no_repeat_ngram_size: int = 0,
+) -> GenerationResult:
+    import asyncio  # noqa: PLC0415
+
+    def _run() -> GenerationResult:
+        import torch  # noqa: PLC0415
+
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+        messages.append({"role": "assistant", "content": assistant_prefix})
+
+        template_ids = tokenizer.apply_chat_template(
+            messages,
+            return_tensors="pt",
+            continue_final_message=True,
+            enable_thinking=False,
+        )
+        if hasattr(template_ids, "input_ids"):
+            template_ids = template_ids["input_ids"]
+        template_ids = template_ids.to(model.device)
+
+        sampling: dict[str, Any] = (
+            {"do_sample": True, "temperature": temperature, "top_p": top_p}
+            if temperature > 0
+            else {"do_sample": False}
+        )
+
+        gen_kwargs: dict[str, Any] = {
+            "pad_token_id": tokenizer.eos_token_id,
+            "eos_token_id": tokenizer.eos_token_id,
+            "max_new_tokens": max_tokens,
+            "repetition_penalty": repetition_penalty,
+            **sampling,
+        }
+        if no_repeat_ngram_size > 0:
+            gen_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
+
+        attention_mask = torch.ones_like(template_ids)
+        with torch.no_grad():
+            output = model.generate(
+                template_ids,
+                attention_mask=attention_mask,
+                **gen_kwargs,
+            )
+
+        new_tokens = output[0][template_ids.shape[1] :]
+        new_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+        truncated = len(new_tokens) >= max_tokens
+
+        return GenerationResult(
+            text=new_text,
+            thinking="",
+            tokens_used=template_ids.shape[1] + len(new_tokens),
+            truncated=truncated,
+        )
+
+    return await asyncio.to_thread(_run)

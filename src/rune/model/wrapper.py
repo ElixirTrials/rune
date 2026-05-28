@@ -10,6 +10,7 @@ from rune.model.adapter import hotswap_adapter as hotswap_adapter_fn
 from rune.model.hypernetwork import generate_adapter_weights
 from rune.model.inference import GenerationResult
 from rune.model.inference import generate as inference_generate
+from rune.model.inference import generate_continuation as inference_generate_continuation
 
 if TYPE_CHECKING:
     from rune.config import PipelineConfig
@@ -153,4 +154,28 @@ class ModelWrapper:
             no_repeat_ngram_size=no_repeat_ngram_size,
             thinking_budget=thinking_budget,
             skip_completion_retry=skip_completion_retry,
+        )
+
+    async def generate_continuation(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        assistant_prefix: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.3,
+        repetition_penalty: float = 1.1,
+        top_p: float = 0.9,
+        no_repeat_ngram_size: int = 0,
+    ) -> GenerationResult:
+        return await inference_generate_continuation(
+            self._base_model,
+            self._tokenizer,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            assistant_prefix=assistant_prefix,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            repetition_penalty=repetition_penalty,
+            top_p=top_p,
+            no_repeat_ngram_size=no_repeat_ngram_size,
         )

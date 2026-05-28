@@ -121,3 +121,37 @@ class TestModelWrapper:
         cfg = PipelineConfig(checkpoint_path="")
         with pytest.raises(ValueError, match="checkpoint_path"):
             ModelWrapper.from_config(cfg)
+
+
+class TestGenerateContinuation:
+    def _make_wrapper(self) -> Any:
+        cfg = PipelineConfig()
+        base_model = MagicMock()
+        tokenizer = MagicMock()
+        hypernet = MagicMock()
+        hypernet.config = MagicMock()
+        hypernet.config.layer_indices = [0, 1, 2]
+        return ModelWrapper(base_model, tokenizer, hypernet, config=cfg)
+
+    def test_delegates_to_inference(self) -> None:
+        expected = GenerationResult(
+            text="    return self.data\n", thinking="", tokens_used=10,
+        )
+        with patch(
+            "rune.model.wrapper.inference_generate_continuation",
+            new=AsyncMock(return_value=expected),
+        ) as mock_gen:
+            wrapper = self._make_wrapper()
+            result = asyncio.run(
+                wrapper.generate_continuation(
+                    system_prompt="Output only Python code.",
+                    user_prompt="Write a class",
+                    assistant_prefix="class Node:\n    def __init__(self):\n",
+                    max_tokens=512,
+                )
+            )
+            assert result is expected
+            call_kwargs = mock_gen.call_args.kwargs
+            assert call_kwargs["system_prompt"] == "Output only Python code."
+            assert call_kwargs["assistant_prefix"] == "class Node:\n    def __init__(self):\n"
+            assert call_kwargs["max_tokens"] == 512
