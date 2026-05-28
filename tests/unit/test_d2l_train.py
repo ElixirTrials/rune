@@ -10,12 +10,6 @@ import pytest
 
 from rune.training.d2l_train import D2LTrainConfig, run_distillation
 
-# Stub out optional heavy dependencies so tests run without GPU/datasets.
-_STUB_MODULES = ["datasets", "trl"]
-for _mod in _STUB_MODULES:
-    if _mod not in sys.modules:
-        sys.modules[_mod] = MagicMock()  # type: ignore[assignment]
-
 
 class TestD2LTrainConfig:
     def test_defaults(self) -> None:

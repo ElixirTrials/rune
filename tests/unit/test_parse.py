@@ -120,7 +120,7 @@ class TestParseOutput:
         assert updates["code_passed"]["task_a"] is True
         assert "print(1)" in updates["code_results"]["task_a"]
 
-    def test_code_resample_preserves_retries(self) -> None:
+    def test_code_increments_retries(self) -> None:
         action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
         fb = Feedback(stdout="ok", stderr="", exit_code=0)
         state_stub: dict = {
@@ -132,7 +132,7 @@ class TestParseOutput:
         }
         raw = json.dumps({"code": "print('new')"})
         updates = parse_output(action, raw, fb, state_stub)
-        assert updates["retries"]["task_a"] == 2
+        assert updates["retries"]["task_a"] == 3
         assert "task_a" not in updates["diagnosis"]
 
     def test_repair_increments_retries(self) -> None:

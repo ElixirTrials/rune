@@ -18,7 +18,6 @@ class PipelineConfig:
     max_tokens: int = 2048
     repetition_penalty: float = 1.1
     top_p: float = 0.9
-    top_k: int = 20
     thinking_budget: int = 1024
     max_phase_iterations: int = 10
     cont_multiplier: float = 1.53

@@ -29,6 +29,7 @@ def run(
 
     from rune.config import PipelineConfig, load_config  # noqa: PLC0415
     from rune.engine.graph import create_engine  # noqa: PLC0415
+    from rune.engine.state import make_initial_state  # noqa: PLC0415
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
     from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
 
@@ -41,24 +42,7 @@ def run(
 
     model = ModelWrapper.from_config(cfg)
 
-    initial_state: dict[str, Any] = {
-        "task": task,
-        "subtasks": [],
-        "interfaces": {},
-        "plans": {},
-        "code_results": {},
-        "code_passed": {},
-        "retries": {},
-        "integrated_code": "",
-        "current_adapter": None,
-        "feedback": {},
-        "diagnosis": {},
-        "integration_feedback": None,
-        "actions": [],
-        "trajectory": [],
-        "step": 0,
-        "budget_remaining": cfg.max_phase_iterations,
-    }
+    initial_state = make_initial_state(task, cfg.max_phase_iterations)
 
     engine = create_engine()
     with tracked_run("run", params=cfg.to_dict()):

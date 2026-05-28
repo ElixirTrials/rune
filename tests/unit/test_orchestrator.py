@@ -23,10 +23,11 @@ def base_config() -> D2LTrainConfig:
 
 
 class TestRunOracleTraining:
-    def test_runs_without_error(
+    def test_raises_not_implemented(
         self, base_config: D2LTrainConfig, tmp_path: Path
     ) -> None:
-        _run_oracle_training(base_config, tmp_path)
+        with pytest.raises(NotImplementedError):
+            _run_oracle_training(base_config, tmp_path)
 
 
 class TestRunSuccessGate:

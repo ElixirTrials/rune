@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
@@ -9,6 +10,8 @@ from pydantic import BaseModel
 
 from rune.engine.json_repair import extract_code_value
 from rune.engine.state import Action, Feedback, Subtask
+
+logger = logging.getLogger(__name__)
 
 _env = Environment(loader=PackageLoader("rune", "templates"), undefined=StrictUndefined)
 
@@ -117,7 +120,7 @@ def parse_output(
                 raw,
                 feedback,
                 state,
-                retries_delta=0,
+                retries_delta=1,
             )
         case "repair":
             return _parse_code_action(
@@ -144,4 +147,8 @@ def parse_output(
             for entry in diag_result.entries:
                 diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
             return {"diagnosis": diagnosis}
+    logger.warning(
+        "Unknown action %r in parse_output, returning empty update",
+        action.name,
+    )
     return {}

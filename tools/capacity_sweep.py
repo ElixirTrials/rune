@@ -18,6 +18,7 @@ from typing import Any
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+from rune.model.adapter import scale_lora_b  # noqa: E402  # isort: skip
 from tools.cont_probe import (  # noqa: E402  # isort: skip
     PROMPT_TEMPLATES,
     SCENARIOS,
@@ -25,7 +26,6 @@ from tools.cont_probe import (  # noqa: E402  # isort: skip
     _extract_code,
     _extract_think,
     _generate_plaintext,
-    _scale_b_only_inplace,
     _summarize_think,
 )
 
@@ -114,7 +114,7 @@ def main() -> None:
         "Output only Python code. No commentary, no explanations, "
         "no markdown fences. Continue exactly from where the code left off."
     )
-    no_repeat_ngram = cfg.hpo.get("no_repeat_ngram_size", 12)
+    no_repeat_ngram = cfg.no_repeat_ngram_size
 
     ts = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
     run_dir = Path("runs") / "capacity_sweep" / ts
@@ -149,7 +149,7 @@ def main() -> None:
 
             adapter = model.generate_adapter(trajectory, offload_base=False)
             model.hotswap_adapter(
-                _scale_b_only_inplace(adapter.state_dict, scaling),
+                scale_lora_b(adapter.state_dict, scaling),
             )
 
             prompt = prompt_fn(accumulated, 0, LAST_LINES, task_text)

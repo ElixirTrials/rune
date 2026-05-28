@@ -173,15 +173,3 @@ class AdapterRegistry:
         self._conn.commit()
         return cursor.rowcount
 
-    def _backdate(self, adapter_id: str, days: int) -> None:
-        """Set an adapter's created_at to days ago (test helper).
-
-        Args:
-            adapter_id: Adapter to modify.
-            days: Number of days to subtract from the current time.
-        """
-        self._conn.execute(
-            "UPDATE adapters SET created_at = ? WHERE adapter_id = ?",
-            (time.time() - days * 86400, adapter_id),
-        )
-        self._conn.commit()

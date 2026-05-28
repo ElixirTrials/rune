@@ -78,7 +78,6 @@ class RunState(TypedDict):
     Attributes:
         task: Top-level task description provided by the user.
         subtasks: Decomposed subtasks.
-        interfaces: Mapping of subtask name to extracted code signatures.
         plans: Mapping of subtask name to planning prose.
         code_results: Mapping of subtask name to generated source code.
         code_passed: Mapping of subtask name to sandbox pass/fail.
@@ -96,7 +95,6 @@ class RunState(TypedDict):
 
     task: str
     subtasks: list[Subtask]
-    interfaces: dict[str, str]
     plans: dict[str, str]
     code_results: dict[str, str]
     code_passed: dict[str, bool]
@@ -110,3 +108,23 @@ class RunState(TypedDict):
     trajectory: list[StepRecord]
     step: int
     budget_remaining: int
+
+
+def make_initial_state(task: str, budget: int) -> RunState:
+    return {
+        "task": task,
+        "subtasks": [],
+        "plans": {},
+        "code_results": {},
+        "code_passed": {},
+        "retries": {},
+        "integrated_code": "",
+        "current_adapter": None,
+        "feedback": {},
+        "diagnosis": {},
+        "integration_feedback": None,
+        "actions": [],
+        "trajectory": [],
+        "step": 0,
+        "budget_remaining": budget,
+    }

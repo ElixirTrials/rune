@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rune.engine.state import make_initial_state
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
@@ -101,24 +102,7 @@ async def run_benchmark(
     results: list[TaskResult] = []
 
     for task in tasks:
-        initial_state: dict[str, Any] = {
-            "task": task.description,
-            "subtasks": [],
-            "interfaces": {},
-            "plans": {},
-            "code_results": {},
-            "code_passed": {},
-            "retries": {},
-            "integrated_code": "",
-            "current_adapter": None,
-            "feedback": {},
-            "integration_feedback": None,
-            "diagnosis": {},
-            "actions": [],
-            "trajectory": [],
-            "step": 0,
-            "budget_remaining": budget,
-        }
+        initial_state = make_initial_state(task.description, budget)
 
         try:
             final_state: dict[str, Any] = await engine.ainvoke(

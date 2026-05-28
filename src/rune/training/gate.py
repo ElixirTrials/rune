@@ -48,7 +48,9 @@ def evaluate_gate(
     regressions: dict[str, float] = {}
 
     for bench, new_score in new_scores.items():
-        base_score = baseline_scores.get(bench, 0.0)
+        if bench not in baseline_scores:
+            continue
+        base_score = baseline_scores[bench]
         delta = new_score - base_score
         if delta >= MIN_IMPROVEMENT:
             improvements[bench] = delta

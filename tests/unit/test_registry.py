@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from rune.registry.store import AdapterRegistry
@@ -43,7 +44,11 @@ class TestAdapterRegistry:
     def test_prune_by_age(self, tmp_path: Path) -> None:
         reg = AdapterRegistry.create(":memory:")
         reg.register("old", str(tmp_path / "old.st"), None, "code", "s1", 0)
-        reg._backdate("old", days=10)
+        reg._conn.execute(
+            "UPDATE adapters SET created_at = ? WHERE adapter_id = ?",
+            (time.time() - 10 * 86400, "old"),
+        )
+        reg._conn.commit()
         reg.register("new", str(tmp_path / "new.st"), None, "code", "s1", 1)
         (tmp_path / "old.st").write_bytes(b"\x00")
         pruned = reg.prune(max_age_days=7)

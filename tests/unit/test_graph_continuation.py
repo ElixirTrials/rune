@@ -18,7 +18,6 @@ def _make_state(*, code: str = "", exit_code: int = 0) -> dict[str, Any]:
     return {
         "task": "Write a class LinkedList with methods append, prepend",
         "subtasks": [subtask],
-        "interfaces": {},
         "plans": {"_main": "Write a LinkedList"},
         "code_results": {"_main": code} if code else {},
         "code_passed": {"_main": exit_code == 0} if code else {},

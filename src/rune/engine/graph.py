@@ -45,6 +45,7 @@ _SIMPLE_SIGNALS = (
 )
 
 _SIMPLE_WORD_LIMIT = 200
+_TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
 
 
 def _is_simple_task(task: str) -> bool:
@@ -59,7 +60,6 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     subtasks = state["subtasks"]
     plans = state.get("plans", {})
     code_results = state.get("code_results", {})
-    interfaces = state.get("interfaces", {})
     feedback_map = state.get("feedback", {})
     task = state["task"]
 
@@ -70,7 +70,6 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         "subtask_count": len(subtasks),
     }
 
-    _TARGETED_ACTIONS = {"plan", "code", "repair"}
     if action and action.name in _TARGETED_ACTIONS and not action.target_subtask:
         raise ValueError(
             f"Action {action.name!r} requires target_subtask but got "
@@ -92,11 +91,6 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["plan"] = plans.get(target_name, "")
         ctx["target_subtask"] = target_name
 
-        dep_ifaces: list[str] = []
-        for dep in subtask_obj.depends_on:
-            if dep in interfaces:
-                dep_ifaces.append(f"# {dep}\n{interfaces[dep]}")
-        ctx["dependency_interfaces"] = "\n".join(dep_ifaces)
         ctx["existing_code"] = code_results.get(target_name, "")
 
         subtask_fb = feedback_map.get(target_name)
@@ -167,6 +161,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     repetition_penalty = run_config.get("repetition_penalty", 1.1)
     top_p = run_config.get("top_p", 0.9)
     presence_penalty = run_config.get("presence_penalty", 0.0)
+    thinking_budget = run_config.get("thinking_budget", 1024)
 
     results: list[tuple[Action, str, str, str | None]] = []
     for action in actions:
@@ -192,6 +187,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             repetition_penalty=repetition_penalty,
             top_p=top_p,
             presence_penalty=presence_penalty,
+            thinking_budget=thinking_budget,
         )
         raw_text = result.text
         needs_continuation = result.truncated

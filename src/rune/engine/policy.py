@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from graphlib import TopologicalSorter
 from typing import Any
 
@@ -13,6 +14,8 @@ from rune.engine.parse import (
     PlanResult,
 )
 from rune.engine.state import Action, Subtask
+
+logger = logging.getLogger(__name__)
 
 MAX_REPAIRS = 2
 MAX_RETRIES = MAX_REPAIRS * 2
@@ -129,9 +132,11 @@ def select_action(state: dict[str, Any]) -> list[Action]:
             and all(state["code_passed"].get(d, False) for d in s.depends_on)
         ]
         actions: list[Action] = []
+        exhausted: list[str] = []
         for s in ready:
             repairs = state["retries"].get(s.name, 0)
             if repairs >= MAX_RETRIES:
+                exhausted.append(s.name)
                 continue
             has_code = s.name in state["code_results"]
             has_diagnosis = s.name in state.get("diagnosis", {})
@@ -142,7 +147,13 @@ def select_action(state: dict[str, Any]) -> list[Action]:
                 actions.append(_with_target("repair", s.name))
             else:
                 actions.append(_with_target("diagnose", s.name))
-        return actions if actions else []
+        if actions:
+            return actions
+        if exhausted:
+            logger.warning(
+                "Subtasks %s exhausted all %d retries, falling through to integrate",
+                exhausted, MAX_RETRIES,
+            )
 
     # All subtasks pass — integrate or done
     if state["integrated_code"]:

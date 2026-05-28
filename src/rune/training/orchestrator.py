@@ -22,7 +22,10 @@ def _run_oracle_training(config: D2LTrainConfig, corpus_dir: Path) -> None:
         config: Training configuration.
         corpus_dir: Directory containing per-bin JSONL corpora.
     """
-    logger.info("Stage 1: oracle training from %s", corpus_dir)
+    raise NotImplementedError(
+        "Oracle training not yet implemented — "
+        "see rune-gpu libs/model-training for reference"
+    )
 
 
 def _run_hypernetwork_distillation(config: D2LTrainConfig) -> None:
@@ -165,8 +168,12 @@ async def _run_hpo(
         new_scores: dict[str, float] = {}
         return float(_run_success_gate(baseline_scores, new_scores))
 
+    import asyncio  # noqa: PLC0415
+
     study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=n_trials, callbacks=[mlflow_cb])
+    await asyncio.to_thread(
+        study.optimize, objective, n_trials=n_trials, callbacks=[mlflow_cb]
+    )
 
     logger.info(
         "HPO complete: best_value=%s best_params=%s",

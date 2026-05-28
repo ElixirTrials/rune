@@ -10,15 +10,14 @@ def _initial_state(task: str = "add two numbers", budget: int = 10) -> RunState:
     return {
         "task": task,
         "subtasks": [],
-        "interfaces": {},
         "plans": {},
         "code_results": {},
         "code_passed": {},
         "retries": {},
         "integrated_code": "",
         "current_adapter": None,
-        "feedback": None,
-        "diagnosis": None,
+        "feedback": {},
+        "diagnosis": {},
         "actions": [MagicMock()],  # non-empty so first step runs
         "trajectory": [],
         "step": 0,

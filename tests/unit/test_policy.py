@@ -9,7 +9,6 @@ def _make_state(**overrides: object) -> dict:
     base: dict = {
         "task": "test",
         "subtasks": [],
-        "interfaces": {},
         "plans": {},
         "code_results": {},
         "code_passed": {},
@@ -100,7 +99,7 @@ class TestSelectAction:
         assert actions[0].name == "code"
         assert actions[0].target_subtask == "a"
 
-    def test_max_retries_exhausted_skips_subtask(self) -> None:
+    def test_max_retries_exhausted_falls_through_to_integrate(self) -> None:
         subtasks = [Subtask("a", "do a", [])]
         fb = Feedback(stdout="", stderr="err", exit_code=1)
         state = _make_state(
@@ -112,7 +111,8 @@ class TestSelectAction:
             feedback={"a": fb},
         )
         actions = select_action(state)
-        assert actions == []
+        assert len(actions) == 1
+        assert actions[0].name == "integrate"
 
     def test_all_passing_returns_integrate(self) -> None:
         subtasks = [Subtask("a", "do a", [])]

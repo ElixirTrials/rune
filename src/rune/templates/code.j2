@@ -3,10 +3,6 @@ ROLE: coder
 {% endif %}SUBTASK: {{ subtask.name }} ({{ subtask_index }}/{{ total_subtasks }})
 {% if subtask.description %}DESCRIPTION: {{ subtask.description[:500] }}
 {% endif %}
-{% if dependency_interfaces %}
-COMPLETED DEPENDENCIES (use these interfaces in your code):
-{{ dependency_interfaces[:800] }}
-{% endif %}
 PLAN:
 {{ plan[:1200] }}
 {% if code_trajectory %}

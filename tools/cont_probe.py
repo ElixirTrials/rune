@@ -861,7 +861,7 @@ def main() -> None:
         "Output only Python code. No commentary, no explanations, "
         "no markdown fences. Continue exactly from where the code left off."
     )
-    no_repeat_ngram = cfg.hpo.get("no_repeat_ngram_size", 12)
+    no_repeat_ngram = cfg.no_repeat_ngram_size
     traj_fn = TRAJECTORY_FLAVORS[args.trajectory]
     prompt_fn = PROMPT_TEMPLATES[args.prompt_template]
 
