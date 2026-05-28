@@ -228,6 +228,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     top_p=top_p,
                     no_repeat_ngram_size=cont_no_repeat,
                     thinking_budget=0,
+                    skip_completion_retry=True,
                 )
 
                 chunk = extract_partial_code(result.text)

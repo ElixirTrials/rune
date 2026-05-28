@@ -32,6 +32,7 @@ async def generate(
     repetition_penalty: float = 1.1,
     thinking_budget: int = 1024,
     no_repeat_ngram_size: int = 0,
+    skip_completion_retry: bool = False,
 ) -> GenerationResult:
     import asyncio  # noqa: PLC0415
 
@@ -123,7 +124,7 @@ async def generate(
         total_tokens = prefix_ids.shape[1] + len(result_tokens)
 
         truncated = len(result_tokens) >= max_tokens
-        if truncated:
+        if truncated and not skip_completion_retry:
             result_text, extra, completed = _try_completion(
                 model, tokenizer, result_text, structured_output,
                 compiled, max_tokens, repetition_penalty, sampling,

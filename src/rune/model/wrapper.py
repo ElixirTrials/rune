@@ -138,6 +138,7 @@ class ModelWrapper:
         top_p: float = 0.9,
         no_repeat_ngram_size: int = 0,
         thinking_budget: int = 1024,
+        skip_completion_retry: bool = False,
     ) -> GenerationResult:
         return await inference_generate(
             self._base_model,
@@ -151,4 +152,5 @@ class ModelWrapper:
             top_p=top_p,
             no_repeat_ngram_size=no_repeat_ngram_size,
             thinking_budget=thinking_budget,
+            skip_completion_retry=skip_completion_retry,
         )
