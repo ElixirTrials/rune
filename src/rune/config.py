@@ -42,7 +42,7 @@ class PipelineConfig:
     trajectory_style: str = "prose"
     adapter_ttl_days: int = 7
     cont_multiplier: float = 1.53
-    cont_max_tokens: int = 128
+    no_repeat_ngram_size: int = 12
     checkpoint_path: str = ""
     bench: dict[str, Any] = field(default_factory=dict)
     hpo: dict[str, Any] = field(default_factory=dict)

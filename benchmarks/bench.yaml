@@ -9,6 +9,7 @@ max_tokens: 3072
 repetition_penalty: 1.1
 top_p: 0.9
 top_k: 20
+no_repeat_ngram_size: 12
 thinking_budget: 1024
 max_phase_iterations: 10
 
@@ -39,5 +40,3 @@ hpo:
     low: 1.0
     high: 2.5
     log: false
-  cont_max_tokens: 128
-  no_repeat_ngram_size: 12
