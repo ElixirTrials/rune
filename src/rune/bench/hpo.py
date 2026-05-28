@@ -57,12 +57,14 @@ async def run_hpo(
             "max_phase_iterations",
             int_param=True,
         )
+        cont_multiplier = _suggest(trial, "cont_multiplier")
 
         cfg = base_config.override(
             adapter_scaling=adapter_scaling,
             temperature=temperature,
             max_tokens=max_tokens,
             max_phase_iterations=max_phase_iterations,
+            cont_multiplier=cont_multiplier,
         )
 
         bench_config: dict[str, Any] = {

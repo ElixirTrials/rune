@@ -1,4 +1,5 @@
-from rune.sandbox.executor import ExecutionResult, extract_code
+from rune.engine.continuation import extract_code
+from rune.sandbox.executor import ExecutionResult
 
 
 class TestExtractCode:

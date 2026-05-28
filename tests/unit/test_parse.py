@@ -194,6 +194,32 @@ class TestParseOutput:
         assert updates["integrated_code"] != ""
         assert updates["integration_feedback"].exit_code == 0
 
+    def test_integrate_truncated_json_uses_fallback(self) -> None:
+        action = Action(
+            "integrate", "integrate", "prompt_integrate", "", IntegrateResult, True, None
+        )
+        fb = Feedback(stdout="", stderr="SyntaxError", exit_code=1)
+        state_stub: dict = {"feedback": {}, "diagnosis": {}}
+        raw = '{"code": "import os\\ndef main():\\n    print(\\"hello'
+        updates = parse_output(action, raw, fb, state_stub)
+        assert "import os" in updates["integrated_code"] or updates["integrated_code"] == ""
+        assert updates["integration_feedback"].exit_code == 1
+
+    def test_code_truncated_json_uses_fallback(self) -> None:
+        action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
+        fb = Feedback(stdout="", stderr="SyntaxError", exit_code=1)
+        state_stub: dict = {
+            "code_results": {},
+            "code_passed": {},
+            "retries": {},
+            "feedback": {},
+            "diagnosis": {},
+        }
+        raw = '{"code": "x = 1\\ny = 2\\nz = x +'
+        updates = parse_output(action, raw, fb, state_stub)
+        assert "x = 1" in updates["code_results"]["task_a"]
+        assert updates["code_passed"]["task_a"] is False
+
     def test_integrate_failure_stores_integration_feedback(self) -> None:
         action = Action(
             "integrate", "integrate", "prompt_integrate", "", IntegrateResult, True, None

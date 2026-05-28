@@ -29,6 +29,7 @@ from rune.engine.state import (
     StepRecord,
     Subtask,
 )
+from rune.model.adapter import scale_lora_b
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
@@ -180,10 +181,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         prompt_text = render_template(action.prompt_template, **ctx)
 
         adapter = model.generate_adapter(trajectory_text)
-        scaled_sd = {
-            k: v * adapter_scaling if "lora_B" in k else v
-            for k, v in adapter.state_dict.items()
-        }
+        scaled_sd = scale_lora_b(adapter.state_dict, adapter_scaling)
         model.hotswap_adapter(scaled_sd)
         adapter_id = adapter.adapter_id
         del adapter, scaled_sd
@@ -197,7 +195,19 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             top_p=top_p,
         )
         raw_text = result.text
-        if action.name in ("code", "repair") and result.truncated:
+        needs_continuation = result.truncated
+        if action.name in ("code", "repair") and not needs_continuation:
+            _initial_code = extract_partial_code(result.text)
+            try:
+                compile(_initial_code, "<check>", "exec")
+            except SyntaxError:
+                logger.info(
+                    "JSON grammar completed but Python has SyntaxError — "
+                    "entering continuation for %s/%s",
+                    action.name, action.target_subtask or "",
+                )
+                needs_continuation = True
+        if action.name in ("code", "repair") and needs_continuation:
             cont_multiplier = run_config.get("cont_multiplier", 1.53)
             cont_no_repeat = run_config.get("no_repeat_ngram_size", 12)
             cont_scaling = adapter_scaling * cont_multiplier
@@ -211,7 +221,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 "left off."
             )
 
-            while result.truncated and cont_budget > 0 and empty_rounds < 2:
+            while cont_budget > 0 and empty_rounds < 2:
                 import torch  # noqa: PLC0415
 
                 torch.cuda.empty_cache()
@@ -225,10 +235,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 cont_prompt = render_template("prompt_code_continue", **cont_ctx)
 
                 cont_adapter = model.generate_adapter(cont_traj)
-                cont_sd = {
-                    k: v * cont_scaling if "lora_B" in k else v
-                    for k, v in cont_adapter.state_dict.items()
-                }
+                cont_sd = scale_lora_b(cont_adapter.state_dict, cont_scaling)
                 model.hotswap_adapter(cont_sd)
                 del cont_adapter, cont_sd
 
@@ -269,6 +276,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
                 cont_budget -= 1
                 cont_budget_spent += 1
+
+                if not result.truncated:
+                    break
 
             raw_text = json.dumps({"code": accumulated_code})
         elif result.truncated:

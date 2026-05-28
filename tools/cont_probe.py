@@ -23,6 +23,7 @@ from typing import Any
 
 from rune.engine.continuation import dedup_code as _dedup_code
 from rune.engine.continuation import extract_code as _extract_code
+from rune.model.adapter import scale_lora_b
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
@@ -407,11 +408,6 @@ def _first_n_lines(text: str, n: int) -> str:
     return "\n".join(lines[:n])
 
 
-def _scale_b_only_inplace(sd: dict[str, Any], factor: float) -> dict[str, Any]:
-    for k, v in sd.items():
-        if "lora_B" in k:
-            sd[k] = v * factor
-    return sd
 
 
 def _coherence_at_boundary(before: str, after: str) -> float:
@@ -886,7 +882,7 @@ def main() -> None:
         print("Generating adapter...", file=sys.stderr, flush=True)
         adapter = model.generate_adapter(trajectory, offload_base=False)
         model.hotswap_adapter(
-            _scale_b_only_inplace(adapter.state_dict, args.scaling),
+            scale_lora_b(adapter.state_dict, args.scaling),
         )
 
         prompt = prompt_fn(accumulated, args.first_lines, args.last_lines, task_text)

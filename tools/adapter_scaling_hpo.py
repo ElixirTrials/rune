@@ -19,6 +19,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from rune.model.adapter import scale_lora_b
+
 logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
     level=logging.INFO,
@@ -89,8 +91,6 @@ def _coherence(output: str, fn_name: str) -> float:
     return has_fn * 0.6 + ascii_ratio * 0.4
 
 
-def _scale_b_only(sd: dict[str, Any], s: float) -> dict[str, Any]:
-    return {k: v * s if "lora_B" in k else v for k, v in sd.items()}
 
 
 def _run_trial(
@@ -125,7 +125,7 @@ def _run_trial(
             )
         )
 
-        model.hotswap_adapter(_scale_b_only(raw_sd, scaling))
+        model.hotswap_adapter(scale_lora_b(raw_sd, scaling))
         adapted = asyncio.run(
             model.generate(
                 p.task,
@@ -137,7 +137,7 @@ def _run_trial(
         e_traj = _enriched_trajectory(p.task, p.fn_name)
         enriched_adapter = model.generate_adapter(e_traj)
         model.hotswap_adapter(
-            _scale_b_only(enriched_adapter.state_dict, scaling),
+            scale_lora_b(enriched_adapter.state_dict, scaling),
         )
         enriched = asyncio.run(
             model.generate(
@@ -151,7 +151,7 @@ def _run_trial(
             _contradictory_trajectory(),
         )
         model.hotswap_adapter(
-            _scale_b_only(contra_adapter.state_dict, scaling),
+            scale_lora_b(contra_adapter.state_dict, scaling),
         )
         contradictory = asyncio.run(
             model.generate(

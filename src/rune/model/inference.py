@@ -8,8 +8,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_MAX_WHITESPACE = 16
-
 
 @dataclass
 class GenerationResult:
@@ -96,6 +94,7 @@ async def generate(
         # Phase 2: generation
         gen_kwargs: dict[str, Any] = {
             "pad_token_id": tokenizer.eos_token_id,
+            "eos_token_id": tokenizer.eos_token_id,
             "max_new_tokens": max_tokens,
             "repetition_penalty": repetition_penalty,
             **sampling,

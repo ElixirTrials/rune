@@ -1,11 +1,9 @@
-"""LoRA adapter persistence and hot-swap utilities."""
+"""LoRA adapter utilities: scaling, hot-swap."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -24,31 +22,15 @@ class AdapterResult:
     state_dict: dict[str, Any]
 
 
-async def persist_adapter(
-    state_dict: dict[str, Any],
-    adapter_id: str,
-    output_dir: Path,
-) -> Path:
-    """Save adapter weights to a safetensors file asynchronously.
+def scale_lora_b(state_dict: dict[str, Any], factor: float) -> dict[str, Any]:
+    """Scale only lora_B parameters in an adapter state dict.
 
-    Args:
-        state_dict: PEFT state dict to serialise.
-        adapter_id: Used as the file stem.
-        output_dir: Directory to write the file into.
-
-    Returns:
-        Path to the written safetensors file.
+    Returns a new dict; the original is not mutated.
     """
-    path = output_dir / f"{adapter_id}.safetensors"
-
-    def _write() -> None:
-        from safetensors.torch import save_file  # noqa: PLC0415
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        save_file(state_dict, str(path))
-
-    await asyncio.to_thread(_write)
-    return path
+    return {
+        k: v * factor if "lora_B" in k else v
+        for k, v in state_dict.items()
+    }
 
 
 def hotswap_adapter(model: Any, state_dict: dict[str, Any]) -> None:

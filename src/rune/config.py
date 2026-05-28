@@ -10,23 +10,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class PipelineConfig:
-    """Frozen configuration for the Rune inference and training pipeline.
-
-    Attributes:
-        model_id: HuggingFace model identifier.
-        adapter_scaling: LoRA adapter weight scaling factor.
-        temperature: Sampling temperature for freeform generation.
-        max_tokens: Maximum new tokens per generation call.
-        repetition_penalty: Repetition penalty applied during generation.
-        top_p: Nucleus sampling probability cutoff.
-        thinking_budget: Max tokens allocated to chain-of-thought thinking.
-        phase_max_tokens: Per-phase token overrides keyed by phase name.
-        max_phase_iterations: Maximum iterations before a phase is abandoned.
-        prompt_style: Template style identifier (e.g. "skeleton").
-        trajectory_style: Trajectory serialisation style (e.g. "prose").
-        adapter_ttl_days: Days before an adapter is eligible for pruning.
-        checkpoint_path: Path to the hypernetwork checkpoint file.
-    """
+    """Frozen configuration for the Rune inference and training pipeline."""
 
     model_id: str = "Qwen/Qwen3.5-9B"
     adapter_scaling: float = 1.0
@@ -36,11 +20,7 @@ class PipelineConfig:
     top_p: float = 0.9
     top_k: int = 20
     thinking_budget: int = 1024
-    phase_max_tokens: dict[str, int] = field(default_factory=dict)
     max_phase_iterations: int = 10
-    prompt_style: str = "skeleton"
-    trajectory_style: str = "prose"
-    adapter_ttl_days: int = 7
     cont_multiplier: float = 1.53
     cont_budget: int = 5
     no_repeat_ngram_size: int = 12

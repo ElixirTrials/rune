@@ -20,6 +20,8 @@ import asyncio
 import logging
 from pathlib import Path
 
+from rune.model.adapter import scale_lora_b
+
 logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
     level=logging.INFO,
@@ -117,16 +119,8 @@ def main() -> None:
     ref_param = dict(model._base_model.named_parameters())[ref_param_name]
     before = ref_param.data.clone()
 
-    from typing import Any as _Any  # noqa: PLC0415
-
-    def _scale_b_only(
-        raw_sd: dict[str, _Any],
-        s: float,
-    ) -> dict[str, _Any]:
-        return {k: v * s if "lora_B" in k else v for k, v in raw_sd.items()}
-
     scaling = cfg.adapter_scaling
-    scaled_sd = _scale_b_only(sd, scaling)
+    scaled_sd = scale_lora_b(sd, scaling)
     model.hotswap_adapter(scaled_sd)
 
     after = ref_param.data.clone()
@@ -157,7 +151,7 @@ def main() -> None:
     print(f"  baseline[:80]: {baseline.text[:80]!r}")
 
     for s in diag_sweep:
-        model.hotswap_adapter(_scale_b_only(sd, s))
+        model.hotswap_adapter(scale_lora_b(sd, s))
         out = asyncio.run(
             model.generate(
                 prompt,

@@ -1,8 +1,7 @@
-"""Sandbox executor: code extraction and subprocess-based code runner."""
+"""Sandbox executor: subprocess-based code runner."""
 
 from __future__ import annotations
 
-import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -22,22 +21,6 @@ class ExecutionResult:
     stdout: str
     stderr: str
     exit_code: int
-
-
-def extract_code(raw: str) -> str:
-    """Extract the longest fenced code block from a raw model response.
-
-    Args:
-        raw: Raw text that may contain markdown code fences.
-
-    Returns:
-        Content of the longest ```python``` or ``` block, or the stripped
-        input if no fences are found.
-    """
-    blocks = re.findall(r"```(?:python)?\n(.*?)```", raw, re.DOTALL)
-    if blocks:
-        return str(max(blocks, key=len)).strip()
-    return raw.strip()
 
 
 def run_in_sandbox(code: str, *, timeout: int = 30) -> ExecutionResult:

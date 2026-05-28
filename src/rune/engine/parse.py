@@ -7,6 +7,7 @@ from typing import Any
 from jinja2 import Environment, PackageLoader, StrictUndefined
 from pydantic import BaseModel
 
+from rune.engine.json_repair import extract_code_value
 from rune.engine.state import Action, Feedback, Subtask
 
 _env = Environment(loader=PackageLoader("rune", "templates"), undefined=StrictUndefined)
@@ -60,7 +61,10 @@ def _parse_code_action(
     *,
     retries_delta: int,
 ) -> dict[str, Any]:
-    code = CodeResult.model_validate_json(raw).code
+    try:
+        code = CodeResult.model_validate_json(raw).code
+    except Exception:
+        code = extract_code_value(raw)
     passed = feedback is not None and feedback.exit_code == 0
     retries = dict(state.get("retries", {}))
     retries[target] = retries.get(target, 0) + retries_delta
@@ -124,7 +128,10 @@ def parse_output(
                 retries_delta=1,
             )
         case "integrate":
-            code = IntegrateResult.model_validate_json(raw).code
+            try:
+                code = IntegrateResult.model_validate_json(raw).code
+            except Exception:
+                code = extract_code_value(raw)
             passed = feedback is not None and feedback.exit_code == 0
             return {
                 "integrated_code": code if passed else "",

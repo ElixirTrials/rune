@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rune.model.adapter import scale_lora_b
+
 logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
     level=logging.INFO,
@@ -52,9 +54,7 @@ def _run_condition(
 
     t0 = time.monotonic()
     adapter = model.generate_adapter(trajectory)
-    scaled_sd = {
-        k: v * scaling if "lora_B" in k else v for k, v in adapter.state_dict.items()
-    }
+    scaled_sd = scale_lora_b(adapter.state_dict, scaling)
     model.hotswap_adapter(scaled_sd)
     out = asyncio.run(
         model.generate(

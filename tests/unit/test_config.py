@@ -15,9 +15,6 @@ class TestPipelineConfig:
         assert cfg.max_tokens == 2048
         assert cfg.thinking_budget == 1024
         assert cfg.max_phase_iterations == 10
-        assert cfg.prompt_style == "skeleton"
-        assert cfg.trajectory_style == "prose"
-        assert cfg.adapter_ttl_days == 7
 
     def test_frozen(self) -> None:
         cfg = PipelineConfig()
@@ -51,6 +48,3 @@ class TestPipelineConfig:
         finally:
             del os.environ["RUNE_TEMPERATURE"]
 
-    def test_phase_max_tokens(self) -> None:
-        cfg = PipelineConfig(phase_max_tokens={"plan": 512, "code": 2048})
-        assert cfg.phase_max_tokens["plan"] == 512

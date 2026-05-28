@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import re
 
+from rune.engine.json_repair import extract_code_value
 from rune.engine.parse import CodeResult
-
-_CODE_VALUE_RE = re.compile(r'"code"\s*:\s*"', re.DOTALL)
-
-_ESCAPES: dict[str, str] = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"'}
 
 
 def extract_code(raw: str) -> str:
@@ -32,29 +29,15 @@ def extract_code(raw: str) -> str:
 
 
 def extract_partial_code(raw: str) -> str:
-    """Extract code from a possibly-truncated CodeResult JSON string."""
+    """Extract code from a possibly-truncated CodeResult JSON string.
+
+    Falls back to *raw* when input isn't JSON at all (e.g. continuation
+    rounds that emit plain Python).
+    """
     try:
         return CodeResult.model_validate_json(raw).code
     except Exception:
-        pass
-    m = _CODE_VALUE_RE.search(raw)
-    if m:
-        after = raw[m.end() :]
-        chars: list[str] = []
-        i = 0
-        while i < len(after):
-            ch = after[i]
-            if ch == '"':
-                break
-            if ch == "\\" and i + 1 < len(after):
-                nxt = after[i + 1]
-                chars.append(_ESCAPES.get(nxt, nxt))
-                i += 2
-            else:
-                chars.append(ch)
-                i += 1
-        return "".join(chars)
-    return raw
+        return extract_code_value(raw) or raw
 
 
 def dedup_code(new_code: str, accumulated: str) -> str:

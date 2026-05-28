@@ -17,6 +17,7 @@ _HPO_RANGES = {
     "temperature": {"low": 0.1, "high": 1.0},
     "max_tokens": {"low": 512, "high": 4096, "step": 256},
     "max_phase_iterations": {"low": 3, "high": 10},
+    "cont_multiplier": {"low": 1.0, "high": 3.0},
 }
 
 
@@ -37,11 +38,13 @@ def _make_trial(
     temperature: float = 0.4,
     max_tokens: int = 1024,
     max_phase_iterations: int = 5,
+    cont_multiplier: float = 1.53,
 ) -> MagicMock:
     trial = MagicMock()
     trial.suggest_float.side_effect = lambda name, *a, **kw: {
         "adapter_scaling": adapter_scaling,
         "temperature": temperature,
+        "cont_multiplier": cont_multiplier,
     }[name]
     trial.suggest_int.side_effect = lambda name, *a, **kw: {
         "max_tokens": max_tokens,
