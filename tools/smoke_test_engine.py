@@ -150,17 +150,14 @@ async def run() -> None:
     # --- Budget analysis ---
     budget_spent = initial_state["budget_remaining"] - final_state["budget_remaining"]
     n_actions = len(final_state.get("trajectory", []))
-    cont_budget = budget_spent - final_state["step"]
     print("=== BUDGET ANALYSIS ===", flush=True)
     print(f"  Actions recorded: {n_actions}", flush=True)
     print(f"  Steps (outer loop): {final_state['step']}", flush=True)
     print(f"  Budget spent: {budget_spent}", flush=True)
-    print(f"  Continuation budget (budget_spent - steps): {cont_budget}", flush=True)
-    if cont_budget > 0:
-        print("  PASS: continuation consumed extra budget", flush=True)
-    else:
-        print("  INFO: no extra continuation budget consumed "
-              "(truncation may not have triggered)", flush=True)
+    print(flush=True)
+    print("  NOTE: Continuation rounds are internal to step_node and do not", flush=True)
+    print("  consume outer budget. Check engine logs for 'continuation round'", flush=True)
+    print("  messages to verify continuation fired.", flush=True)
     print(flush=True)
 
     # --- Integrated code ---
