@@ -74,7 +74,9 @@ async def generate(
         messages.append({"role": "user", "content": prompt})
 
         if thinking_budget > 0:
-            encoded = tokenizer.apply_chat_template(messages, return_tensors="pt")
+            encoded = tokenizer.apply_chat_template(
+                messages, return_tensors="pt", add_generation_prompt=True,
+            )
             if hasattr(encoded, "input_ids"):
                 input_ids = encoded["input_ids"].to(model.device)
             else:

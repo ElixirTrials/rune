@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,9 +41,12 @@ def run_in_sandbox(code: str, *, timeout: int = 30) -> ExecutionResult:
         path = Path(f.name)
     try:
         proc = subprocess.run(
-            ["python", str(path)],
+            [sys.executable, str(path)],
             capture_output=True,
             text=True,
+            # Untrusted generated code may emit non-UTF8 bytes; replace rather
+            # than raise UnicodeDecodeError out of run_in_sandbox.
+            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -53,5 +57,10 @@ def run_in_sandbox(code: str, *, timeout: int = 30) -> ExecutionResult:
         )
     except subprocess.TimeoutExpired:
         return ExecutionResult(stdout="", stderr="Timeout", exit_code=-1)
+    except OSError as exc:
+        # Honour the docstring guarantee: always return an ExecutionResult so a
+        # missing interpreter / spawn failure degrades to failed execution
+        # instead of aborting the engine step.
+        return ExecutionResult(stdout="", stderr=f"sandbox error: {exc}", exit_code=-1)
     finally:
         path.unlink(missing_ok=True)

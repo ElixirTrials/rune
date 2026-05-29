@@ -78,8 +78,8 @@ def run_distillation(config: D2LTrainConfig) -> None:
     from transformers import (  # noqa: PLC0415
         AutoModelForCausalLM,
         AutoTokenizer,
-        TrainingArguments,
     )
+    from trl import SFTConfig  # type: ignore[attr-defined]  # noqa: PLC0415
 
     from rune.training.diff_loss import build_diff_aware_sft_trainer  # noqa: PLC0415
 
@@ -109,7 +109,11 @@ def run_distillation(config: D2LTrainConfig) -> None:
         task_type="CAUSAL_LM",
     )
 
-    training_args = TrainingArguments(
+    # SFTConfig (not transformers.TrainingArguments) so build_diff_aware_sft_trainer's
+    # getattr(args, "max_length") threads the sequence cap into the collator;
+    # with TrainingArguments it was always None and every record reached the GPU
+    # at full length (OOM on long records).
+    training_args = SFTConfig(
         output_dir=config.checkpoint_dir,
         num_train_epochs=config.num_epochs,
         per_device_train_batch_size=config.batch_size,
@@ -122,6 +126,7 @@ def run_distillation(config: D2LTrainConfig) -> None:
         eval_steps=config.eval_steps,
         run_name=config.experiment_name,
         report_to=["mlflow"],
+        max_length=config.max_seq_length,
     )
 
     dataset = hf_datasets.Dataset.from_list(records)

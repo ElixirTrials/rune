@@ -54,7 +54,12 @@ def _make_transformers_mock(tokenizer: MagicMock, model: MagicMock) -> MagicMock
     m = MagicMock()
     m.AutoTokenizer.from_pretrained.return_value = tokenizer
     m.AutoModelForCausalLM.from_pretrained.return_value = model
-    m.TrainingArguments = MagicMock(return_value=MagicMock())
+    return m
+
+
+def _make_trl_mock() -> MagicMock:
+    m = MagicMock()
+    m.SFTConfig = MagicMock(return_value=MagicMock())
     return m
 
 
@@ -78,6 +83,7 @@ class TestRunDistillation:
         mock_torch.float16 = "float16"
         mock_torch.float32 = "float32"
         mock_transformers = _make_transformers_mock(mock_tokenizer, mock_model)
+        mock_trl = _make_trl_mock()
         mock_datasets = MagicMock()
         mock_datasets.Dataset.from_list.return_value = MagicMock()
         mock_peft = MagicMock()
@@ -89,6 +95,7 @@ class TestRunDistillation:
             {
                 "torch": mock_torch,
                 "transformers": mock_transformers,
+                "trl": mock_trl,
                 "peft": mock_peft,
                 "datasets": mock_datasets,
                 "rune.training.diff_loss": mock_diff_loss,
@@ -118,6 +125,7 @@ class TestRunDistillation:
         mock_torch.float16 = "float16"
         mock_torch.float32 = "float32"
         mock_transformers = _make_transformers_mock(mock_tokenizer, mock_model)
+        mock_trl = _make_trl_mock()
         mock_datasets = MagicMock()
         mock_datasets.Dataset.from_list.return_value = MagicMock()
         mock_peft = MagicMock()
@@ -129,6 +137,7 @@ class TestRunDistillation:
             {
                 "torch": mock_torch,
                 "transformers": mock_transformers,
+                "trl": mock_trl,
                 "peft": mock_peft,
                 "datasets": mock_datasets,
                 "rune.training.diff_loss": mock_diff_loss,

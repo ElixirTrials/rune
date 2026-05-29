@@ -206,6 +206,17 @@ class TestBuildExecutionLayers:
         assert "phantom" not in all_names
         assert set(all_names) == {"a", "b"}
 
+    def test_cyclic_dependencies_do_not_raise(self) -> None:
+        # A <-> B cycle from bad decompose output must not crash the engine;
+        # fall back to treating subtasks as independent.
+        subtasks = [
+            Subtask("a", "do a", ["b"]),
+            Subtask("b", "do b", ["a"]),
+        ]
+        layers = build_execution_layers(subtasks)
+        all_names = {name for layer in layers for name in layer}
+        assert all_names == {"a", "b"}
+
 
 class TestSelectActionPhantomDep:
     def test_plan_action_never_targets_phantom(self) -> None:

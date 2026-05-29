@@ -104,5 +104,13 @@ def load_config(path: Path) -> PipelineConfig:
         import yaml  # noqa: PLC0415
 
         d = yaml.safe_load(path.read_text())
+        if d is None:
+            # Empty/whitespace-only file: honour the documented default fallback
+            # instead of crashing on PipelineConfig(**None).
+            return PipelineConfig()
+        if not isinstance(d, dict):
+            raise ValueError(
+                f"{path} must contain a YAML mapping, got {type(d).__name__}"
+            )
         return PipelineConfig(**d)
     return PipelineConfig()

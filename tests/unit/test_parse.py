@@ -220,6 +220,57 @@ class TestParseOutput:
         assert "x = 1" in updates["code_results"]["task_a"]
         assert updates["code_passed"]["task_a"] is False
 
+    def test_decompose_drops_phantom_and_self_deps(self) -> None:
+        action = Action(
+            "decompose", "decompose", "prompt_decompose_concise", "",
+            DecomposeResult, False, None,
+        )
+        raw = json.dumps({
+            "subtasks": [
+                {"name": "a", "description": "da", "depends_on": ["a", "ghost"]},
+                {"name": "b", "description": "db", "depends_on": ["a"]},
+            ]
+        })
+        state_stub: dict = {"subtasks": []}
+        updates = parse_output(action, raw, None, state_stub)
+        deps = {s.name: list(s.depends_on) for s in updates["subtasks"]}
+        assert deps["a"] == []  # self-ref and phantom 'ghost' dropped
+        assert deps["b"] == ["a"]  # real dependency kept
+
+    def test_decompose_malformed_json_returns_empty(self) -> None:
+        action = Action(
+            "decompose", "decompose", "prompt_decompose_concise", "",
+            DecomposeResult, False, None,
+        )
+        updates = parse_output(action, '{"subtasks": [trunc', None, {"subtasks": []})
+        assert updates == {}  # graceful: no crash, engine re-decomposes
+
+    def test_first_code_attempt_not_counted_as_retry(self) -> None:
+        action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
+        fb = Feedback(stdout="ok", stderr="", exit_code=0)
+        state_stub: dict = {
+            "code_results": {},  # no prior code → first attempt
+            "code_passed": {},
+            "retries": {},
+            "feedback": {},
+            "diagnosis": {},
+        }
+        updates = parse_output(action, json.dumps({"code": "print(1)"}), fb, state_stub)
+        assert updates["retries"].get("task_a", 0) == 0
+
+    def test_diagnose_reopens_diagnosed_subtasks(self) -> None:
+        action = Action(
+            "diagnose", "diagnose", "prompt_diagnose", "",
+            DiagnoseResult, False, None,
+        )
+        raw = ('{"entries": [{"subtask_name": "a", "error_type": "integration", '
+               '"location": "x", "fix_guidance": "fix a"}]}')
+        state_stub: dict = {"diagnosis": {}, "code_passed": {"a": True, "b": True}}
+        updates = parse_output(action, raw, None, state_stub)
+        assert updates["code_passed"]["a"] is False  # reopened → repairable
+        assert updates["code_passed"]["b"] is True  # untouched
+        assert updates["diagnosis"]["a"] == "fix a"
+
     def test_integrate_failure_stores_integration_feedback(self) -> None:
         action = Action(
             "integrate", "integrate", "prompt_integrate", "", IntegrateResult, True, None

@@ -99,28 +99,49 @@ def parse_output(
 ) -> dict[str, Any]:
     match action.name:
         case "decompose":
-            result = DecomposeResult.model_validate_json(raw)
+            try:
+                result = DecomposeResult.model_validate_json(raw)
+            except Exception:
+                logger.warning(
+                    "decompose output failed validation; re-decomposing"
+                )
+                return {}
+            names = {s.name for s in result.subtasks}
             return {
                 "subtasks": [
                     Subtask(
                         name=s.name,
                         description=s.description,
-                        depends_on=s.depends_on,
+                        # Drop phantom (typo'd/unknown) and self dependencies so
+                        # readiness checks and the DAG can never softlock.
+                        depends_on=[
+                            d for d in s.depends_on if d in names and d != s.name
+                        ],
                     )
                     for s in result.subtasks
                 ]
             }
         case "plan":
             target = action.target_subtask
-            plan_text = PlanResult.model_validate_json(raw).plan
+            try:
+                plan_text = PlanResult.model_validate_json(raw).plan
+            except Exception:
+                logger.warning(
+                    "plan output failed validation for %s; re-planning", target
+                )
+                return {}
             return {"plans": {**state.get("plans", {}), target: plan_text}}
         case "code":
+            target = action.target_subtask
+            # The first code attempt for a target is not a retry; only resamples
+            # (code re-issued after repairs exhausted) and repairs count.
+            first_attempt = target not in state.get("code_results", {})
             return _parse_code_action(
-                action.target_subtask,
+                target,
                 raw,
                 feedback,
                 state,
-                retries_delta=1,
+                retries_delta=0 if first_attempt else 1,
             )
         case "repair":
             return _parse_code_action(
@@ -142,11 +163,24 @@ def parse_output(
                 "diagnosis": {},
             }
         case "diagnose":
-            diag_result = DiagnoseResult.model_validate_json(raw)
+            try:
+                diag_result = DiagnoseResult.model_validate_json(raw)
+            except Exception:
+                logger.warning(
+                    "diagnose output failed validation; no diagnosis recorded"
+                )
+                return {}
             diagnosis = dict(state.get("diagnosis", {}))
+            code_passed = dict(state.get("code_passed", {}))
             for entry in diag_result.entries:
                 diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
-            return {"diagnosis": diagnosis}
+                # Re-open diagnosed subtasks so select_action routes them to
+                # repair. Without this an integration-failure diagnose (which
+                # leaves every code_passed True) never triggers a repair and the
+                # engine livelocks integrate<->diagnose until budget is spent.
+                if entry.subtask_name in code_passed:
+                    code_passed[entry.subtask_name] = False
+            return {"diagnosis": diagnosis, "code_passed": code_passed}
     logger.warning(
         "Unknown action %r in parse_output, returning empty update",
         action.name,

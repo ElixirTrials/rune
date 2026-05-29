@@ -31,11 +31,15 @@ def load_session(session_dir: Path) -> tuple[list[dict], dict]:  # type: ignore[
     return steps, metadata
 
 
-def _render_trajectory(steps: list[dict], action: str) -> str:  # type: ignore[type-arg]
-    """Render trajectory text for steps matching action."""
+def _render_trajectory(
+    steps: list[dict],  # type: ignore[type-arg]
+    action: str,
+    target: str | None,
+) -> str:
+    """Render trajectory text for steps matching (action, target)."""
     parts: list[str] = []
     for step in steps:
-        if step.get("action") != action:
+        if step.get("action") != action or step.get("target") != target:
             continue
         inp = step.get("input", "")
         out = step.get("output", "")
@@ -55,22 +59,27 @@ def extract_trajectories(
     problem_id = metadata.get("problem_id", "unknown")
     task_id = f"{benchmark}/{problem_id}"
 
-    seen_actions: set[str] = set()
+    # Key on (action, target) so each subtask yields its own trajectory record;
+    # keying on action alone conflated every subtask's steps into one shard entry.
+    seen: set[tuple[str, str | None]] = set()
     records: list[dict] = []  # type: ignore[type-arg]
 
     for step in steps:
         action = step.get("action", "unknown")
-        if action in seen_actions:
+        target = step.get("target")
+        key = (action, target)
+        if key in seen:
             continue
-        seen_actions.add(action)
+        seen.add(key)
 
-        trajectory_text = _render_trajectory(steps, action)
+        trajectory_text = _render_trajectory(steps, action, target)
         records.append(
             {
                 "task_id": task_id,
                 "trajectory": trajectory_text,
                 "metadata": {
                     "phase": action,
+                    "target": target,
                     "benchmark": benchmark,
                     "problem_id": problem_id,
                 },

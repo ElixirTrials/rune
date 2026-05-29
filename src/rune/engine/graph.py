@@ -316,15 +316,17 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         for name, fb in zip(code_action_names, sandbox_results, strict=True)
     }
 
+    # Thread an accumulating running state through siblings so each parse_output
+    # builds its full maps from the prior sibling's applied change. Reusing a
+    # frozen dict(state) snapshot per sibling let the last-merged sibling's stale
+    # copy clobber earlier siblings' real updates (code_passed/retries/...).
     updates: dict[str, Any] = {}
+    running = dict(state)
     for action, target_name, raw, _ in results:
         fb = feedback_map.get(target_name)
-        partial = parse_output(action, raw, fb, dict(state))
-        for k, v in partial.items():
-            if isinstance(v, dict) and isinstance(updates.get(k), dict):
-                updates[k] = {**updates[k], **v}
-            else:
-                updates[k] = v
+        partial = parse_output(action, raw, fb, running)
+        updates.update(partial)
+        running.update(partial)
 
     records = [
         StepRecord(
@@ -333,7 +335,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             target_subtask=name,
             adapter_id=aid,
             feedback=feedback_map.get(name),
-            generated_code=code_map.get(name, "")[:_CODE_HISTORY_CAP] or None,
+            generated_code=code_map.get(name) or None,
         )
         for a, name, _, aid in results
     ]

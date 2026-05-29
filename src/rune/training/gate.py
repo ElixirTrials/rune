@@ -47,10 +47,18 @@ def evaluate_gate(
     improvements: dict[str, float] = {}
     regressions: dict[str, float] = {}
 
-    for bench, new_score in new_scores.items():
-        if bench not in baseline_scores:
+    # Iterate the union so a baseline benchmark that vanished from new_scores
+    # (e.g. the trained model now crashes on it) is counted as a regression
+    # instead of being silently skipped.
+    for bench in baseline_scores.keys() | new_scores.keys():
+        base_score = baseline_scores.get(bench)
+        new_score = new_scores.get(bench)
+        if base_score is None:
+            # New benchmark with no baseline — no delta to judge.
             continue
-        base_score = baseline_scores[bench]
+        if new_score is None:
+            regressions[bench] = -base_score
+            continue
         delta = new_score - base_score
         if delta >= MIN_IMPROVEMENT:
             improvements[bench] = delta
@@ -61,7 +69,7 @@ def evaluate_gate(
     return GateResult(
         passed=passed,
         passing_benchmarks=len(improvements),
-        total_benchmarks=len(new_scores),
+        total_benchmarks=len(baseline_scores.keys() | new_scores.keys()),
         improvements=improvements,
         regressions=regressions,
     )

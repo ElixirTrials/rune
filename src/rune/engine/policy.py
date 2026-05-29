@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from graphlib import TopologicalSorter
+from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
 from rune.engine.parse import (
@@ -80,11 +80,22 @@ ACTIONS: dict[str, Action] = {
 
 def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
     known = {s.name for s in subtasks}
-    graph: dict[str, set[str]] = {}
-    for s in subtasks:
-        graph[s.name] = set(s.depends_on)
+    # Restrict edges to known subtasks so a phantom dependency cannot inject an
+    # extra node or block readiness.
+    graph: dict[str, set[str]] = {
+        s.name: {d for d in s.depends_on if d in known} for s in subtasks
+    }
     sorter = TopologicalSorter(graph)
-    sorter.prepare()
+    try:
+        sorter.prepare()
+    except CycleError as exc:
+        cycle = exc.args[1] if len(exc.args) > 1 else exc
+        logger.warning(
+            "Cyclic subtask dependencies %s; treating subtasks as independent",
+            cycle,
+        )
+        sorter = TopologicalSorter({name: set() for name in graph})
+        sorter.prepare()
     layers: list[list[str]] = []
     while sorter.is_active():
         batch = sorter.get_ready()

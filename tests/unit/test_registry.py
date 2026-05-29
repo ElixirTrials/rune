@@ -55,4 +55,22 @@ class TestAdapterRegistry:
         assert pruned == 1
         assert reg.get("old") is None
         assert reg.get("new") is not None
+
+    def test_prune_handles_directory_disk_path(self, tmp_path: Path) -> None:
+        # Adapters saved via save_pretrained are directories; prune must not
+        # raise IsADirectoryError and abort before deleting rows.
+        reg = AdapterRegistry.create(":memory:")
+        adapter_dir = tmp_path / "old_adapter"
+        adapter_dir.mkdir()
+        (adapter_dir / "adapter_model.safetensors").write_bytes(b"\x00")
+        reg.register("old", str(adapter_dir), None, "code", "s1", 0)
+        reg._conn.execute(
+            "UPDATE adapters SET created_at = ? WHERE adapter_id = ?",
+            (time.time() - 10 * 86400, "old"),
+        )
+        reg._conn.commit()
+        pruned = reg.prune(max_age_days=7)
+        assert pruned == 1
+        assert reg.get("old") is None
+        assert not adapter_dir.exists()
         assert not (tmp_path / "old.st").exists()
