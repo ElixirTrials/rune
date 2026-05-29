@@ -322,6 +322,29 @@ class TestParseOutput:
         assert updates["code_passed"]["b"] is True  # untouched
         assert updates["diagnosis"]["a"] == "fix a"
 
+    def test_untargeted_diagnose_reopens_all_on_name_mismatch(self) -> None:
+        # Integration-failure diagnose where the model names a subtask that does
+        # not exist must still reopen the real subtasks (deterministic fallback)
+        # so they route to repair instead of livelocking integrate<->diagnose.
+        action = Action(
+            "diagnose",
+            "diagnose",
+            "prompt_diagnose",
+            "",
+            DiagnoseResult,
+            False,
+            None,  # target_subtask=None → untargeted
+        )
+        raw = (
+            '{"entries": [{"subtask_name": "does_not_exist", '
+            '"error_type": "integration", "location": "x", '
+            '"fix_guidance": "wire the pieces together"}]}'
+        )
+        state_stub: dict = {"diagnosis": {}, "code_passed": {"_main": True}}
+        updates = parse_output(action, raw, None, state_stub)
+        assert updates["code_passed"]["_main"] is False  # reopened despite mismatch
+        assert updates["diagnosis"]["_main"]  # has guidance → routes to repair
+
     def test_integrate_failure_stores_integration_feedback(self) -> None:
         action = Action(
             "integrate",

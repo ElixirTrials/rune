@@ -180,6 +180,7 @@ def parse_output(
                 return {}
             diagnosis = dict(state.get("diagnosis", {}))
             code_passed = dict(state.get("code_passed", {}))
+            reopened = False
             for entry in diag_result.entries:
                 diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
                 # Re-open diagnosed subtasks so select_action routes them to
@@ -188,6 +189,22 @@ def parse_output(
                 # engine livelocks integrate<->diagnose until budget is spent.
                 if entry.subtask_name in code_passed:
                     code_passed[entry.subtask_name] = False
+                    reopened = True
+            # Untargeted (integration-failure) diagnose: the model often emits
+            # subtask_name values that don't match any real subtask, so the
+            # per-entry reopen above is a no-op and the engine livelocks. When
+            # nothing matched, deterministically reopen every subtask (with the
+            # model's guidance) so they route to repair regardless of naming.
+            if action.target_subtask is None and not reopened and code_passed:
+                guidance = (
+                    "; ".join(e.fix_guidance for e in diag_result.entries).strip()[
+                        :_FIX_GUIDANCE_CAP
+                    ]
+                    or "integration failed; revise this subtask"
+                )
+                for name in code_passed:
+                    code_passed[name] = False
+                    diagnosis.setdefault(name, guidance)
             return {"diagnosis": diagnosis, "code_passed": code_passed}
     logger.warning(
         "Unknown action %r in parse_output, returning empty update",

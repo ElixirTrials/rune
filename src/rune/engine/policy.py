@@ -154,10 +154,20 @@ def select_action(state: dict[str, Any]) -> list[Action]:
             return actions
         if exhausted:
             logger.warning(
-                "Subtasks %s exhausted all %d retries, falling through to integrate",
+                "Subtasks %s exhausted all %d retries",
                 exhausted,
                 MAX_RETRIES,
             )
+            # If integration has already been attempted and is still failing,
+            # stop rather than looping integrate<->diagnose until the budget is
+            # spent: no repairable work remains.
+            int_fb = state.get("integration_feedback")
+            if int_fb and int_fb.exit_code != 0:
+                logger.warning(
+                    "All repairable subtasks exhausted and integration still "
+                    "failing; stopping run."
+                )
+                return []
 
     # All subtasks pass — integrate or done
     if state["integrated_code"]:

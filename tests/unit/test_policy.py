@@ -165,6 +165,24 @@ class TestSelectAction:
         assert actions[0].name == "integrate"
 
 
+class TestSelectActionTermination:
+    def test_exhausted_and_integration_failing_stops(self) -> None:
+        # All repairable subtasks exhausted + integration still failing → give up
+        # (return []) instead of looping integrate<->diagnose to budget exhaustion.
+        subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan"},
+            code_results={"a": "code"},
+            code_passed={"a": False},
+            retries={"a": 4},  # >= MAX_RETRIES
+            integration_feedback=fb,
+            diagnosis={"a": "fix"},
+        )
+        assert select_action(state) == []
+
+
 class TestBuildExecutionLayers:
     def test_no_deps_single_layer(self) -> None:
         subtasks = [Subtask("a", "", []), Subtask("b", "", [])]
