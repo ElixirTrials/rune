@@ -26,7 +26,6 @@ nav:
           - Graph: api/engine/graph.md
           - Policy: api/engine/policy.md
           - Parse: api/engine/parse.md
-          - Interfaces: api/engine/interfaces.md
       - Model:
           - Inference: api/model/inference.md
           - Hypernetwork: api/model/hypernetwork.md
