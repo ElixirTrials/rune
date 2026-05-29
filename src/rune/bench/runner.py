@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +77,21 @@ def load_tasks(path: Path) -> list[BenchTask]:
     """
     data = json.loads(path.read_text())
     return [BenchTask(**t) for t in data]
+
+
+def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
+    """Write benchmark tasks to a JSON file readable by :func:`load_tasks`.
+
+    Args:
+        tasks: Tasks to serialise.
+        path: Destination JSON path; parent directories are created.
+
+    Returns:
+        The path written to.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([asdict(t) for t in tasks], indent=2))
+    return path
 
 
 async def run_benchmark(

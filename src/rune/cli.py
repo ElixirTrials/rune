@@ -195,5 +195,25 @@ def bench(
         typer.echo(f"  [{status}] {tr.task_id}")
 
 
+@app.command(name="gen-tasks")
+def gen_tasks(
+    out: Path = typer.Option(..., help="Output benchmark tasks JSON path"),
+    ids_file: Path | None = typer.Option(
+        None, help='JSON list of task_ids to keep, e.g. ["mbpp/1", "mbpp/2"]'
+    ),
+    limit: int | None = typer.Option(None, help="Keep at most N tasks"),
+) -> None:
+    """Generate an MBPP benchmark tasks JSON for `rune bench --tasks-file`."""
+    import json  # noqa: PLC0415
+
+    from rune.bench.mbpp import load_mbpp_tasks  # noqa: PLC0415
+    from rune.bench.runner import dump_tasks  # noqa: PLC0415
+
+    ids = set(json.loads(ids_file.read_text())) if ids_file is not None else None
+    tasks = load_mbpp_tasks(ids=ids, limit=limit)
+    dump_tasks(tasks, out)
+    typer.echo(f"Wrote {len(tasks)} MBPP task(s) to {out}")
+
+
 if __name__ == "__main__":
     app()
