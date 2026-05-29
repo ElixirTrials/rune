@@ -165,7 +165,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     presence_penalty = run_config.get("presence_penalty", 0.0)
     thinking_budget = run_config.get("thinking_budget", 1024)
 
-    results: list[tuple[Action, str, str, str | None]] = []
+    results: list[tuple[Action, str, str, str | None, str, str, str]] = []
     for action in actions:
         import torch  # noqa: PLC0415
 
@@ -281,7 +281,20 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             )
 
         target_name = action.target_subtask or ""
-        results.append((action, target_name, raw_text, adapter_id))
+        output_text = (
+            extract_partial_code(raw_text) if action.executes_code else raw_text
+        )
+        results.append(
+            (
+                action,
+                target_name,
+                raw_text,
+                adapter_id,
+                trajectory_text,
+                prompt_text,
+                output_text,
+            )
+        )
 
         if mlflow.active_run() is not None:
             prefix = f"step_{state['step']}/{action.name}"
@@ -297,7 +310,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # executed in the sandbox.
     code_map: dict[str, str] = {}
     code_action_names: list[str] = []
-    for a, name, text, _ in results:
+    for a, name, text, _, _traj, _prompt, _out in results:
         if a.executes_code:
             code_map[name] = extract_partial_code(text)
             code_action_names.append(name)
@@ -319,7 +332,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # copy clobber earlier siblings' real updates (code_passed/retries/...).
     updates: dict[str, Any] = {}
     running = dict(state)
-    for action, target_name, raw, _ in results:
+    for action, target_name, raw, _, _traj, _prompt, _out in results:
         fb = feedback_map.get(target_name)
         partial = parse_output(action, raw, fb, running, code=code_map.get(target_name))
         updates.update(partial)
@@ -333,8 +346,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             adapter_id=aid,
             feedback=feedback_map.get(name),
             generated_code=code_map.get(name) or None,
+            trajectory_text=traj,
+            prompt_text=prompt,
+            output_text=out,
         )
-        for a, name, _, aid in results
+        for a, name, _, aid, traj, prompt, out in results
     ]
     if gate_fired:
         updates.setdefault("subtasks", state["subtasks"])

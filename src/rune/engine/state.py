@@ -70,6 +70,9 @@ class StepRecord:
     adapter_id: str | None
     feedback: Feedback | None
     generated_code: str | None = None
+    trajectory_text: str = ""
+    prompt_text: str = ""
+    output_text: str = ""
 
 
 class RunState(TypedDict):
