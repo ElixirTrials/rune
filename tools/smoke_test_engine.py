@@ -41,7 +41,7 @@ def _mem() -> str:
             a = torch.cuda.memory_allocated() / 1e9
             r = torch.cuda.memory_reserved() / 1e9
             return f"GPU alloc={a:.1f}GB reserved={r:.1f}GB"
-    except Exception:
+    except (ImportError, RuntimeError):
         pass
     return ""
 
