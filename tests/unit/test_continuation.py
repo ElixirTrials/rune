@@ -21,6 +21,10 @@ def test_prompt_code_continue_renders() -> None:
     assert "build a parser" in text
 
 
+def test_prompt_code_continue_renders_empty_when_absent() -> None:
+    assert render_template("prompt_code_continue").strip() == ""
+
+
 class TestExtractPartialCode:
     def test_valid_json(self) -> None:
         raw = json.dumps({"code": "def foo(): pass"})
