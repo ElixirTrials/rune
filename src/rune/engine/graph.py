@@ -47,6 +47,7 @@ _SIMPLE_SIGNALS = (
 
 _SIMPLE_WORD_LIMIT = 200
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
+_INTEGRATION_DOC_LINE_CAP = 200
 
 
 def _is_simple_task(task: str) -> bool:
@@ -129,7 +130,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["repair_history"] = []
         ctx["code_trajectory"] = []
 
-    ctx["integration_doc"] = "\n".join(f"- {s.name}: {s.description}" for s in subtasks)
+    ctx["integration_doc"] = "\n".join(
+        f"- {s.name}: {s.description[:_INTEGRATION_DOC_LINE_CAP]}" for s in subtasks
+    )
     ctx["skeletons"] = code_results
     ctx["code_outputs"] = code_results
     int_fb = state.get("integration_feedback")
