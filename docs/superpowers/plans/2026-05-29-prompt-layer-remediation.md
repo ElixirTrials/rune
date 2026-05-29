@@ -48,7 +48,6 @@ Two findings from the review drive the structure:
 - `tools/smoke_test_engine.py` — add `--dump-sessions DIR` so the smoke run emits a real corpus (Task 4 / smoke gate).
 - `tests/unit/test_state.py`, `tests/unit/test_miner.py`, `tests/unit/test_parse.py` — fix stale ref, update fixtures, add schema-key assertions (Tasks 1,4,5).
 - `src/rune/engine/policy.py` — cap `integration_doc` (Task 7).
-- `src/rune/config.py` — `prompt_version` field (Task 9).
 
 ---
 
@@ -1317,42 +1316,15 @@ git commit -m "refactor(engine): single truncation layer in state_to_ctx (projec
 
 ## Phase 3 — P2 polish (CPU-verifiable)
 
-### Task 9: Whitespace control + prompt_version (#10, #P2)
+### Task 9: Whitespace control (#10)
+
+(No `prompt_version` field — templates are git-tracked, so git already versions them. A config string with no consumer is dead surface.)
 
 **Files:**
 - Modify: `src/rune/engine/parse.py:16`
-- Modify: `src/rune/config.py`
-- Test: `tests/unit/test_parse.py`, `tests/unit/test_config.py`
+- Test: `tests/unit/test_parse.py`, `tests/unit/test_templates.py`
 
-- [ ] **Step 1: Write the failing test for prompt_version**
-
-In `tests/unit/test_config.py` (create if absent):
-
-```python
-from rune.config import PipelineConfig
-
-
-def test_prompt_version_default() -> None:
-    assert PipelineConfig().prompt_version == "v1"
-    assert "prompt_version" in PipelineConfig().to_dict()
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `uv run pytest tests/unit/test_config.py -k prompt_version -v`
-Expected: FAIL — `PipelineConfig` has no `prompt_version`.
-
-- [ ] **Step 3: Add the field**
-
-In `src/rune/config.py`, add to `PipelineConfig` (after line 27):
-
-```python
-    prompt_version: str = "v1"
-```
-
-Confirm `to_dict()` (line 31) serializes all dataclass fields (if it enumerates explicitly, add `prompt_version`).
-
-- [ ] **Step 4: Enable whitespace trimming**
+- [ ] **Step 1: Enable whitespace trimming**
 
 In `src/rune/engine/parse.py`, change line 16 to:
 
@@ -1365,16 +1337,16 @@ _env = Environment(
 )
 ```
 
-- [ ] **Step 5: Run all render + config tests; re-snapshot if any literal whitespace assertions break**
+- [ ] **Step 2: Run all render tests; re-snapshot if any literal whitespace assertions break**
 
-Run: `uv run pytest tests/unit/test_parse.py tests/unit/test_templates.py tests/unit/test_config.py -q`
+Run: `uv run pytest tests/unit/test_parse.py tests/unit/test_templates.py -q`
 Expected: PASS. If a test asserts exact whitespace, update the expected string to the trimmed output (the templates' meaning is unchanged).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add src/rune/engine/parse.py src/rune/config.py tests/unit/test_config.py tests/unit/test_parse.py
-git commit -m "feat(config): prompt_version field; chore(templates): trim/lstrip blocks"
+git add src/rune/engine/parse.py tests/unit/test_parse.py
+git commit -m "chore(templates): trim/lstrip blocks for clean render whitespace"
 ```
 
 ### Task 10: DRY — drop the duplicate `skeletons` key (#6/#9)
@@ -1404,7 +1376,7 @@ git add src/rune/engine/graph.py tests/unit/test_templates.py
 git commit -m "refactor(engine): drop duplicate skeletons ctx key"
 ```
 
-> **Deliberately skipped (YAGNI, per the source review):** full `TemplateContext` TypedDict + runtime contract validation (#9), CI `from_string` grep guard (#P2 — static templates make SSTI non-exploitable), `SandboxedEnvironment`/autoescape/bytecode cache, the probe rewrite (we *added* the production flavor instead of gutting the A/B harness), header/`error_type` macro extraction (low value vs. churn across already-touched files), and git-hash plumbing (templates are git-tracked; `prompt_version` suffices).
+> **Deliberately skipped (YAGNI, per the source review):** full `TemplateContext` TypedDict + runtime contract validation (#9), CI `from_string` grep guard (#P2 — static templates make SSTI non-exploitable), `SandboxedEnvironment`/autoescape/bytecode cache, the probe rewrite (we *added* the production flavor instead of gutting the A/B harness), header/`error_type` macro extraction (low value vs. churn across already-touched files), and any prompt-version/git-hash plumbing (templates are git-tracked, so git already versions them — a config field with no consumer is dead surface).
 
 ---
 
@@ -1437,7 +1409,7 @@ git merge --no-ff fix/prompt-layer-remediation
 - #5 tests → Task 6 (+ Task 5 stale ref).
 - #6 DRY → Task 10.
 - #7 truncation → Task 8.
-- #10 whitespace, #P2 prompt_version → Task 9.
+- #10 whitespace → Task 9. (#P2 prompt_version dropped — git versions the templates.)
 - Cleanup (dead debug) → Task 3 (all `# #region agent log` regions, defs + call sites; mypy-guarded).
 - **Known residual gap (acknowledged, not fixed here):** continuation rounds regenerate the adapter from the `code_continue` render, but mining captures only the *initial* action render — so continued code/integrate trajectories still under-represent the continuation-phase conditioning. Flag in the PR; address only if the smoke gate shows continuation-related train/serve drift.
 
