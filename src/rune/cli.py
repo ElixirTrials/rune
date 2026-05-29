@@ -170,7 +170,19 @@ def bench(
                     tasks, engine, cfg, model, trials, parent_run_id=parent.info.run_id
                 )
             )
-        typer.echo(f"Best pass@1: {best['best_value']:.3f}")
+            _mlflow.log_metric("tuning_best_pass_at_1", best["best_value"])
+            if best["validation_pass_at_1"] is not None:
+                _mlflow.log_metric("validation_pass_at_1", best["validation_pass_at_1"])
+        typer.echo(
+            f"Tuning best pass@1: {best['best_value']:.3f} "
+            f"({best['n_tuning']} tuning tasks)"
+        )
+        val = best["validation_pass_at_1"]
+        typer.echo(
+            f"Held-out validation pass@1: {val:.3f} ({best['n_validation']} tasks)"
+            if val is not None
+            else "Held-out validation: skipped (too few tasks)"
+        )
         typer.echo(f"Best params: {best['best_params']}")
         return
 
