@@ -48,6 +48,9 @@ _SIMPLE_SIGNALS = (
 _SIMPLE_WORD_LIMIT = 200
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
 _INTEGRATION_DOC_LINE_CAP = 200
+_PROJECT_CAP = 1200
+_PROJECT_LABEL_CAP = 200
+_ACCUMULATED_CODE_CAP = 3500
 
 
 def _is_simple_task(task: str) -> bool:
@@ -66,9 +69,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     task = state["task"]
 
     ctx: dict[str, Any] = {
-        "project": task,
-        "task_description": task,
-        "project_label": task[:200],
+        "project": task[:_PROJECT_CAP],
+        "task_description": task[:_PROJECT_CAP],
+        "project_label": task[:_PROJECT_LABEL_CAP],
         "subtask_count": len(subtasks),
     }
 
@@ -216,7 +219,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
                 cont_ctx = {
                     **ctx,
-                    "accumulated_code": accumulated_code,
+                    "accumulated_code": accumulated_code[-_ACCUMULATED_CODE_CAP:],
                 }
                 cont_traj = render_template("code_continue", **cont_ctx)
 
