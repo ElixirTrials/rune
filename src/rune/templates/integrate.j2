@@ -6,7 +6,7 @@ SUBTASK SUMMARY:
 {{ integration_doc[:1500] }}
 {% endif %}
 CODE SKELETONS:
-{% for name, skeleton in skeletons.items() %}
+{% for name, skeleton in code_outputs.items() %}
 --- {{ name }} ---
 {{ skeleton[:1000] }}
 {% endfor %}

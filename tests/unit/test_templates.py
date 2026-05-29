@@ -32,7 +32,6 @@ def _ctx() -> dict[str, object]:
             {"step": 0, "action": "code", "code": "x=1", "error": "", "passed": True}
         ],
         "integration_doc": "- _main: do it",
-        "skeletons": {"_main": "print(1)"},
         "code_outputs": {"_main": "print(1)"},
         "integration_error": "",
         "accumulated_code": "print(1)",
