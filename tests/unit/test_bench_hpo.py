@@ -14,11 +14,11 @@ from rune.config import PipelineConfig
 
 _HPO_RANGES = {
     "n_trials": 30,
-    "adapter_scaling": {"low": 1.5, "high": 10.0, "log": True},
-    "temperature": {"low": 0.1, "high": 1.0},
-    "max_tokens": {"low": 512, "high": 4096, "step": 256},
+    "adapter_scaling": {"low": 0.35, "high": 0.65},
+    "temperature": {"low": 0.5, "high": 0.8},
+    "presence_penalty": {"low": 1.2, "high": 2.0},
     "max_phase_iterations": {"low": 3, "high": 10},
-    "cont_multiplier": {"low": 1.0, "high": 3.0},
+    "cont_multiplier": {"low": 1.3, "high": 1.8},
 }
 
 
@@ -35,9 +35,9 @@ def _make_bench_result(pass_at_1: float = 0.8) -> BenchResult:
 
 
 def _make_trial(
-    adapter_scaling: float = 0.05,
-    temperature: float = 0.4,
-    max_tokens: int = 1024,
+    adapter_scaling: float = 0.5,
+    temperature: float = 0.65,
+    presence_penalty: float = 1.5,
     max_phase_iterations: int = 5,
     cont_multiplier: float = 1.53,
 ) -> MagicMock:
@@ -45,10 +45,10 @@ def _make_trial(
     trial.suggest_float.side_effect = lambda name, *a, **kw: {
         "adapter_scaling": adapter_scaling,
         "temperature": temperature,
+        "presence_penalty": presence_penalty,
         "cont_multiplier": cont_multiplier,
     }[name]
     trial.suggest_int.side_effect = lambda name, *a, **kw: {
-        "max_tokens": max_tokens,
         "max_phase_iterations": max_phase_iterations,
     }[name]
     return trial
