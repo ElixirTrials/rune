@@ -26,17 +26,36 @@ nav:
           - Graph: api/engine/graph.md
           - Policy: api/engine/policy.md
           - Parse: api/engine/parse.md
+          - Continuation: api/engine/continuation.md
+          - JSON Repair: api/engine/json_repair.md
       - Model:
+          - Wrapper: api/model/wrapper.md
           - Inference: api/model/inference.md
           - Hypernetwork: api/model/hypernetwork.md
           - Adapter: api/model/adapter.md
+      - Training:
+          - Orchestrator: api/training/orchestrator.md
+          - Gate: api/training/gate.md
+          - Distillation Training: api/training/d2l_train.md
+          - Diff-Aware Loss: api/training/diff_loss.md
+          - Oracle Cache: api/training/oracle_cache.md
+          - Training Config: api/training/config.md
+      - Benchmark:
+          - Runner: api/benchmark.md
+          - HPO: api/bench/hpo.md
+      - Mining: api/mining.md
+      - Tracking: api/tracking.md
       - Config: api/config.md
       - Registry: api/registry.md
       - Sandbox: api/sandbox.md
       - CLI: api/cli.md
-      - Benchmark: api/benchmark.md
-      - Training:
-          - Gate: api/training/gate.md
+  - Design Notes:
+      - Rune v2 Simplification Design: superpowers/specs/2026-05-21-rune-v2-simplification-design.md
+      - Adapter Continuation Design: superpowers/specs/2026-05-26-adapter-continuation-design.md
+      - Engine v2 Design: superpowers/specs/2026-05-26-engine-v2-design.md
+      - PEFT Scaling Fix Design: superpowers/specs/2026-05-26-peft-scaling-fix-design.md
+      - Rune v2 Implementation Plan: superpowers/plans/2026-05-22-rune-v2-implementation.md
+      - Engine v2 Plan: superpowers/plans/2026-05-26-engine-v2.md
 
 plugins:
   - search
