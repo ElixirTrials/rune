@@ -14,7 +14,7 @@ Local-first coding agent that encodes coding trajectories into LoRA adapters via
 - Quality: ruff, mypy (strict), pytest.
 
 ## Hard rules
-**Long-running ops** — never execute. Ask the user to run and log.
+**GPU / long-running ops** — OK to run directly on this GPU instance (engine runs, smoke tests, training, benchmarks). Capture/log output; prefer background runs for multi-minute jobs.
 **Deploy / install** — never.
 **GPU imports** — deferred inside function bodies (importable in CPU-only CI).
 
