@@ -32,7 +32,8 @@ def _chunk_gated_mlp(orig_fwd: Any, module: Any, x: Any, chunk_size: int) -> Any
     parts = [
         orig_fwd(module, flat[i : i + chunk_size]) for i in range(0, total, chunk_size)
     ]
-    return torch.cat(parts, dim=0).reshape(x.shape)
+    out = torch.cat(parts, dim=0)
+    return out.reshape(*x.shape[:-1], out.shape[-1])
 
 
 def _patch_flash_attention() -> None:

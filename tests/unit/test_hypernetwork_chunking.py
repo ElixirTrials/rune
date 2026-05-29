@@ -68,3 +68,35 @@ def test_small_input_runs_in_one_pass() -> None:
 
     assert out.shape == x.shape
     assert calls["n"] == 1
+
+
+class _GatedMLPProj(nn.Module):
+    """Gated MLP whose output feature dim differs from the input (like the real
+    modality_projection: hidden -> out_dim)."""
+
+    def __init__(self, hidden: int, intermediate: int, out_dim: int) -> None:
+        super().__init__()
+        self.gate_proj = nn.Linear(hidden, intermediate, bias=False)
+        self.up_proj = nn.Linear(hidden, intermediate, bias=False)
+        self.down_proj = nn.Linear(intermediate, out_dim, bias=False)
+        self.act_fn = nn.SiLU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+
+
+def test_chunks_preserve_output_dim_when_mlp_changes_feature_dim() -> None:
+    hidden, out_dim = 8, 4
+    mlp = _GatedMLPProj(hidden, hidden * 4, out_dim)
+    chunk = 2048
+
+    def fwd(module: object, x: torch.Tensor) -> torch.Tensor:
+        return _GatedMLPProj.forward(module, x)  # type: ignore[arg-type]
+
+    # n_layers*seq_len = 32*100 = 3200 > chunk -> chunked path.
+    x = torch.randn(32, 100, hidden)
+    out = _chunk_gated_mlp(fwd, mlp, x, chunk)
+    ref = _GatedMLPProj.forward(mlp, x)
+
+    assert out.shape == (32, 100, out_dim)        # leading dims preserved, OUTPUT feature dim
+    assert torch.allclose(out, ref, atol=1e-5)
