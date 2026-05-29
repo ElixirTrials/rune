@@ -7,6 +7,12 @@ import re
 from rune.engine.json_repair import extract_code_value
 from rune.engine.parse import CodeResult
 
+CONT_SYSTEM_PROMPT = (
+    "Output only Python code. No commentary, no explanations, "
+    "no markdown fences. Continue exactly from where the code "
+    "left off."
+)
+
 
 def extract_partial_code(raw: str) -> str:
     """Extract code from a possibly-truncated CodeResult JSON string.

@@ -13,6 +13,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from rune.engine.continuation import (
+    CONT_SYSTEM_PROMPT,
     degeneration_score,
     extract_partial_code,
     validate_syntax,
@@ -241,12 +242,8 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             cont_round = 0
             empty_rounds = 0
 
-            cont_sys = (
-                "Output only Python code. No commentary, no explanations, "
-                "no markdown fences. Continue exactly from where the code "
-                "left off."
-            )
-            cont_user = ctx.get("task_description", "")[:200]
+            cont_sys = CONT_SYSTEM_PROMPT
+            cont_user = render_template("prompt_code_continue", **ctx)
 
             while cont_budget > 0 and empty_rounds < 2:
                 import torch  # noqa: PLC0415
@@ -257,7 +254,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 cont_ctx = {
                     **ctx,
                     "accumulated_code": accumulated_code,
-                    "resume_tail": "\n".join(accumulated_code.splitlines()[-4:]),
                 }
                 cont_traj = render_template("code_continue", **cont_ctx)
 
