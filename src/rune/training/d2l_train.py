@@ -13,6 +13,21 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 
+def to_sft_columns(records: list[dict[object, object]]) -> list[dict[str, str]]:
+    """Project corpus records onto trl's prompt/completion SFT columns.
+
+    Records with an empty completion carry no training target and are dropped
+    so completion-only-loss never sees an all-masked example.
+    """
+    rows: list[dict[str, str]] = []
+    for rec in records:
+        completion = str(rec.get("completion", ""))
+        if not completion:
+            continue
+        rows.append({"prompt": str(rec.get("prompt", "")), "completion": completion})
+    return rows
+
+
 class D2LTrainConfig(BaseModel):
     """Base configuration for D2L QLoRA/hypernetwork training runs.
 
@@ -129,7 +144,9 @@ def run_distillation(config: D2LTrainConfig) -> None:
         max_length=config.max_seq_length,
     )
 
-    dataset = hf_datasets.Dataset.from_list(records)
+    sft_rows = to_sft_columns(records)
+    logger.info("run_distillation: %d records with completion target", len(sft_rows))
+    dataset = hf_datasets.Dataset.from_list(sft_rows)
 
     trainer = build_diff_aware_sft_trainer(
         model=model,
