@@ -8,7 +8,9 @@ and checks that:
   3. Sandbox receives and executes the assembled code
   4. Final state is coherent
 
-Run:  uv run python tools/smoke_test_engine.py
+Run:
+  uv run python tools/smoke_test_engine.py
+  uv run python tools/smoke_test_engine.py --eos   # single-subtask EOS (no integrate)
 """
 
 from __future__ import annotations
@@ -53,8 +55,9 @@ async def run() -> None:
     log.info("Loading config from %s", cfg_path)
     cfg = load_config(cfg_path)
 
+    eos_mode = "--eos" in sys.argv
     no_cont = "--no-cont" in sys.argv
-    max_tokens = 2048 if no_cont else 512
+    max_tokens = 2048 if (no_cont or eos_mode) else 512
 
     log.info("Loading model: %s  %s", cfg.model_id, _mem())
     t0 = time.monotonic()
@@ -63,7 +66,14 @@ async def run() -> None:
 
     engine = create_engine()
 
-    if no_cont:
+    if eos_mode:
+        task = (
+            'Write a function to find tuples which have all elements divisible '
+            'by k from the given list of tuples.\n\n'
+            ">>> assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) "
+            "== [(6, 24, 12)]"
+        )
+    elif no_cont:
         task = (
             "Write a function called fibonacci(n) that returns the nth "
             "Fibonacci number. Include 3 tests."
@@ -91,7 +101,7 @@ async def run() -> None:
         "actions": [],
         "trajectory": [],
         "step": 0,
-        "budget_remaining": 8,
+        "budget_remaining": 5 if eos_mode else 8,
     }
 
     run_config = cfg.to_dict()
@@ -187,6 +197,32 @@ async def run() -> None:
     else:
         print("  (empty — may not have reached integration)", flush=True)
     print(flush=True)
+
+    if eos_mode:
+        trajectory = final_state.get("trajectory", [])
+        action_names = [rec.action_name for rec in trajectory]
+        subtasks = final_state.get("subtasks", [])
+        integrated = final_state.get("integrated_code", "")
+        code_passed = final_state.get("code_passed", {})
+        print("=== EOS CHECKS ===", flush=True)
+        print(f"  subtasks: {[s.name for s in subtasks]}", flush=True)
+        print(f"  actions: {action_names}", flush=True)
+        print(f"  code_passed: {code_passed}", flush=True)
+        print(f"  integrated_code chars: {len(integrated)}", flush=True)
+        errors: list[str] = []
+        if len(subtasks) != 1:
+            errors.append(f"expected 1 subtask, got {len(subtasks)}")
+        if "integrate" in action_names:
+            errors.append(f"integrate must not run, saw trajectory: {action_names}")
+        main_passed = code_passed.get("_main", False)
+        if main_passed and not integrated:
+            errors.append("integrated_code empty after _main sandbox pass")
+        if errors:
+            print("=== EOS SMOKE FAILED ===", flush=True)
+            for err in errors:
+                print(f"  - {err}", flush=True)
+            raise SystemExit(1)
+        print("=== EOS SMOKE PASSED ===", flush=True)
 
     print("=== SMOKE TEST COMPLETE ===", flush=True)
     print(f"  Elapsed: {elapsed:.1f}s", flush=True)
