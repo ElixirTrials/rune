@@ -1,8 +1,10 @@
-Decompose into subtasks with dependencies. Output ONLY a numbered list.
-No preamble, no analysis, no reasoning.
-1. name — description [depends: none]
-2. name — description [depends: 1]
+Decompose into subtasks with dependencies. Output a JSON object:
+{"subtasks": [{"name": ..., "description": ..., "depends_on": [...]}]}
+Use depends_on: [] when a subtask has no prerequisites.
+No preamble, no analysis, no reasoning outside the JSON.
 
-BAD: "Analyze the request" / "Numbered list? Yes" — these are reasoning, NOT subtasks.
+BAD: a "subtask" named "Analyze the request" — that is reasoning, NOT a subtask.
 
-Project: {{ task_description }}
+[USER TASK]
+{{ task_description }}
+[/USER TASK]

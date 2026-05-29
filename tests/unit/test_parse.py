@@ -17,6 +17,20 @@ class TestRenderTemplate:
         text = render_template("decompose", project="build a calculator", subtasks=[])
         assert "calculator" in text
 
+    def test_decompose_describes_json_schema(self) -> None:
+        text = render_template("decompose", project="build a calculator", subtasks=[])
+        assert "subtasks" in text
+        assert "depends_on" in text
+        assert "numbered list" not in text.lower()
+
+    def test_decompose_prompt_describes_json_schema(self) -> None:
+        text = render_template(
+            "prompt_decompose_concise", task_description="build a calculator"
+        )
+        assert "subtasks" in text
+        assert "depends_on" in text
+        assert "numbered list" not in text.lower()
+
     def test_integration_diagnose_prompt_lists_subtasks(self) -> None:
         # The model must be shown the real subtask names (and the integration
         # error) so its diagnosis maps back to actual subtasks for repair.
