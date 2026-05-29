@@ -74,12 +74,12 @@ def run_distillation(config: D2LTrainConfig) -> None:
 
     import datasets as hf_datasets  # noqa: PLC0415
     import torch  # noqa: PLC0415
+    import trl  # noqa: PLC0415
     from peft import LoraConfig  # noqa: PLC0415
     from transformers import (  # noqa: PLC0415
         AutoModelForCausalLM,
         AutoTokenizer,
     )
-    from trl import SFTConfig  # type: ignore[attr-defined]  # noqa: PLC0415
 
     from rune.training.diff_loss import build_diff_aware_sft_trainer  # noqa: PLC0415
 
@@ -113,7 +113,7 @@ def run_distillation(config: D2LTrainConfig) -> None:
     # getattr(args, "max_length") threads the sequence cap into the collator;
     # with TrainingArguments it was always None and every record reached the GPU
     # at full length (OOM on long records).
-    training_args = SFTConfig(
+    training_args = trl.SFTConfig(  # type: ignore[attr-defined, unused-ignore]
         output_dir=config.checkpoint_dir,
         num_train_epochs=config.num_epochs,
         per_device_train_batch_size=config.batch_size,
