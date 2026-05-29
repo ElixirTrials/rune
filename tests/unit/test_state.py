@@ -21,7 +21,7 @@ class TestAction:
         a = Action(
             name="decompose",
             trajectory_template="decompose",
-            prompt_template="prompt_decompose",
+            prompt_template="prompt_decompose_concise",
             system_prompt="You are a decomposer.",
             output_schema=None,
             executes_code=False,
