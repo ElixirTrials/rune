@@ -38,9 +38,7 @@ def validate_syntax(code: str, *, language: str = "python") -> bool:
     if not code or not code.strip():
         return False
     if language != "python":
-        raise NotImplementedError(
-            f"syntax validation not implemented for {language!r}"
-        )
+        raise NotImplementedError(f"syntax validation not implemented for {language!r}")
     try:
         compile(code, "<check>", "exec")
         return True

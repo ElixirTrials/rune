@@ -135,7 +135,9 @@ class TestGenerateContinuation:
 
     def test_delegates_to_inference(self) -> None:
         expected = GenerationResult(
-            text="    return self.data\n", thinking="", tokens_used=10,
+            text="    return self.data\n",
+            thinking="",
+            tokens_used=10,
         )
         with patch(
             "rune.model.wrapper.inference_generate_continuation",
@@ -153,5 +155,8 @@ class TestGenerateContinuation:
             assert result is expected
             call_kwargs = mock_gen.call_args.kwargs
             assert call_kwargs["system_prompt"] == "Output only Python code."
-            assert call_kwargs["assistant_prefix"] == "class Node:\n    def __init__(self):\n"
+            assert (
+                call_kwargs["assistant_prefix"]
+                == "class Node:\n    def __init__(self):\n"
+            )
             assert call_kwargs["max_tokens"] == 512

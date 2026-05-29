@@ -109,9 +109,7 @@ def parse_output(
             try:
                 result = DecomposeResult.model_validate_json(raw)
             except Exception:
-                logger.warning(
-                    "decompose output failed validation; re-decomposing"
-                )
+                logger.warning("decompose output failed validation; re-decomposing")
                 return {}
             names = {s.name for s in result.subtasks}
             return {

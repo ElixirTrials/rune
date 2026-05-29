@@ -408,8 +408,6 @@ def _first_n_lines(text: str, n: int) -> str:
     return "\n".join(lines[:n])
 
 
-
-
 def _coherence_at_boundary(before: str, after: str) -> float:
     if not before or not after:
         return 0.0
@@ -436,6 +434,7 @@ def _regenerated_existing(continuation: str, accumulated_tail: str) -> bool:
         return False
     return first_line in accumulated_tail
 
+
 # ---------------------------------------------------------------------------
 # Trajectory builders (what the hypernetwork sees)
 # ---------------------------------------------------------------------------
@@ -460,9 +459,7 @@ def _traj_minimal(task: str, accumulated: str, window: int) -> str:
 
 def _traj_with_counter(task: str, accumulated: str, window: int) -> str:
     return (
-        f"CONTINUATION 1/5\n"
-        f"GOAL: {task[:200]}\n"
-        f"CODE SO FAR:\n{_cap_code(accumulated)}"
+        f"CONTINUATION 1/5\nGOAL: {task[:200]}\nCODE SO FAR:\n{_cap_code(accumulated)}"
     )
 
 
@@ -521,7 +518,10 @@ def _prompt_tail(accumulated: str, first_lines: int, last_lines: int, task: str)
 
 
 def _prompt_head_tail(
-    accumulated: str, first_lines: int, last_lines: int, task: str,
+    accumulated: str,
+    first_lines: int,
+    last_lines: int,
+    task: str,
 ) -> str:
     head = _first_n_lines(accumulated, first_lines) if first_lines > 0 else ""
     tail = _last_n_lines(accumulated, last_lines)
@@ -530,23 +530,31 @@ def _prompt_head_tail(
 
 
 def _prompt_instruction(
-    accumulated: str, first_lines: int, last_lines: int, task: str,
+    accumulated: str,
+    first_lines: int,
+    last_lines: int,
+    task: str,
 ) -> str:
     tail = _last_n_lines(accumulated, last_lines)
     return (
-        f"Original task: {task[:150]}\n"
-        f"Continue from where the code left off:\n{tail}"
+        f"Original task: {task[:150]}\nContinue from where the code left off:\n{tail}"
     )
 
 
 def _prompt_minimal(
-    accumulated: str, first_lines: int, last_lines: int, task: str,
+    accumulated: str,
+    first_lines: int,
+    last_lines: int,
+    task: str,
 ) -> str:
     return f"Continue writing code for: {task[:150]}"
 
 
 def _prompt_bare(
-    accumulated: str, first_lines: int, last_lines: int, task: str,
+    accumulated: str,
+    first_lines: int,
+    last_lines: int,
+    task: str,
 ) -> str:
     tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
     if tail:
@@ -555,7 +563,10 @@ def _prompt_bare(
 
 
 def _prompt_bare_directed(
-    accumulated: str, first_lines: int, last_lines: int, task: str,
+    accumulated: str,
+    first_lines: int,
+    last_lines: int,
+    task: str,
 ) -> str:
     tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
     if tail:
@@ -564,7 +575,10 @@ def _prompt_bare_directed(
 
 
 def _prompt_structural(
-    accumulated: str, first_lines: int, last_lines: int, task: str,
+    accumulated: str,
+    first_lines: int,
+    last_lines: int,
+    task: str,
 ) -> str:
     """Task + what's done + tail. Model infers what's missing."""
     funcs = []
@@ -594,7 +608,10 @@ def _prompt_structural(
 
 
 def _prompt_task_only(
-    accumulated: str, first_lines: int, last_lines: int, task: str,
+    accumulated: str,
+    first_lines: int,
+    last_lines: int,
+    task: str,
 ) -> str:
     """Task spec + tail. Adapter carries what's done."""
     tail = _last_n_lines(accumulated, last_lines) if last_lines > 0 else ""
@@ -648,7 +665,9 @@ def _generate_plaintext(
         {"role": "user", "content": prompt},
     ]
     encoded = tokenizer.apply_chat_template(
-        messages, return_tensors="pt", enable_thinking=False,
+        messages,
+        return_tensors="pt",
+        enable_thinking=False,
         add_generation_prompt=True,
     )
     if hasattr(encoded, "input_ids"):
@@ -668,7 +687,7 @@ def _generate_plaintext(
             **sampling,
         )
 
-    new_tokens = output[0][input_ids.shape[1]:]
+    new_tokens = output[0][input_ids.shape[1] :]
     text = tokenizer.decode(new_tokens, skip_special_tokens=True)
     return text, len(new_tokens)
 
@@ -706,7 +725,8 @@ def _generate_schema(
     vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
 
     tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-        tokenizer, vocab_size=vocab_size,
+        tokenizer,
+        vocab_size=vocab_size,
     )
     compiler = xgr.GrammarCompiler(tokenizer_info)
     schema_json = _json.dumps(CodeResult.model_json_schema())
@@ -718,7 +738,9 @@ def _generate_schema(
         {"role": "user", "content": prompt},
     ]
     encoded = tokenizer.apply_chat_template(
-        messages, return_tensors="pt", enable_thinking=False,
+        messages,
+        return_tensors="pt",
+        enable_thinking=False,
         add_generation_prompt=True,
     )
     if hasattr(encoded, "input_ids"):
@@ -739,7 +761,7 @@ def _generate_schema(
             **sampling,
         )
 
-    new_tokens = output[0][input_ids.shape[1]:]
+    new_tokens = output[0][input_ids.shape[1] :]
     text = tokenizer.decode(new_tokens, skip_special_tokens=True)
 
     return text, len(new_tokens)
@@ -768,6 +790,7 @@ def _diagnose(
     if not no_schema:
         try:
             from rune.engine.parse import CodeResult  # noqa: PLC0415
+
             CodeResult.model_validate_json(continuation)
             schema_valid = True
         except Exception:
@@ -807,7 +830,6 @@ def _summarize_think(think_text: str) -> str:
     return summary[:200]
 
 
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -818,7 +840,9 @@ def main() -> None:
         description="Single-shot continuation probe",
     )
     parser.add_argument(
-        "--scenario", choices=list(SCENARIOS.keys()), required=True,
+        "--scenario",
+        choices=list(SCENARIOS.keys()),
+        required=True,
     )
     parser.add_argument("--scaling", type=float, default=5.0)
     parser.add_argument(
@@ -837,7 +861,9 @@ def main() -> None:
         default="with_attempt_counter",
     )
     parser.add_argument(
-        "--config", type=Path, default=Path("benchmarks/bench.yaml"),
+        "--config",
+        type=Path,
+        default=Path("benchmarks/bench.yaml"),
     )
     parser.add_argument("--rounds", type=int, default=1)
     args = parser.parse_args()
@@ -874,8 +900,11 @@ def main() -> None:
     empty_rounds = 0
     for rnd in range(args.rounds):
         torch.cuda.empty_cache()
-        print(f"\n--- Round {rnd + 1}/{args.rounds} ({len(accumulated)} chars) ---",
-              file=sys.stderr, flush=True)
+        print(
+            f"\n--- Round {rnd + 1}/{args.rounds} ({len(accumulated)} chars) ---",
+            file=sys.stderr,
+            flush=True,
+        )
 
         trajectory = traj_fn(task_text, accumulated, args.traj_window)
 
@@ -890,21 +919,40 @@ def main() -> None:
         print("Generating continuation...", file=sys.stderr, flush=True)
         if args.no_schema:
             continuation, n_tokens = _generate_plaintext(
-                base_model, tokenizer, prompt, system_prompt,
-                args.max_tokens, cfg.temperature, cfg.repetition_penalty,
-                cfg.top_p, cfg.top_k, no_repeat_ngram,
+                base_model,
+                tokenizer,
+                prompt,
+                system_prompt,
+                args.max_tokens,
+                cfg.temperature,
+                cfg.repetition_penalty,
+                cfg.top_p,
+                cfg.top_k,
+                no_repeat_ngram,
             )
         else:
             continuation, n_tokens = _generate_schema(
-                base_model, tokenizer, prompt, system_prompt,
-                args.max_tokens, cfg.temperature, cfg.repetition_penalty,
-                cfg.top_p, cfg.top_k, no_repeat_ngram,
+                base_model,
+                tokenizer,
+                prompt,
+                system_prompt,
+                args.max_tokens,
+                cfg.temperature,
+                cfg.repetition_penalty,
+                cfg.top_p,
+                cfg.top_k,
+                no_repeat_ngram,
             )
 
         diagnosis = _diagnose(
-            continuation, accumulated, args.traj_window,
-            n_tokens, args.max_tokens, args.scaling,
-            args.no_schema, args.prompt_template,
+            continuation,
+            accumulated,
+            args.traj_window,
+            n_tokens,
+            args.max_tokens,
+            args.scaling,
+            args.no_schema,
+            args.prompt_template,
         )
 
         prefix = f"{rnd:02d}"
@@ -925,8 +973,11 @@ def main() -> None:
         think_raw = _extract_think(continuation)
         _LAST_THINK_SUMMARY = _summarize_think(think_raw)
 
-        print(f"Round {rnd + 1}: {n_tokens} tokens, "
-              f"stopped_early={diagnosis['stopped_early']}", flush=True)
+        print(
+            f"Round {rnd + 1}: {n_tokens} tokens, "
+            f"stopped_early={diagnosis['stopped_early']}",
+            flush=True,
+        )
         if _LAST_THINK_SUMMARY:
             print(f"Think summary: {_LAST_THINK_SUMMARY[:100]}", flush=True)
         print(f"Code extracted ({len(code)} chars):", flush=True)
@@ -939,20 +990,24 @@ def main() -> None:
             empty_rounds += 1
 
         if args.rounds > 1 and diagnosis["stopped_early"]:
-            print(f"Model stopped early (EOS) — task complete after round {rnd + 1}.",
-                  flush=True)
+            print(
+                f"Model stopped early (EOS) — task complete after round {rnd + 1}.",
+                flush=True,
+            )
             break
 
         if args.rounds > 1 and empty_rounds >= 2:
-            print(f"No new code for {empty_rounds} consecutive rounds — stopping.",
-                  flush=True)
+            print(
+                f"No new code for {empty_rounds} consecutive rounds — stopping.",
+                flush=True,
+            )
             break
 
     (run_dir / "final_accumulated.txt").write_text(accumulated)
 
-    print(f"\n{'='*60}", flush=True)
+    print(f"\n{'=' * 60}", flush=True)
     print(f"Run saved to: {run_dir}", flush=True)
-    print(f"{'='*60}", flush=True)
+    print(f"{'=' * 60}", flush=True)
     if args.rounds == 1:
         print(json.dumps(diagnosis, indent=2), flush=True)
 

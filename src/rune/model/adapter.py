@@ -24,10 +24,7 @@ def scale_lora_b(state_dict: dict[str, Any], factor: float) -> dict[str, Any]:
 
     Returns a new dict; the original is not mutated.
     """
-    return {
-        k: v * factor if "lora_B" in k else v
-        for k, v in state_dict.items()
-    }
+    return {k: v * factor if "lora_B" in k else v for k, v in state_dict.items()}
 
 
 def hotswap_adapter(model: Any, state_dict: dict[str, Any]) -> None:

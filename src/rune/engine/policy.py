@@ -155,7 +155,8 @@ def select_action(state: dict[str, Any]) -> list[Action]:
         if exhausted:
             logger.warning(
                 "Subtasks %s exhausted all %d retries, falling through to integrate",
-                exhausted, MAX_RETRIES,
+                exhausted,
+                MAX_RETRIES,
             )
 
     # All subtasks pass — integrate or done

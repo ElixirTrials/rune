@@ -1,4 +1,5 @@
 """Unit tests for the continuation sub-loop in step_node."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,15 +41,21 @@ class TestStepNodeContinuation:
         state = _make_state()
         truncated_json = json.dumps({"code": "class Node:\n    def __init__(self):\n"})
         initial_result = GenerationResult(
-            text=truncated_json, thinking="", tokens_used=100, truncated=True,
+            text=truncated_json,
+            thinking="",
+            tokens_used=100,
+            truncated=True,
         )
         cont_result = GenerationResult(
             text="        self.data = None\n\nclass LinkedList:\n    pass\n",
-            thinking="", tokens_used=50, truncated=False,
+            thinking="",
+            tokens_used=50,
+            truncated=False,
         )
         model = MagicMock()
         model.generate_adapter.return_value = AdapterResult(
-            adapter_id="test123", state_dict={},
+            adapter_id="test123",
+            state_dict={},
         )
         model.hotswap_adapter = MagicMock()
         model.generate = AsyncMock(return_value=initial_result)
@@ -68,7 +75,9 @@ class TestStepNodeContinuation:
 
         with patch("rune.engine.graph.run_in_sandbox") as mock_sandbox:
             mock_sandbox.return_value = MagicMock(
-                stdout="", stderr="", exit_code=0,
+                stdout="",
+                stderr="",
+                exit_code=0,
             )
             asyncio.run(step_node(state, config))
 
@@ -82,15 +91,21 @@ class TestStepNodeContinuation:
         state = _make_state()
         truncated_json = json.dumps({"code": "class Node:\n    pass\n"})
         initial_result = GenerationResult(
-            text=truncated_json, thinking="", tokens_used=100, truncated=True,
+            text=truncated_json,
+            thinking="",
+            tokens_used=100,
+            truncated=True,
         )
         cont_result = GenerationResult(
             text="\nclass LinkedList:\n    pass\n",
-            thinking="", tokens_used=30, truncated=True,
+            thinking="",
+            tokens_used=30,
+            truncated=True,
         )
         model = MagicMock()
         model.generate_adapter.return_value = AdapterResult(
-            adapter_id="test456", state_dict={},
+            adapter_id="test456",
+            state_dict={},
         )
         model.hotswap_adapter = MagicMock()
         model.generate = AsyncMock(return_value=initial_result)
@@ -110,7 +125,9 @@ class TestStepNodeContinuation:
 
         with patch("rune.engine.graph.run_in_sandbox") as mock_sandbox:
             mock_sandbox.return_value = MagicMock(
-                stdout="", stderr="", exit_code=0,
+                stdout="",
+                stderr="",
+                exit_code=0,
             )
             asyncio.run(step_node(state, config))
 

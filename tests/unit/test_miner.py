@@ -155,13 +155,28 @@ def test_extract_trajectories_no_subtask_conflation() -> None:
     # Two subtasks each have a `code` step. They must yield two separate code
     # records keyed on (action, target), not one conflated record.
     steps = [
-        {"step": 0, "action": "code", "target": "subtask_a",
-         "input": "code a", "output": "def a(): pass", "feedback": None},
-        {"step": 1, "action": "code", "target": "subtask_b",
-         "input": "code b", "output": "def b(): pass", "feedback": None},
+        {
+            "step": 0,
+            "action": "code",
+            "target": "subtask_a",
+            "input": "code a",
+            "output": "def a(): pass",
+            "feedback": None,
+        },
+        {
+            "step": 1,
+            "action": "code",
+            "target": "subtask_b",
+            "input": "code b",
+            "output": "def b(): pass",
+            "feedback": None,
+        },
     ]
-    records = [r for r in extract_trajectories(steps, _META)
-               if r["metadata"]["phase"] == "code"]
+    records = [
+        r
+        for r in extract_trajectories(steps, _META)
+        if r["metadata"]["phase"] == "code"
+    ]
     assert len(records) == 2
     targets = {r["metadata"]["target"] for r in records}
     assert targets == {"subtask_a", "subtask_b"}

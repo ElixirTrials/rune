@@ -190,4 +190,3 @@ class AdapterRegistry:
         )
         self._conn.commit()
         return cursor.rowcount
-

@@ -10,6 +10,7 @@ and checks that:
 
 Run:  uv run python tools/smoke_test_engine.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,6 +34,7 @@ log = logging.getLogger("smoke_test_engine")
 def _mem() -> str:
     try:
         import torch  # noqa: PLC0415
+
         if torch.cuda.is_available():
             a = torch.cuda.memory_allocated() / 1e9
             r = torch.cuda.memory_reserved() / 1e9
@@ -103,14 +105,18 @@ async def run() -> None:
     log.info("task: %s", task[:80])
     log.info(
         "max_tokens=%d  scaling=%.2f  cont_mult=%.2f  no_repeat_ngram=%d",
-        max_tokens, cfg.adapter_scaling, cfg.cont_multiplier, cfg.no_repeat_ngram_size,
+        max_tokens,
+        cfg.adapter_scaling,
+        cfg.cont_multiplier,
+        cfg.no_repeat_ngram_size,
     )
     log.info("budget_remaining=%d", initial_state["budget_remaining"])
     print(flush=True)
 
     t0 = time.monotonic()
     final_state = await engine.ainvoke(
-        initial_state, config={"configurable": config},
+        initial_state,
+        config={"configurable": config},
     )
     elapsed = time.monotonic() - t0
 

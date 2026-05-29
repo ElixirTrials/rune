@@ -24,7 +24,7 @@ class PresencePenaltyLogitsProcessor:
     def __call__(self, input_ids: Any, scores: Any) -> Any:
         if self.penalty == 0.0:
             return scores
-        gen_ids = input_ids[:, self.prompt_length:]
+        gen_ids = input_ids[:, self.prompt_length :]
         for i in range(gen_ids.shape[0]):
             seen = gen_ids[i].unique()
             scores[i, seen] -= self.penalty
@@ -102,7 +102,9 @@ async def generate(
 
         if thinking_budget > 0:
             encoded = tokenizer.apply_chat_template(
-                messages, return_tensors="pt", add_generation_prompt=True,
+                messages,
+                return_tensors="pt",
+                add_generation_prompt=True,
             )
             if hasattr(encoded, "input_ids"):
                 input_ids = encoded["input_ids"].to(model.device)
@@ -134,8 +136,10 @@ async def generate(
                 prefix_ids = thinking_output
         else:
             encoded = tokenizer.apply_chat_template(
-                messages, return_tensors="pt",
-                enable_thinking=False, add_generation_prompt=True,
+                messages,
+                return_tensors="pt",
+                enable_thinking=False,
+                add_generation_prompt=True,
             )
             if hasattr(encoded, "input_ids"):
                 prefix_ids = encoded["input_ids"].to(model.device)
@@ -156,7 +160,8 @@ async def generate(
         if presence_penalty > 0.0:
             processors.append(
                 PresencePenaltyLogitsProcessor(
-                    presence_penalty, prompt_length=prefix_ids.shape[1],
+                    presence_penalty,
+                    prompt_length=prefix_ids.shape[1],
                 )
             )
 
@@ -168,12 +173,8 @@ async def generate(
             base_model = getattr(model, "base_model", model)
             model_config = getattr(base_model, "config", None)
             text_cfg = getattr(model_config, "text_config", model_config)
-            vocab_size = (
-                getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
-            )
-            compiled = _get_compiled_grammar(
-                xgr, tokenizer, output_schema, vocab_size
-            )
+            vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
+            compiled = _get_compiled_grammar(xgr, tokenizer, output_schema, vocab_size)
             processors.append(xgr.contrib.hf.LogitsProcessor(compiled))
 
         if processors:
@@ -193,8 +194,14 @@ async def generate(
         truncated = len(result_tokens) >= max_tokens
         if truncated and not skip_completion_retry and compiled is not None:
             result_text, extra, completed = _try_completion(
-                model, tokenizer, result_text, structured_output,
-                compiled, max_tokens, repetition_penalty, sampling,
+                model,
+                tokenizer,
+                result_text,
+                structured_output,
+                compiled,
+                max_tokens,
+                repetition_penalty,
+                sampling,
                 presence_penalty=presence_penalty,
                 prompt_length=prefix_ids.shape[1],
             )
@@ -277,7 +284,8 @@ def _try_completion(
     completed = matcher.is_completed()
     logger.info(
         "Continuation produced %d extra tokens (completed=%s)",
-        len(cont_tokens), completed,
+        len(cont_tokens),
+        completed,
     )
     return partial_json + continuation, len(cont_tokens), completed
 

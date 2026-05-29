@@ -91,8 +91,6 @@ def _coherence(output: str, fn_name: str) -> float:
     return has_fn * 0.6 + ascii_ratio * 0.4
 
 
-
-
 def _run_trial(
     model: Any,
     scaling: float,

@@ -105,19 +105,19 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
             if rec.feedback and rec.feedback.exit_code != 0:
                 repair_history.append(rec.feedback.stderr[:200])
             if rec.generated_code:
-                code_trajectory.append({
-                    "step": rec.step,
-                    "action": rec.action_name,
-                    "code": rec.generated_code[:_CODE_HISTORY_CAP],
-                    "error": (
-                        rec.feedback.stderr[:300]
-                        if rec.feedback and rec.feedback.exit_code != 0
-                        else ""
-                    ),
-                    "passed": bool(
-                        rec.feedback and rec.feedback.exit_code == 0
-                    ),
-                })
+                code_trajectory.append(
+                    {
+                        "step": rec.step,
+                        "action": rec.action_name,
+                        "code": rec.generated_code[:_CODE_HISTORY_CAP],
+                        "error": (
+                            rec.feedback.stderr[:300]
+                            if rec.feedback and rec.feedback.exit_code != 0
+                            else ""
+                        ),
+                        "passed": bool(rec.feedback and rec.feedback.exit_code == 0),
+                    }
+                )
         ctx["repair_history"] = repair_history[-2:]
         ctx["code_trajectory"] = code_trajectory
     else:
@@ -241,9 +241,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 new_chunk = result.text
                 degen = degeneration_score(new_chunk)
                 logger.info(
-                    "continuation round %d: +%d chars, degen=%.2f, "
-                    "truncated=%s",
-                    cont_round, len(new_chunk), degen, result.truncated,
+                    "continuation round %d: +%d chars, degen=%.2f, truncated=%s",
+                    cont_round,
+                    len(new_chunk),
+                    degen,
+                    result.truncated,
                 )
 
                 if degen > 0.5:
@@ -270,14 +272,16 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
             logger.info(
                 "continuation done: %d rounds, %d chars, syntax_valid=%s",
-                cont_round, len(accumulated_code),
+                cont_round,
+                len(accumulated_code),
                 validate_syntax(accumulated_code),
             )
             raw_text = json.dumps({"code": accumulated_code})
         elif result.truncated:
             logger.warning(
                 "Truncated output for %s/%s after completion retry",
-                action.name, action.target_subtask or "",
+                action.name,
+                action.target_subtask or "",
             )
 
         target_name = action.target_subtask or ""
@@ -321,9 +325,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     running = dict(state)
     for action, target_name, raw, _ in results:
         fb = feedback_map.get(target_name)
-        partial = parse_output(
-            action, raw, fb, running, code=code_map.get(target_name)
-        )
+        partial = parse_output(action, raw, fb, running, code=code_map.get(target_name))
         updates.update(partial)
         running.update(partial)
 

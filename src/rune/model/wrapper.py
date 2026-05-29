@@ -100,7 +100,10 @@ class ModelWrapper:
         return cls(base_model, tokenizer, hypernet, config=config)
 
     def generate_adapter(
-        self, trajectory_text: str, *, offload_base: bool = False,
+        self,
+        trajectory_text: str,
+        *,
+        offload_base: bool = False,
     ) -> AdapterResult:
         """Generate LoRA weights from a trajectory via the hypernetwork.
 

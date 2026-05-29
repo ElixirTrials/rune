@@ -58,7 +58,6 @@ class TestRunState:
         state: RunState = {
             "task": "build a calculator",
             "subtasks": [],
-
             "plans": {},
             "code_results": {},
             "code_passed": {},
@@ -86,7 +85,6 @@ class TestRunState:
         state: RunState = {
             "task": "test",
             "subtasks": [],
-
             "plans": {},
             "code_results": {},
             "code_passed": {},
@@ -108,7 +106,6 @@ class TestRunState:
         state: RunState = {
             "task": "test",
             "subtasks": [],
-
             "plans": {},
             "code_results": {},
             "code_passed": {},

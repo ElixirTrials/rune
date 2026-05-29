@@ -59,4 +59,3 @@ class TestPipelineConfig:
             assert cfg.temperature == 0.99
         finally:
             del os.environ["RUNE_TEMPERATURE"]
-
