@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import defaultdict
 from pathlib import Path
 
 from rune.mining.session_log import SESSION_SCHEMA_VERSION  # single source of truth
+
+logger = logging.getLogger(__name__)
 
 
 def scan_sessions(sessions_dir: Path) -> list[Path]:
@@ -45,7 +48,7 @@ def _select_training_steps(
     recovered = {
         s.get("target")
         for s in steps
-        if (s.get("feedback") or {}).get("exit_code") == 0
+        if s.get("target") and (s.get("feedback") or {}).get("exit_code") == 0
     }
     return [
         s for s in steps
@@ -70,9 +73,11 @@ def extract_trajectories(
     pass_at_1 = metadata.get("pass_at_1")
 
     records: list[dict] = []  # type: ignore[type-arg]
+    dropped = 0
     for step in _select_training_steps(steps, pass_at_1):
         completion = step.get("output", "")
         if not completion:
+            dropped += 1
             continue
         records.append(
             {
@@ -90,6 +95,11 @@ def extract_trajectories(
                     "schema_version": SESSION_SCHEMA_VERSION,
                 },
             }
+        )
+    if dropped:
+        logger.debug(
+            "extract_trajectories: dropped %d step(s) with empty completion (%s/%s)",
+            dropped, benchmark, problem_id,
         )
     return records
 

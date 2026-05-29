@@ -108,6 +108,7 @@ async def run_benchmark(
         engine: Compiled LangGraph engine (CompiledStateGraph).
         config: Configurable dict passed to engine.ainvoke (contains
             ``model`` and ``run_config`` keys).
+        sessions_dir: If set, write one session dir per task here (corpus producer).
 
     Returns:
         BenchResult with pass@1 and per-task details.
