@@ -499,12 +499,24 @@ def _traj_code_template(task: str, accumulated: str, window: int) -> str:
     )
 
 
+def _traj_production(task: str, accumulated: str, window: int) -> str:
+    from rune.engine.parse import render_template  # noqa: PLC0415
+
+    return render_template(
+        "code_continue",
+        project=task,
+        subtask=None,
+        accumulated_code=accumulated,
+    )
+
+
 TRAJECTORY_FLAVORS: dict[str, Any] = {
     "sliding_window": _traj_sliding_window,
     "minimal_goal_code": _traj_minimal,
     "with_attempt_counter": _traj_with_counter,
     "with_structural_summary": _traj_with_structure,
     "code_template": _traj_code_template,
+    "production": _traj_production,
 }
 
 # ---------------------------------------------------------------------------
