@@ -10,6 +10,54 @@ logger = logging.getLogger(__name__)
 
 _flash_patched = False
 
+# #region agent log
+_DEBUG_LOG = "/workspaces/rune-gpu/.cursor/debug-88deb7.log"
+
+
+def _dbg(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: dict[str, Any],
+    *,
+    run_id: str = "pre-fix",
+) -> None:
+    import json  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    try:
+        with open(_DEBUG_LOG, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "sessionId": "88deb7",
+                        "runId": run_id,
+                        "hypothesisId": hypothesis_id,
+                        "location": location,
+                        "message": message,
+                        "data": data,
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+    except OSError:
+        pass
+
+
+def _cuda_mem_mb() -> dict[str, float]:
+    import torch  # noqa: PLC0415
+
+    if not torch.cuda.is_available():
+        return {}
+    return {
+        "alloc_mb": round(torch.cuda.memory_allocated() / 1e6, 1),
+        "reserved_mb": round(torch.cuda.memory_reserved() / 1e6, 1),
+        "max_alloc_mb": round(torch.cuda.max_memory_allocated() / 1e6, 1),
+    }
+
+
+# #endregion
 
 _MLP_CHUNK_SIZE = 2048
 
@@ -40,6 +88,19 @@ def _patch_flash_attention() -> None:
 
     def _chunked_mlp_forward(self_: Any, x: Any) -> Any:
         seq = x.shape[-2]
+        # #region agent log
+        _dbg(
+            "C",
+            "hypernetwork.py:_chunked_mlp_forward",
+            "modality_projection MLP input",
+            {
+                "x_shape": list(x.shape),
+                "seq_dim": seq,
+                "chunked": seq > _MLP_CHUNK_SIZE,
+                **_cuda_mem_mb(),
+            },
+        )
+        # #endregion
         if seq <= _MLP_CHUNK_SIZE:
             return _orig_mlp_fwd(self_, x)
         parts = []
@@ -342,6 +403,21 @@ def generate_adapter_weights(
 
     import torch  # noqa: PLC0415
 
+    # #region agent log
+    _dbg(
+        "A",
+        "hypernetwork.py:generate_adapter_weights:entry",
+        "before activation extract",
+        {
+            "trajectory_chars": len(trajectory_text),
+            "max_length": max_length,
+            "n_layer_indices": len(layer_indices),
+            "offload_base": offload_base,
+            **_cuda_mem_mb(),
+        },
+    )
+    # #endregion
+
     features, attn_mask = extract_activations_with_model(
         text=trajectory_text,
         model=base_model,
@@ -349,6 +425,21 @@ def generate_adapter_weights(
         layer_indices=layer_indices,
         max_length=max_length,
     )
+
+    # #region agent log
+    _dbg(
+        "B",
+        "hypernetwork.py:generate_adapter_weights:post_extract",
+        "after activation extract",
+        {
+            "features_shape": list(features.shape),
+            "attn_mask_shape": list(attn_mask.shape),
+            "features_device": str(features.device),
+            "features_dtype": str(features.dtype),
+            **_cuda_mem_mb(),
+        },
+    )
+    # #endregion
 
     base_device: torch.device | None = None
     if offload_base:
@@ -361,6 +452,18 @@ def generate_adapter_weights(
     hypernet_dtype = next(hypernet.parameters()).dtype
     features = features.to(device=hypernet_device, dtype=hypernet_dtype)
     attn_mask = attn_mask.to(device=hypernet_device)
+    # #region agent log
+    _dbg(
+        "D",
+        "hypernetwork.py:generate_adapter_weights:pre_hypernet",
+        "before hypernet.generate_weights",
+        {
+            "offload_base": offload_base,
+            "base_on_cpu": offload_base,
+            **_cuda_mem_mb(),
+        },
+    )
+    # #endregion
     with torch.no_grad():
         lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
 

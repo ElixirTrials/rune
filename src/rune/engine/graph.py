@@ -174,6 +174,46 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         trajectory_text = render_template(action.trajectory_template, **ctx)
         prompt_text = render_template(action.prompt_template, **ctx)
 
+        # #region agent log
+        try:
+            import json as _json  # noqa: PLC0415
+            import time as _time  # noqa: PLC0415
+
+            _mem: dict[str, float] = {}
+            if torch.cuda.is_available():
+                _mem = {
+                    "alloc_mb": round(torch.cuda.memory_allocated() / 1e6, 1),
+                    "reserved_mb": round(torch.cuda.memory_reserved() / 1e6, 1),
+                }
+            with open(
+                "/workspaces/rune-gpu/.cursor/debug-88deb7.log",
+                "a",
+                encoding="utf-8",
+            ) as _df:
+                _df.write(
+                    _json.dumps(
+                        {
+                            "sessionId": "88deb7",
+                            "runId": "pre-fix",
+                            "hypothesisId": "E",
+                            "location": "graph.py:step_node",
+                            "message": "before generate_adapter",
+                            "data": {
+                                "action": action.name,
+                                "trajectory_chars": len(trajectory_text),
+                                "budget_remaining": state["budget_remaining"],
+                                "n_trajectory_records": len(state.get("trajectory", [])),
+                                **_mem,
+                            },
+                            "timestamp": int(_time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+        # #endregion
+
         adapter = model.generate_adapter(trajectory_text)
         scaled_sd = scale_lora_b(adapter.state_dict, adapter_scaling)
         model.hotswap_adapter(scaled_sd)

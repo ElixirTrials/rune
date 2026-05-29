@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from rune.bench.hpo import run_hpo
+from rune.bench.hpo import _BENCH_HPO_DB, _BENCH_HPO_STUDY, run_hpo
 from rune.bench.runner import BenchResult, BenchTask
 from rune.config import PipelineConfig
 
@@ -81,7 +82,10 @@ class TestRunHpoStudyCreation:
             )
 
         mock_create.assert_called_once_with(
-            direction="maximize", study_name="rune-bench-hpo"
+            direction="maximize",
+            study_name=_BENCH_HPO_STUDY,
+            storage=f"sqlite:///{_BENCH_HPO_DB}",
+            load_if_exists=True,
         )
 
 
@@ -199,3 +203,32 @@ class TestRunHpoNTrialsPropagated:
 
         # args[0]=objective_fn, args[1]=n_trials
         assert captured[0][1] == 7
+
+
+class TestRunHpoFresh:
+    def test_fresh_deletes_db_and_disables_load_if_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "optuna_bench_hpo.db"
+        db.write_text("old")
+
+        mock_study = MagicMock()
+        mock_study.best_params = {}
+        mock_study.best_value = 0.0
+
+        with (
+            patch("rune.bench.hpo._BENCH_HPO_DB", db),
+            patch("optuna.create_study", return_value=mock_study) as mock_create,
+            patch("optuna_integration.MLflowCallback"),
+            patch("optuna.logging.set_verbosity"),
+            patch("asyncio.to_thread", new_callable=AsyncMock),
+        ):
+            asyncio.run(
+                run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=1, fresh=True)
+            )
+
+        assert not db.exists()
+        mock_create.assert_called_once_with(
+            direction="maximize",
+            study_name=_BENCH_HPO_STUDY,
+            storage=f"sqlite:///{db}",
+            load_if_exists=False,
+        )

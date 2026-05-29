@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_SEED = 42
 _DEFAULT_TUNING_FRACTION = 0.70
+_BENCH_HPO_STUDY = "rune-bench-hpo"
+_BENCH_HPO_DB = Path("optuna_bench_hpo.db")
 
 
 def split_tasks(
@@ -46,6 +49,8 @@ async def run_hpo(
     model: Any,
     n_trials: int,
     parent_run_id: str | None = None,
+    *,
+    fresh: bool = False,
 ) -> dict[str, Any]:
     """Tune engine params to maximise tuning-set pass@1, then score the best
     params once on a held-out validation set.
@@ -118,7 +123,15 @@ async def run_hpo(
     if parent_run_id:
         mlflow_kwargs["tags"] = {"mlflow.parentRunId": parent_run_id}
     mlflow_callback = MLflowCallback(mlflow_kwargs=mlflow_kwargs)
-    study = optuna.create_study(direction="maximize", study_name="rune-bench-hpo")
+    if fresh and _BENCH_HPO_DB.exists():
+        _BENCH_HPO_DB.unlink()
+        logger.info("Deleted existing Optuna DB: %s", _BENCH_HPO_DB)
+    study = optuna.create_study(
+        direction="maximize",
+        study_name=_BENCH_HPO_STUDY,
+        storage=f"sqlite:///{_BENCH_HPO_DB}",
+        load_if_exists=not fresh,
+    )
 
     await asyncio.to_thread(
         study.optimize,
