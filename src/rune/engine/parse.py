@@ -78,7 +78,7 @@ def _parse_code_action(
     fb_map = dict(state.get("feedback", {}))
     if feedback:
         fb_map[target] = feedback
-    return {
+    result: dict[str, Any] = {
         "code_results": {
             **state.get("code_results", {}),
             target: code,
@@ -91,6 +91,10 @@ def _parse_code_action(
         "feedback": fb_map,
         "diagnosis": diagnosis,
     }
+    subtasks = state.get("subtasks", [])
+    if passed and len(subtasks) == 1:
+        result["integrated_code"] = code
+    return result
 
 
 def parse_output(

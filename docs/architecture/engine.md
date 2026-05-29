@@ -50,7 +50,9 @@ integrate` as a priority cascade over `RunState`:
   - no code yet, or `retries ≥ MAX_REPAIRS (2)` → `code` (regenerate from scratch);
   - else if a diagnosis exists → `repair`;
   - else → `diagnose`.
-- **All subtasks pass** → `integrate`; if integration already failed, `diagnose` then re-
+- **All subtasks pass** → if exactly one subtask and its sandbox passed, set
+  `integrated_code` from that subtask’s code and return `[]` (done; no integrate). If
+  multiple subtasks, `integrate`; if integration already failed, `diagnose` then re-
   `integrate`; once `integrated_code` is set, return `[]` (done).
 
 Repair budgeting: `MAX_REPAIRS=2`, `MAX_RETRIES=2·MAX_REPAIRS=4`. A subtask at `MAX_RETRIES`

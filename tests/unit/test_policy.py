@@ -114,15 +114,26 @@ class TestSelectAction:
         assert len(actions) == 1
         assert actions[0].name == "integrate"
 
-    def test_all_passing_returns_integrate(self) -> None:
-        subtasks = [Subtask("a", "do a", [])]
+    def test_single_subtask_pass_eos(self) -> None:
+        subtasks = [Subtask("_main", "do main", [])]
         state = _make_state(
             subtasks=subtasks,
-            plans={"a": "plan"},
-            code_results={"a": "good"},
-            code_passed={"a": True},
+            plans={"_main": "plan"},
+            code_results={"_main": "good"},
+            code_passed={"_main": True},
+        )
+        assert select_action(state) == []
+
+    def test_multi_subtask_all_passing_returns_integrate(self) -> None:
+        subtasks = [Subtask("a", "do a", []), Subtask("b", "do b", [])]
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan a", "b": "plan b"},
+            code_results={"a": "good a", "b": "good b"},
+            code_passed={"a": True, "b": True},
         )
         actions = select_action(state)
+        assert len(actions) == 1
         assert actions[0].name == "integrate"
 
     def test_done_returns_empty(self) -> None:
@@ -138,26 +149,26 @@ class TestSelectAction:
         assert actions == []
 
     def test_integration_failure_returns_diagnose(self) -> None:
-        subtasks = [Subtask("a", "do a", [])]
+        subtasks = [Subtask("a", "do a", []), Subtask("b", "do b", [])]
         fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
         state = _make_state(
             subtasks=subtasks,
-            plans={"a": "plan"},
-            code_results={"a": "good"},
-            code_passed={"a": True},
+            plans={"a": "plan a", "b": "plan b"},
+            code_results={"a": "good a", "b": "good b"},
+            code_passed={"a": True, "b": True},
             integration_feedback=fb,
         )
         actions = select_action(state)
         assert actions[0].name == "diagnose"
 
     def test_integration_failure_with_diagnosis_returns_integrate(self) -> None:
-        subtasks = [Subtask("a", "do a", [])]
+        subtasks = [Subtask("a", "do a", []), Subtask("b", "do b", [])]
         fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
         state = _make_state(
             subtasks=subtasks,
-            plans={"a": "plan"},
-            code_results={"a": "good"},
-            code_passed={"a": True},
+            plans={"a": "plan a", "b": "plan b"},
+            code_results={"a": "good a", "b": "good b"},
+            code_passed={"a": True, "b": True},
             integration_feedback=fb,
             diagnosis={"a": "Fix the import"},
         )

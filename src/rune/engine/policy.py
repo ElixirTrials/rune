@@ -170,6 +170,11 @@ def select_action(state: dict[str, Any]) -> list[Action]:
                 return []
 
     # All subtasks pass — integrate or done
+    if len(subtasks) == 1:
+        only = subtasks[0].name
+        if state["code_passed"].get(only):
+            return []
+
     if state["integrated_code"]:
         return []
 

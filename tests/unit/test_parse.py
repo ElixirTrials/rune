@@ -9,7 +9,7 @@ from rune.engine.parse import (
     parse_output,
     render_template,
 )
-from rune.engine.state import Action, Feedback
+from rune.engine.state import Action, Feedback, Subtask
 
 
 class TestRenderTemplate:
@@ -130,6 +130,21 @@ class TestParseOutput:
         updates = parse_output(action, raw, fb, state_stub)
         assert updates["code_passed"]["task_a"] is True
         assert "print(1)" in updates["code_results"]["task_a"]
+
+    def test_single_subtask_code_pass_sets_integrated_code(self) -> None:
+        action = Action("code", "code", "prompt_code", "", CodeResult, True, "_main")
+        fb = Feedback(stdout="ok", stderr="", exit_code=0)
+        state_stub: dict = {
+            "code_results": {},
+            "code_passed": {},
+            "retries": {},
+            "feedback": {},
+            "diagnosis": {},
+            "subtasks": [Subtask("_main", "task body", [])],
+        }
+        raw = json.dumps({"code": "def solution(): return 42"})
+        updates = parse_output(action, raw, fb, state_stub)
+        assert updates["integrated_code"] == "def solution(): return 42"
 
     def test_code_increments_retries(self) -> None:
         action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
