@@ -310,7 +310,9 @@ async def generate_continuation(
             gen_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
         if presence_penalty > 0.0:
             gen_kwargs["logits_processor"] = [
-                PresencePenaltyLogitsProcessor(presence_penalty, prompt_length=0)
+                PresencePenaltyLogitsProcessor(
+                    presence_penalty, prompt_length=template_ids.shape[1]
+                )
             ]
 
         attention_mask = torch.ones_like(template_ids)
