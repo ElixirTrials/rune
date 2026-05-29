@@ -17,6 +17,19 @@ class TestRenderTemplate:
         text = render_template("decompose", project="build a calculator", subtasks=[])
         assert "calculator" in text
 
+    def test_integration_diagnose_prompt_lists_subtasks(self) -> None:
+        # The model must be shown the real subtask names (and the integration
+        # error) so its diagnosis maps back to actual subtasks for repair.
+        text = render_template(
+            "prompt_diagnose",
+            target_subtask="",
+            project_label="build X",
+            integration_error="ImportError: foo",
+            integration_doc="- _main: implement everything",
+        )
+        assert "_main" in text
+        assert "ImportError: foo" in text
+
 
 class TestDecomposeResult:
     def test_parse_valid_json(self) -> None:
