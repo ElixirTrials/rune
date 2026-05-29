@@ -1,57 +1,33 @@
 [project]
 name = "rune"
 version = "0.1.0"
-description = "Local-first coding agent with LoRA weight-space episodic memory"
+description = "Local-first coding agent with hypernetwork-generated LoRA adapters"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "setuptools>=70.0.0",
-    "aiohttp>=3.10.0",
-    "httpx>=0.28.1",
-    "markdown>=3.4.0",
-    "playwright>=1.40.0",
-    "mkdocs>=1.6.1",
-    "mkdocs-monorepo-plugin>=1.0.0",
-    "mkdocstrings[python]>=0.24.0",
-    "requests>=2.32.5",
-    "tenacity>=8.2.0",
-    "pytest-asyncio>=1.3.0",
-    "aioresponses>=0.7.8",
-    "fastapi>=0.128.0",
-    "sqlalchemy>=2.0.45",
-    "sqlmodel>=0.0.31",
-    "python-dotenv>=1.2.1",
-    "diskcache>=5.6.3",
-    "platformdirs>=4.5.1",
-    "langchain>=1.2.6",
-    "langgraph>=1.0.6",
-    "python-multipart>=0.0.21",
-    "alembic>=1.13.0",
-    "pymdown-extensions>=10.21",
-    "openai>=1.0.0",
-    "psutil>=5.9.0",
-    "llama-cpp-python>=0.3.0",
-    "safetensors>=0.7.0",
-    "peft>=0.15",
-    "transformers>=5.5,<6",
-    "huggingface-hub>=0.20.0",
+    "langgraph>=0.4.0",
+    "xgrammar>=0.2.0",
+    "transformers>=4.48.0",
+    "peft>=0.14.0",
+    "torch>=2.5.0",
+    "safetensors>=0.4.0",
+    "tree-sitter>=0.24.0",
+    "tree-sitter-python>=0.23.0",
+    "jinja2>=3.1.0",
+    "typer>=0.15.0",
+    "mlflow>=2.18.0",
+    "optuna>=4.1.0",
+    "optuna-integration[mlflow]>=4.1.0",
+    "pydantic>=2.10.0",
+    "httpx>=0.28.0",
+    "python-dotenv>=1.2.0",
     "ctx-to-lora>=0.0.1",
-    "einops>=0.8.2",
+    "einops>=0.8.0",
     "jaxtyping>=0.3.9",
-    "datasets>=4.6.1",
-    "torch>=2.11.0,<2.12",
-    "optuna>=4.8.0",
-    "model-training",
-    "shared",
-    "adapter-registry",
-    "inference",
-    "evaluation",
-    "events-py",
-    "corpus-producer",
-    "igraph>=1.0.0",
-    "vllm>=0.20.1; sys_platform == 'linux'",
-    "sentence-transformers>=5.4.1",
-    "faiss-cpu>=1.13.2",
+    "datasets>=4.0.0",
+    "boto3>=1.35.0",
+    "pyyaml>=6.0",
+    "langchain>=1.3.1",
 ]
 
 [project.optional-dependencies]
@@ -68,9 +44,8 @@ gpu = [
     "causal-conv1d>=1.6.0; sys_platform == 'linux'",
     "flash-linear-attention>=0.1.0; sys_platform == 'linux'",
 ]
-eval = [
-    "evalplus>=0.3.0",
-]
+[project.scripts]
+rune = "rune.cli:app"
 
 [dependency-groups]
 dev = [
@@ -78,59 +53,21 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.14.8",
-    "aioresponses>=0.7.8",
-    "mlflow>=3.8.1",
-    "boto3>=1.35.0",
     "pytest-xdist>=3.8.0",
-    "requests-mock>=1.12.1",
-    "pandas-stubs>=3.0.0.260204",
-    "code-review-graph>=2.3.2",
-    "codegraph>=1.2.0",
-    "sagemaker>=2.232.0",
-]
-
-[tool.uv.sources]
-ctx-to-lora = { git = "https://github.com/SakanaAI/doc-to-lora.git" }
-flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl" }
-flash-attn-3 = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn_3-3.0.0+cu130torch2.11gite2743ab-cp39-abi3-linux_x86_64.whl" }
-model-training = { workspace = true }
-shared = { workspace = true }
-adapter-registry = { workspace = true }
-inference = { workspace = true }
-evaluation = { workspace = true }
-events-py = { workspace = true }
-corpus-producer = { workspace = true }
-
-[[tool.uv.dependency-metadata]]
-name = "ctx-to-lora"
-version = "0.0.1"
-requires-dist = []  # ignore Sakana's pinned deps (vllm, torch==2.6, transformers==4.51)
-
-[tool.uv.workspace]
-members = [
-    "services/api-service",
-    "services/evolution-svc",
-    "services/rune-agent",
-    "services/training-svc",
-    "libs/evaluation",
-    "libs/events-py",
-    "libs/inference",
-    "libs/model-training",
-    "libs/shared",
-    "libs/adapter-registry",
-    "libs/corpus-producer",
+    "types-PyYAML>=6.0",
+    "ruff>=0.14.0",
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.6.0",
+    "mkdocstrings[python]>=0.27.0",
+    "pre-commit>=4.6.0",
+    "ggshield>=1.10.8",
 ]
 
 [tool.uv]
+package = true
 required-environments = [
     "sys_platform == 'linux'",
-    "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
-# Mamba kernels (causal-conv1d, flash-linear-attention) compile from source
-# and would otherwise pull a CUDA-12.8 torch into the build sandbox, hitting
-# the ``CUDA_MISMATCH_MESSAGE`` against our system's CUDA 13. With build
-# isolation off, they compile against our actual cu130 torch and succeed.
 no-build-isolation-package = [
     "causal-conv1d",
     "flash-linear-attention",
@@ -140,211 +77,87 @@ no-build-isolation-package = [
 causal-conv1d = ["setuptools"]
 flash-linear-attention = ["setuptools"]
 
-[tool.ruff]
-target-version = "py312"
-line-length = 88
-exclude = ["venv", ".venv", "docs", "site", ".planning"]
+[tool.uv.sources]
+ctx-to-lora = { git = "https://github.com/SakanaAI/doc-to-lora.git" }
+flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl" }
+flash-attn-3 = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn_3-3.0.0+cu130torch2.11gite2743ab-cp39-abi3-linux_x86_64.whl" }
 
-[tool.ruff.lint]
-select = ["E", "F", "W", "C", "N", "I", "D"]
-ignore = ["E203", "D203", "D213", "D100", "D413", "D104"]
-pydocstyle.convention = "google"
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D"]
-"**/tests/**" = ["D"]
-"conftest.py" = ["D"]
-"**/conftest.py" = ["D"]
-"scripts/**" = ["D", "C901", "E501", "E402"]
-"**/scripts/**" = ["D", "C901", "E501", "E402"]
+[[tool.uv.dependency-metadata]]
+name = "ctx-to-lora"
+version = "0.0.1"
+requires-dist = []
 
 [tool.mypy]
-exclude = "^(site|services/.*/tests|libs/.*/tests|instructions|notebooks|scripts/eval|services/lora-server)/"
-
-[[tool.mypy.overrides]]
-module = "fastapi"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "pydantic"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "yaml"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "sqlalchemy"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "sqlalchemy.engine"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "sqlmodel"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "httpx"
-ignore_missing_imports = true
+exclude = "^(site|tests)/"
+strict = true
 
 [[tool.mypy.overrides]]
 module = [
-    "boto3",
-    "boto3.*",
-    "botocore",
-    "botocore.*",
+    "langgraph", "langgraph.*",
+    "langchain_core", "langchain_core.*",
+    "xgrammar", "xgrammar.*",
+    "peft", "peft.*",
+    "torch", "torch.*",
+    "transformers", "transformers.*",
+    "safetensors", "safetensors.*",
+    "tree_sitter", "tree_sitter.*",
+    "tree_sitter_python", "tree_sitter_python.*",
+    "datasets", "datasets.*",
+    "mlflow", "mlflow.*",
+    "optuna", "optuna.*",
+    "optuna_integration", "optuna_integration.*",
+    "bitsandbytes", "bitsandbytes.*",
+    "ctx_to_lora", "ctx_to_lora.*",
+    "trl", "trl.*",
+    "model_training", "model_training.*",
+    "adapter_registry", "adapter_registry.*",
+    "flash_attn", "flash_attn.*",
+    "apache_tvm_ffi", "apache_tvm_ffi.*",
 ]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-    "fitz",
-    "fitz.*",
+    "rune.training.diff_loss",
+    "rune.training.config",
+    "rune.training.oracle_cache",
+    "rune.model.hypernetwork",
+    "rune.model.inference",
+    "rune.model.wrapper",
 ]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = [
-    "adapter_registry",
-    "adapter_registry.*",
-    "corpus_producer",
-    "corpus_producer.*",
-    "evolution_svc",
-    "evolution_svc.*",
-    "model_training",
-    "model_training.*",
-    "rune_agent",
-    "rune_agent.*",
-    "shared",
-    "shared.*",
-    "training_svc",
-    "training_svc.*",
-]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = [
-    "datasets",
-    "datasets.*",
-    "fastmcp",
-    "pymdownx",
-    "pymdownx.*",
-    "langchain_core",
-    "langchain_core.*",
-    "langchain_huggingface",
-    "langchain_huggingface.*",
-    "langgraph",
-    "langgraph.*",
-    "peft",
-    "peft.*",
-    "torch",
-    "torch.*",
-    "transformers",
-    "transformers.*",
-]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = [
-    "bitsandbytes",
-    "bitsandbytes.*",
-    "openai",
-    "openai.*",
-    "psutil",
-    "psutil.*",
-    "pynvml",
-    "pynvml.*",
-    "safetensors",
-    "safetensors.*",
-    "trl",
-    "trl.*",
-    "llama_cpp",
-    "llama_cpp.*",
-    "ctx_to_lora",
-    "ctx_to_lora.*",
-    "flash_attn",
-    "flash_attn.*",
-    "optuna",
-    "optuna.*",
-    "inference",
-    "inference.*",
-    "evaluation",
-    "evaluation.*",
-    "scoring",
-    "task_pool",
-    "template_library",
-    "evalplus",
-    "evalplus.*",
-    "run_training_hpo",
-    "run_benchmark_hpo",
-    "pandas",
-    "pandas.*",
-    "sagemaker",
-    "sagemaker.*",
-]
-ignore_missing_imports = true
+disable_error_code = ["no-any-return", "misc", "unused-ignore", "import-untyped", "attr-defined", "index", "has-type", "arg-type"]
 
 [tool.pytest.ini_options]
-testpaths = ["services", "libs", "tests", "scripts/paper"]
-norecursedirs = ["site", "docs", ".venv", "venv", ".uv_cache", "node_modules", ".git"]
+testpaths = ["tests"]
+norecursedirs = ["site", "docs", ".venv", "venv", ".git"]
 markers = [
-    "e2e: end-to-end API workflow tests",
-    "integration: marks tests as integration tests",
-    "requires_gpu: test requires GPU libraries (torch, peft, trl)",
-    "slow: test is slow; opt-in via -m slow (e.g. encoder round-trip GPU tests)",
+    "gpu: requires GPU (deselect with '-m \"not gpu\"')",
 ]
 filterwarnings = [
-    "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
-    "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
-    "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
     "ignore:unclosed database:ResourceWarning",
-    "ignore::pytest.PytestUnraisableExceptionWarning",
-    "ignore:No data was collected:coverage.exceptions.CoverageWarning",
-    "ignore:Use 'content=<...>' to upload raw bytes:DeprecationWarning:httpx",
-    "ignore:`torch.jit.script_method` is deprecated:DeprecationWarning",
-]
-pythonpath = [
-    ".",
-    "services/api-service/src",
-    "services/evolution-svc/src",
-    "services/rune-agent/src",
-    "services/training-svc/src",
-    "libs/adapter-registry/src",
-    "libs/corpus-producer/src",
-    "libs/evaluation/src",
-    "libs/events-py/src",
-    "libs/inference/src",
-    "libs/model-training/src",
-    "libs/shared/src",
 ]
 asyncio_mode = "auto"
-# importlib mode allows multiple test files with the same basename across
-# different directories without __init__.py (required for pytest-xdist)
-addopts = "-n auto --dist loadgroup --import-mode=importlib"
 
 [tool.coverage.run]
-source = [
-    "services/api-service/src",
-    "services/evolution-svc/src",
-    "services/rune-agent/src",
-    "services/training-svc/src",
-    "libs/adapter-registry/src",
-    "libs/evaluation/src",
-    "libs/events-py/src",
-    "libs/inference/src",
-    "libs/model-training/src",
-    "libs/shared/src",
-]
-omit = ["*/tests/*", "*/.venv/*", "*/venv/*"]
+source = ["src/rune"]
+omit = ["*/tests/*"]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
     "raise NotImplementedError",
-    "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PLC", "PLE", "PLW"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/rune/training/diff_loss.py" = ["PLC0415", "PLW0603", "B905"]
+"src/rune/model/*.py" = ["PLC0415"]
+"tests/**" = ["E501"]

@@ -1,4 +1,0 @@
-docs_dir: docs
-site_name: events-py
-nav:
-  - API Reference: api/index.md

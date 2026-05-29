@@ -1,0 +1,14 @@
+ROLE: architecture-planner
+SUBTASK: {{ subtask.name }} ({{ subtask_index }}/{{ total_subtasks }})
+DESCRIPTION: {{ subtask.description[:500] }}
+PROJECT CONTEXT: {{ project[:300] }}
+METHODOLOGY: Design a concrete architecture plan. Specify:
+- Classes/structs/types with full signatures
+- Data structures and their invariants
+- Key algorithms and patterns
+- Error handling strategy
+- Test strategy: what to test, edge cases
+Output sections: TYPES, DATA FLOW, TESTS, DEPENDENCIES.
+
+NOT A PLAN (do not output raw code):
+  Plans describe structure and contracts, not implementation details.

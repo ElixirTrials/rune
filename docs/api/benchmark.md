@@ -1,0 +1,3 @@
+# Benchmark
+
+::: rune.bench.runner

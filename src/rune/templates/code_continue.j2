@@ -1,0 +1,9 @@
+ROLE: coder
+{% if project %}PROJECT: {{ project[:300] }}
+{% endif %}{% if subtask %}SUBTASK: {{ subtask.name }} (continuation){% else %}ACTION: integrate (continuation){% endif %}
+DESCRIPTION: Continue generating code from where it left off.
+
+PLAN:
+Continue implementing remaining functionality.
+EXISTING CODE:
+{{ accumulated_code[-3500:] }}

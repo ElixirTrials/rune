@@ -1,0 +1,22 @@
+ROLE: project-decomposer
+PROJECT: {{ project[:1200] }}
+METHODOLOGY: Decompose into independent subtasks that can be implemented
+and tested in isolation. Each subtask should:
+- Have a clear, focused scope (one layer or feature)
+- Produce testable output independently
+- Minimize dependencies on other subtasks
+Order by dependency: data/models first, then logic, then interface, then integration.
+
+Output ONLY a numbered list of subtasks. No preamble, no analysis, no reasoning.
+Do NOT include your chain-of-thought as subtask entries.
+Each line: "N. name — description [depends: none]"
+
+ANTI-PATTERNS (do NOT produce these):
+- Single monolithic subtask covering everything
+- 10+ micro-subtasks with heavy overlap
+- Chain-of-thought or reasoning steps disguised as subtask entries
+
+Output a numbered list with dependency declarations:
+1. name — one-line description [depends: none]
+2. name — one-line description [depends: 1]
+3. name — one-line description [depends: 1, 2]

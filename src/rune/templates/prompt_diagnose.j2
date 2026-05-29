@@ -1,0 +1,11 @@
+{% if target_subtask %}
+The subtask "{{ target_subtask }}" is failing.
+Error: {{ error_summary[:300] }}
+Diagnose the root cause. Output JSON:
+{"entries": [{"subtask_name": "{{ target_subtask }}", "error_type": "syntax|name|type|assertion", "location": "line/function where the error occurs", "fix_guidance": "one sentence fix instruction"}]}
+{% else %}
+Integration is failing.
+Project: {{ project_label }}
+Which subtasks need repair? Output JSON:
+{"entries": [{"subtask_name": "...", "error_type": "integration", "location": "...", "fix_guidance": "..."}]}
+{% endif %}

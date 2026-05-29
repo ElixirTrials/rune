@@ -1,4 +1,3 @@
-# .github/workflows/ci.yml
 name: CI
 
 on:
@@ -20,15 +19,13 @@ jobs:
         with:
           filters: |
             python:
-              - 'services/**'
-              - 'libs/**'
+              - 'src/**'
+              - 'tests/**'
               - 'pyproject.toml'
-              - 'mkdocs.yml'
             docs:
               - 'docs/**'
               - 'mkdocs.yml'
-              - 'services/**/docs/**'
-              - 'libs/**/docs/**'
+              - 'src/rune/**'
 
   lint-and-type-check:
     runs-on: ubuntu-latest
@@ -39,15 +36,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Install dependencies
-        run: uv sync --extra eval
+        run: uv sync
       - name: Lint with ruff
         run: uv run ruff check .
       - name: Format check
         run: uv run ruff format --check .
       - name: Type check
-        run: |
-          PY_DIRS=$(for d in services/*/src libs/*/src; do find "$d" -name '*.py' -print -quit 2>/dev/null | grep -q . && echo "$d"; done)
-          uv run mypy $PY_DIRS
+        run: uv run mypy src/
 
   test:
     runs-on: ubuntu-latest
@@ -58,9 +53,9 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Install dependencies
-        run: uv sync --extra eval
+        run: uv sync
       - name: Run tests
-        run: uv run pytest --cov --cov-report=xml
+        run: uv run pytest tests/unit/ tests/integration/ --cov=src/rune --cov-report=xml
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         with:
@@ -75,6 +70,6 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Install dependencies
-        run: uv sync --extra eval
+        run: uv sync
       - name: Build documentation
         run: uv run mkdocs build -f mkdocs.yml
