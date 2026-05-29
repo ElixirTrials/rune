@@ -63,11 +63,13 @@ def _parse_code_action(
     state: dict[str, Any],
     *,
     retries_delta: int,
+    code: str | None = None,
 ) -> dict[str, Any]:
-    try:
-        code = CodeResult.model_validate_json(raw).code
-    except Exception:
-        code = extract_code_value(raw)
+    if code is None:
+        try:
+            code = CodeResult.model_validate_json(raw).code
+        except Exception:
+            code = extract_code_value(raw)
     passed = feedback is not None and feedback.exit_code == 0
     retries = dict(state.get("retries", {}))
     retries[target] = retries.get(target, 0) + retries_delta
@@ -96,7 +98,12 @@ def parse_output(
     raw: str,
     feedback: Feedback | None,
     state: dict[str, Any],
+    *,
+    code: str | None = None,
 ) -> dict[str, Any]:
+    # ``code``, when provided, is the already-extracted code the sandbox actually
+    # ran (from graph.step_node); using it keeps state's recorded code identical
+    # to what executed instead of re-parsing raw with a divergent fallback.
     match action.name:
         case "decompose":
             try:
@@ -142,6 +149,7 @@ def parse_output(
                 feedback,
                 state,
                 retries_delta=0 if first_attempt else 1,
+                code=code,
             )
         case "repair":
             return _parse_code_action(
@@ -150,12 +158,14 @@ def parse_output(
                 feedback,
                 state,
                 retries_delta=1,
+                code=code,
             )
         case "integrate":
-            try:
-                code = IntegrateResult.model_validate_json(raw).code
-            except Exception:
-                code = extract_code_value(raw)
+            if code is None:
+                try:
+                    code = IntegrateResult.model_validate_json(raw).code
+                except Exception:
+                    code = extract_code_value(raw)
             passed = feedback is not None and feedback.exit_code == 0
             return {
                 "integrated_code": code if passed else "",

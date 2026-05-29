@@ -39,6 +39,33 @@ class GenerationResult:
     truncated: bool = False
 
 
+# xgrammar TokenizerInfo/compiler depend only on the (constant) tokenizer, and a
+# compiled grammar only on its schema. Both were rebuilt on every structured
+# generate() call (per engine step) over a ~150k-vocab tokenizer; cache them.
+_GRAMMAR_COMPILER_CACHE: dict[tuple[int, int], Any] = {}
+_COMPILED_GRAMMAR_CACHE: dict[tuple[int, Any], Any] = {}
+
+
+def _get_compiled_grammar(
+    xgr: Any, tokenizer: Any, output_schema: Any, vocab_size: int
+) -> Any:
+    g_key = (id(tokenizer), output_schema)
+    cached = _COMPILED_GRAMMAR_CACHE.get(g_key)
+    if cached is not None:
+        return cached
+    c_key = (id(tokenizer), vocab_size)
+    compiler = _GRAMMAR_COMPILER_CACHE.get(c_key)
+    if compiler is None:
+        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+            tokenizer, vocab_size=vocab_size
+        )
+        compiler = xgr.GrammarCompiler(tokenizer_info)
+        _GRAMMAR_COMPILER_CACHE[c_key] = compiler
+    compiled = compiler.compile_json_schema(output_schema, any_whitespace=False)
+    _COMPILED_GRAMMAR_CACHE[g_key] = compiled
+    return compiled
+
+
 async def generate(
     model: Any,
     tokenizer: Any,
@@ -144,13 +171,8 @@ async def generate(
             vocab_size = (
                 getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
             )
-            tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-                tokenizer, vocab_size=vocab_size
-            )
-            compiler = xgr.GrammarCompiler(tokenizer_info)
-            compiled = compiler.compile_json_schema(
-                output_schema,
-                any_whitespace=False,
+            compiled = _get_compiled_grammar(
+                xgr, tokenizer, output_schema, vocab_size
             )
             processors.append(xgr.contrib.hf.LogitsProcessor(compiled))
 

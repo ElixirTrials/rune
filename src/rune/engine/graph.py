@@ -17,7 +17,7 @@ from rune.engine.continuation import (
     extract_partial_code,
     validate_syntax,
 )
-from rune.engine.parse import CodeResult, IntegrateResult, parse_output, render_template
+from rune.engine.parse import parse_output, render_template
 from rune.engine.policy import select_action
 from rune.engine.state import (
     _CODE_HISTORY_CAP,
@@ -78,12 +78,12 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
 
     if action and action.target_subtask:
         target_name = action.target_subtask
-        subtask_obj = next((s for s in subtasks if s.name == target_name), None)
+        subtask_idx, subtask_obj = next(
+            ((i, s) for i, s in enumerate(subtasks) if s.name == target_name),
+            (-1, None),
+        )
         if subtask_obj is None:
             raise ValueError(f"Action targets unknown subtask {target_name!r}")
-        subtask_idx = next(
-            (i for i, s in enumerate(subtasks) if s.name == target_name), 0
-        )
         ctx["subtask"] = subtask_obj
         ctx["subtask_name"] = target_name
         ctx["subtask_index"] = subtask_idx + 1
@@ -291,18 +291,15 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             mlflow.log_text(prompt_text, f"{prefix}/prompt.txt")
             mlflow.log_text(result.text, f"{prefix}/output.txt")
 
-    def _parse_action_code(action: Action, raw_json: str) -> str:
-        schema = IntegrateResult if action.name == "integrate" else CodeResult
-        try:
-            return schema.model_validate_json(raw_json).code
-        except Exception:
-            return extract_partial_code(raw_json)
-
+    # extract_partial_code is the single code-extraction primitive (CodeResult
+    # and IntegrateResult are both {code: str}). Computed once here and threaded
+    # into parse_output below so the code recorded in state is exactly the code
+    # executed in the sandbox.
     code_map: dict[str, str] = {}
     code_action_names: list[str] = []
     for a, name, text, _ in results:
         if a.executes_code:
-            code_map[name] = _parse_action_code(a, text)
+            code_map[name] = extract_partial_code(text)
             code_action_names.append(name)
 
     sandbox_results = await asyncio.gather(
@@ -324,7 +321,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     running = dict(state)
     for action, target_name, raw, _ in results:
         fb = feedback_map.get(target_name)
-        partial = parse_output(action, raw, fb, running)
+        partial = parse_output(
+            action, raw, fb, running, code=code_map.get(target_name)
+        )
         updates.update(partial)
         running.update(partial)
 

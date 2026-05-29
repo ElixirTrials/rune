@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
@@ -108,16 +109,7 @@ def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
 
 
 def _with_target(action_name: str, target: str) -> Action:
-    base = ACTIONS[action_name]
-    return Action(
-        name=base.name,
-        trajectory_template=base.trajectory_template,
-        prompt_template=base.prompt_template,
-        system_prompt=base.system_prompt,
-        output_schema=base.output_schema,
-        executes_code=base.executes_code,
-        target_subtask=target,
-    )
+    return replace(ACTIONS[action_name], target_subtask=target)
 
 
 def select_action(state: dict[str, Any]) -> list[Action]:
