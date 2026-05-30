@@ -67,8 +67,8 @@ def main() -> None:
         if "lora_B" not in k:
             continue
         ka = k.replace("lora_B", "lora_A")
-        da = (sd_b[k].float() @ sd_b[ka].float())
-        d0 = (sd_a[k].float() @ sd_a[ka].float())
+        da = sd_b[k].float() @ sd_b[ka].float()
+        d0 = sd_a[k].float() @ sd_a[ka].float()
         rel = (da - d0).norm().item() / (d0.norm().item() + 1e-12)
         cos = torch.nn.functional.cosine_similarity(
             d0.flatten(), da.flatten(), dim=0
@@ -116,12 +116,15 @@ def main() -> None:
                 "event": "logit_divergence",
                 "adapter_scaling": scaling,
                 "eff_scaling_approx": round(2.0 * scaling, 3),
-                "KL_A_vs_base": round(kl(lp_base, lp_a, log_target=True,
-                                         reduction="sum").item(), 5),
-                "KL_B_vs_base": round(kl(lp_base, lp_b, log_target=True,
-                                         reduction="sum").item(), 5),
-                "KL_A_vs_B": round(kl(lp_b, lp_a, log_target=True,
-                                      reduction="sum").item(), 5),
+                "KL_A_vs_base": round(
+                    kl(lp_base, lp_a, log_target=True, reduction="sum").item(), 5
+                ),
+                "KL_B_vs_base": round(
+                    kl(lp_base, lp_b, log_target=True, reduction="sum").item(), 5
+                ),
+                "KL_A_vs_B": round(
+                    kl(lp_b, lp_a, log_target=True, reduction="sum").item(), 5
+                ),
                 "argmax_A": int(lp_a.argmax()),
                 "argmax_B": int(lp_b.argmax()),
                 "argmax_differs": int(lp_a.argmax()) != int(lp_b.argmax()),

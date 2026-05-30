@@ -48,15 +48,22 @@ CONTRA_TRAJ = (
 # Recall queries — facts are NOT in the prompt. (query_id, prompt, needle)
 QUERIES = [
     ("offset_cont", "MAGIC_OFFSET =", "73921"),
-    ("offset_qa",
-     "From the code in your loaded context, the integer value of MAGIC_OFFSET "
-     "is exactly", "73921"),
-    ("fn_name",
-     "From your loaded context, the public payload-processing function is named",
-     "frobnicate_payload"),
-    ("helper_name",
-     "From your loaded context, the private helper function is named",
-     "_tally_zorblax"),
+    (
+        "offset_qa",
+        "From the code in your loaded context, the integer value of MAGIC_OFFSET "
+        "is exactly",
+        "73921",
+    ),
+    (
+        "fn_name",
+        "From your loaded context, the public payload-processing function is named",
+        "frobnicate_payload",
+    ),
+    (
+        "helper_name",
+        "From your loaded context, the private helper function is named",
+        "_tally_zorblax",
+    ),
 ]
 
 
@@ -106,10 +113,13 @@ async def main() -> None:
 
     for eff in (1.5, 8.0, 12.0, 16.0):
         for qid, prompt, needle in QUERIES:
-            rec: dict[str, Any] = {"event": "recall", "eff": eff, "query": qid,
-                                   "needle": needle}
-            for label, sd in (("real", sd_real), ("zero", zero),
-                              ("contra", sd_contra)):
+            rec: dict[str, Any] = {
+                "event": "recall",
+                "eff": eff,
+                "query": qid,
+                "needle": needle,
+            }
+            for label, sd in (("real", sd_real), ("zero", zero), ("contra", sd_contra)):
                 try:
                     out = await ask(sd, eff, prompt)
                 except Exception as exc:  # noqa: BLE001

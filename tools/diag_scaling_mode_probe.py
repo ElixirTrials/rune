@@ -96,9 +96,9 @@ def _passes_find(code: str) -> bool:
         ns: dict[str, Any] = {}
         exec(code, ns)  # noqa: S102
         fn = ns.get("find_tuples")
-        return bool(fn) and fn(
-            [(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6
-        ) == [(6, 24, 12)]
+        return bool(fn) and fn([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) == [
+            (6, 24, 12)
+        ]
     except Exception:  # noqa: BLE001
         return False
 
@@ -125,8 +125,9 @@ async def main() -> None:
     sd_rev = wrapper.generate_adapter(_code_traj(REV_DESC)).state_dict
     _log({"event": "adapters_ready"})
 
-    async def gen(sd: dict[str, Any], eff: float, prompt: str,
-                  schema: Any, max_tokens: int) -> Any:
+    async def gen(
+        sd: dict[str, Any], eff: float, prompt: str, schema: Any, max_tokens: int
+    ) -> Any:
         wrapper.hotswap_adapter(scale_lora_b(sd, eff / PEFT_SCALING))
         return await wrapper.generate(
             prompt,
@@ -154,21 +155,34 @@ async def main() -> None:
             ok = True
         except Exception:  # noqa: BLE001
             code = extract_partial_code(r.text)
-        _log({
-            "event": "term", "mode": "structured", "eff": eff,
-            "tokens": r.tokens_used, "truncated": r.truncated,
-            "parseable": ok, "passes": _passes_find(code),
-            "coherent": _coherent(r.text), "tail": r.text[-120:],
-        })
+        _log(
+            {
+                "event": "term",
+                "mode": "structured",
+                "eff": eff,
+                "tokens": r.tokens_used,
+                "truncated": r.truncated,
+                "parseable": ok,
+                "passes": _passes_find(code),
+                "coherent": _coherent(r.text),
+                "tail": r.text[-120:],
+            }
+        )
         # freeform (no grammar)
         r = await gen(sd_find, eff, FIND_FULL_PROMPT, None, 768)
         code = extract_partial_code(r.text)
-        _log({
-            "event": "term", "mode": "freeform", "eff": eff,
-            "tokens": r.tokens_used, "truncated": r.truncated,
-            "passes": _passes_find(code), "coherent": _coherent(r.text),
-            "tail": r.text[-120:],
-        })
+        _log(
+            {
+                "event": "term",
+                "mode": "freeform",
+                "eff": eff,
+                "tokens": r.tokens_used,
+                "truncated": r.truncated,
+                "passes": _passes_find(code),
+                "coherent": _coherent(r.text),
+                "tail": r.text[-120:],
+            }
+        )
 
     # ---- Part 2: CONDITIONING with LEAN prompt (Q1) ----
     # No task text in the prompt: the adapter is the ONLY task source.
@@ -176,17 +190,22 @@ async def main() -> None:
         rf = await gen(sd_find, eff, LEAN_PROMPT, None, 512)
         rr = await gen(sd_rev, eff, LEAN_PROMPT, None, 512)
         tf, tr = rf.text.lower(), rr.text.lower()
-        _log({
-            "event": "cond", "eff": eff,
-            "outputs_differ": rf.text != rr.text,
-            "find_adapter_mentions_div": ("% k" in tf or "divisible" in tf
-                                          or "all(" in tf),
-            "find_adapter_passes": _passes_find(extract_partial_code(rf.text)),
-            "rev_adapter_mentions_reverse": ("reverse" in tr or "[::-1]" in tr
-                                             or "split" in tr),
-            "find_head": rf.text[:140],
-            "rev_head": rr.text[:140],
-        })
+        _log(
+            {
+                "event": "cond",
+                "eff": eff,
+                "outputs_differ": rf.text != rr.text,
+                "find_adapter_mentions_div": (
+                    "% k" in tf or "divisible" in tf or "all(" in tf
+                ),
+                "find_adapter_passes": _passes_find(extract_partial_code(rf.text)),
+                "rev_adapter_mentions_reverse": (
+                    "reverse" in tr or "[::-1]" in tr or "split" in tr
+                ),
+                "find_head": rf.text[:140],
+                "rev_head": rr.text[:140],
+            }
+        )
 
     _log({"event": "done"})
 

@@ -78,11 +78,7 @@ FIND_BUGGY = (
     "            result.append(sub)\n"
     "    return result"
 )
-REV_BUGGY = (
-    "def reverse_words(s):\n"
-    "    words = s.split()\n"
-    "    return ' '.join(words)"
-)
+REV_BUGGY = "def reverse_words(s):\n    words = s.split()\n    return ' '.join(words)"
 
 # Real review notes pointing at the any-vs-all / order bug.
 FIND_REVIEW = (
@@ -104,8 +100,7 @@ LEAN_PROMPT = (
 )
 
 ASSERT_SRC = (
-    "assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) "
-    "== [(6, 24, 12)]"
+    "assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) == [(6, 24, 12)]"
 )
 
 _FENCE_RE = re.compile(r"```(?:python|py)?\s*\n?(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -201,12 +196,14 @@ async def main() -> None:
         "B_find": train_traj(FIND_DESC, FIND_BUGGY, FIND_REVIEW),
         "B_rev": train_traj(REV_DESC, REV_BUGGY, REV_REVIEW),
     }
-    _log({
-        "event": "trajectories",
-        "chars": {k: len(v) for k, v in traj.items()},
-        "B_find_head": traj["B_find"][:400],
-        "A_find_head": traj["A_find"][:400],
-    })
+    _log(
+        {
+            "event": "trajectories",
+            "chars": {k: len(v) for k, v in traj.items()},
+            "B_find_head": traj["B_find"][:400],
+            "A_find_head": traj["A_find"][:400],
+        }
+    )
 
     cfg = PipelineConfig(
         checkpoint_path=(
@@ -259,20 +256,14 @@ async def main() -> None:
         rec["A_find_writes_find_tuples"] = "find_tuples" in a_find
         rec["A_rev_writes_reverse_words"] = "reverse_words" in a_rev
         rec["A_differs_across_tasks"] = a_find != a_rev
-        rec["A_conditions"] = (
-            "find_tuples" in a_find and "reverse_words" in a_rev
-        )
+        rec["A_conditions"] = "find_tuples" in a_find and "reverse_words" in a_rev
         rec["B_find_writes_find_tuples"] = "find_tuples" in b_find
         rec["B_rev_writes_reverse_words"] = "reverse_words" in b_rev
         rec["B_differs_across_tasks"] = b_find != b_rev
-        rec["B_conditions"] = (
-            "find_tuples" in b_find and "reverse_words" in b_rev
-        )
+        rec["B_conditions"] = "find_tuples" in b_find and "reverse_words" in b_rev
 
         # Secondary color (string presence — confounded, NOT used for GO).
-        rec["B_find_mentions_all"] = (
-            "all(" in b_find or " all " in b_find
-        )
+        rec["B_find_mentions_all"] = "all(" in b_find or " all " in b_find
         rec["B_find_extracted_head"] = _extract_code(outs["B_find"])[:200]
         rec["A_find_extracted_head"] = _extract_code(outs["A_find"])[:200]
         rec["B_rev_extracted_head"] = _extract_code(outs["B_rev"])[:160]

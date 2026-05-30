@@ -29,15 +29,33 @@ def _make_session(
 
 
 _STEPS = [
-    {"step": 0, "action": "decompose", "target": None,
-     "trajectory": "ROLE: decomposer", "prompt": "implement binary search",
-     "output": "subtasks: a, b", "feedback": None},
-    {"step": 1, "action": "plan", "target": "subtask_a",
-     "trajectory": "ROLE: planner", "prompt": "plan subtask_a",
-     "output": "plan text", "feedback": None},
-    {"step": 2, "action": "code", "target": "subtask_a",
-     "trajectory": "ROLE: coder", "prompt": "code subtask_a",
-     "output": "def bs(): ...", "feedback": {"exit_code": 0, "stdout": "ok", "stderr": ""}},
+    {
+        "step": 0,
+        "action": "decompose",
+        "target": None,
+        "trajectory": "ROLE: decomposer",
+        "prompt": "implement binary search",
+        "output": "subtasks: a, b",
+        "feedback": None,
+    },
+    {
+        "step": 1,
+        "action": "plan",
+        "target": "subtask_a",
+        "trajectory": "ROLE: planner",
+        "prompt": "plan subtask_a",
+        "output": "plan text",
+        "feedback": None,
+    },
+    {
+        "step": 2,
+        "action": "code",
+        "target": "subtask_a",
+        "trajectory": "ROLE: coder",
+        "prompt": "code subtask_a",
+        "output": "def bs(): ...",
+        "feedback": {"exit_code": 0, "stdout": "ok", "stderr": ""},
+    },
 ]
 
 _META = {
@@ -49,22 +67,60 @@ _META = {
 }
 
 _STEPS_FAIL = [
-    {"step": 0, "action": "code", "target": "recovered_subtask",
-     "trajectory": "t", "prompt": "p", "output": "bad code",
-     "feedback": {"exit_code": 1, "stdout": "", "stderr": "err"}},
-    {"step": 1, "action": "diagnose", "target": "recovered_subtask",
-     "trajectory": "t", "prompt": "p", "output": "diagnosis", "feedback": None},
-    {"step": 2, "action": "repair", "target": "recovered_subtask",
-     "trajectory": "t", "prompt": "p", "output": "fixed code",
-     "feedback": {"exit_code": 0, "stdout": "ok", "stderr": ""}},
-    {"step": 3, "action": "code", "target": "failed_subtask",
-     "trajectory": "t", "prompt": "p", "output": "bad",
-     "feedback": {"exit_code": 1, "stdout": "", "stderr": "err"}},
-    {"step": 4, "action": "diagnose", "target": "failed_subtask",
-     "trajectory": "t", "prompt": "p", "output": "diagnosis2", "feedback": None},
-    {"step": 5, "action": "repair", "target": "failed_subtask",
-     "trajectory": "t", "prompt": "p", "output": "still bad",
-     "feedback": {"exit_code": 1, "stdout": "", "stderr": "err"}},
+    {
+        "step": 0,
+        "action": "code",
+        "target": "recovered_subtask",
+        "trajectory": "t",
+        "prompt": "p",
+        "output": "bad code",
+        "feedback": {"exit_code": 1, "stdout": "", "stderr": "err"},
+    },
+    {
+        "step": 1,
+        "action": "diagnose",
+        "target": "recovered_subtask",
+        "trajectory": "t",
+        "prompt": "p",
+        "output": "diagnosis",
+        "feedback": None,
+    },
+    {
+        "step": 2,
+        "action": "repair",
+        "target": "recovered_subtask",
+        "trajectory": "t",
+        "prompt": "p",
+        "output": "fixed code",
+        "feedback": {"exit_code": 0, "stdout": "ok", "stderr": ""},
+    },
+    {
+        "step": 3,
+        "action": "code",
+        "target": "failed_subtask",
+        "trajectory": "t",
+        "prompt": "p",
+        "output": "bad",
+        "feedback": {"exit_code": 1, "stdout": "", "stderr": "err"},
+    },
+    {
+        "step": 4,
+        "action": "diagnose",
+        "target": "failed_subtask",
+        "trajectory": "t",
+        "prompt": "p",
+        "output": "diagnosis2",
+        "feedback": None,
+    },
+    {
+        "step": 5,
+        "action": "repair",
+        "target": "failed_subtask",
+        "trajectory": "t",
+        "prompt": "p",
+        "output": "still bad",
+        "feedback": {"exit_code": 1, "stdout": "", "stderr": "err"},
+    },
 ]
 
 
@@ -120,17 +176,27 @@ def test_extract_trajectories_trajectory_text() -> None:
 
 
 def test_passed_run_keeps_one_record_per_step() -> None:
-    meta = {"benchmark": "mbpp", "problem_id": "1", "pass_at_1": True, "schema_version": 2}
+    meta = {
+        "benchmark": "mbpp",
+        "problem_id": "1",
+        "pass_at_1": True,
+        "schema_version": 2,
+    }
     recs = extract_trajectories(_STEPS, meta)
-    assert len(recs) == len(_STEPS)                      # one per step, no join
+    assert len(recs) == len(_STEPS)  # one per step, no join
     r0 = recs[0]
-    assert r0["prompt"] and r0["completion"]             # coherent single pair
-    assert "\n---\n" not in r0["completion"]             # never concatenated
+    assert r0["prompt"] and r0["completion"]  # coherent single pair
+    assert "\n---\n" not in r0["completion"]  # never concatenated
     assert r0["metadata"]["pass_at_1"] is True
 
 
 def test_failed_run_keeps_only_recovered_diagnose() -> None:
-    meta = {"benchmark": "mbpp", "problem_id": "2", "pass_at_1": False, "schema_version": 2}
+    meta = {
+        "benchmark": "mbpp",
+        "problem_id": "2",
+        "pass_at_1": False,
+        "schema_version": 2,
+    }
     recs = extract_trajectories(_STEPS_FAIL, meta)
     assert recs, "recovered-repair diagnose traces must survive a failed run"
     assert all(r["metadata"]["phase"] == "diagnose" for r in recs)
@@ -138,14 +204,20 @@ def test_failed_run_keeps_only_recovered_diagnose() -> None:
 
 
 def test_unknown_verdict_keeps_all() -> None:
-    meta = {"benchmark": "smoke", "problem_id": "x", "schema_version": 2}  # no pass_at_1
+    meta = {
+        "benchmark": "smoke",
+        "problem_id": "x",
+        "schema_version": 2,
+    }  # no pass_at_1
     recs = extract_trajectories(_STEPS, meta)
-    assert len(recs) == len(_STEPS)                      # smoke corpus: no scoring -> keep all
+    assert len(recs) == len(_STEPS)  # smoke corpus: no scoring -> keep all
 
 
 def test_wrong_schema_version_fails_fast() -> None:
     with pytest.raises(ValueError, match="schema_version"):
-        extract_trajectories(_STEPS, {"benchmark": "mbpp", "problem_id": "1", "schema_version": 1})
+        extract_trajectories(
+            _STEPS, {"benchmark": "mbpp", "problem_id": "1", "schema_version": 1}
+        )
 
 
 def test_mine_corpus(tmp_path: Path) -> None:
@@ -154,9 +226,15 @@ def test_mine_corpus(tmp_path: Path) -> None:
     _make_session(sessions_dir, "s1", _STEPS, _META)
 
     steps2 = [
-        {"step": 0, "action": "code", "target": None,
-         "trajectory": "ROLE: coder", "prompt": "mbpp input",
-         "output": "mbpp output", "feedback": None}
+        {
+            "step": 0,
+            "action": "code",
+            "target": None,
+            "trajectory": "ROLE: coder",
+            "prompt": "mbpp input",
+            "output": "mbpp output",
+            "feedback": None,
+        }
     ]
     meta2 = {
         "task": "sort list",
@@ -187,12 +265,24 @@ def test_extract_trajectories_no_subtask_conflation() -> None:
     # Two subtasks each have a `code` step. They must yield two separate code
     # records, not one conflated record.
     steps = [
-        {"step": 0, "action": "code", "target": "subtask_a",
-         "trajectory": "ROLE: coder", "prompt": "code a",
-         "output": "def a(): pass", "feedback": None},
-        {"step": 1, "action": "code", "target": "subtask_b",
-         "trajectory": "ROLE: coder", "prompt": "code b",
-         "output": "def b(): pass", "feedback": None},
+        {
+            "step": 0,
+            "action": "code",
+            "target": "subtask_a",
+            "trajectory": "ROLE: coder",
+            "prompt": "code a",
+            "output": "def a(): pass",
+            "feedback": None,
+        },
+        {
+            "step": 1,
+            "action": "code",
+            "target": "subtask_b",
+            "trajectory": "ROLE: coder",
+            "prompt": "code b",
+            "output": "def b(): pass",
+            "feedback": None,
+        },
     ]
     records = [
         r

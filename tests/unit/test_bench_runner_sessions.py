@@ -31,11 +31,9 @@ class _FakeEngine:
 def test_run_benchmark_writes_session_with_verdict(tmp_path: Path) -> None:
     tasks = [BenchTask(task_id="t1", description="print 1", test_code="assert True")]
     config = {"run_config": {"max_phase_iterations": 3}, "benchmark": "mbpp"}
-    asyncio.run(
-        run_benchmark(tasks, _FakeEngine(), config, sessions_dir=tmp_path)
-    )
+    asyncio.run(run_benchmark(tasks, _FakeEngine(), config, sessions_dir=tmp_path))
     assert (tmp_path / "t1" / "session.jsonl").exists()
     meta = json.loads((tmp_path / "t1" / "metadata.json").read_text())
     # write_session must run AFTER scoring, so the verdict is captured.
-    assert meta["pass_at_1"] is True            # _FakeEngine emits code that passes `assert True`
+    assert meta["pass_at_1"] is True  # _FakeEngine emits code that passes `assert True`
     assert meta["schema_version"] == 2

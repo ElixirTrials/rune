@@ -61,8 +61,7 @@ CONT_SYSTEM = (
 USER_PROMPT = "Complete the implementation."  # neutral; no task semantics
 
 ASSERT_SRC = (
-    "assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) "
-    "== [(6, 24, 12)]"
+    "assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) == [(6, 24, 12)]"
 )
 ASSERT_NEG = (  # the any()-bug returns all tuples -> this would be wrong
     "assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) "

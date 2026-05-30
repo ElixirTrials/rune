@@ -54,10 +54,9 @@ def validate_syntax(code: str, *, language: str = "python") -> bool:
 
 
 def _is_test_function(node: ast.stmt) -> bool:
-    return (
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test")
-    )
+    return isinstance(
+        node, (ast.FunctionDef, ast.AsyncFunctionDef)
+    ) and node.name.startswith("test")
 
 
 def _is_test_class(node: ast.stmt) -> bool:

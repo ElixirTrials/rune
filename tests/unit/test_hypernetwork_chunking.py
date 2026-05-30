@@ -98,5 +98,5 @@ def test_chunks_preserve_output_dim_when_mlp_changes_feature_dim() -> None:
     out = _chunk_gated_mlp(fwd, mlp, x, chunk)
     ref = _GatedMLPProj.forward(mlp, x)
 
-    assert out.shape == (32, 100, out_dim)        # leading dims preserved, OUTPUT feature dim
+    assert out.shape == (32, 100, out_dim)  # leading dims preserved, OUTPUT feature dim
     assert torch.allclose(out, ref, atol=1e-5)

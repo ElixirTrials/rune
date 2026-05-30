@@ -51,7 +51,8 @@ def _select_training_steps(
         if s.get("target") and (s.get("feedback") or {}).get("exit_code") == 0
     }
     return [
-        s for s in steps
+        s
+        for s in steps
         if s.get("action") == "diagnose" and s.get("target") in recovered
     ]
 
@@ -99,7 +100,9 @@ def extract_trajectories(
     if dropped:
         logger.debug(
             "extract_trajectories: dropped %d step(s) with empty completion (%s/%s)",
-            dropped, benchmark, problem_id,
+            dropped,
+            benchmark,
+            problem_id,
         )
     return records
 

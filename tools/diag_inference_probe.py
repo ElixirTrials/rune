@@ -121,9 +121,7 @@ async def main() -> None:
                     "thinking_chars": think_chars,
                     "text_chars": len(text),
                     "parseable_json": parseable,
-                    "peak_gpu_gb": round(
-                        torch.cuda.max_memory_allocated() / 1e9, 2
-                    ),
+                    "peak_gpu_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2),
                     "text_head": text[:300],
                     "text_tail": text[-200:],
                     "think_tail": res.thinking[-200:] if think else "",

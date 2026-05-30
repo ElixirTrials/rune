@@ -244,9 +244,7 @@ def load_hypernetwork(config: HypernetworkConfig, device: str = "cpu") -> Any:
     # (which also pulls in unused optimizer state) spikes past free RAM and the
     # kernel OOM-kills the process while the base model is also loading.
     try:
-        sd = torch.load(
-            local_path, map_location="cpu", weights_only=False, mmap=True
-        )
+        sd = torch.load(local_path, map_location="cpu", weights_only=False, mmap=True)
     except (RuntimeError, ValueError):
         sd = torch.load(local_path, map_location="cpu", weights_only=False)
 

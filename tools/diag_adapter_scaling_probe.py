@@ -66,9 +66,9 @@ def _passes_find_tuples(code: str) -> bool:
         ns: dict[str, Any] = {}
         exec(code, ns)  # noqa: S102
         fn = ns.get("find_tuples")
-        return bool(fn) and fn(
-            [(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6
-        ) == [(6, 24, 12)]
+        return bool(fn) and fn([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) == [
+            (6, 24, 12)
+        ]
     except Exception:  # noqa: BLE001
         return False
 
@@ -97,8 +97,9 @@ async def main() -> None:
     }
     _log({"event": "adapters_ready", "trajectories": list(adapters)})
 
-    async def gen(sd: dict[str, Any], scaling: float, prompt: str,
-                  schema: Any, max_tokens: int) -> Any:
+    async def gen(
+        sd: dict[str, Any], scaling: float, prompt: str, schema: Any, max_tokens: int
+    ) -> Any:
         wrapper.hotswap_adapter(scale_lora_b(sd, scaling))
         return await wrapper.generate(
             prompt,

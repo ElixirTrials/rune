@@ -39,10 +39,20 @@ def _ctx() -> dict[str, object]:
 
 
 _TEMPLATES = [
-    "decompose", "prompt_decompose_concise", "plan", "prompt_plan",
-    "code", "prompt_code", "code_repair", "prompt_code_repair",
-    "integrate", "prompt_integrate", "diagnose", "prompt_diagnose",
-    "code_continue", "prompt_code_continue",
+    "decompose",
+    "prompt_decompose_concise",
+    "plan",
+    "prompt_plan",
+    "code",
+    "prompt_code",
+    "code_repair",
+    "prompt_code_repair",
+    "integrate",
+    "prompt_integrate",
+    "diagnose",
+    "prompt_diagnose",
+    "code_continue",
+    "prompt_code_continue",
 ]
 
 
