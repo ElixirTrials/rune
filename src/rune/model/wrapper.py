@@ -88,6 +88,7 @@ class ModelWrapper:
         _raw_model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
             dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
         ).to(device)
         # PEFT scaling = lora_alpha / r must reproduce the scaling the
         # hypernetwork was distilled against (ctx_to_lora applies alpha/r; see
