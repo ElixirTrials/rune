@@ -20,6 +20,24 @@ def audit_checkpoint_keys(model_keys: set[str], ckpt_keys: set[str]) -> set[str]
     return relevant - ckpt_keys
 
 
+def reinit_scaler_b_nonzero(hypernet: Any, value: float = 1.0) -> None:
+    """Re-initialize scaler_B away from the zero collapse basin (issue #49 §A).
+
+    ctx_to_lora zero-inits scaler_B, so B = B_raw * scaler_B = 0 and B_raw gets
+    no gradient. Setting scaler_B to a non-zero constant (mirroring scaler_A's
+    ones-init) makes the adapter identity-active at init with gradient flowing to
+    both B_raw and the gate. Call ONLY when (re)training, never when loading a
+    trained checkpoint (its learned scaler_B must be preserved).
+    """
+    import torch  # noqa: PLC0415
+
+    if not hasattr(hypernet, "scaler_B"):
+        return
+    with torch.no_grad():
+        for name in list(hypernet.scaler_B.keys()):
+            hypernet.scaler_B[name].fill_(value)
+
+
 _flash_patched = False
 
 _MLP_CHUNK_SIZE = 2048
