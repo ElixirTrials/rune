@@ -354,6 +354,24 @@ def extract_activations_with_model(
 _ATTN_MODULES = {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"}
 
 
+def merge_head_bias_rank(
+    adapter_rank: int, bias_rank: int, peft_config_rank: int
+) -> int:
+    """Validate that the PEFT adapter rank accommodates bias concatenation.
+
+    combine_lora concatenates the head bias as extra rank slices, so the effective
+    rank becomes adapter_rank + bias_rank. The hot-swapped PEFT adapter must be
+    created with that rank, or weights misapply silently. Returns the required rank.
+    """
+    required = adapter_rank + bias_rank
+    if peft_config_rank != required:
+        raise ValueError(
+            f"PEFT rank {peft_config_rank} != adapter+bias rank {required}; "
+            "recreate the PEFT adapter at the combined rank before hotswap"
+        )
+    return required
+
+
 def _to_peft_state_dict(
     lora_dict: dict[str, dict[str, Any]],
     layer_indices: list[int],
@@ -437,4 +455,20 @@ def generate_adapter_weights(
 
     hc = hypernet.config
     target_modules = list(hc.lora_config.target_modules)
+
+    if getattr(hc, "use_bias", False):
+        from ctx_to_lora.modeling.lora_merger import combine_lora  # noqa: PLC0415
+
+        first_mod = next(iter(lora_dict))
+        base_rank = int(lora_dict[first_mod]["A"].shape[-2])
+        n_chunks = torch.ones(1, dtype=torch.int32, device=features.device)
+        merge_head_bias_rank(
+            adapter_rank=base_rank,
+            bias_rank=base_rank,
+            peft_config_rank=int(hc.lora_config.r),
+        )
+        lora_dict = combine_lora(
+            lora_dict, n_chunks, lora_bias=hypernet.get_head_bias()
+        )
+
     return _to_peft_state_dict(lora_dict, layer_indices, target_modules)
