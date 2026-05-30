@@ -8,6 +8,18 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+def audit_checkpoint_keys(model_keys: set[str], ckpt_keys: set[str]) -> set[str]:
+    """Return model params absent from the checkpoint among collapse-critical groups.
+
+    Only watches scaler_*/bias_*/head keys — the ones a silent strict=False load
+    would otherwise drop (issue #49 §D).
+    """
+    watched = ("scaler_A", "scaler_B", "bias_A", "bias_B", "head")
+    relevant = {k for k in model_keys if any(w in k for w in watched)}
+    return relevant - ckpt_keys
+
+
 _flash_patched = False
 
 _MLP_CHUNK_SIZE = 2048
@@ -264,7 +276,14 @@ def load_hypernetwork(config: HypernetworkConfig, device: str = "cpu") -> Any:
         hc._attn_implementation = "eager"
     hypernet = HyperLoRA(hc).to(hypernet_dtype)
     weights = sd.get("hypernet_state_dict") or sd.get("model_state_dict", sd)
+    missing = audit_checkpoint_keys(
+        set(hypernet.state_dict().keys()), set(weights.keys())
+    )
     hypernet.load_state_dict(weights, strict=False)
+    if missing:
+        logger.warning(
+            "checkpoint is missing collapse-critical keys: %s", sorted(missing)
+        )
     return hypernet.to(device).eval()
 
 
