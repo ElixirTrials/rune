@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import rune.bench.runner as runner_mod
 from rune.bench.runner import BenchTask, run_benchmark
 
 
@@ -63,7 +62,7 @@ def test_genuinely_wrong_impl_still_fails() -> None:
 
 def test_runner_seeds_rng_per_task(monkeypatch: Any) -> None:
     calls: list[int] = []
-    monkeypatch.setattr(runner_mod, "_seed_rng", calls.append)
+    monkeypatch.setattr("rune.bench.runner._seed_rng", calls.append)
 
     tasks = [
         BenchTask(task_id=f"t{i}", description="d", test_code="assert True\n")
@@ -77,7 +76,7 @@ def test_runner_seeds_rng_per_task(monkeypatch: Any) -> None:
 
 def test_runner_does_not_seed_when_seed_absent(monkeypatch: Any) -> None:
     calls: list[int] = []
-    monkeypatch.setattr(runner_mod, "_seed_rng", calls.append)
+    monkeypatch.setattr("rune.bench.runner._seed_rng", calls.append)
 
     task = BenchTask(task_id="t", description="d", test_code="assert True\n")
     config = {"run_config": {"max_phase_iterations": 1}}  # no seed
