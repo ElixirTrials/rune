@@ -3,7 +3,14 @@ Decompose into subtasks with dependencies. Output a JSON object:
 Use depends_on: [] when a subtask has no prerequisites.
 No preamble, no analysis, no reasoning outside the JSON.
 
-BAD: a "subtask" named "Analyze the request" — that is reasoning, NOT a subtask.
+A subtask is a unit of IMPLEMENTATION, not a project chore. For a single
+self-contained function, ONE subtask is correct.
+
+BAD subtasks (never emit these):
+- "Analyze the request" — that is reasoning, not a subtask.
+- "Add documentation" / "Write docstrings" — part of the implementation.
+- "Write unit tests" / "Handle edge cases" — part of the implementation.
+- "Define the function signature" / "Add type hints" — part of the implementation.
 
 [USER TASK]
 {{ task_description }}

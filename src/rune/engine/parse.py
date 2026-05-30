@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
@@ -56,6 +57,30 @@ class DiagnosisEntry(BaseModel):
 
 class DiagnoseResult(BaseModel):
     entries: list[DiagnosisEntry]
+
+
+# Subtasks that are project chores, not implementation units. The model tends
+# to split trivial single-function tasks into these, inflating step counts and
+# the integration-failure surface. Dropped at decompose-time (but never if it
+# would empty the plan).
+_CHORE_RE = re.compile(
+    r"\b("
+    r"documentation|docstrings?|"
+    r"unit tests?|write tests?|add tests?|test cases?|testing|"
+    r"edge cases?|"
+    r"function signature|type hints?|annotations?|"
+    r"comments?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_chore_subtask(s: SubtaskSchema) -> bool:
+    # Match the NAME only. Matching the description would drop legitimate
+    # implementation subtasks whose subject is docs/tests/annotations
+    # (e.g. a docstring parser, a type-hint linter) — a false positive that
+    # would silently nuke real work on every `rune run`. Conservative by design.
+    return bool(_CHORE_RE.search(s.name))
 
 
 _FIX_GUIDANCE_CAP = 150
@@ -120,19 +145,24 @@ def parse_output(
             except Exception:
                 logger.warning("decompose output failed validation; re-decomposing")
                 return {}
-            names = {s.name for s in result.subtasks}
+            # Drop pure-chore subtasks (docs/tests/edge-cases/signatures) — but
+            # never empty the plan; degrade to keeping everything if all are chores.
+            kept = [s for s in result.subtasks if not _is_chore_subtask(s)]
+            if not kept:
+                kept = list(result.subtasks)
+            names = {s.name for s in kept}
             return {
                 "subtasks": [
                     Subtask(
                         name=s.name,
                         description=s.description,
-                        # Drop phantom (typo'd/unknown) and self dependencies so
-                        # readiness checks and the DAG can never softlock.
+                        # Drop phantom (typo'd/unknown), self, and dropped-chore
+                        # dependencies so readiness checks and the DAG never softlock.
                         depends_on=[
                             d for d in s.depends_on if d in names and d != s.name
                         ],
                     )
-                    for s in result.subtasks
+                    for s in kept
                 ]
             }
         case "plan":
