@@ -239,7 +239,16 @@ def load_hypernetwork(config: HypernetworkConfig, device: str = "cpu") -> Any:
 
     local_path = _resolve_checkpoint_path(config.checkpoint_path)
     logger.info("Loading hypernetwork from %s", local_path)
-    sd = torch.load(local_path, map_location="cpu", weights_only=False)
+    # mmap=True maps the 2.5GB checkpoint's tensors from disk (reclaimable page
+    # cache) instead of anonymous RAM; on this ~15GB-RAM box a plain torch.load
+    # (which also pulls in unused optimizer state) spikes past free RAM and the
+    # kernel OOM-kills the process while the base model is also loading.
+    try:
+        sd = torch.load(
+            local_path, map_location="cpu", weights_only=False, mmap=True
+        )
+    except (RuntimeError, ValueError):
+        sd = torch.load(local_path, map_location="cpu", weights_only=False)
 
     from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
 
