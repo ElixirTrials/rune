@@ -33,11 +33,11 @@ def _log(rec: dict[str, Any]) -> None:
 
 
 async def main() -> None:
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import torch  # noqa: PLC0415
+    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
-    from rune.engine.parse import CodeResult
-    from rune.model import inference
+    from rune.engine.parse import CodeResult  # noqa: PLC0415
+    from rune.model import inference  # noqa: PLC0415
 
     OUT.write_text("")  # truncate
     model_id = "Qwen/Qwen3.5-9B"
@@ -130,7 +130,7 @@ async def main() -> None:
                 }
             )
         except Exception as e:  # noqa: BLE001
-            import traceback
+            import traceback  # noqa: PLC0415
 
             _log(
                 {

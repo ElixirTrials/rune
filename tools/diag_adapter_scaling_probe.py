@@ -1,22 +1,17 @@
-"""Decisive probe: does the hypernetwork adapter's effective scaling drive the
-non-termination / pass@1=0 failure?
+"""Combined adapter validation at the corrected PEFT scaling (lora_alpha=alpha).
 
-Base-model probe (diag_inference_probe.py) already showed grammar decoding
-terminates cleanly with NO adapter.  This isolates the one variable the failing
-runs add: the generated LoRA adapter, swept across effective scaling.
+Tests the user's three acceptance criteria in ONE model load:
+  (1) terminates  — structured CodeResult generation closes the JSON, no cap hit
+  (2) passes      — extracted code passes the task assert
+  (3) recall      — output is trajectory-sensitive: a contradictory trajectory
+                    diverges from the task trajectory (adapter encodes the ctx)
 
-Rune builds the PEFT model at lora_alpha=alpha*rank=128, r=8 -> PEFT scaling
-16.0 (8x the reference alpha/r=2.0).  We build once at 16.0, generate ONE
-adapter, then hot-swap scale_lora_b(orig_sd, S/16) to realise effective scaling
-S, running the same MBPP task each time.
+Reuses adapter_probe.py's trajectory definitions. mmap'd checkpoint load +
+offload_base=False keep it within the ~15GB CPU RAM box; run under
+/tmp/run_guarded.sh so it can never OOM the VM.
 
-Outcomes:
-  - S=16 runs away (truncated, unparseable) and a lower S terminates + passes
-    -> scaling bug confirmed; the passing S is the trained scaling.
-  - every S>0 garbage -> adapter quality, not scaling.
-  - S=16 already clean -> scaling not the cause; escalate (template / 3072).
-
-Run:  uv run python tools/diag_adapter_scaling_probe.py
+Run:  bash /tmp/run_guarded.sh /tmp/adapter_scaling_run.log \
+        tools/diag_adapter_scaling_probe.py
 """
 
 from __future__ import annotations
@@ -29,144 +24,142 @@ from typing import Any
 
 OUT = Path("/tmp/adapter_scaling_results.jsonl")
 
-TASK = (
+# --- recall conditions (verbatim from adapter_probe.py) ---
+ADD_PROMPT = "Write a Python function add(a, b) that returns a + b."
+TASK_TRAJ = f"ROLE: coder\nTASK: {ADD_PROMPT}\nPLAN: Implement add function."
+CONTRA_TRAJ = (
+    f"ROLE: coder\nTASK: {ADD_PROMPT}\n"
+    "PLAN: Implement a sorting routine.\n"
+    "INTERFACE: def sort_list(items: list[int]) -> list[int]"
+)
+
+# --- terminate+pass condition ---
+MBPP_PROMPT = (
     "Write a function to find tuples which have all elements divisible by k "
     "from the given list of tuples.\n\n"
     ">>> assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) "
-    "== [(6, 24, 12)]"
+    "== [(6, 24, 12)]\n\n"
+    "Return a JSON object with a single key 'code' whose value is the complete "
+    "Python function as a string."
 )
-
-# A representative coding trajectory to condition the hypernetwork.
-TRAJECTORY = (
-    "Task: implement find_tuples(tuples_list, k) returning tuples whose every "
-    "element is divisible by k.\n"
-    "Plan: iterate the list, keep a tuple when all(x % k == 0).\n"
-    "Code: def find_tuples(lst, k): return [t for t in lst if all(x % k == 0 "
-    "for x in t)]\n"
+MBPP_TRAJ = (
+    "ROLE: coder\nTASK: find_tuples(lst, k) -> tuples whose every element is "
+    "divisible by k.\nPLAN: filter with all(x % k == 0 for x in t)."
 )
-
-CHECKPOINT = "/home/vscode/.cache/rune/checkpoints/8e815654733a4579.pt"
-BUILD_SCALING = 16.0  # PEFT scaling the model is built at (alpha*rank/r)
 
 
 def _log(rec: dict[str, Any]) -> None:
     with OUT.open("a") as f:
         f.write(json.dumps(rec) + "\n")
-    print(json.dumps(rec, indent=1), flush=True)
+    print(json.dumps(rec), flush=True)
 
 
-def _passes(code: str) -> bool:
-    """Exec the extracted code and run the docstring assert (trivial, safe)."""
+def _coherent(text: str) -> bool:
+    if not text:
+        return False
+    printable = sum(c.isprintable() or c in "\n\t" for c in text)
+    return printable / len(text) > 0.95
+
+
+def _passes_find_tuples(code: str) -> bool:
     try:
         ns: dict[str, Any] = {}
         exec(code, ns)  # noqa: S102
         fn = ns.get("find_tuples")
-        if fn is None:
-            return False
-        return fn([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) == [(6, 24, 12)]
+        return bool(fn) and fn(
+            [(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6
+        ) == [(6, 24, 12)]
     except Exception:  # noqa: BLE001
         return False
 
 
 async def main() -> None:
-    import torch  # noqa: PLC0415
-
     from rune.config import PipelineConfig  # noqa: PLC0415
     from rune.engine.parse import CodeResult  # noqa: PLC0415
     from rune.model.adapter import scale_lora_b  # noqa: PLC0415
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
     OUT.write_text("")
-
-    cfg = PipelineConfig(checkpoint_path=CHECKPOINT)
+    cfg = PipelineConfig(
+        checkpoint_path=(
+            "s3://elixirtrials-949678234935-eu-west-2-artifacts/"
+            "checkpoints/hypernet_hpo/checkpoint.pt"
+        )
+    )
     t0 = time.monotonic()
     wrapper = ModelWrapper.from_config(cfg)
     _log({"event": "loaded", "load_s": round(time.monotonic() - t0, 1)})
 
-    # Generate ONE adapter. offload_base=False: base(18GB)+hypernet(0.9GB) fit on
-    # the 23GB card, and this box has only 15GB CPU RAM so offloading the 18GB
-    # base to CPU would trip the kernel OOM-killer (silent SIGKILL).
-    t0 = time.monotonic()
-    adapter = wrapper.generate_adapter(TRAJECTORY, offload_base=False)
-    orig_sd = adapter.state_dict
-    b_keys = [k for k in orig_sd if "lora_B" in k]
-    sample_b_norm = float(orig_sd[b_keys[0]].float().norm()) if b_keys else None
-    _log(
-        {
-            "event": "adapter",
-            "gen_s": round(time.monotonic() - t0, 1),
-            "n_keys": len(orig_sd),
-            "n_lora_B": len(b_keys),
-            "sample_B_fro_norm": round(sample_b_norm, 3)
-            if sample_b_norm is not None
-            else None,
-        }
-    )
+    # Pre-generate adapters for each trajectory (reused across scalings).
+    adapters = {
+        "task": wrapper.generate_adapter(TASK_TRAJ).state_dict,
+        "contra": wrapper.generate_adapter(CONTRA_TRAJ).state_dict,
+    }
+    _log({"event": "adapters_ready", "trajectories": list(adapters)})
 
-    # Free the hypernetwork so the base model has room for the generation sweep.
-    wrapper._hypernet.to("cpu")  # noqa: SLF001
-    torch.cuda.empty_cache()
+    async def gen(sd: dict[str, Any], scaling: float, prompt: str,
+                  schema: Any, max_tokens: int) -> Any:
+        wrapper.hotswap_adapter(scale_lora_b(sd, scaling))
+        return await wrapper.generate(
+            prompt,
+            system_prompt="You are a code generator.",
+            output_schema=schema,
+            max_tokens=max_tokens,
+            temperature=0.0,
+            repetition_penalty=1.0,
+            top_p=1.0,
+            presence_penalty=1.5,
+            thinking_budget=0,
+            skip_completion_retry=True,
+        )
 
-    # effective scaling S realised via scale_lora_b(orig_sd, S / BUILD_SCALING).
-    # Covers the V1 working regime (~0.15 = 2.0 PEFT x 0.075 adapter_scaling),
-    # intermediate, and the current broken V2 value (16.0).
-    for eff in (0.0, 0.075, 0.15, 0.3, 0.5, 1.0, 2.0, 16.0):
-        factor = eff / BUILD_SCALING
-        sd = scale_lora_b(orig_sd, factor)
-        wrapper.hotswap_adapter(sd)
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
+    # --- (3) RECALL: task vs contradictory trajectory, across scalings ---
+    # effective scaling = PEFT(alpha/r=2.0) x adapter_scaling
+    for scaling in (0.0, 0.49, 1.0, 2.0):
+        task_out = (await gen(adapters["task"], scaling, ADD_PROMPT, None, 160)).text
+        contra_out = (
+            await gen(adapters["contra"], scaling, ADD_PROMPT, None, 160)
+        ).text
+        _log(
+            {
+                "event": "recall",
+                "adapter_scaling": scaling,
+                "eff_scaling_approx": round(2.0 * scaling, 3),
+                "task_vs_contra_differ": task_out != contra_out,
+                "task_coherent": _coherent(task_out),
+                "contra_coherent": _coherent(contra_out),
+                "contra_mentions_sort": "sort" in contra_out.lower(),
+                "task_head": task_out[:160],
+                "contra_head": contra_out[:160],
+            }
+        )
+
+    # --- (1)+(2) TERMINATE + PASS: structured MBPP at bench scaling 0.49 ---
+    mbpp_sd = wrapper.generate_adapter(MBPP_TRAJ).state_dict
+    for scaling in (0.49, 1.0):
         t0 = time.monotonic()
+        res = await gen(mbpp_sd, scaling, MBPP_PROMPT, CodeResult, 512)
+        wall = time.monotonic() - t0
+        parseable, code = False, ""
         try:
-            res = await wrapper.generate(
-                TASK + "\n\nReturn a JSON object with a single key 'code' whose "
-                "value is the complete Python function as a string.",
-                system_prompt="You are a code generator.",
-                output_schema=CodeResult,
-                max_tokens=512,
-                temperature=0.0,
-                repetition_penalty=1.0,
-                top_p=1.0,
-                presence_penalty=1.5,
-                thinking_budget=256,
-                skip_completion_retry=True,
-            )
-            wall = time.monotonic() - t0
-            parseable = False
-            code = ""
-            try:
-                code = CodeResult.model_validate_json(res.text).code
-                parseable = True
-            except Exception:  # noqa: BLE001
-                parseable = False
-            _log(
-                {
-                    "event": "gen",
-                    "eff_scaling": eff,
-                    "scale_lora_b_factor": round(factor, 4),
-                    "wall_s": round(wall, 1),
-                    "tokens_used": res.tokens_used,
-                    "tok_per_s": round(res.tokens_used / wall, 2) if wall else None,
-                    "truncated_hit_cap": res.truncated,
-                    "parseable_json": parseable,
-                    "passes_assert": _passes(code) if parseable else False,
-                    "text_chars": len(res.text),
-                    "peak_gpu_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2),
-                    "text_head": res.text[:280],
-                    "text_tail": res.text[-160:],
-                }
-            )
-        except Exception as e:  # noqa: BLE001
-            import traceback  # noqa: PLC0415
-
-            _log(
-                {
-                    "event": "error",
-                    "eff_scaling": eff,
-                    "error": str(e),
-                    "tb": traceback.format_exc()[-800:],
-                }
-            )
+            code = CodeResult.model_validate_json(res.text).code
+            parseable = True
+        except Exception:  # noqa: BLE001
+            pass
+        _log(
+            {
+                "event": "terminate_pass",
+                "adapter_scaling": scaling,
+                "eff_scaling_approx": round(2.0 * scaling, 3),
+                "wall_s": round(wall, 1),
+                "tokens_used": res.tokens_used,
+                "truncated_hit_cap": res.truncated,
+                "parseable_json": parseable,
+                "passes_assert": _passes_find_tuples(code) if parseable else False,
+                "coherent": _coherent(res.text),
+                "text_tail": res.text[-160:],
+            }
+        )
 
     _log({"event": "done"})
 
