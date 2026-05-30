@@ -85,7 +85,7 @@ version = "0.0.1"
 requires-dist = []
 
 [tool.mypy]
-exclude = "^(site|tests)/"
+exclude = "^(site|tests|tools)/"
 strict = true
 
 [[tool.mypy.overrides]]
