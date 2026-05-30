@@ -6,8 +6,12 @@ import re
 
 _CODE_VALUE_RE = re.compile(r'"code"\s*:\s*"', re.DOTALL)
 _ESCAPES: dict[str, str] = {
-    "n": "\n", "t": "\t", "r": "\r",
-    "\\": "\\", '"': '"', "/": "/",
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "\\": "\\",
+    '"': '"',
+    "/": "/",
 }
 
 

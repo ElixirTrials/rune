@@ -10,8 +10,30 @@ logger = logging.getLogger(__name__)
 
 _flash_patched = False
 
-
 _MLP_CHUNK_SIZE = 2048
+
+
+def _chunk_gated_mlp(orig_fwd: Any, module: Any, x: Any, chunk_size: int) -> Any:
+    """Run a gated MLP in chunks over the flattened token axis to cap peak memory.
+
+    The modality_projection MLP receives ``(n_layers, seq_len, hidden)``; its 4x
+    gated intermediate is sized by ``n_layers * seq_len``, so chunking only the
+    seq dim leaves the ``n_layers`` (=32) multiplier uncapped.  Flattening every
+    leading dim into one token axis bounds the intermediate regardless of how the
+    tokens are split across batch and sequence.
+    """
+    import torch  # noqa: PLC0415
+
+    hidden = x.shape[-1]
+    flat = x.reshape(-1, hidden)
+    total = flat.shape[0]
+    if total <= chunk_size:
+        return orig_fwd(module, x)
+    parts = [
+        orig_fwd(module, flat[i : i + chunk_size]) for i in range(0, total, chunk_size)
+    ]
+    out = torch.cat(parts, dim=0)
+    return out.reshape(*x.shape[:-1], out.shape[-1])
 
 
 def _patch_flash_attention() -> None:
@@ -33,19 +55,14 @@ def _patch_flash_attention() -> None:
     )
 
     # Chunk the gated MLP forward to cap peak memory.  The modality_projection
-    # receives (1, n_layers*seq_len, dim) which can be 20k+ tokens; the 4×
-    # expansion intermediate would need ~1.5 GiB.  Chunking along the sequence
-    # dim keeps peak under ~150 MB with no quality change.
+    # receives (n_layers, seq_len, dim); the 4× expansion intermediate is sized
+    # by n_layers*seq_len, so chunking spans the flattened token count (see
+    # _chunk_gated_mlp) — chunking the seq dim alone left the ×32 layer
+    # multiplier uncapped and OOMed on long trajectories.
     _orig_mlp_fwd = Idefics2MLP.forward
 
     def _chunked_mlp_forward(self_: Any, x: Any) -> Any:
-        seq = x.shape[-2]
-        if seq <= _MLP_CHUNK_SIZE:
-            return _orig_mlp_fwd(self_, x)
-        parts = []
-        for i in range(0, seq, _MLP_CHUNK_SIZE):
-            parts.append(_orig_mlp_fwd(self_, x[..., i : i + _MLP_CHUNK_SIZE, :]))
-        return torch.cat(parts, dim=-2)
+        return _chunk_gated_mlp(_orig_mlp_fwd, self_, x, _MLP_CHUNK_SIZE)
 
     Idefics2MLP.forward = _chunked_mlp_forward  # type: ignore[assignment]
 
@@ -222,7 +239,14 @@ def load_hypernetwork(config: HypernetworkConfig, device: str = "cpu") -> Any:
 
     local_path = _resolve_checkpoint_path(config.checkpoint_path)
     logger.info("Loading hypernetwork from %s", local_path)
-    sd = torch.load(local_path, map_location="cpu", weights_only=False)
+    # mmap=True maps the 2.5GB checkpoint's tensors from disk (reclaimable page
+    # cache) instead of anonymous RAM; on this ~15GB-RAM box a plain torch.load
+    # (which also pulls in unused optimizer state) spikes past free RAM and the
+    # kernel OOM-kills the process while the base model is also loading.
+    try:
+        sd = torch.load(local_path, map_location="cpu", weights_only=False, mmap=True)
+    except (RuntimeError, ValueError):
+        sd = torch.load(local_path, map_location="cpu", weights_only=False)
 
     from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
 

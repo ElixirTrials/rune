@@ -115,7 +115,12 @@ class TestRunBenchmarkCodeExtraction:
         with patch("rune.bench.runner.run_in_sandbox", side_effect=capture_sandbox):
             asyncio.run(run_benchmark([task], engine, _bench_config()))
 
-        assert "def solution(): return 42" in captured[0]
+        # strip_self_tests round-trips through ast.unparse, so the scored code is
+        # canonically reformatted; assert on function identity (proving
+        # integrated_code, not code_results, was used) rather than verbatim text.
+        assert "def solution():" in captured[0]
+        assert "return 42" in captured[0]
+        assert "ignored" not in captured[0]
         assert "assert solution() == 42" in captured[0]
 
     def test_falls_back_to_code_results_when_integrated_empty(self) -> None:
@@ -135,7 +140,11 @@ class TestRunBenchmarkCodeExtraction:
         with patch("rune.bench.runner.run_in_sandbox", side_effect=capture_sandbox):
             asyncio.run(run_benchmark([task], engine, _bench_config()))
 
-        assert "def add(a,b): return a+b" in captured[0]
+        # strip_self_tests reformats via ast.unparse; assert on the reformatted
+        # function (proving the code_results fallback was used). The appended
+        # test_code is concatenated verbatim, so it is unchanged.
+        assert "def add(a, b):" in captured[0]
+        assert "return a + b" in captured[0]
         assert "assert add(1,2)==3" in captured[0]
 
     def test_no_code_at_all_still_runs_test(self) -> None:

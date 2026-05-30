@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from rune.bench.hpo import run_hpo
+from rune.bench.hpo import _BENCH_HPO_DB, _BENCH_HPO_STUDY, run_hpo
 from rune.bench.runner import BenchResult, BenchTask
 from rune.config import PipelineConfig
 
 _HPO_RANGES = {
     "n_trials": 30,
-    "adapter_scaling": {"low": 1.5, "high": 10.0, "log": True},
-    "temperature": {"low": 0.1, "high": 1.0},
-    "max_tokens": {"low": 512, "high": 4096, "step": 256},
+    "adapter_scaling": {"low": 0.35, "high": 0.65},
+    "temperature": {"low": 0.5, "high": 0.8},
+    "presence_penalty": {"low": 1.2, "high": 2.0},
     "max_phase_iterations": {"low": 3, "high": 10},
-    "cont_multiplier": {"low": 1.0, "high": 3.0},
+    "cont_multiplier": {"low": 1.3, "high": 1.8},
 }
 
 
@@ -34,9 +35,9 @@ def _make_bench_result(pass_at_1: float = 0.8) -> BenchResult:
 
 
 def _make_trial(
-    adapter_scaling: float = 0.05,
-    temperature: float = 0.4,
-    max_tokens: int = 1024,
+    adapter_scaling: float = 0.5,
+    temperature: float = 0.65,
+    presence_penalty: float = 1.5,
     max_phase_iterations: int = 5,
     cont_multiplier: float = 1.53,
 ) -> MagicMock:
@@ -44,10 +45,10 @@ def _make_trial(
     trial.suggest_float.side_effect = lambda name, *a, **kw: {
         "adapter_scaling": adapter_scaling,
         "temperature": temperature,
+        "presence_penalty": presence_penalty,
         "cont_multiplier": cont_multiplier,
     }[name]
     trial.suggest_int.side_effect = lambda name, *a, **kw: {
-        "max_tokens": max_tokens,
         "max_phase_iterations": max_phase_iterations,
     }[name]
     return trial
@@ -81,7 +82,10 @@ class TestRunHpoStudyCreation:
             )
 
         mock_create.assert_called_once_with(
-            direction="maximize", study_name="rune-bench-hpo"
+            direction="maximize",
+            study_name=_BENCH_HPO_STUDY,
+            storage=f"sqlite:///{_BENCH_HPO_DB}",
+            load_if_exists=True,
         )
 
 
@@ -199,3 +203,32 @@ class TestRunHpoNTrialsPropagated:
 
         # args[0]=objective_fn, args[1]=n_trials
         assert captured[0][1] == 7
+
+
+class TestRunHpoFresh:
+    def test_fresh_deletes_db_and_disables_load_if_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "optuna_bench_hpo.db"
+        db.write_text("old")
+
+        mock_study = MagicMock()
+        mock_study.best_params = {}
+        mock_study.best_value = 0.0
+
+        with (
+            patch("rune.bench.hpo._BENCH_HPO_DB", db),
+            patch("optuna.create_study", return_value=mock_study) as mock_create,
+            patch("optuna_integration.MLflowCallback"),
+            patch("optuna.logging.set_verbosity"),
+            patch("asyncio.to_thread", new_callable=AsyncMock),
+        ):
+            asyncio.run(
+                run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=1, fresh=True)
+            )
+
+        assert not db.exists()
+        mock_create.assert_called_once_with(
+            direction="maximize",
+            study_name=_BENCH_HPO_STUDY,
+            storage=f"sqlite:///{db}",
+            load_if_exists=False,
+        )

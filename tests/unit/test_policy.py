@@ -114,15 +114,26 @@ class TestSelectAction:
         assert len(actions) == 1
         assert actions[0].name == "integrate"
 
-    def test_all_passing_returns_integrate(self) -> None:
-        subtasks = [Subtask("a", "do a", [])]
+    def test_single_subtask_pass_eos(self) -> None:
+        subtasks = [Subtask("_main", "do main", [])]
         state = _make_state(
             subtasks=subtasks,
-            plans={"a": "plan"},
-            code_results={"a": "good"},
-            code_passed={"a": True},
+            plans={"_main": "plan"},
+            code_results={"_main": "good"},
+            code_passed={"_main": True},
+        )
+        assert select_action(state) == []
+
+    def test_multi_subtask_all_passing_returns_integrate(self) -> None:
+        subtasks = [Subtask("a", "do a", []), Subtask("b", "do b", [])]
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan a", "b": "plan b"},
+            code_results={"a": "good a", "b": "good b"},
+            code_passed={"a": True, "b": True},
         )
         actions = select_action(state)
+        assert len(actions) == 1
         assert actions[0].name == "integrate"
 
     def test_done_returns_empty(self) -> None:
@@ -138,31 +149,49 @@ class TestSelectAction:
         assert actions == []
 
     def test_integration_failure_returns_diagnose(self) -> None:
-        subtasks = [Subtask("a", "do a", [])]
+        subtasks = [Subtask("a", "do a", []), Subtask("b", "do b", [])]
         fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
         state = _make_state(
             subtasks=subtasks,
-            plans={"a": "plan"},
-            code_results={"a": "good"},
-            code_passed={"a": True},
+            plans={"a": "plan a", "b": "plan b"},
+            code_results={"a": "good a", "b": "good b"},
+            code_passed={"a": True, "b": True},
             integration_feedback=fb,
         )
         actions = select_action(state)
         assert actions[0].name == "diagnose"
 
     def test_integration_failure_with_diagnosis_returns_integrate(self) -> None:
-        subtasks = [Subtask("a", "do a", [])]
+        subtasks = [Subtask("a", "do a", []), Subtask("b", "do b", [])]
         fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
         state = _make_state(
             subtasks=subtasks,
-            plans={"a": "plan"},
-            code_results={"a": "good"},
-            code_passed={"a": True},
+            plans={"a": "plan a", "b": "plan b"},
+            code_results={"a": "good a", "b": "good b"},
+            code_passed={"a": True, "b": True},
             integration_feedback=fb,
             diagnosis={"a": "Fix the import"},
         )
         actions = select_action(state)
         assert actions[0].name == "integrate"
+
+
+class TestSelectActionTermination:
+    def test_exhausted_and_integration_failing_stops(self) -> None:
+        # All repairable subtasks exhausted + integration still failing → give up
+        # (return []) instead of looping integrate<->diagnose to budget exhaustion.
+        subtasks = [Subtask("a", "do a", [])]
+        fb = Feedback(stdout="", stderr="ImportError", exit_code=1)
+        state = _make_state(
+            subtasks=subtasks,
+            plans={"a": "plan"},
+            code_results={"a": "code"},
+            code_passed={"a": False},
+            retries={"a": 4},  # >= MAX_RETRIES
+            integration_feedback=fb,
+            diagnosis={"a": "fix"},
+        )
+        assert select_action(state) == []
 
 
 class TestBuildExecutionLayers:
@@ -205,6 +234,17 @@ class TestBuildExecutionLayers:
         all_names = [name for layer in layers for name in layer]
         assert "phantom" not in all_names
         assert set(all_names) == {"a", "b"}
+
+    def test_cyclic_dependencies_do_not_raise(self) -> None:
+        # A <-> B cycle from bad decompose output must not crash the engine;
+        # fall back to treating subtasks as independent.
+        subtasks = [
+            Subtask("a", "do a", ["b"]),
+            Subtask("b", "do b", ["a"]),
+        ]
+        layers = build_execution_layers(subtasks)
+        all_names = {name for layer in layers for name in layer}
+        assert all_names == {"a", "b"}
 
 
 class TestSelectActionPhantomDep:

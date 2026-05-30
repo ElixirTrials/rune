@@ -13,11 +13,13 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from rune.engine.continuation import (
+    CONT_SYSTEM_PROMPT,
     degeneration_score,
     extract_partial_code,
+    strip_self_tests,
     validate_syntax,
 )
-from rune.engine.parse import CodeResult, IntegrateResult, parse_output, render_template
+from rune.engine.parse import parse_output, render_template
 from rune.engine.policy import select_action
 from rune.engine.state import (
     _CODE_HISTORY_CAP,
@@ -46,6 +48,10 @@ _SIMPLE_SIGNALS = (
 
 _SIMPLE_WORD_LIMIT = 200
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
+_INTEGRATION_DOC_LINE_CAP = 200
+_PROJECT_CAP = 1200
+_PROJECT_LABEL_CAP = 200
+_ACCUMULATED_CODE_CAP = 3500
 
 
 def _is_simple_task(task: str) -> bool:
@@ -64,9 +70,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     task = state["task"]
 
     ctx: dict[str, Any] = {
-        "project": task,
-        "task_description": task,
-        "project_label": task[:200],
+        "project": task[:_PROJECT_CAP],
+        "task_description": task[:_PROJECT_CAP],
+        "project_label": task[:_PROJECT_LABEL_CAP],
         "subtask_count": len(subtasks),
     }
 
@@ -78,12 +84,12 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
 
     if action and action.target_subtask:
         target_name = action.target_subtask
-        subtask_obj = next((s for s in subtasks if s.name == target_name), None)
+        subtask_idx, subtask_obj = next(
+            ((i, s) for i, s in enumerate(subtasks) if s.name == target_name),
+            (-1, None),
+        )
         if subtask_obj is None:
             raise ValueError(f"Action targets unknown subtask {target_name!r}")
-        subtask_idx = next(
-            (i for i, s in enumerate(subtasks) if s.name == target_name), 0
-        )
         ctx["subtask"] = subtask_obj
         ctx["subtask_name"] = target_name
         ctx["subtask_index"] = subtask_idx + 1
@@ -105,19 +111,19 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
             if rec.feedback and rec.feedback.exit_code != 0:
                 repair_history.append(rec.feedback.stderr[:200])
             if rec.generated_code:
-                code_trajectory.append({
-                    "step": rec.step,
-                    "action": rec.action_name,
-                    "code": rec.generated_code[:_CODE_HISTORY_CAP],
-                    "error": (
-                        rec.feedback.stderr[:300]
-                        if rec.feedback and rec.feedback.exit_code != 0
-                        else ""
-                    ),
-                    "passed": bool(
-                        rec.feedback and rec.feedback.exit_code == 0
-                    ),
-                })
+                code_trajectory.append(
+                    {
+                        "step": rec.step,
+                        "action": rec.action_name,
+                        "code": rec.generated_code[:_CODE_HISTORY_CAP],
+                        "error": (
+                            rec.feedback.stderr[:300]
+                            if rec.feedback and rec.feedback.exit_code != 0
+                            else ""
+                        ),
+                        "passed": bool(rec.feedback and rec.feedback.exit_code == 0),
+                    }
+                )
         ctx["repair_history"] = repair_history[-2:]
         ctx["code_trajectory"] = code_trajectory
     else:
@@ -128,8 +134,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["repair_history"] = []
         ctx["code_trajectory"] = []
 
-    ctx["integration_doc"] = "\n".join(f"- {s.name}: {s.description}" for s in subtasks)
-    ctx["skeletons"] = code_results
+    ctx["integration_doc"] = "\n".join(
+        f"- {s.name}: {s.description[:_INTEGRATION_DOC_LINE_CAP]}" for s in subtasks
+    )
     ctx["code_outputs"] = code_results
     int_fb = state.get("integration_feedback")
     ctx["integration_error"] = int_fb.stderr if int_fb else ""
@@ -164,7 +171,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     presence_penalty = run_config.get("presence_penalty", 0.0)
     thinking_budget = run_config.get("thinking_budget", 1024)
 
-    results: list[tuple[Action, str, str, str | None]] = []
+    results: list[tuple[Action, str, str, str | None, str, str, str]] = []
     for action in actions:
         import torch  # noqa: PLC0415
 
@@ -201,12 +208,8 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             cont_round = 0
             empty_rounds = 0
 
-            cont_sys = (
-                "Output only Python code. No commentary, no explanations, "
-                "no markdown fences. Continue exactly from where the code "
-                "left off."
-            )
-            cont_user = ctx.get("task_description", "")[:200]
+            cont_sys = CONT_SYSTEM_PROMPT
+            cont_user = render_template("prompt_code_continue", **ctx)
 
             while cont_budget > 0 and empty_rounds < 2:
                 import torch  # noqa: PLC0415
@@ -216,8 +219,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
                 cont_ctx = {
                     **ctx,
-                    "accumulated_code": accumulated_code,
-                    "resume_tail": "\n".join(accumulated_code.splitlines()[-4:]),
+                    "accumulated_code": accumulated_code[-_ACCUMULATED_CODE_CAP:],
                 }
                 cont_traj = render_template("code_continue", **cont_ctx)
 
@@ -241,9 +243,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 new_chunk = result.text
                 degen = degeneration_score(new_chunk)
                 logger.info(
-                    "continuation round %d: +%d chars, degen=%.2f, "
-                    "truncated=%s",
-                    cont_round, len(new_chunk), degen, result.truncated,
+                    "continuation round %d: +%d chars, degen=%.2f, truncated=%s",
+                    cont_round,
+                    len(new_chunk),
+                    degen,
+                    result.truncated,
                 )
 
                 if degen > 0.5:
@@ -270,18 +274,33 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
             logger.info(
                 "continuation done: %d rounds, %d chars, syntax_valid=%s",
-                cont_round, len(accumulated_code),
+                cont_round,
+                len(accumulated_code),
                 validate_syntax(accumulated_code),
             )
             raw_text = json.dumps({"code": accumulated_code})
         elif result.truncated:
             logger.warning(
                 "Truncated output for %s/%s after completion retry",
-                action.name, action.target_subtask or "",
+                action.name,
+                action.target_subtask or "",
             )
 
         target_name = action.target_subtask or ""
-        results.append((action, target_name, raw_text, adapter_id))
+        output_text = (
+            extract_partial_code(raw_text) if action.executes_code else raw_text
+        )
+        results.append(
+            (
+                action,
+                target_name,
+                raw_text,
+                adapter_id,
+                trajectory_text,
+                prompt_text,
+                output_text,
+            )
+        )
 
         if mlflow.active_run() is not None:
             prefix = f"step_{state['step']}/{action.name}"
@@ -291,23 +310,20 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             mlflow.log_text(prompt_text, f"{prefix}/prompt.txt")
             mlflow.log_text(result.text, f"{prefix}/output.txt")
 
-    def _parse_action_code(action: Action, raw_json: str) -> str:
-        schema = IntegrateResult if action.name == "integrate" else CodeResult
-        try:
-            return schema.model_validate_json(raw_json).code
-        except Exception:
-            return extract_partial_code(raw_json)
-
+    # extract_partial_code is the single code-extraction primitive (CodeResult
+    # and IntegrateResult are both {code: str}). Computed once here and threaded
+    # into parse_output below so the code recorded in state is exactly the code
+    # executed in the sandbox.
     code_map: dict[str, str] = {}
     code_action_names: list[str] = []
-    for a, name, text, _ in results:
+    for a, name, text, _, _traj, _prompt, _out in results:
         if a.executes_code:
-            code_map[name] = _parse_action_code(a, text)
+            code_map[name] = extract_partial_code(text)
             code_action_names.append(name)
 
     sandbox_results = await asyncio.gather(
         *[
-            asyncio.to_thread(run_in_sandbox, code_map[name])
+            asyncio.to_thread(run_in_sandbox, strip_self_tests(code_map[name]))
             for name in code_action_names
         ]
     )
@@ -316,15 +332,17 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         for name, fb in zip(code_action_names, sandbox_results, strict=True)
     }
 
+    # Thread an accumulating running state through siblings so each parse_output
+    # builds its full maps from the prior sibling's applied change. Reusing a
+    # frozen dict(state) snapshot per sibling let the last-merged sibling's stale
+    # copy clobber earlier siblings' real updates (code_passed/retries/...).
     updates: dict[str, Any] = {}
-    for action, target_name, raw, _ in results:
+    running = dict(state)
+    for action, target_name, raw, _, _traj, _prompt, _out in results:
         fb = feedback_map.get(target_name)
-        partial = parse_output(action, raw, fb, dict(state))
-        for k, v in partial.items():
-            if isinstance(v, dict) and isinstance(updates.get(k), dict):
-                updates[k] = {**updates[k], **v}
-            else:
-                updates[k] = v
+        partial = parse_output(action, raw, fb, running, code=code_map.get(target_name))
+        updates.update(partial)
+        running.update(partial)
 
     records = [
         StepRecord(
@@ -333,9 +351,12 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             target_subtask=name,
             adapter_id=aid,
             feedback=feedback_map.get(name),
-            generated_code=code_map.get(name, "")[:_CODE_HISTORY_CAP] or None,
+            generated_code=code_map.get(name) or None,
+            trajectory_text=traj,
+            prompt_text=prompt,
+            output_text=out,
         )
-        for a, name, _, aid in results
+        for a, name, _, aid, traj, prompt, out in results
     ]
     if gate_fired:
         updates.setdefault("subtasks", state["subtasks"])

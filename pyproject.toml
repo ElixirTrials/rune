@@ -11,15 +11,12 @@ dependencies = [
     "peft>=0.14.0",
     "torch>=2.5.0",
     "safetensors>=0.4.0",
-    "tree-sitter>=0.24.0",
-    "tree-sitter-python>=0.23.0",
     "jinja2>=3.1.0",
     "typer>=0.15.0",
     "mlflow>=2.18.0",
     "optuna>=4.1.0",
     "optuna-integration[mlflow]>=4.1.0",
     "pydantic>=2.10.0",
-    "httpx>=0.28.0",
     "python-dotenv>=1.2.0",
     "ctx-to-lora>=0.0.1",
     "einops>=0.8.0",
@@ -88,7 +85,7 @@ version = "0.0.1"
 requires-dist = []
 
 [tool.mypy]
-exclude = "^(site|tests)/"
+exclude = "^(site|tests|tools)/"
 strict = true
 
 [[tool.mypy.overrides]]
@@ -100,8 +97,6 @@ module = [
     "torch", "torch.*",
     "transformers", "transformers.*",
     "safetensors", "safetensors.*",
-    "tree_sitter", "tree_sitter.*",
-    "tree_sitter_python", "tree_sitter_python.*",
     "datasets", "datasets.*",
     "mlflow", "mlflow.*",
     "optuna", "optuna.*",

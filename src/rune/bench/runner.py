@@ -5,14 +5,29 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rune.engine.continuation import strip_self_tests
 from rune.engine.state import make_initial_state
+from rune.mining.session_log import write_session
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
+
+
+def _seed_rng(seed: int) -> None:
+    """Seed the global torch RNG so in-engine generation is reproducible.
+
+    torch's RNG is process-global, so seeding here propagates to every
+    model.generate() call the engine makes for the task.
+    """
+    import torch  # noqa: PLC0415
+
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 @dataclass(frozen=True)
@@ -79,10 +94,26 @@ def load_tasks(path: Path) -> list[BenchTask]:
     return [BenchTask(**t) for t in data]
 
 
+def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
+    """Write benchmark tasks to a JSON file readable by :func:`load_tasks`.
+
+    Args:
+        tasks: Tasks to serialise.
+        path: Destination JSON path; parent directories are created.
+
+    Returns:
+        The path written to.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([asdict(t) for t in tasks], indent=2))
+    return path
+
+
 async def run_benchmark(
     tasks: list[BenchTask],
     engine: Any,
     config: dict[str, Any],
+    sessions_dir: Path | None = None,
 ) -> BenchResult:
     """Run the full benchmark suite and return aggregate results.
 
@@ -91,6 +122,7 @@ async def run_benchmark(
         engine: Compiled LangGraph engine (CompiledStateGraph).
         config: Configurable dict passed to engine.ainvoke (contains
             ``model`` and ``run_config`` keys).
+        sessions_dir: If set, write one session dir per task here (corpus producer).
 
     Returns:
         BenchResult with pass@1 and per-task details.
@@ -101,7 +133,10 @@ async def run_benchmark(
     budget = config["run_config"]["max_phase_iterations"]
     results: list[TaskResult] = []
 
-    for task in tasks:
+    seed = config["run_config"].get("seed")
+    for i, task in enumerate(tasks):
+        if seed is not None:
+            _seed_rng(seed + i)
         initial_state = make_initial_state(task.description, budget)
 
         try:
@@ -121,7 +156,10 @@ async def run_benchmark(
         if not generated_code:
             generated_code = "\n".join(final_state.get("code_results", {}).values())
 
-        full_code = generated_code + "\n\n" + task.test_code
+        # Strip the model's own self-tests (incl. __main__ asserts) before
+        # appending the held-out tests: otherwise a wrong self-test fails a
+        # correct implementation. The recorded `code` below stays full-length.
+        full_code = strip_self_tests(generated_code) + "\n\n" + task.test_code
 
         try:
             sandbox_result = await asyncio.to_thread(run_in_sandbox, full_code)
@@ -146,6 +184,17 @@ async def run_benchmark(
                 stderr=sandbox_result.stderr,
             )
         )
+
+        if sessions_dir is not None:
+            write_session(
+                final_state,
+                {
+                    "benchmark": config.get("benchmark", "unknown"),
+                    "problem_id": task.task_id,
+                    "pass_at_1": passed,
+                },
+                sessions_dir / task.task_id,
+            )
 
     n_passed = sum(1 for r in results if r.passed)
     return BenchResult(

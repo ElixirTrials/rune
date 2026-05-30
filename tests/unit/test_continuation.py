@@ -3,10 +3,26 @@ from __future__ import annotations
 import json
 
 from rune.engine.continuation import (
+    CONT_SYSTEM_PROMPT,
     degeneration_score,
     extract_partial_code,
     validate_syntax,
 )
+from rune.engine.parse import render_template
+
+
+def test_cont_system_prompt_is_code_only() -> None:
+    assert "Output only Python code" in CONT_SYSTEM_PROMPT
+    assert "markdown" in CONT_SYSTEM_PROMPT.lower()
+
+
+def test_prompt_code_continue_renders() -> None:
+    text = render_template("prompt_code_continue", task_description="build a parser")
+    assert "build a parser" in text
+
+
+def test_prompt_code_continue_renders_empty_when_absent() -> None:
+    assert render_template("prompt_code_continue").strip() == ""
 
 
 class TestExtractPartialCode:

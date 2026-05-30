@@ -21,7 +21,7 @@ class TestAction:
         a = Action(
             name="decompose",
             trajectory_template="decompose",
-            prompt_template="prompt_decompose",
+            prompt_template="prompt_decompose_concise",
             system_prompt="You are a decomposer.",
             output_schema=None,
             executes_code=False,
@@ -58,7 +58,6 @@ class TestRunState:
         state: RunState = {
             "task": "build a calculator",
             "subtasks": [],
-
             "plans": {},
             "code_results": {},
             "code_passed": {},
@@ -86,7 +85,6 @@ class TestRunState:
         state: RunState = {
             "task": "test",
             "subtasks": [],
-
             "plans": {},
             "code_results": {},
             "code_passed": {},
@@ -108,7 +106,6 @@ class TestRunState:
         state: RunState = {
             "task": "test",
             "subtasks": [],
-
             "plans": {},
             "code_results": {},
             "code_passed": {},

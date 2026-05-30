@@ -13,6 +13,21 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 
+def to_sft_columns(records: list[dict[object, object]]) -> list[dict[str, str]]:
+    """Project corpus records onto trl's prompt/completion SFT columns.
+
+    Records with an empty completion carry no training target and are dropped
+    so completion-only-loss never sees an all-masked example.
+    """
+    rows: list[dict[str, str]] = []
+    for rec in records:
+        completion = str(rec.get("completion", ""))
+        if not completion:
+            continue
+        rows.append({"prompt": str(rec.get("prompt", "")), "completion": completion})
+    return rows
+
+
 class D2LTrainConfig(BaseModel):
     """Base configuration for D2L QLoRA/hypernetwork training runs.
 
@@ -74,11 +89,11 @@ def run_distillation(config: D2LTrainConfig) -> None:
 
     import datasets as hf_datasets  # noqa: PLC0415
     import torch  # noqa: PLC0415
+    import trl  # noqa: PLC0415
     from peft import LoraConfig  # noqa: PLC0415
     from transformers import (  # noqa: PLC0415
         AutoModelForCausalLM,
         AutoTokenizer,
-        TrainingArguments,
     )
 
     from rune.training.diff_loss import build_diff_aware_sft_trainer  # noqa: PLC0415
@@ -109,7 +124,11 @@ def run_distillation(config: D2LTrainConfig) -> None:
         task_type="CAUSAL_LM",
     )
 
-    training_args = TrainingArguments(
+    # SFTConfig (not transformers.TrainingArguments) so build_diff_aware_sft_trainer's
+    # getattr(args, "max_length") threads the sequence cap into the collator;
+    # with TrainingArguments it was always None and every record reached the GPU
+    # at full length (OOM on long records).
+    training_args = trl.SFTConfig(  # type: ignore[attr-defined, unused-ignore]
         output_dir=config.checkpoint_dir,
         num_train_epochs=config.num_epochs,
         per_device_train_batch_size=config.batch_size,
@@ -122,9 +141,12 @@ def run_distillation(config: D2LTrainConfig) -> None:
         eval_steps=config.eval_steps,
         run_name=config.experiment_name,
         report_to=["mlflow"],
+        max_length=config.max_seq_length,
     )
 
-    dataset = hf_datasets.Dataset.from_list(records)
+    sft_rows = to_sft_columns(records)
+    logger.info("run_distillation: %d records with completion target", len(sft_rows))
+    dataset = hf_datasets.Dataset.from_list(sft_rows)
 
     trainer = build_diff_aware_sft_trainer(
         model=model,

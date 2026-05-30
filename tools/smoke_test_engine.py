@@ -8,8 +8,11 @@ and checks that:
   3. Sandbox receives and executes the assembled code
   4. Final state is coherent
 
-Run:  uv run python tools/smoke_test_engine.py
+Run:
+  uv run python tools/smoke_test_engine.py
+  uv run python tools/smoke_test_engine.py --eos   # single-subtask EOS (no integrate)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,12 +36,14 @@ log = logging.getLogger("smoke_test_engine")
 def _mem() -> str:
     try:
         import torch  # noqa: PLC0415
+
         if torch.cuda.is_available():
             a = torch.cuda.memory_allocated() / 1e9
             r = torch.cuda.memory_reserved() / 1e9
             return f"GPU alloc={a:.1f}GB reserved={r:.1f}GB"
-    except Exception:
-        pass
+    except (ImportError, RuntimeError):
+        # torch missing or CUDA unavailable: memory line is best-effort.
+        log.debug("GPU memory probe failed", exc_info=True)
     return ""
 
 
@@ -51,8 +56,9 @@ async def run() -> None:
     log.info("Loading config from %s", cfg_path)
     cfg = load_config(cfg_path)
 
+    eos_mode = "--eos" in sys.argv
     no_cont = "--no-cont" in sys.argv
-    max_tokens = 2048 if no_cont else 512
+    max_tokens = 2048 if (no_cont or eos_mode) else 512
 
     log.info("Loading model: %s  %s", cfg.model_id, _mem())
     t0 = time.monotonic()
@@ -61,7 +67,14 @@ async def run() -> None:
 
     engine = create_engine()
 
-    if no_cont:
+    if eos_mode:
+        task = (
+            "Write a function to find tuples which have all elements divisible "
+            "by k from the given list of tuples.\n\n"
+            ">>> assert find_tuples([(6, 24, 12), (7, 9, 6), (12, 18, 21)], 6) "
+            "== [(6, 24, 12)]"
+        )
+    elif no_cont:
         task = (
             "Write a function called fibonacci(n) that returns the nth "
             "Fibonacci number. Include 3 tests."
@@ -89,13 +102,16 @@ async def run() -> None:
         "actions": [],
         "trajectory": [],
         "step": 0,
-        "budget_remaining": 8,
+        "budget_remaining": 5 if eos_mode else 8,
     }
 
     run_config = cfg.to_dict()
     run_config["max_tokens"] = max_tokens
     if no_cont:
         run_config["cont_budget"] = 0
+    if "--deterministic" in sys.argv:
+        # inference maps temperature==0 -> do_sample=False
+        run_config["temperature"] = 0.0
 
     config = {"model": model, "run_config": run_config}
 
@@ -103,16 +119,34 @@ async def run() -> None:
     log.info("task: %s", task[:80])
     log.info(
         "max_tokens=%d  scaling=%.2f  cont_mult=%.2f  no_repeat_ngram=%d",
-        max_tokens, cfg.adapter_scaling, cfg.cont_multiplier, cfg.no_repeat_ngram_size,
+        max_tokens,
+        cfg.adapter_scaling,
+        cfg.cont_multiplier,
+        cfg.no_repeat_ngram_size,
     )
     log.info("budget_remaining=%d", initial_state["budget_remaining"])
     print(flush=True)
 
     t0 = time.monotonic()
     final_state = await engine.ainvoke(
-        initial_state, config={"configurable": config},
+        initial_state,
+        config={"configurable": config},
     )
     elapsed = time.monotonic() - t0
+
+    dump_dir = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--dump-sessions" and i + 1 < len(sys.argv):
+            dump_dir = Path(sys.argv[i + 1])
+    if dump_dir is not None:
+        from rune.mining.session_log import write_session  # noqa: PLC0415
+
+        write_session(
+            final_state,
+            {"benchmark": "smoke", "problem_id": "linkedlist"},
+            dump_dir / "linkedlist",
+        )
+        log.info("Wrote session corpus to %s", dump_dir)
 
     print(flush=True)
     log.info("=== Engine finished in %.1fs ===", elapsed)
@@ -181,6 +215,32 @@ async def run() -> None:
     else:
         print("  (empty — may not have reached integration)", flush=True)
     print(flush=True)
+
+    if eos_mode:
+        trajectory = final_state.get("trajectory", [])
+        action_names = [rec.action_name for rec in trajectory]
+        subtasks = final_state.get("subtasks", [])
+        integrated = final_state.get("integrated_code", "")
+        code_passed = final_state.get("code_passed", {})
+        print("=== EOS CHECKS ===", flush=True)
+        print(f"  subtasks: {[s.name for s in subtasks]}", flush=True)
+        print(f"  actions: {action_names}", flush=True)
+        print(f"  code_passed: {code_passed}", flush=True)
+        print(f"  integrated_code chars: {len(integrated)}", flush=True)
+        errors: list[str] = []
+        if len(subtasks) != 1:
+            errors.append(f"expected 1 subtask, got {len(subtasks)}")
+        if "integrate" in action_names:
+            errors.append(f"integrate must not run, saw trajectory: {action_names}")
+        main_passed = code_passed.get("_main", False)
+        if main_passed and not integrated:
+            errors.append("integrated_code empty after _main sandbox pass")
+        if errors:
+            print("=== EOS SMOKE FAILED ===", flush=True)
+            for err in errors:
+                print(f"  - {err}", flush=True)
+            raise SystemExit(1)
+        print("=== EOS SMOKE PASSED ===", flush=True)
 
     print("=== SMOKE TEST COMPLETE ===", flush=True)
     print(f"  Elapsed: {elapsed:.1f}s", flush=True)

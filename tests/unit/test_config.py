@@ -40,6 +40,18 @@ class TestPipelineConfig:
         loaded = load_config(path)
         assert loaded.temperature == 0.42
 
+    def test_load_empty_file_returns_defaults(self, tmp_path: Path) -> None:
+        path = tmp_path / "empty.yaml"
+        path.write_text("   \n")
+        loaded = load_config(path)  # must not crash on PipelineConfig(**None)
+        assert loaded.temperature == PipelineConfig().temperature
+
+    def test_load_non_mapping_yaml_raises_valueerror(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.yaml"
+        path.write_text("- just\n- a\n- list\n")
+        with pytest.raises(ValueError, match="YAML mapping"):
+            load_config(path)
+
     def test_env_var_override(self, monkeypatch: object) -> None:
         os.environ["RUNE_TEMPERATURE"] = "0.99"
         try:
@@ -47,4 +59,3 @@ class TestPipelineConfig:
             assert cfg.temperature == 0.99
         finally:
             del os.environ["RUNE_TEMPERATURE"]
-

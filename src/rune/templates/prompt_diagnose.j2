@@ -6,6 +6,9 @@ Diagnose the root cause. Output JSON:
 {% else %}
 Integration is failing.
 Project: {{ project_label }}
+Integration error: {{ integration_error[:300] }}
+Subtasks (use these exact names in subtask_name):
+{{ integration_doc }}
 Which subtasks need repair? Output JSON:
 {"entries": [{"subtask_name": "...", "error_type": "integration", "location": "...", "fix_guidance": "..."}]}
 {% endif %}

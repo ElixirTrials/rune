@@ -117,6 +117,11 @@ async def run_training_pipeline(
     _run_hypernetwork_distillation(config)
 
     # Placeholder scores — in production these come from the bench runner.
+    # TODO(#46-followup): wire the bench runner so the gate is meaningful.
+    logger.warning(
+        "success gate using placeholder (empty) scores — result is not "
+        "meaningful until the bench runner is wired in"
+    )
     baseline_scores: dict[str, float] = {}
     new_scores: dict[str, float] = {}
     return _run_success_gate(baseline_scores, new_scores)
@@ -164,6 +169,12 @@ async def _run_hpo(
         )
         _run_oracle_training(trial_config, corpus_dir)
         _run_hypernetwork_distillation(trial_config)
+        # TODO(#46-followup): placeholder scores make every trial return the
+        # same value, so Optuna optimises a constant. Wire the bench runner.
+        logger.warning(
+            "HPO objective using placeholder (empty) scores — trials are not "
+            "differentiated until the bench runner is wired in"
+        )
         baseline_scores: dict[str, float] = {}
         new_scores: dict[str, float] = {}
         return float(_run_success_gate(baseline_scores, new_scores))

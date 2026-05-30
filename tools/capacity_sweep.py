@@ -139,12 +139,16 @@ def main() -> None:
             print(f"Trajectory: {len(trajectory)} chars", file=sys.stderr, flush=True)
 
             traj_tokens = tokenizer(
-                trajectory, truncation=True, max_length=2048, return_tensors="pt",
+                trajectory,
+                truncation=True,
+                max_length=2048,
+                return_tensors="pt",
             )
             actual_traj_tokens = traj_tokens["input_ids"].shape[1]
             print(
                 f"Trajectory tokens: {actual_traj_tokens}/2048",
-                file=sys.stderr, flush=True,
+                file=sys.stderr,
+                flush=True,
             )
 
             adapter = model.generate_adapter(trajectory, offload_base=False)
@@ -155,9 +159,16 @@ def main() -> None:
             prompt = prompt_fn(accumulated, 0, LAST_LINES, task_text)
 
             continuation, n_tokens = _generate_plaintext(
-                base_model, tokenizer, prompt, system_prompt,
-                MAX_TOKENS, cfg.temperature, cfg.repetition_penalty,
-                cfg.top_p, cfg.top_k, no_repeat_ngram,
+                base_model,
+                tokenizer,
+                prompt,
+                system_prompt,
+                MAX_TOKENS,
+                cfg.temperature,
+                cfg.repetition_penalty,
+                cfg.top_p,
+                cfg.top_k,
+                no_repeat_ngram,
             )
 
             code = _extract_code(continuation)
@@ -199,9 +210,9 @@ def main() -> None:
 
     (run_dir / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
 
-    print(f"\n{'='*60}", flush=True)
+    print(f"\n{'=' * 60}", flush=True)
     print("CAPACITY SWEEP RESULTS", flush=True)
-    print(f"{'='*60}", flush=True)
+    print(f"{'=' * 60}", flush=True)
     hdr = (
         f"{'Name':<30} {'Tok':>5} {'TrTok':>5} "
         f"{'Funcs':>10} {'Cov':>5} {'Redef':>6} {'Syn':>4}"

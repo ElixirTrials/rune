@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import shutil
 import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,9 @@ class AdapterRegistry:
         """
         self._conn = conn
         self._conn.execute("PRAGMA journal_mode=WAL")
+        # Without a busy timeout a second concurrent writer fails immediately
+        # with "database is locked" instead of waiting for the lock.
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.execute(
             """CREATE TABLE IF NOT EXISTS adapters (
                 adapter_id TEXT PRIMARY KEY,
@@ -166,10 +173,20 @@ class AdapterRegistry:
             "SELECT disk_path FROM adapters WHERE created_at < ?", (cutoff,)
         ).fetchall()
         for (disk_path,) in rows:
-            Path(disk_path).unlink(missing_ok=True)
+            # disk_path may be a save_pretrained directory, not a file; unlink()
+            # raises IsADirectoryError on those, which would abort the prune
+            # loop before any rows are deleted. Handle both, and never let one
+            # bad path stop the DELETE.
+            p = Path(disk_path)
+            try:
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+                elif p.exists():
+                    p.unlink()
+            except OSError as exc:
+                logger.warning("prune: could not remove %s: %s", disk_path, exc)
         cursor = self._conn.execute(
             "DELETE FROM adapters WHERE created_at < ?", (cutoff,)
         )
         self._conn.commit()
         return cursor.rowcount
-

@@ -192,47 +192,6 @@ def compute_hunk_loss_weights(
 # ---------------------------------------------------------------------------
 # Legacy bag-of-token-ids path (deprecated, kept as fallback)
 # ---------------------------------------------------------------------------
-
-
-def compute_diff_loss_weights(
-    input_ids: list[int],
-    labels: list[int],
-    changed_ids: set[int],
-    *,
-    changed_weight: float = 1.0,
-    unchanged_weight: float = 0.3,
-) -> list[float]:
-    """Compute per-token loss weights based on a set of changed token IDs.
-
-    .. deprecated::
-        Prefer :func:`compute_hunk_loss_weights` with ``pre_code``/``post_code``
-        side-channels.  This set-based fallback cannot distinguish *where* a
-        token appears, only *whether* its ID was seen in the diff.
-
-    Args:
-        input_ids: Token IDs for the full sequence.
-        labels: Label IDs; ``IGNORE_INDEX`` marks non-assistant positions.
-        changed_ids: Set of token IDs considered "changed" by the diff.
-        changed_weight: Weight assigned to tokens whose ID is in
-            ``changed_ids``.
-        unchanged_weight: Weight assigned to non-masked tokens whose ID is
-            not in ``changed_ids``.
-
-    Returns:
-        Per-token float weights of the same length as ``input_ids``.
-    """
-    weights: list[float] = []
-    for token_id, label in zip(input_ids, labels):
-        if label == IGNORE_INDEX:
-            weights.append(0.0)
-        elif token_id in changed_ids:
-            weights.append(changed_weight)
-        else:
-            weights.append(unchanged_weight)
-    return weights
-
-
-# ---------------------------------------------------------------------------
 # Span helpers
 # ---------------------------------------------------------------------------
 
@@ -634,15 +593,11 @@ class DiffWeightedDataCollator:
 
         Side-channel columns ``pre_codes`` / ``post_codes`` (per-turn lists)
         are popped from each feature before passing to the inner collator
-        so they don't interfere with tensor stacking.  Legacy singular
-        ``pre_code`` / ``post_code`` strings are accepted as length-1 lists
-        for backward compatibility.
+        so they don't interfere with tensor stacking.
 
         Args:
-            features: List of example dicts.  Each feature may carry either
-                per-turn lists (``pre_codes`` / ``post_codes``) or, for
-                backwards compatibility, a single ``pre_code`` / ``post_code``
-                string that's wrapped into a length-1 list.
+            features: List of example dicts, each optionally carrying per-turn
+                ``pre_codes`` / ``post_codes`` lists.
 
         Returns:
             Batch dict with standard keys plus ``"loss_weights"`` tensor.
@@ -650,16 +605,12 @@ class DiffWeightedDataCollator:
         global _HUNK_FALLBACK_WARNED
 
         # Pop side-channel columns before handing to the inner collator.
-        # Per-turn lists are preferred; legacy singular keys are wrapped
-        # so single-turn callers still work without code changes.
         pre_codes_batch: list[list[str] | None] = []
         post_codes_batch: list[list[str] | None] = []
         quality_scores: list[float] = []
         for feat in features:
             pre_list = feat.pop("pre_codes", None)
             post_list = feat.pop("post_codes", None)
-            legacy_pre = feat.pop("pre_code", None)
-            legacy_post = feat.pop("post_code", None)
             raw_q = float(feat.pop("quality_score", 1.0))
             if not (0.0 < raw_q <= 10.0) or math.isnan(raw_q):
                 logger.warning(
@@ -669,10 +620,6 @@ class DiffWeightedDataCollator:
                 )
                 raw_q = 1.0
             quality_scores.append(raw_q)
-            if pre_list is None and legacy_pre is not None:
-                pre_list = [legacy_pre]
-            if post_list is None and legacy_post is not None:
-                post_list = [legacy_post]
             pre_codes_batch.append(pre_list)
             post_codes_batch.append(post_list)
 

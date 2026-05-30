@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from graphlib import TopologicalSorter
+from dataclasses import replace
+from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
 from rune.engine.parse import (
@@ -80,11 +81,22 @@ ACTIONS: dict[str, Action] = {
 
 def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
     known = {s.name for s in subtasks}
-    graph: dict[str, set[str]] = {}
-    for s in subtasks:
-        graph[s.name] = set(s.depends_on)
+    # Restrict edges to known subtasks so a phantom dependency cannot inject an
+    # extra node or block readiness.
+    graph: dict[str, set[str]] = {
+        s.name: {d for d in s.depends_on if d in known} for s in subtasks
+    }
     sorter = TopologicalSorter(graph)
-    sorter.prepare()
+    try:
+        sorter.prepare()
+    except CycleError as exc:
+        cycle = exc.args[1] if len(exc.args) > 1 else exc
+        logger.warning(
+            "Cyclic subtask dependencies %s; treating subtasks as independent",
+            cycle,
+        )
+        sorter = TopologicalSorter({name: set() for name in graph})
+        sorter.prepare()
     layers: list[list[str]] = []
     while sorter.is_active():
         batch = sorter.get_ready()
@@ -97,16 +109,7 @@ def build_execution_layers(subtasks: list[Subtask]) -> list[list[str]]:
 
 
 def _with_target(action_name: str, target: str) -> Action:
-    base = ACTIONS[action_name]
-    return Action(
-        name=base.name,
-        trajectory_template=base.trajectory_template,
-        prompt_template=base.prompt_template,
-        system_prompt=base.system_prompt,
-        output_schema=base.output_schema,
-        executes_code=base.executes_code,
-        target_subtask=target,
-    )
+    return replace(ACTIONS[action_name], target_subtask=target)
 
 
 def select_action(state: dict[str, Any]) -> list[Action]:
@@ -151,11 +154,27 @@ def select_action(state: dict[str, Any]) -> list[Action]:
             return actions
         if exhausted:
             logger.warning(
-                "Subtasks %s exhausted all %d retries, falling through to integrate",
-                exhausted, MAX_RETRIES,
+                "Subtasks %s exhausted all %d retries",
+                exhausted,
+                MAX_RETRIES,
             )
+            # If integration has already been attempted and is still failing,
+            # stop rather than looping integrate<->diagnose until the budget is
+            # spent: no repairable work remains.
+            int_fb = state.get("integration_feedback")
+            if int_fb and int_fb.exit_code != 0:
+                logger.warning(
+                    "All repairable subtasks exhausted and integration still "
+                    "failing; stopping run."
+                )
+                return []
 
     # All subtasks pass — integrate or done
+    if len(subtasks) == 1:
+        only = subtasks[0].name
+        if state["code_passed"].get(only):
+            return []
+
     if state["integrated_code"]:
         return []
 

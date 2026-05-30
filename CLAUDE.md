@@ -14,9 +14,10 @@ Local-first coding agent that encodes coding trajectories into LoRA adapters via
 - Quality: ruff, mypy (strict), pytest.
 
 ## Hard rules
-**Long-running ops** — never execute. Ask the user to run and log.
+**GPU / long-running ops** — OK to run directly on this GPU instance (engine runs, smoke tests, training, benchmarks). Capture/log output; prefer background runs for multi-minute jobs.
 **Deploy / install** — never.
 **GPU imports** — deferred inside function bodies (importable in CPU-only CI).
+**CPU RAM is tiny (~15GB).** Always check `free -g` before loading the base model + hypernet or setting `offload_base=True` — moving the 18GB base model to CPU RAM OOM-kills the VM. Prefer `offload_base=False` (base+hypernet fit in the 23GB GPU). When loading risks OOM, run under a RAM watchdog that kills the job before the VM dies.
 
 ## Running Tests
 ```bash

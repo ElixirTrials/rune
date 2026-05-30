@@ -24,7 +24,7 @@ class PresencePenaltyLogitsProcessor:
     def __call__(self, input_ids: Any, scores: Any) -> Any:
         if self.penalty == 0.0:
             return scores
-        gen_ids = input_ids[:, self.prompt_length:]
+        gen_ids = input_ids[:, self.prompt_length :]
         for i in range(gen_ids.shape[0]):
             seen = gen_ids[i].unique()
             scores[i, seen] -= self.penalty
@@ -37,6 +37,33 @@ class GenerationResult:
     thinking: str
     tokens_used: int
     truncated: bool = False
+
+
+# xgrammar TokenizerInfo/compiler depend only on the (constant) tokenizer, and a
+# compiled grammar only on its schema. Both were rebuilt on every structured
+# generate() call (per engine step) over a ~150k-vocab tokenizer; cache them.
+_GRAMMAR_COMPILER_CACHE: dict[tuple[int, int], Any] = {}
+_COMPILED_GRAMMAR_CACHE: dict[tuple[int, Any], Any] = {}
+
+
+def _get_compiled_grammar(
+    xgr: Any, tokenizer: Any, output_schema: Any, vocab_size: int
+) -> Any:
+    g_key = (id(tokenizer), output_schema)
+    cached = _COMPILED_GRAMMAR_CACHE.get(g_key)
+    if cached is not None:
+        return cached
+    c_key = (id(tokenizer), vocab_size)
+    compiler = _GRAMMAR_COMPILER_CACHE.get(c_key)
+    if compiler is None:
+        tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+            tokenizer, vocab_size=vocab_size
+        )
+        compiler = xgr.GrammarCompiler(tokenizer_info)
+        _GRAMMAR_COMPILER_CACHE[c_key] = compiler
+    compiled = compiler.compile_json_schema(output_schema, any_whitespace=False)
+    _COMPILED_GRAMMAR_CACHE[g_key] = compiled
+    return compiled
 
 
 async def generate(
@@ -74,7 +101,11 @@ async def generate(
         messages.append({"role": "user", "content": prompt})
 
         if thinking_budget > 0:
-            encoded = tokenizer.apply_chat_template(messages, return_tensors="pt")
+            encoded = tokenizer.apply_chat_template(
+                messages,
+                return_tensors="pt",
+                add_generation_prompt=True,
+            )
             if hasattr(encoded, "input_ids"):
                 input_ids = encoded["input_ids"].to(model.device)
             else:
@@ -105,8 +136,10 @@ async def generate(
                 prefix_ids = thinking_output
         else:
             encoded = tokenizer.apply_chat_template(
-                messages, return_tensors="pt",
-                enable_thinking=False, add_generation_prompt=True,
+                messages,
+                return_tensors="pt",
+                enable_thinking=False,
+                add_generation_prompt=True,
             )
             if hasattr(encoded, "input_ids"):
                 prefix_ids = encoded["input_ids"].to(model.device)
@@ -127,7 +160,8 @@ async def generate(
         if presence_penalty > 0.0:
             processors.append(
                 PresencePenaltyLogitsProcessor(
-                    presence_penalty, prompt_length=prefix_ids.shape[1],
+                    presence_penalty,
+                    prompt_length=prefix_ids.shape[1],
                 )
             )
 
@@ -139,17 +173,8 @@ async def generate(
             base_model = getattr(model, "base_model", model)
             model_config = getattr(base_model, "config", None)
             text_cfg = getattr(model_config, "text_config", model_config)
-            vocab_size = (
-                getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
-            )
-            tokenizer_info = xgr.TokenizerInfo.from_huggingface(
-                tokenizer, vocab_size=vocab_size
-            )
-            compiler = xgr.GrammarCompiler(tokenizer_info)
-            compiled = compiler.compile_json_schema(
-                output_schema,
-                any_whitespace=False,
-            )
+            vocab_size = getattr(text_cfg, "vocab_size", None) or tokenizer.vocab_size
+            compiled = _get_compiled_grammar(xgr, tokenizer, output_schema, vocab_size)
             processors.append(xgr.contrib.hf.LogitsProcessor(compiled))
 
         if processors:
@@ -169,8 +194,14 @@ async def generate(
         truncated = len(result_tokens) >= max_tokens
         if truncated and not skip_completion_retry and compiled is not None:
             result_text, extra, completed = _try_completion(
-                model, tokenizer, result_text, structured_output,
-                compiled, max_tokens, repetition_penalty, sampling,
+                model,
+                tokenizer,
+                result_text,
+                structured_output,
+                compiled,
+                max_tokens,
+                repetition_penalty,
+                sampling,
                 presence_penalty=presence_penalty,
                 prompt_length=prefix_ids.shape[1],
             )
@@ -253,7 +284,8 @@ def _try_completion(
     completed = matcher.is_completed()
     logger.info(
         "Continuation produced %d extra tokens (completed=%s)",
-        len(cont_tokens), completed,
+        len(cont_tokens),
+        completed,
     )
     return partial_json + continuation, len(cont_tokens), completed
 
@@ -310,7 +342,9 @@ async def generate_continuation(
             gen_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
         if presence_penalty > 0.0:
             gen_kwargs["logits_processor"] = [
-                PresencePenaltyLogitsProcessor(presence_penalty, prompt_length=0)
+                PresencePenaltyLogitsProcessor(
+                    presence_penalty, prompt_length=template_ids.shape[1]
+                )
             ]
 
         attention_mask = torch.ones_like(template_ids)

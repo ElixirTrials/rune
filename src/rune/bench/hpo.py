@@ -1,9 +1,45 @@
-"""Optuna HPO for engine params on the benchmark suite."""
+"""Optuna HPO for engine params on the benchmark suite, with a held-out set."""
 
 from __future__ import annotations
 
 import asyncio
+import logging
+import random
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_SEED = 42
+_DEFAULT_TUNING_FRACTION = 0.70
+_BENCH_HPO_STUDY = "rune-bench-hpo"
+_BENCH_HPO_DB = Path("optuna_bench_hpo.db")
+
+
+def split_tasks(
+    tasks: list[Any],
+    *,
+    seed: int = _DEFAULT_SEED,
+    tuning_fraction: float = _DEFAULT_TUNING_FRACTION,
+) -> tuple[list[Any], list[Any]]:
+    """Split tasks into ``(tuning, validation)``, seed-deterministic.
+
+    Tasks are sorted by ``task_id`` for a stable order, shuffled with a seeded
+    RNG, then the first ``tuning_fraction`` become the tuning set and the rest
+    are held out for validation. The split is independent of input order.
+
+    Args:
+        tasks: Tasks to split.
+        seed: RNG seed controlling the shuffle.
+        tuning_fraction: Fraction assigned to the tuning set.
+
+    Returns:
+        A disjoint ``(tuning, validation)`` tuple.
+    """
+    ordered = sorted(tasks, key=lambda t: t.task_id)
+    random.Random(seed).shuffle(ordered)
+    n_tuning = round(len(ordered) * tuning_fraction)
+    return ordered[:n_tuning], ordered[n_tuning:]
 
 
 async def run_hpo(
@@ -13,10 +49,16 @@ async def run_hpo(
     model: Any,
     n_trials: int,
     parent_run_id: str | None = None,
+    *,
+    fresh: bool = False,
 ) -> dict[str, Any]:
-    """Run Optuna HPO study tuning engine params to maximise pass@1.
+    """Tune engine params to maximise tuning-set pass@1, then score the best
+    params once on a held-out validation set.
 
-    All search ranges come from ``base_config.hpo``.
+    Optimising and reporting on the same problems overfits the hyperparameters,
+    so the task pool is split (``hpo.seed`` / ``hpo.tuning_fraction``, defaults
+    42 / 0.70): trials only ever see the tuning set; ``validation_pass_at_1`` is
+    the trustworthy, held-out number. Search ranges come from ``base_config.hpo``.
     """
     import optuna  # noqa: PLC0415
     from optuna_integration import MLflowCallback  # noqa: PLC0415
@@ -25,6 +67,15 @@ async def run_hpo(
 
     hpo = base_config.hpo
     optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    tuning, validation = split_tasks(
+        tasks,
+        seed=hpo.get("seed", _DEFAULT_SEED),
+        tuning_fraction=hpo.get("tuning_fraction", _DEFAULT_TUNING_FRACTION),
+    )
+    logger.info(
+        "HPO split: %d tuning / %d held-out validation", len(tuning), len(validation)
+    )
 
     def _suggest(
         trial: optuna.Trial,
@@ -49,43 +100,37 @@ async def run_hpo(
     outer_loop = asyncio.get_running_loop()
 
     def objective(trial: optuna.Trial) -> float:
-        adapter_scaling = _suggest(trial, "adapter_scaling")
-        temperature = _suggest(trial, "temperature")
-        max_tokens = _suggest(trial, "max_tokens", int_param=True)
-        max_phase_iterations = _suggest(
-            trial,
-            "max_phase_iterations",
-            int_param=True,
-        )
-        cont_multiplier = _suggest(trial, "cont_multiplier")
-
         cfg = base_config.override(
-            adapter_scaling=adapter_scaling,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            max_phase_iterations=max_phase_iterations,
-            cont_multiplier=cont_multiplier,
+            adapter_scaling=_suggest(trial, "adapter_scaling"),
+            temperature=_suggest(trial, "temperature"),
+            presence_penalty=_suggest(trial, "presence_penalty"),
+            max_phase_iterations=_suggest(
+                trial, "max_phase_iterations", int_param=True
+            ),
+            cont_multiplier=_suggest(trial, "cont_multiplier"),
         )
-
         bench_config: dict[str, Any] = {
             "model": model,
             "run_config": cfg.to_dict(),
         }
-
+        # Trials only ever see the tuning set.
         future = asyncio.run_coroutine_threadsafe(
-            run_benchmark(tasks, engine, bench_config), outer_loop
+            run_benchmark(tuning, engine, bench_config), outer_loop
         )
         return future.result().pass_at_1
 
     mlflow_kwargs: dict[str, Any] = {"nested": True}
     if parent_run_id:
-        mlflow_kwargs["tags"] = {
-            "mlflow.parentRunId": parent_run_id,
-        }
+        mlflow_kwargs["tags"] = {"mlflow.parentRunId": parent_run_id}
     mlflow_callback = MLflowCallback(mlflow_kwargs=mlflow_kwargs)
+    if fresh and _BENCH_HPO_DB.exists():
+        _BENCH_HPO_DB.unlink()
+        logger.info("Deleted existing Optuna DB: %s", _BENCH_HPO_DB)
     study = optuna.create_study(
         direction="maximize",
-        study_name="rune-bench-hpo",
+        study_name=_BENCH_HPO_STUDY,
+        storage=f"sqlite:///{_BENCH_HPO_DB}",
+        load_if_exists=not fresh,
     )
 
     await asyncio.to_thread(
@@ -95,7 +140,25 @@ async def run_hpo(
         callbacks=[mlflow_callback],
     )
 
-    return {
+    result: dict[str, Any] = {
         "best_params": study.best_params,
         "best_value": study.best_value,
+        "n_tuning": len(tuning),
+        "n_validation": len(validation),
+        "validation_pass_at_1": None,
     }
+
+    # Held-out: score the best params exactly once on the untouched set.
+    if validation:
+        best_cfg = base_config.override(**study.best_params)
+        val = await run_benchmark(
+            validation,
+            engine,
+            {"model": model, "run_config": best_cfg.to_dict()},
+        )
+        result["validation_pass_at_1"] = val.pass_at_1
+        logger.info("HPO held-out validation pass@1: %.3f", val.pass_at_1)
+    else:
+        logger.warning("No held-out validation tasks; skipping validation pass")
+
+    return result
