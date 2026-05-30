@@ -5,8 +5,7 @@ from __future__ import annotations
 import ast
 import re
 
-from rune.engine.json_repair import extract_code_value
-from rune.engine.parse import CodeResult
+from rune.engine.parse import CodeResult, extract_code_from_raw
 
 CONT_SYSTEM_PROMPT = (
     "Output only Python code. No commentary, no explanations, "
@@ -21,10 +20,7 @@ def extract_partial_code(raw: str) -> str:
     Falls back to *raw* when input isn't JSON at all (e.g. continuation
     rounds that emit plain Python).
     """
-    try:
-        return CodeResult.model_validate_json(raw).code
-    except Exception:
-        return extract_code_value(raw) or raw
+    return extract_code_from_raw(raw, CodeResult, fallback_to_raw=True)
 
 
 _NUM_RE = re.compile(r"\b\d+\b")

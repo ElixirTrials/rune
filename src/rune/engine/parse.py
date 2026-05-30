@@ -86,6 +86,23 @@ def _is_chore_subtask(s: SubtaskSchema) -> bool:
 _FIX_GUIDANCE_CAP = 150
 
 
+def extract_code_from_raw(
+    raw: str, model: type[BaseModel], *, fallback_to_raw: bool = False
+) -> str:
+    """Parse *raw* as *model* and return its ``code`` field.
+
+    On validation failure, fall back to lenient extraction; if that yields
+    nothing and ``fallback_to_raw`` is set, return *raw* unchanged.
+    """
+    try:
+        return model.model_validate_json(raw).code  # type: ignore[attr-defined,no-any-return]
+    except Exception:
+        extracted = extract_code_value(raw)
+        if not extracted and fallback_to_raw:
+            return raw
+        return extracted
+
+
 def _parse_code_action(
     target: str | None,
     raw: str,
@@ -96,10 +113,7 @@ def _parse_code_action(
     code: str | None = None,
 ) -> dict[str, Any]:
     if code is None:
-        try:
-            code = CodeResult.model_validate_json(raw).code
-        except Exception:
-            code = extract_code_value(raw)
+        code = extract_code_from_raw(raw, CodeResult)
     passed = feedback is not None and feedback.exit_code == 0
     retries = dict(state.get("retries", {}))
     retries[target] = retries.get(target, 0) + retries_delta
@@ -199,10 +213,7 @@ def parse_output(
             )
         case "integrate":
             if code is None:
-                try:
-                    code = IntegrateResult.model_validate_json(raw).code
-                except Exception:
-                    code = extract_code_value(raw)
+                code = extract_code_from_raw(raw, IntegrateResult)
             passed = feedback is not None and feedback.exit_code == 0
             return {
                 "integrated_code": code if passed else "",
