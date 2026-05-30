@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rune.engine.continuation import strip_self_tests
 from rune.engine.state import make_initial_state
 from rune.mining.session_log import write_session
 from rune.sandbox.executor import run_in_sandbox
@@ -139,7 +140,10 @@ async def run_benchmark(
         if not generated_code:
             generated_code = "\n".join(final_state.get("code_results", {}).values())
 
-        full_code = generated_code + "\n\n" + task.test_code
+        # Strip the model's own self-tests (incl. __main__ asserts) before
+        # appending the held-out tests: otherwise a wrong self-test fails a
+        # correct implementation. The recorded `code` below stays full-length.
+        full_code = strip_self_tests(generated_code) + "\n\n" + task.test_code
 
         try:
             sandbox_result = await asyncio.to_thread(run_in_sandbox, full_code)
