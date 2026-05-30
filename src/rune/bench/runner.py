@@ -17,6 +17,19 @@ from rune.sandbox.executor import run_in_sandbox
 logger = logging.getLogger(__name__)
 
 
+def _seed_rng(seed: int) -> None:
+    """Seed the global torch RNG so in-engine generation is reproducible.
+
+    torch's RNG is process-global, so seeding here propagates to every
+    model.generate() call the engine makes for the task.
+    """
+    import torch  # noqa: PLC0415
+
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 @dataclass(frozen=True)
 class BenchTask:
     """A single benchmark problem.
@@ -120,7 +133,10 @@ async def run_benchmark(
     budget = config["run_config"]["max_phase_iterations"]
     results: list[TaskResult] = []
 
-    for task in tasks:
+    seed = config["run_config"].get("seed")
+    for i, task in enumerate(tasks):
+        if seed is not None:
+            _seed_rng(seed + i)
         initial_state = make_initial_state(task.description, budget)
 
         try:

@@ -25,6 +25,7 @@ class PipelineConfig:
     no_repeat_ngram_size: int = 12
     presence_penalty: float = 1.5
     checkpoint_path: str = ""
+    seed: int | None = None
     bench: dict[str, Any] = field(default_factory=dict)
     hpo: dict[str, Any] = field(default_factory=dict)
 

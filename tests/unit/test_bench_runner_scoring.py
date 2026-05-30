@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import rune.bench.runner as runner_mod
 from rune.bench.runner import BenchTask, run_benchmark
 
 
@@ -58,3 +59,28 @@ def test_genuinely_wrong_impl_still_fails() -> None:
     result = _run([task], _FakeEngine(code))
     assert result.passed_tasks == 0
     assert result.per_task[0].passed is False
+
+
+def test_runner_seeds_rng_per_task(monkeypatch: Any) -> None:
+    calls: list[int] = []
+    monkeypatch.setattr(runner_mod, "_seed_rng", calls.append)
+
+    tasks = [
+        BenchTask(task_id=f"t{i}", description="d", test_code="assert True\n")
+        for i in range(3)
+    ]
+    config = {"run_config": {"max_phase_iterations": 1, "seed": 100}}
+    asyncio.run(run_benchmark(tasks, _FakeEngine("x = 1\n"), config))
+
+    assert calls == [100, 101, 102]
+
+
+def test_runner_does_not_seed_when_seed_absent(monkeypatch: Any) -> None:
+    calls: list[int] = []
+    monkeypatch.setattr(runner_mod, "_seed_rng", calls.append)
+
+    task = BenchTask(task_id="t", description="d", test_code="assert True\n")
+    config = {"run_config": {"max_phase_iterations": 1}}  # no seed
+    asyncio.run(run_benchmark([task], _FakeEngine("x = 1\n"), config))
+
+    assert calls == []
