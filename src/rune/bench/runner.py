@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from rune.engine.state import make_initial_state
+from rune.mining.session_log import write_session
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ async def run_benchmark(
     tasks: list[BenchTask],
     engine: Any,
     config: dict[str, Any],
+    sessions_dir: Path | None = None,
 ) -> BenchResult:
     """Run the full benchmark suite and return aggregate results.
 
@@ -106,6 +108,7 @@ async def run_benchmark(
         engine: Compiled LangGraph engine (CompiledStateGraph).
         config: Configurable dict passed to engine.ainvoke (contains
             ``model`` and ``run_config`` keys).
+        sessions_dir: If set, write one session dir per task here (corpus producer).
 
     Returns:
         BenchResult with pass@1 and per-task details.
@@ -161,6 +164,17 @@ async def run_benchmark(
                 stderr=sandbox_result.stderr,
             )
         )
+
+        if sessions_dir is not None:
+            write_session(
+                final_state,
+                {
+                    "benchmark": config.get("benchmark", "unknown"),
+                    "problem_id": task.task_id,
+                    "pass_at_1": passed,
+                },
+                sessions_dir / task.task_id,
+            )
 
     n_passed = sum(1 for r in results if r.passed)
     return BenchResult(

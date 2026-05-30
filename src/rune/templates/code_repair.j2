@@ -5,7 +5,7 @@ DIAGNOSIS: {{ fix_guidance[:150] }}
 YOUR CURRENT CODE:
 {{ existing_code[:2000] }}
 SIBLING SUBTASKS (your code must be compatible with these):
-{% for name, skeleton in skeletons.items() %}
+{% for name, skeleton in code_outputs.items() %}
 --- {{ name }} ---
 {{ skeleton[:400] }}
 {% endfor %}

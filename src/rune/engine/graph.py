@@ -13,8 +13,10 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from rune.engine.continuation import (
+    CONT_SYSTEM_PROMPT,
     degeneration_score,
     extract_partial_code,
+    strip_self_tests,
     validate_syntax,
 )
 from rune.engine.parse import parse_output, render_template
@@ -46,6 +48,10 @@ _SIMPLE_SIGNALS = (
 
 _SIMPLE_WORD_LIMIT = 200
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
+_INTEGRATION_DOC_LINE_CAP = 200
+_PROJECT_CAP = 1200
+_PROJECT_LABEL_CAP = 200
+_ACCUMULATED_CODE_CAP = 3500
 
 
 def _is_simple_task(task: str) -> bool:
@@ -64,9 +70,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     task = state["task"]
 
     ctx: dict[str, Any] = {
-        "project": task,
-        "task_description": task,
-        "project_label": task[:200],
+        "project": task[:_PROJECT_CAP],
+        "task_description": task[:_PROJECT_CAP],
+        "project_label": task[:_PROJECT_LABEL_CAP],
         "subtask_count": len(subtasks),
     }
 
@@ -128,8 +134,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["repair_history"] = []
         ctx["code_trajectory"] = []
 
-    ctx["integration_doc"] = "\n".join(f"- {s.name}: {s.description}" for s in subtasks)
-    ctx["skeletons"] = code_results
+    ctx["integration_doc"] = "\n".join(
+        f"- {s.name}: {s.description[:_INTEGRATION_DOC_LINE_CAP]}" for s in subtasks
+    )
     ctx["code_outputs"] = code_results
     int_fb = state.get("integration_feedback")
     ctx["integration_error"] = int_fb.stderr if int_fb else ""
@@ -164,7 +171,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     presence_penalty = run_config.get("presence_penalty", 0.0)
     thinking_budget = run_config.get("thinking_budget", 1024)
 
-    results: list[tuple[Action, str, str, str | None]] = []
+    results: list[tuple[Action, str, str, str | None, str, str, str]] = []
     for action in actions:
         import torch  # noqa: PLC0415
 
@@ -173,46 +180,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         ctx = state_to_ctx(state, action)
         trajectory_text = render_template(action.trajectory_template, **ctx)
         prompt_text = render_template(action.prompt_template, **ctx)
-
-        # #region agent log
-        try:
-            import json as _json  # noqa: PLC0415
-            import time as _time  # noqa: PLC0415
-
-            _mem: dict[str, float] = {}
-            if torch.cuda.is_available():
-                _mem = {
-                    "alloc_mb": round(torch.cuda.memory_allocated() / 1e6, 1),
-                    "reserved_mb": round(torch.cuda.memory_reserved() / 1e6, 1),
-                }
-            with open(
-                "/workspaces/rune-gpu/.cursor/debug-88deb7.log",
-                "a",
-                encoding="utf-8",
-            ) as _df:
-                _df.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "88deb7",
-                            "runId": "pre-fix",
-                            "hypothesisId": "E",
-                            "location": "graph.py:step_node",
-                            "message": "before generate_adapter",
-                            "data": {
-                                "action": action.name,
-                                "trajectory_chars": len(trajectory_text),
-                                "budget_remaining": state["budget_remaining"],
-                                "n_trajectory_records": len(state.get("trajectory", [])),
-                                **_mem,
-                            },
-                            "timestamp": int(_time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except OSError:
-            pass
-        # #endregion
 
         adapter = model.generate_adapter(trajectory_text)
         scaled_sd = scale_lora_b(adapter.state_dict, adapter_scaling)
@@ -241,12 +208,8 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             cont_round = 0
             empty_rounds = 0
 
-            cont_sys = (
-                "Output only Python code. No commentary, no explanations, "
-                "no markdown fences. Continue exactly from where the code "
-                "left off."
-            )
-            cont_user = ctx.get("task_description", "")[:200]
+            cont_sys = CONT_SYSTEM_PROMPT
+            cont_user = render_template("prompt_code_continue", **ctx)
 
             while cont_budget > 0 and empty_rounds < 2:
                 import torch  # noqa: PLC0415
@@ -256,8 +219,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
                 cont_ctx = {
                     **ctx,
-                    "accumulated_code": accumulated_code,
-                    "resume_tail": "\n".join(accumulated_code.splitlines()[-4:]),
+                    "accumulated_code": accumulated_code[-_ACCUMULATED_CODE_CAP:],
                 }
                 cont_traj = render_template("code_continue", **cont_ctx)
 
@@ -325,7 +287,20 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             )
 
         target_name = action.target_subtask or ""
-        results.append((action, target_name, raw_text, adapter_id))
+        output_text = (
+            extract_partial_code(raw_text) if action.executes_code else raw_text
+        )
+        results.append(
+            (
+                action,
+                target_name,
+                raw_text,
+                adapter_id,
+                trajectory_text,
+                prompt_text,
+                output_text,
+            )
+        )
 
         if mlflow.active_run() is not None:
             prefix = f"step_{state['step']}/{action.name}"
@@ -341,14 +316,14 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # executed in the sandbox.
     code_map: dict[str, str] = {}
     code_action_names: list[str] = []
-    for a, name, text, _ in results:
+    for a, name, text, _, _traj, _prompt, _out in results:
         if a.executes_code:
             code_map[name] = extract_partial_code(text)
             code_action_names.append(name)
 
     sandbox_results = await asyncio.gather(
         *[
-            asyncio.to_thread(run_in_sandbox, code_map[name])
+            asyncio.to_thread(run_in_sandbox, strip_self_tests(code_map[name]))
             for name in code_action_names
         ]
     )
@@ -363,7 +338,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # copy clobber earlier siblings' real updates (code_passed/retries/...).
     updates: dict[str, Any] = {}
     running = dict(state)
-    for action, target_name, raw, _ in results:
+    for action, target_name, raw, _, _traj, _prompt, _out in results:
         fb = feedback_map.get(target_name)
         partial = parse_output(action, raw, fb, running, code=code_map.get(target_name))
         updates.update(partial)
@@ -377,8 +352,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             adapter_id=aid,
             feedback=feedback_map.get(name),
             generated_code=code_map.get(name) or None,
+            trajectory_text=traj,
+            prompt_text=prompt,
+            output_text=out,
         )
-        for a, name, _, aid in results
+        for a, name, _, aid, traj, prompt, out in results
     ]
     if gate_fired:
         updates.setdefault("subtasks", state["subtasks"])

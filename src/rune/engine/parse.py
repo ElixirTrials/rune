@@ -13,7 +13,12 @@ from rune.engine.state import Action, Feedback, Subtask
 
 logger = logging.getLogger(__name__)
 
-_env = Environment(loader=PackageLoader("rune", "templates"), undefined=StrictUndefined)
+_env = Environment(
+    loader=PackageLoader("rune", "templates"),
+    undefined=StrictUndefined,
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
 
 def render_template(template_name: str, **kwargs: Any) -> str:

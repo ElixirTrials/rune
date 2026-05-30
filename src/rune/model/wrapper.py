@@ -88,10 +88,17 @@ class ModelWrapper:
         _raw_model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
             dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
         ).to(device)
+        # PEFT scaling = lora_alpha / r must reproduce the scaling the
+        # hypernetwork was distilled against (ctx_to_lora applies alpha/r; see
+        # text_to_lora.py).  The prior `alpha * rank` made scaling = alpha (8x
+        # too strong at r=8), over-driving the adapter so structured generation
+        # never closed the JSON.  adapter_scaling (run_config) is the single
+        # runtime tuning knob layered on top of this correct structural base.
         lora_config = LoraConfig(
             r=rank,
-            lora_alpha=alpha * rank,
+            lora_alpha=alpha,
             target_modules=target_modules,
             lora_dropout=0.0,
         )

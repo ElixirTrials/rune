@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import defaultdict
 from pathlib import Path
+
+from rune.mining.session_log import SESSION_SCHEMA_VERSION  # single source of truth
+
+logger = logging.getLogger(__name__)
 
 
 def scan_sessions(sessions_dir: Path) -> list[Path]:
@@ -31,61 +36,71 @@ def load_session(session_dir: Path) -> tuple[list[dict], dict]:  # type: ignore[
     return steps, metadata
 
 
-def _render_trajectory(
+def _select_training_steps(
     steps: list[dict],  # type: ignore[type-arg]
-    action: str,
-    target: str | None,
-) -> str:
-    """Render trajectory text for steps matching (action, target)."""
-    parts: list[str] = []
-    for step in steps:
-        if step.get("action") != action or step.get("target") != target:
-            continue
-        inp = step.get("input", "")
-        out = step.get("output", "")
-        parts.append(f"Input: {inp}\nOutput: {out}")
-        fb = step.get("feedback")
-        if fb:
-            parts.append(f"Feedback: {json.dumps(fb)}")
-    return "\n---\n".join(parts)
+    pass_at_1: bool | None,
+) -> list[dict]:  # type: ignore[type-arg]
+    """STaR self-distillation selection (ports v1-final success_filter):
+    pass (or unknown verdict, e.g. smoke) -> all steps; fail -> only diagnose
+    steps for subtasks that recovered (have a passing feedback somewhere)."""
+    if pass_at_1 is None or pass_at_1:
+        return steps
+    recovered = {
+        s.get("target")
+        for s in steps
+        if s.get("target") and (s.get("feedback") or {}).get("exit_code") == 0
+    }
+    return [
+        s for s in steps
+        if s.get("action") == "diagnose" and s.get("target") in recovered
+    ]
 
 
 def extract_trajectories(
     steps: list[dict],  # type: ignore[type-arg]
     metadata: dict,  # type: ignore[type-arg]
 ) -> list[dict]:  # type: ignore[type-arg]
-    """Produce one trajectory record per unique action in steps."""
+    """One SFT record per kept step (no joining); STaR-filtered by run pass@1."""
+    version = metadata.get("schema_version")
+    if version != SESSION_SCHEMA_VERSION:
+        raise ValueError(
+            f"session schema_version {version!r} != expected "
+            f"{SESSION_SCHEMA_VERSION}; re-mine from current sessions "
+            "(old corpora are intentionally not bridged)."
+        )
     benchmark = metadata.get("benchmark", "unknown")
     problem_id = metadata.get("problem_id", "unknown")
-    task_id = f"{benchmark}/{problem_id}"
+    pass_at_1 = metadata.get("pass_at_1")
 
-    # Key on (action, target) so each subtask yields its own trajectory record;
-    # keying on action alone conflated every subtask's steps into one shard entry.
-    seen: set[tuple[str, str | None]] = set()
     records: list[dict] = []  # type: ignore[type-arg]
-
-    for step in steps:
-        action = step.get("action", "unknown")
-        target = step.get("target")
-        key = (action, target)
-        if key in seen:
+    dropped = 0
+    for step in _select_training_steps(steps, pass_at_1):
+        completion = step.get("output", "")
+        if not completion:
+            dropped += 1
             continue
-        seen.add(key)
-
-        trajectory_text = _render_trajectory(steps, action, target)
         records.append(
             {
-                "task_id": task_id,
-                "trajectory": trajectory_text,
+                "task_id": f"{benchmark}/{problem_id}/{step.get('step')}",
+                "trajectory": step.get("trajectory", ""),
+                "prompt": step.get("prompt", ""),
+                "completion": completion,
                 "metadata": {
-                    "phase": action,
-                    "target": target,
+                    "phase": step.get("action", "unknown"),
+                    "target": step.get("target"),
+                    "step": step.get("step"),
                     "benchmark": benchmark,
                     "problem_id": problem_id,
+                    "pass_at_1": pass_at_1,
+                    "schema_version": SESSION_SCHEMA_VERSION,
                 },
             }
         )
-
+    if dropped:
+        logger.debug(
+            "extract_trajectories: dropped %d step(s) with empty completion (%s/%s)",
+            dropped, benchmark, problem_id,
+        )
     return records
 
 

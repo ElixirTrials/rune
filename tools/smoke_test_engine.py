@@ -41,7 +41,7 @@ def _mem() -> str:
             a = torch.cuda.memory_allocated() / 1e9
             r = torch.cuda.memory_reserved() / 1e9
             return f"GPU alloc={a:.1f}GB reserved={r:.1f}GB"
-    except Exception:
+    except (ImportError, RuntimeError):
         pass
     return ""
 
@@ -108,6 +108,9 @@ async def run() -> None:
     run_config["max_tokens"] = max_tokens
     if no_cont:
         run_config["cont_budget"] = 0
+    if "--deterministic" in sys.argv:
+        # inference maps temperature==0 -> do_sample=False
+        run_config["temperature"] = 0.0
 
     config = {"model": model, "run_config": run_config}
 
@@ -129,6 +132,20 @@ async def run() -> None:
         config={"configurable": config},
     )
     elapsed = time.monotonic() - t0
+
+    dump_dir = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--dump-sessions" and i + 1 < len(sys.argv):
+            dump_dir = Path(sys.argv[i + 1])
+    if dump_dir is not None:
+        from rune.mining.session_log import write_session  # noqa: PLC0415
+
+        write_session(
+            final_state,
+            {"benchmark": "smoke", "problem_id": "linkedlist"},
+            dump_dir / "linkedlist",
+        )
+        log.info("Wrote session corpus to %s", dump_dir)
 
     print(flush=True)
     log.info("=== Engine finished in %.1fs ===", elapsed)

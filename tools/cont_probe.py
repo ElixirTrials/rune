@@ -21,8 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from rune.engine.continuation import dedup_code as _dedup_code
-from rune.engine.continuation import extract_code as _extract_code
+from rune.engine.continuation import extract_partial_code as _extract_code
 from rune.model.adapter import scale_lora_b
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -499,12 +498,24 @@ def _traj_code_template(task: str, accumulated: str, window: int) -> str:
     )
 
 
+def _traj_production(task: str, accumulated: str, window: int) -> str:
+    from rune.engine.parse import render_template  # noqa: PLC0415
+
+    return render_template(
+        "code_continue",
+        project=task,
+        subtask=None,
+        accumulated_code=accumulated,
+    )
+
+
 TRAJECTORY_FLAVORS: dict[str, Any] = {
     "sliding_window": _traj_sliding_window,
     "minimal_goal_code": _traj_minimal,
     "with_attempt_counter": _traj_with_counter,
     "with_structural_summary": _traj_with_structure,
     "code_template": _traj_code_template,
+    "production": _traj_production,
 }
 
 # ---------------------------------------------------------------------------
@@ -965,8 +976,6 @@ def main() -> None:
         )
 
         code = _extract_code(continuation)
-        if args.rounds > 1:
-            code = _dedup_code(code, accumulated)
         (run_dir / f"{prefix}_code.txt").write_text(code)
 
         global _LAST_THINK_SUMMARY  # noqa: PLW0603

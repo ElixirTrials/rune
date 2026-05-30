@@ -10,55 +10,6 @@ logger = logging.getLogger(__name__)
 
 _flash_patched = False
 
-# #region agent log
-_DEBUG_LOG = "/workspaces/rune-gpu/.cursor/debug-88deb7.log"
-
-
-def _dbg(
-    hypothesis_id: str,
-    location: str,
-    message: str,
-    data: dict[str, Any],
-    *,
-    run_id: str = "pre-fix",
-) -> None:
-    import json  # noqa: PLC0415
-    import time  # noqa: PLC0415
-
-    try:
-        with open(_DEBUG_LOG, "a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "88deb7",
-                        "runId": run_id,
-                        "hypothesisId": hypothesis_id,
-                        "location": location,
-                        "message": message,
-                        "data": data,
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
-
-
-def _cuda_mem_mb() -> dict[str, float]:
-    import torch  # noqa: PLC0415
-
-    if not torch.cuda.is_available():
-        return {}
-    return {
-        "alloc_mb": round(torch.cuda.memory_allocated() / 1e6, 1),
-        "reserved_mb": round(torch.cuda.memory_reserved() / 1e6, 1),
-        "max_alloc_mb": round(torch.cuda.max_memory_allocated() / 1e6, 1),
-    }
-
-
-# #endregion
-
 _MLP_CHUNK_SIZE = 2048
 
 
@@ -81,7 +32,8 @@ def _chunk_gated_mlp(orig_fwd: Any, module: Any, x: Any, chunk_size: int) -> Any
     parts = [
         orig_fwd(module, flat[i : i + chunk_size]) for i in range(0, total, chunk_size)
     ]
-    return torch.cat(parts, dim=0).reshape(x.shape)
+    out = torch.cat(parts, dim=0)
+    return out.reshape(*x.shape[:-1], out.shape[-1])
 
 
 def _patch_flash_attention() -> None:
@@ -287,7 +239,16 @@ def load_hypernetwork(config: HypernetworkConfig, device: str = "cpu") -> Any:
 
     local_path = _resolve_checkpoint_path(config.checkpoint_path)
     logger.info("Loading hypernetwork from %s", local_path)
-    sd = torch.load(local_path, map_location="cpu", weights_only=False)
+    # mmap=True maps the 2.5GB checkpoint's tensors from disk (reclaimable page
+    # cache) instead of anonymous RAM; on this ~15GB-RAM box a plain torch.load
+    # (which also pulls in unused optimizer state) spikes past free RAM and the
+    # kernel OOM-kills the process while the base model is also loading.
+    try:
+        sd = torch.load(
+            local_path, map_location="cpu", weights_only=False, mmap=True
+        )
+    except (RuntimeError, ValueError):
+        sd = torch.load(local_path, map_location="cpu", weights_only=False)
 
     from ctx_to_lora.modeling.hypernet import HyperLoRA  # noqa: PLC0415
 
@@ -407,21 +368,6 @@ def generate_adapter_weights(
 
     import torch  # noqa: PLC0415
 
-    # #region agent log
-    _dbg(
-        "A",
-        "hypernetwork.py:generate_adapter_weights:entry",
-        "before activation extract",
-        {
-            "trajectory_chars": len(trajectory_text),
-            "max_length": max_length,
-            "n_layer_indices": len(layer_indices),
-            "offload_base": offload_base,
-            **_cuda_mem_mb(),
-        },
-    )
-    # #endregion
-
     features, attn_mask = extract_activations_with_model(
         text=trajectory_text,
         model=base_model,
@@ -429,21 +375,6 @@ def generate_adapter_weights(
         layer_indices=layer_indices,
         max_length=max_length,
     )
-
-    # #region agent log
-    _dbg(
-        "B",
-        "hypernetwork.py:generate_adapter_weights:post_extract",
-        "after activation extract",
-        {
-            "features_shape": list(features.shape),
-            "attn_mask_shape": list(attn_mask.shape),
-            "features_device": str(features.device),
-            "features_dtype": str(features.dtype),
-            **_cuda_mem_mb(),
-        },
-    )
-    # #endregion
 
     base_device: torch.device | None = None
     if offload_base:
@@ -456,18 +387,6 @@ def generate_adapter_weights(
     hypernet_dtype = next(hypernet.parameters()).dtype
     features = features.to(device=hypernet_device, dtype=hypernet_dtype)
     attn_mask = attn_mask.to(device=hypernet_device)
-    # #region agent log
-    _dbg(
-        "D",
-        "hypernetwork.py:generate_adapter_weights:pre_hypernet",
-        "before hypernet.generate_weights",
-        {
-            "offload_base": offload_base,
-            "base_on_cpu": offload_base,
-            **_cuda_mem_mb(),
-        },
-    )
-    # #endregion
     with torch.no_grad():
         lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
 

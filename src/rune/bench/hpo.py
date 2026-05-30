@@ -103,7 +103,7 @@ async def run_hpo(
         cfg = base_config.override(
             adapter_scaling=_suggest(trial, "adapter_scaling"),
             temperature=_suggest(trial, "temperature"),
-            max_tokens=_suggest(trial, "max_tokens", int_param=True),
+            presence_penalty=_suggest(trial, "presence_penalty"),
             max_phase_iterations=_suggest(
                 trial, "max_phase_iterations", int_param=True
             ),

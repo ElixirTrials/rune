@@ -8,7 +8,24 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rune.training.d2l_train import D2LTrainConfig, run_distillation
+from rune.training.d2l_train import D2LTrainConfig, run_distillation, to_sft_columns
+
+
+def test_to_sft_columns_maps_prompt_completion() -> None:
+    records = [
+        {"trajectory": "T", "prompt": "P", "completion": "C", "metadata": {}},
+        {"trajectory": "T2", "prompt": "P2", "completion": "C2", "metadata": {}},
+    ]
+    rows = to_sft_columns(records)
+    assert rows == [
+        {"prompt": "P", "completion": "C"},
+        {"prompt": "P2", "completion": "C2"},
+    ]
+
+
+def test_to_sft_columns_skips_empty_completion() -> None:
+    records = [{"prompt": "P", "completion": ""}]
+    assert to_sft_columns(records) == []
 
 
 class TestD2LTrainConfig:
