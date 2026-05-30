@@ -326,6 +326,8 @@ def extract_activations_with_model(
         features shape: (1, num_layers, seq_len, hidden_dim)
         attention_mask shape: (1, seq_len)
     """
+    import contextlib  # noqa: PLC0415
+
     import torch  # noqa: PLC0415
 
     device = next(model.parameters()).device
@@ -334,7 +336,12 @@ def extract_activations_with_model(
     )
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    with torch.no_grad():
+    ctx = (
+        model.disable_adapter()
+        if hasattr(model, "disable_adapter")
+        else contextlib.nullcontext()
+    )
+    with torch.no_grad(), ctx:
         outputs = model(**inputs, output_hidden_states=True, use_cache=False)
 
     hidden_states = outputs.hidden_states
