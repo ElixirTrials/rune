@@ -1,4 +1,39 @@
-from rune.training.gate import evaluate_gate
+from rune.training.gate import evaluate_gate, evaluate_retrieval_gate
+
+
+def _probe(
+    real: float,
+    zero: float,
+    shuffled: float,
+    contra: float,
+    cosine: float,
+    diff_ag: float,
+) -> dict[str, float]:
+    return {
+        "real_hit_rate": real,
+        "zero_hit_rate": zero,
+        "shuffled_hit_rate": shuffled,
+        "contradictory_hit_rate": contra,
+        "adapter_cosine": cosine,
+        "diff_agreement": diff_ag,
+        "scaler_b_absmax": 0.2,
+    }
+
+
+def test_gate_passes_when_real_beats_all_controls() -> None:
+    res = evaluate_retrieval_gate(_probe(0.8, 0.1, 0.1, 0.05, 0.4, 0.6))
+    assert res.passed
+
+
+def test_gate_fails_on_generic_perturbation() -> None:
+    # real == zero == contra but output changed (cosine moved) -> must FAIL
+    res = evaluate_retrieval_gate(_probe(0.1, 0.1, 0.1, 0.1, 0.4, 0.0))
+    assert not res.passed
+
+
+def test_gate_fails_when_adapters_near_identical() -> None:
+    res = evaluate_retrieval_gate(_probe(0.8, 0.1, 0.1, 0.05, 0.999, 0.6))
+    assert not res.passed
 
 
 class TestEvaluateGate:
