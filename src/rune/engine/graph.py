@@ -16,6 +16,7 @@ from rune.engine.continuation import (
     CONT_SYSTEM_PROMPT,
     degeneration_score,
     extract_partial_code,
+    strip_self_tests,
     validate_syntax,
 )
 from rune.engine.parse import parse_output, render_template
@@ -322,7 +323,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
     sandbox_results = await asyncio.gather(
         *[
-            asyncio.to_thread(run_in_sandbox, code_map[name])
+            asyncio.to_thread(run_in_sandbox, strip_self_tests(code_map[name]))
             for name in code_action_names
         ]
     )
