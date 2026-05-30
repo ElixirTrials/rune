@@ -42,7 +42,8 @@ def _mem() -> str:
             r = torch.cuda.memory_reserved() / 1e9
             return f"GPU alloc={a:.1f}GB reserved={r:.1f}GB"
     except (ImportError, RuntimeError):
-        pass
+        # torch missing or CUDA unavailable: memory line is best-effort.
+        log.debug("GPU memory probe failed", exc_info=True)
     return ""
 
 
