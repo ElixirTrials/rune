@@ -36,3 +36,21 @@ def topk_kl_loss(student_logits: Any, teacher_logits: Any, k: int = 50) -> Any:
     s_denom = torch.logsumexp(student_logits.float(), dim=-1, keepdim=True)
     student_logq = student_logits.float().gather(-1, topk_idx) - s_denom  # [N, K]
     return (teacher_p * (teacher_logp - student_logq)).sum(dim=-1).mean()
+
+
+def distill_step_loss(
+    student_logits: Any,
+    teacher_logits: Any,
+    base_top1: Any,
+    teacher_top1: Any,
+    labels: Any,
+    k: int = 50,
+) -> Any:
+    """Top-K KL restricted to diff positions (base != teacher on supervised tokens).
+
+    Returns a scalar loss. If there are no diff positions, returns 0 (no signal).
+    """
+    mask = compute_diff_positions(base_top1, teacher_top1, labels)
+    if int(mask.sum()) == 0:
+        return student_logits.sum() * 0.0
+    return topk_kl_loss(student_logits[mask], teacher_logits[mask], k=k)
