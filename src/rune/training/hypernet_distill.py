@@ -13,6 +13,11 @@ from typing import Any
 IGNORE_INDEX = -100
 
 
+def run_hypernet_distillation(config: Any) -> None:
+    """Stage-2 entrypoint (D2L context distillation). Implemented in Task 11."""
+    raise NotImplementedError("implemented in Task 11")
+
+
 def compute_diff_positions(base_top1: Any, teacher_top1: Any, labels: Any) -> Any:
     """Boolean mask: supervised positions where base and teacher top-1 disagree."""
     return (labels != IGNORE_INDEX) & (base_top1 != teacher_top1)

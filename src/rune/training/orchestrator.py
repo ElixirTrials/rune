@@ -1,4 +1,4 @@
-"""Three-stage training pipeline: oracle → distillation → success gate.
+"""Training pipeline: D2L context distillation → success gate.
 
 All GPU-heavy imports (torch, transformers, peft, trl, mlflow) are deferred
 inside function bodies so this module stays importable in CPU-only CI.
@@ -15,29 +15,18 @@ from rune.training.d2l_train import D2LTrainConfig
 logger = logging.getLogger(__name__)
 
 
-def _run_oracle_training(config: D2LTrainConfig, corpus_dir: Path) -> None:
-    """Stage 1: per-bin QLoRA oracle training.
+def _run_hypernetwork_distillation(config: Any) -> None:
+    """Stage 2: D2L hypernetwork context distillation.
 
     Args:
         config: Training configuration.
-        corpus_dir: Directory containing per-bin JSONL corpora.
     """
-    raise NotImplementedError(
-        "Oracle training not yet implemented — "
-        "see rune-gpu libs/model-training for reference"
+    from rune.training.hypernet_distill import (  # noqa: PLC0415
+        run_hypernet_distillation,
     )
 
-
-def _run_hypernetwork_distillation(config: D2LTrainConfig) -> None:
-    """Stage 2: hypernetwork distillation via DiffAwareSFTTrainer + KL+CE.
-
-    Args:
-        config: Training configuration.
-    """
-    from rune.training.d2l_train import run_distillation  # noqa: PLC0415
-
     logger.info("Stage 2: hypernetwork distillation")
-    run_distillation(config)
+    run_hypernet_distillation(config)
 
 
 def _run_success_gate(
@@ -81,9 +70,10 @@ async def run_training_pipeline(
 ) -> int:
     """Run the full three-stage training pipeline.
 
-    Stage 1: Oracle training (per-bin QLoRA).
-    Stage 2: Hypernetwork distillation (DiffAwareSFTTrainer + KL+CE).
-    Stage 3: Success gate evaluation.
+    Stage 2: D2L hypernetwork context distillation.
+
+    The success gate is evaluated from the bench path (issue #49 Task 13),
+    not inline here, so a successful pipeline run returns 0.
 
     When ``hpo=True``, uses Optuna to tune ``learning_rate``,
     ``warmup_ratio``, ``lora_rank``, and ``neftune_alpha`` over ``n_trials``
@@ -113,18 +103,8 @@ async def run_training_pipeline(
             parent_run_id=parent_id,
         )
 
-    _run_oracle_training(config, corpus_dir)
     _run_hypernetwork_distillation(config)
-
-    # Placeholder scores — in production these come from the bench runner.
-    # TODO(#46-followup): wire the bench runner so the gate is meaningful.
-    logger.warning(
-        "success gate using placeholder (empty) scores — result is not "
-        "meaningful until the bench runner is wired in"
-    )
-    baseline_scores: dict[str, float] = {}
-    new_scores: dict[str, float] = {}
-    return _run_success_gate(baseline_scores, new_scores)
+    return 0
 
 
 async def _run_hpo(
@@ -138,7 +118,7 @@ async def _run_hpo(
 
     Args:
         config: Base configuration whose fields are overridden per trial.
-        corpus_dir: Corpus directory forwarded to each trial's oracle stage.
+        corpus_dir: Corpus directory forwarded to each trial's distillation stage.
         n_trials: Number of Optuna trials to run.
 
     Returns:
@@ -167,17 +147,10 @@ async def _run_hpo(
                 "neftune_alpha": trial.suggest_float("neftune_alpha", 0.0, 10.0),
             }
         )
-        _run_oracle_training(trial_config, corpus_dir)
         _run_hypernetwork_distillation(trial_config)
-        # TODO(#46-followup): placeholder scores make every trial return the
-        # same value, so Optuna optimises a constant. Wire the bench runner.
-        logger.warning(
-            "HPO objective using placeholder (empty) scores — trials are not "
-            "differentiated until the bench runner is wired in"
-        )
-        baseline_scores: dict[str, float] = {}
-        new_scores: dict[str, float] = {}
-        return float(_run_success_gate(baseline_scores, new_scores))
+        # The success gate is evaluated from the bench path (issue #49 Task 13),
+        # not inline here. Until that lands every trial returns 0.
+        return 0.0
 
     import asyncio  # noqa: PLC0415
 

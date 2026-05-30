@@ -1,31 +1,8 @@
-"""D2LTrainConfig base class and round-2 distillation entrypoint.
-
-All GPU imports (torch, transformers, peft, trl) are deferred inside function
-bodies so this module stays importable in CPU-only CI.
-"""
+"""D2LTrainConfig base class for hypernetwork distillation training."""
 
 from __future__ import annotations
 
-import logging
-
 from pydantic import BaseModel
-
-logger = logging.getLogger(__name__)
-
-
-def to_sft_columns(records: list[dict[object, object]]) -> list[dict[str, str]]:
-    """Project corpus records onto trl's prompt/completion SFT columns.
-
-    Records with an empty completion carry no training target and are dropped
-    so completion-only-loss never sees an all-masked example.
-    """
-    rows: list[dict[str, str]] = []
-    for rec in records:
-        completion = str(rec.get("completion", ""))
-        if not completion:
-            continue
-        rows.append({"prompt": str(rec.get("prompt", "")), "completion": completion})
-    return rows
 
 
 class D2LTrainConfig(BaseModel):
@@ -71,96 +48,3 @@ class D2LTrainConfig(BaseModel):
     eval_steps: int = 500
     fp16: bool = True
 
-
-def run_distillation(config: D2LTrainConfig) -> None:
-    """Entrypoint for round-2 distillation training.
-
-    Loads corpus from ``config.corpus_path``, constructs a
-    :class:`~rune.training.diff_loss.DiffAwareSFTTrainer` via
-    :func:`~rune.training.diff_loss.build_diff_aware_sft_trainer`, and
-    runs training.  All GPU-heavy imports are deferred here so the module
-    remains importable in CPU-only CI.
-
-    Args:
-        config: Training configuration.
-    """
-    import json  # noqa: PLC0415
-    from pathlib import Path  # noqa: PLC0415
-
-    import datasets as hf_datasets  # noqa: PLC0415
-    import torch  # noqa: PLC0415
-    import trl  # noqa: PLC0415
-    from peft import LoraConfig  # noqa: PLC0415
-    from transformers import (  # noqa: PLC0415
-        AutoModelForCausalLM,
-        AutoTokenizer,
-    )
-
-    from rune.training.diff_loss import build_diff_aware_sft_trainer  # noqa: PLC0415
-
-    logger.info("run_distillation: loading corpus from %s", config.corpus_path)
-    corpus_path = Path(config.corpus_path)
-    records: list[dict[object, object]] = []
-    if corpus_path.exists():
-        with corpus_path.open() as fh:
-            for raw_line in fh:
-                stripped = raw_line.strip()
-                if stripped:
-                    records.append(json.loads(stripped))
-    logger.info("run_distillation: %d training records loaded", len(records))
-
-    tokenizer = AutoTokenizer.from_pretrained(config.model_id)
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    model = AutoModelForCausalLM.from_pretrained(
-        config.model_id,
-        torch_dtype=torch.float16 if config.fp16 else torch.float32,
-    )
-
-    peft_config = LoraConfig(
-        r=config.lora_rank,
-        lora_alpha=config.lora_alpha,
-        task_type="CAUSAL_LM",
-    )
-
-    # SFTConfig (not transformers.TrainingArguments) so build_diff_aware_sft_trainer's
-    # getattr(args, "max_length") threads the sequence cap into the collator;
-    # with TrainingArguments it was always None and every record reached the GPU
-    # at full length (OOM on long records).
-    training_args = trl.SFTConfig(  # type: ignore[attr-defined, unused-ignore]
-        output_dir=config.checkpoint_dir,
-        num_train_epochs=config.num_epochs,
-        per_device_train_batch_size=config.batch_size,
-        gradient_accumulation_steps=config.gradient_accumulation_steps,
-        learning_rate=config.learning_rate,
-        warmup_ratio=config.warmup_ratio,
-        fp16=config.fp16,
-        logging_steps=config.logging_steps,
-        save_steps=config.save_steps,
-        eval_steps=config.eval_steps,
-        run_name=config.experiment_name,
-        report_to=["mlflow"],
-        max_length=config.max_seq_length,
-    )
-
-    sft_rows = to_sft_columns(records)
-    logger.info("run_distillation: %d records with completion target", len(sft_rows))
-    dataset = hf_datasets.Dataset.from_list(sft_rows)
-
-    trainer = build_diff_aware_sft_trainer(
-        model=model,
-        args=training_args,
-        train_dataset=dataset,
-        peft_config=peft_config,
-        processing_class=tokenizer,
-        tokenizer=tokenizer,
-    )
-
-    if config.checkpoint_path:
-        trainer.train(resume_from_checkpoint=config.checkpoint_path)
-    else:
-        trainer.train()
-
-    trainer.save_model(config.checkpoint_dir)
-    logger.info("run_distillation: model saved to %s", config.checkpoint_dir)
