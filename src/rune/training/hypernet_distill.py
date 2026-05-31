@@ -292,9 +292,12 @@ def run_hypernet_distillation(config: Any) -> None:
                         "preservation": pres,
                         "diff_token_frac": diff_token_fraction(base_top1, teacher_top1),
                         "skipped": skipped,
+                        "ans_len": float(len(ans_ids)),
+                        "gpu_peak_gb": torch.cuda.max_memory_allocated() / 1e9,
                         **summarize_named_tensors(watched),
                         **_grad_norm_summary(hypernet),
                     }
+                    torch.cuda.reset_peak_memory_stats()
                     logf.write(json.dumps(rec) + "\n")
                     logf.flush()
                     if mlflow is not None:
@@ -794,11 +797,15 @@ def topk_kl_loss(student_logits: Any, teacher_logits: Any, k: int = 50) -> Any:
 
     k = min(k, teacher_logits.shape[-1])
     topk_vals, topk_idx = teacher_logits.topk(k, dim=-1)
-    t_denom = torch.logsumexp(teacher_logits.float(), dim=-1, keepdim=True)
-    teacher_logp = topk_vals.float() - t_denom  # [N, K]
+    # Memory: do NOT materialize a full-vocab fp32 copy of the logits — at vocab
+    # 151936 that is ~0.5GB per [N,V] tensor, and for the (grad-carrying) student it
+    # is retained in the autograd graph. logsumexp reduces over the vocab without a
+    # persistent fp32 copy; we upcast only the small gathered [N,K] slices.
+    t_denom = torch.logsumexp(teacher_logits, dim=-1, keepdim=True)
+    teacher_logp = (topk_vals - t_denom).float()  # [N, K]
     teacher_p = teacher_logp.exp()  # [N, K]
-    s_denom = torch.logsumexp(student_logits.float(), dim=-1, keepdim=True)
-    student_logq = student_logits.float().gather(-1, topk_idx) - s_denom  # [N, K]
+    s_denom = torch.logsumexp(student_logits, dim=-1, keepdim=True)
+    student_logq = (student_logits.gather(-1, topk_idx) - s_denom).float()  # [N, K]
     return (teacher_p * (teacher_logp - student_logq)).sum(dim=-1).mean()
 
 
