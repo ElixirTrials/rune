@@ -312,7 +312,8 @@ def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
             import bitsandbytes as bnb  # noqa: PLC0415
 
             logger.info("optimizer: 8-bit Adam (bitsandbytes)")
-            return bnb.optim.Adam8bit(params, lr=cfg.learning_rate)  # type: ignore[no-untyped-call]
+            opt8 = bnb.optim.Adam8bit  # type: ignore[attr-defined]
+            return opt8(params, lr=cfg.learning_rate)  # type: ignore[no-untyped-call]
         except Exception as exc:  # noqa: BLE001
             logger.warning("8-bit Adam unavailable (%s); falling back to AdamW", exc)
     return torch.optim.AdamW(params, lr=cfg.learning_rate)
