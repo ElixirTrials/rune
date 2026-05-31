@@ -70,6 +70,7 @@ class DistillConfig(D2LTrainConfig):
     shuffle: bool = True
     seed: int = 0
     grad_accum_steps: int = 8
+    weight_decay: float = 0.01  # AdamW regularizer (doc2lora default); anti-overfit
     skip_zero_diff: bool = True
     val_corpus_path: str = ""
     val_sample: int = 40
@@ -212,6 +213,7 @@ def run_hypernet_distillation(config: Any) -> None:
     skipped = 0
     recent_da: list[float] = []
     recent_pres: list[float] = []
+    best_val = -1.0   # best held-out val_diff_agreement -> checkpoint_best.pt
     stop_reason: str | None = None
     optimizer.zero_grad()
     accum = 0
@@ -340,6 +342,15 @@ def run_hypernet_distillation(config: Any) -> None:
                     if mlflow is not None:
                         mlflow.log_metrics(vmet, step=step)
                     logger.info("VAL step=%d %s", step, json.dumps(vmet))
+                    # Keep the BEST-val checkpoint (anti-overfit: the final-step
+                    # checkpoint may be past the val peak).
+                    if vmet["val_diff_agreement"] > best_val:
+                        best_val = vmet["val_diff_agreement"]
+                        _save_checkpoint(hypernet, cfg, step, ckpt_dir,
+                                         name="checkpoint_best.pt")
+                        if mlflow is not None:
+                            mlflow.set_tag("best_val_diff_agreement", f"{best_val:.4f}")
+                            mlflow.set_tag("best_val_step", str(step))
 
                 del lora_dict, teacher_logits, base_logits, student_logits
                 gc.collect()
@@ -440,12 +451,13 @@ def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
         try:
             import bitsandbytes as bnb  # noqa: PLC0415
 
-            logger.info("optimizer: 8-bit Adam (bitsandbytes)")
+            logger.info("optimizer: 8-bit Adam (bitsandbytes), wd=%s", cfg.weight_decay)
             opt8 = bnb.optim.Adam8bit  # type: ignore[attr-defined]
-            return opt8(params, lr=cfg.learning_rate)  # type: ignore[no-untyped-call]
+            return opt8(params, lr=cfg.learning_rate,  # type: ignore[no-untyped-call]
+                        weight_decay=cfg.weight_decay)
         except Exception as exc:  # noqa: BLE001
             logger.warning("8-bit Adam unavailable (%s); falling back to AdamW", exc)
-    return torch.optim.AdamW(params, lr=cfg.learning_rate)
+    return torch.optim.AdamW(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
 
 
 def _try_mlflow(cfg: Any) -> Any:
@@ -763,12 +775,13 @@ def _grad_norm_summary(hypernet: Any) -> dict[str, float]:
 
 
 def _save_checkpoint(
-    hypernet: Any, cfg: DistillConfig, step: int, ckpt_dir: Any
+    hypernet: Any, cfg: DistillConfig, step: int, ckpt_dir: Any,
+    name: str = "checkpoint.pt",
 ) -> None:
     """Persist the hypernetwork state dict + config + step."""
     import torch  # noqa: PLC0415
 
-    path = ckpt_dir / "checkpoint.pt"
+    path = ckpt_dir / name
     torch.save(
         {
             "hypernet_state_dict": hypernet.state_dict(),
