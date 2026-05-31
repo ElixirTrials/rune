@@ -96,7 +96,7 @@ def main() -> int:
     hypernet = load_hypernetwork(HypernetworkConfig(checkpoint_path=args.checkpoint), device=device)
     reinit_scaler_b_nonzero(hypernet, 1.0)
     hypernet.train()
-    layer_indices = list(hypernet.config.lora_config.layers)
+    layer_indices = list(hypernet.config.layer_indices)
     out["layer_indices"] = layer_indices
     out["target_modules"] = list(hypernet.config.lora_config.target_modules)
 

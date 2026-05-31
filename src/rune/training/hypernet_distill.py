@@ -106,7 +106,7 @@ def run_hypernet_distillation(config: Any) -> None:
     reinit_scaler_b_nonzero(hypernet, cfg.scaler_b_init)
     hypernet.train()
 
-    layer_indices = list(hypernet.config.lora_config.layers)
+    layer_indices = list(hypernet.config.layer_indices)
 
     # 3. Optimizer over trainable hypernet params; assert scaler_B is covered.
     trainable = [p for p in hypernet.parameters() if p.requires_grad]
