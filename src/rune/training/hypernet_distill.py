@@ -111,7 +111,7 @@ def run_hypernet_distillation(config: Any) -> None:
     if cfg.load_in_4bit:
         from transformers import BitsAndBytesConfig  # noqa: PLC0415
 
-        quant = BitsAndBytesConfig(
+        quant = BitsAndBytesConfig(  # type: ignore[no-untyped-call]
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
@@ -129,7 +129,8 @@ def run_hypernet_distillation(config: Any) -> None:
             cfg.model_id,
             torch_dtype=torch.bfloat16,
             attn_implementation="flash_attention_2",
-        ).to(cfg.device)
+        )
+        base_model = base_model.to(cfg.device)
     for p in base_model.parameters():
         p.requires_grad_(False)
     base_model.config.use_cache = False
