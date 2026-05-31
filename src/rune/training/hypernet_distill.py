@@ -51,7 +51,9 @@ class DistillConfig(D2LTrainConfig):
     # useful or damaging the preservation region.
     early_stop_warmup: int = 150
     min_diff_agreement: float = 0.02
-    min_preservation: float = 0.5
+    # Smoke #3 showed steady-state preservation ~0.9; 0.7 is a meaningful collapse
+    # floor that won't false-abort on normal per-row fluctuation (reviewer).
+    min_preservation: float = 0.7
     max_skip_frac: float = 0.5
     # Memory: a frozen 9B bf16 base (~18GB) + trainable hypernet + optimizer +
     # activations does not fit 22GB. 4-bit NF4 base (QLoRA) frees ~13GB and is the
