@@ -91,9 +91,14 @@ Schema maps directly to D2L: `activation_text` → context, `teacher_text` → a
   - **Branch:** still collapses → mechanical bug (fix before proceeding); recalls → loop is sound, proceed. **This gate blocks all of Stage 1+.**
 
 ### Stage 1 — Real-corpus D2L training (GPU, under watchdog)
-- Pull corpus from S3 to local; load via `corpus_path`. Map context/answer/diff fields. Apply STaR filter.
-- Train with the modified D2L objective + negative/contradictory contexts.
-- Log collapse diagnostics every N steps (same metrics as Stage 0).
+- Pull corpus from S3 to local; load via `corpus_path`. Map
+  `activation_text`/`teacher_text` to context/answer and log corpus mapping
+  stats before training.
+- Train with the modified D2L objective on real context per record. Negative or
+  contradictory contexts are evaluation controls unless explicitly enabled in a
+  later training experiment.
+- Log collapse, preservation, teacher/base diff-token, and early-stop
+  diagnostics every N steps.
 
 ### Stage 2 — §C conditioning-format alignment
 - Align the **inference renderer** (`engine/graph.py` templates: `code`/`code_continue`, `ROLE/PROJECT/SUBTASK/PLAN/EXISTING CODE`) to the **training context format** (`## Task/## Current Code/## Review Feedback/## Revision`). Lower-risk than re-mining. No silent OOD mismatch.
@@ -125,7 +130,7 @@ Schema maps directly to D2L: `activation_text` → context, `teacher_text` → a
 ## File map (indicative)
 
 **Training (new lean path):**
-- Add `src/rune/training/hypernet_distill.py` — D2L context-distillation entrypoint (teacher/student, top-K KL, diff-mask, negative contexts), wrapping `ctx_to_lora` primitives.
+- Add `src/rune/training/hypernet_distill.py` — D2L context-distillation entrypoint (teacher/student, top-K KL, teacher-vs-base diff mask), wrapping `ctx_to_lora` primitives.
 - Add `src/rune/training/collapse_metrics.py` — pure metric helpers (grad-norm summary, optimizer-membership assert, `diff_agreement`, ΔW norm).
 - Modify `src/rune/training/orchestrator.py` — Stage-2 dispatches to `hypernet_distill`; remove oracle stage + empty-gate placeholder.
 - Modify `src/rune/model/hypernetwork.py` — `scaler_B` init/reparam fix; `strict` load key audit; `combine_lora`/`get_head_bias`.
