@@ -53,10 +53,13 @@ class DistillConfig(D2LTrainConfig):
     min_diff_agreement: float = 0.02
     min_preservation: float = 0.5
     max_skip_frac: float = 0.5
-    # Memory: a frozen 9B bf16 base + trainable hypernet + optimizer + activations
-    # is tight on 22GB. Gradient checkpointing trades compute for activation memory;
-    # 8-bit Adam shrinks optimizer state ~4x.
-    gradient_checkpointing: bool = True
+    # Memory: a frozen 9B bf16 base (~18GB) + trainable hypernet + optimizer +
+    # activations does not fit 22GB. 4-bit NF4 base (QLoRA) frees ~13GB and is the
+    # primary lever; 8-bit Adam shrinks optimizer state ~4x. Gradient checkpointing
+    # is INCOMPATIBLE with the monkeypatched functional-LoRA forward (checkpoint
+    # tensor-count mismatch on recompute), so it defaults off.
+    load_in_4bit: bool = True
+    gradient_checkpointing: bool = False
     use_8bit_optim: bool = True
 
 
@@ -103,13 +106,30 @@ def run_hypernet_distillation(config: Any) -> None:
     free = subprocess.run(["free", "-g"], capture_output=True, text=True, check=False)
     logger.info("free -g:\n%s", free.stdout)
 
-    # 1. Base model (frozen) + tokenizer.
-    base_model: Any = AutoModelForCausalLM.from_pretrained(
-        cfg.model_id,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-    )
-    base_model = base_model.to(cfg.device)
+    # 1. Base model (frozen) + tokenizer. 4-bit NF4 (QLoRA) by default for memory.
+    base_model: Any
+    if cfg.load_in_4bit:
+        from transformers import BitsAndBytesConfig  # noqa: PLC0415
+
+        quant = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+        base_model = AutoModelForCausalLM.from_pretrained(
+            cfg.model_id,
+            quantization_config=quant,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
+            device_map={"": cfg.device},
+        )
+    else:
+        base_model = AutoModelForCausalLM.from_pretrained(
+            cfg.model_id,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
+        ).to(cfg.device)
     for p in base_model.parameters():
         p.requires_grad_(False)
     base_model.config.use_cache = False
@@ -524,6 +544,20 @@ def _generate_lora_dict(
     return lora_dict
 
 
+def _lora_delta(x: Any, a: Any, b: Any, scaling: float) -> Any:
+    """LoRA delta ``(x @ Aᵀ) @ B * scaling`` for a single context (n_ctx=1).
+
+    a: [1, r, d_in], b: [1, r, d_out], x: [1, seq, d_in] -> [1, seq, d_out].
+    Pure (testable) — this is the equivalence contract for the custom functional
+    forward used with a quantized (bnb Linear4bit) base.
+    """
+    import torch  # noqa: PLC0415
+
+    xd = x.to(a.dtype)
+    delta = torch.einsum("c r i, c s i -> c s r", a, xd)
+    return torch.einsum("c r o, c s r -> c s o", b, delta) * scaling
+
+
 def _functional_lora(
     base_model: Any,
     layer_indices: list[int],
@@ -533,27 +567,34 @@ def _functional_lora(
 ) -> Any:
     """Context manager applying ``lora_dict`` functionally to the base model.
 
-    Patches each target ``Linear.forward`` with ctx_to_lora's ``lora_forward``
-    (which adds ``B @ A @ x * scaling`` using the grad-carrying tensors), then
-    restores the original forwards on exit. Indexing is POSITIONAL — the lora_dict
-    tensor's layer axis has length ``len(layer_indices)`` (built positionally by
-    ``_to_lora_dict``), so ``[:, layer_pos]`` is correct even when the selected
-    layers are non-contiguous (the package's ``apply_lora_to_layers`` indexes by
-    absolute layer id and would misapply for non-contiguous layers).
+    Patches each target ``Linear.forward`` to add ``(x @ Aᵀ) @ B * scaling`` on top
+    of the layer's ORIGINAL output, using the grad-carrying generated A/B, then
+    restores the original forwards on exit.
+
+    The base_out comes from the layer's own ``forward_orig`` (not
+    ``torch.nn.Linear.forward``) so this works for ANY base layer type — including a
+    4-bit ``bitsandbytes.Linear4bit`` (QLoRA), whose weights the plain nn.Linear
+    forward cannot read. Indexing is POSITIONAL — the lora_dict tensor's layer axis
+    has length ``len(layer_indices)`` (built positionally), so ``[:, layer_pos]`` is
+    correct even for non-contiguous selected layers (the package's
+    ``apply_lora_to_layers`` indexes by absolute layer id and would misapply).
     """
     import contextlib  # noqa: PLC0415
-    from functools import partial  # noqa: PLC0415
     from operator import attrgetter  # noqa: PLC0415
 
-    from ctx_to_lora.modeling.lora_layer import lora_forward  # noqa: PLC0415
     from ctx_to_lora.utils import get_layers  # noqa: PLC0415
 
     _ATTN = {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"}
 
+    def _make_forward(orig: Any, a: Any, b: Any) -> Any:
+        def _fwd(x: Any, *args: Any, **kwargs: Any) -> Any:
+            base_out = orig(x, *args, **kwargs)
+            return base_out + _lora_delta(x, a, b, scaling).to(base_out.dtype)
+        return _fwd
+
     @contextlib.contextmanager
     def _ctx() -> Any:
         layers = get_layers(base_model)
-        tot_q = int(n_qs.sum())
         patched: list[Any] = []
         try:
             for layer_pos, layer_idx in enumerate(layer_indices):
@@ -562,15 +603,8 @@ def _functional_lora(
                     long = f"self_attn.{mname}" if mname in _ATTN else f"mlp.{mname}"
                     module = attrgetter(long)(layer)
                     module.forward_orig = module.forward
-                    module.forward = partial(
-                        lora_forward,
-                        n_qs=n_qs,
-                        tot_q=tot_q,
-                        A=w["A"][:, layer_pos],
-                        B=w["B"][:, layer_pos],
-                        lora_dropout_p=0.0,
-                        scaling=scaling,
-                        self=module,
+                    module.forward = _make_forward(
+                        module.forward_orig, w["A"][:, layer_pos], w["B"][:, layer_pos]
                     )
                     patched.append(module)
             yield
