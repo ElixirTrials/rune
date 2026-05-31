@@ -59,7 +59,7 @@ token_losses = -(teacher_p * student_logq).sum(dim=-1)      # top-K KL over answ
 - **Student:** base model + hypernet-generated adapter, with the trajectory **removed** from the prompt.
 - The adapter is forced to internalize what the in-context teacher got for free → **adapter-as-memory by construction**.
 
-`ctx_to_lora/data/processing.py` ships `add_negative_prompt` / `neg_ctxs`: D2L **trains with contradictory contexts on purpose**. We use this so the *worse-under-contradiction* property is trained, not merely measured.
+`ctx_to_lora/data/processing.py` ships `add_negative_prompt` / `neg_ctxs`: D2L *can* train with contradictory contexts. **Status (corrected per review):** the implemented `hypernet_distill` loop trains on **real context per record only**; "worse under contradiction" is therefore an **emergent, evaluation-time property**, not a trained objective. The synthetic forced-choice result (2026-05-31) showed this property emerges from positive-only training (an adapter that encodes the correct value necessarily does worse when fed a contradictory context). Negative-context training (`add_negative_prompt`) is an **optional enhancement** to be added only if the emergent contradiction-worsening proves too weak on the real corpus — not a precondition. Do not cite "trained anti-conditioning" as evidence unless negative-context training is actually enabled.
 
 **Consequence:** **no separate Stage-1 oracle QLoRA is needed.** The teacher is the frozen base model. The dead oracle machinery (`Round2TrainConfig`, `oracle_cache.py`, `audit_oracle_coverage`, `_run_oracle_training` stub) and the plain-SFT `run_distillation`/`to_sft_columns` path are removed (lean/DRY; no backward-compat shims).
 
