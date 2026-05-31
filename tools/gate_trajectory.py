@@ -23,7 +23,11 @@ import torch
 
 from rune.model.hypernetwork import HypernetworkConfig, load_hypernetwork
 from rune.training.collapse_metrics import diff_agreement, preservation_agreement
-from rune.training.contrastive import edit_local_mask
+from rune.training.contrastive import (
+    edit_local_mask,
+    extract_review_feedback,
+    make_hard_negative,
+)
 from rune.training.hypernet_distill import (
     _generate_lora_dict,
     _student_logits,
@@ -60,16 +64,27 @@ def _editlocal_logprob(base, tok, hyp, ctx, ans, pre_code, li, scaling, max_len)
 
 
 def _row_specificity(base, tok, hyp, rows, li, scaling, max_len):
-    """matched/mismatched/zero edit-local logprob + diff_agreement/preservation."""
-    m, x, z, da, pres = [], [], [], [], []
+    """Edit-local logprob under MATCHED / MISMATCHED / SWAP-NEG / ZERO adapters.
+
+    Three negatives are distinguished (advisor + reflections): MISMATCHED = a
+    different row's context (transfer test); SWAP-NEG = the same row with feedback
+    swapped from another row (the EXACT negative B1 trains on); ZERO = no adapter.
+    Decomposing matched−zero (generic lift), swapneg−zero (inappropriate neg lift,
+    should DROP after contrastive), matched−swapneg (the trained objective) and
+    matched−mismatched (transfer memory) tells WHY a margin opened.
+    """
+    m, x, sn, z, da, pres = [], [], [], [], [], []
     n = len(rows)
     for i, r in enumerate(rows):
+        other_fb = rows[(i + 1) % n].get("feedback", "")
+        swap_ctx = make_hard_negative(r["context"], other_feedback=other_fb)
         lm = _editlocal_logprob(base, tok, hyp, r["context"], r["answer"], r["pre_code"], li, scaling, max_len)
         lx = _editlocal_logprob(base, tok, hyp, rows[(i + 1) % n]["context"], r["answer"], r["pre_code"], li, scaling, max_len)
+        ls = _editlocal_logprob(base, tok, hyp, swap_ctx, r["answer"], r["pre_code"], li, scaling, max_len)
         lz = _editlocal_logprob(base, tok, hyp, r["context"], r["answer"], r["pre_code"], li, 0.0, max_len)
-        if None in (lm, lx, lz):
+        if None in (lm, lx, ls, lz):
             continue
-        m.append(lm); x.append(lx); z.append(lz)
+        m.append(lm); x.append(lx); sn.append(ls); z.append(lz)
         # diff_agreement/preservation at this scaling (top-1 based)
         t, b, ans_ids = _teacher_base_logits(base, tok, r["context"], r["answer"], max_len)
         tt, bt = t.argmax(-1), b.argmax(-1)
@@ -81,8 +96,12 @@ def _row_specificity(base, tok, hyp, rows, li, scaling, max_len):
         del t, b
     mean = lambda v: sum(v) / len(v) if v else 0.0  # noqa: E731
     return {
-        "n": len(m), "matched": mean(m), "mismatched": mean(x), "zero": mean(z),
-        "matched_minus_mismatched": mean(m) - mean(x), "matched_minus_zero": mean(m) - mean(z),
+        "n": len(m), "matched": mean(m), "mismatched": mean(x),
+        "swapneg": mean(sn), "zero": mean(z),
+        "matched_minus_mismatched": mean(m) - mean(x),
+        "matched_minus_swapneg": mean(m) - mean(sn),
+        "matched_minus_zero": mean(m) - mean(z),
+        "swapneg_minus_zero": mean(sn) - mean(z),
         "diff_agreement": mean(da), "preservation": mean(pres),
     }
 
@@ -115,7 +134,10 @@ def main() -> int:
                 continue
             raw = json.loads(line); mm = _map_record(raw)
             if mm:
-                rows.append({**mm, "pre_code": str(raw.get("pre_code", ""))})
+                rows.append({
+                    **mm, "pre_code": str(raw.get("pre_code", "")),
+                    "feedback": extract_review_feedback(mm["context"]),
+                })
             if len(rows) >= a.n:
                 break
 
@@ -131,8 +153,9 @@ def main() -> int:
             r = _row_specificity(base, tok, hyp, rows, li, s, a.max_seq_length)
             r["ckpt"] = ck.split("/")[-1]; r["scaling"] = s
             out["results"].append(r)
-            print(f"{r['ckpt']:24} sc={s}: m-mm={r['matched_minus_mismatched']:+.4f} "
-                  f"m-zero={r['matched_minus_zero']:+.3f} pres={r['preservation']:.3f} n={r['n']}")
+            print(f"{r['ckpt']:22} sc={s}: m-mm={r['matched_minus_mismatched']:+.4f} "
+                  f"m-swap={r['matched_minus_swapneg']:+.4f} m-zero={r['matched_minus_zero']:+.3f} "
+                  f"swap-zero={r['swapneg_minus_zero']:+.3f} pres={r['preservation']:.3f} n={r['n']}")
         del hyp
         torch.cuda.empty_cache()
     with open(a.json_out, "w") as f:
