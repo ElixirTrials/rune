@@ -53,6 +53,11 @@ class DistillConfig(D2LTrainConfig):
     min_diff_agreement: float = 0.02
     min_preservation: float = 0.5
     max_skip_frac: float = 0.5
+    # Memory: a frozen 9B bf16 base + trainable hypernet + optimizer + activations
+    # is tight on 22GB. Gradient checkpointing trades compute for activation memory;
+    # 8-bit Adam shrinks optimizer state ~4x.
+    gradient_checkpointing: bool = True
+    use_8bit_optim: bool = True
 
 
 def run_hypernet_distillation(config: Any) -> None:
@@ -105,9 +110,27 @@ def run_hypernet_distillation(config: Any) -> None:
         attn_implementation="flash_attention_2",
     )
     base_model = base_model.to(cfg.device)
-    base_model.eval()
     for p in base_model.parameters():
         p.requires_grad_(False)
+    base_model.config.use_cache = False
+    _can_ckpt = hasattr(base_model, "gradient_checkpointing_enable")
+    if cfg.gradient_checkpointing and _can_ckpt:
+        base_model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+        # HF only checkpoints when module.training is True; params stay frozen.
+        base_model.train()
+        # Reviewer: train() is memory-only ONLY if no stochastic path. Verify the
+        # base is deterministic; otherwise teacher/base logits are unreliable.
+        if not _base_is_deterministic(base_model, cfg.device):
+            logger.warning(
+                "base non-deterministic in train() (dropout?); disabling "
+                "gradient checkpointing and using eval()"
+            )
+            base_model.gradient_checkpointing_disable()
+            base_model.eval()
+    else:
+        base_model.eval()
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_id)
 
     # 2. Hypernetwork, re-initialized out of the collapse basin (#49 §A).
@@ -121,11 +144,19 @@ def run_hypernet_distillation(config: Any) -> None:
 
     # 3. Optimizer over trainable hypernet params; assert scaler_B is covered.
     trainable = [p for p in hypernet.parameters() if p.requires_grad]
-    optimizer = torch.optim.AdamW(trainable, lr=cfg.learning_rate)
+    optimizer = _build_optimizer(trainable, cfg)
+    # Watch scaler_B + scaler_A + a head param so their value trajectories (not just
+    # gradients) are logged — reveals whether 8-bit Adam actually updates the
+    # collapse-critical params (reviewer).
     watched: dict[str, Any] = {}
     if hasattr(hypernet, "scaler_B"):
-        first = next(iter(hypernet.scaler_B.keys()))
-        watched["scaler_B"] = hypernet.scaler_B[first]
+        watched["scaler_B"] = hypernet.scaler_B[next(iter(hypernet.scaler_B.keys()))]
+    if hasattr(hypernet, "scaler_A"):
+        watched["scaler_A"] = hypernet.scaler_A[next(iter(hypernet.scaler_A.keys()))]
+    for name, p in hypernet.named_parameters():
+        if "head" in name and p.requires_grad:
+            watched["head"] = p
+            break
     assert_optimizer_covers(watched, optimizer)
 
     ckpt_dir = Path(cfg.checkpoint_dir)
@@ -255,6 +286,36 @@ def run_hypernet_distillation(config: Any) -> None:
     if mlflow is not None:
         mlflow.set_tag("final_step", str(step))
         mlflow.end_run()
+
+
+def _base_is_deterministic(base_model: Any, device: str) -> bool:
+    """Two identical forwards must match — guards train()-mode dropout (reviewer)."""
+    import torch  # noqa: PLC0415
+
+    ids = torch.tensor([[1, 2, 3, 4, 5]], device=device)
+    with torch.no_grad():
+        a = base_model(ids, use_cache=False).logits
+        b = base_model(ids, use_cache=False).logits
+    return bool(torch.allclose(a, b, atol=1e-4))
+
+
+def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
+    """8-bit Adam (bitsandbytes) when enabled+available, else AdamW.
+
+    8-bit Adam shrinks optimizer state ~4x — material headroom when a frozen 9B
+    base already fills most of a 22GB GPU.
+    """
+    import torch  # noqa: PLC0415
+
+    if cfg.use_8bit_optim:
+        try:
+            import bitsandbytes as bnb  # noqa: PLC0415
+
+            logger.info("optimizer: 8-bit Adam (bitsandbytes)")
+            return bnb.optim.Adam8bit(params, lr=cfg.learning_rate)  # type: ignore[no-untyped-call]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("8-bit Adam unavailable (%s); falling back to AdamW", exc)
+    return torch.optim.AdamW(params, lr=cfg.learning_rate)
 
 
 def _try_mlflow(cfg: Any) -> Any:
