@@ -46,6 +46,7 @@ class DistillConfig(D2LTrainConfig):
     grad_clip: float = 1.0
     log_steps: int = 10
     device: str = "cuda"
+    train_scaling: float = 2.0
 
 
 def run_hypernet_distillation(config: Any) -> None:
@@ -72,7 +73,6 @@ def run_hypernet_distillation(config: Any) -> None:
 
     from rune.model.hypernetwork import (  # noqa: PLC0415
         HypernetworkConfig,
-        generate_adapter_weights,
         load_hypernetwork,
         reinit_scaler_b_nonzero,
     )
@@ -139,17 +139,17 @@ def run_hypernet_distillation(config: Any) -> None:
                 base_top1 = base_logits.argmax(dim=-1)
                 labels = torch.ones_like(teacher_top1)
 
-                # Student: base + generated adapter, answer-only prompt.
-                weights = generate_adapter_weights(
-                    hypernet=hypernet,
-                    trajectory_text=context,
-                    base_model=base_model,
-                    tokenizer=tokenizer,
-                    layer_indices=layer_indices,
-                    max_length=cfg.max_seq_length,
+                # Student: base + generated adapter (grad-carrying), answer-only
+                # prompt. lora_dict comes straight from generate_weights (NOT the
+                # PEFT export) and is applied functionally so autograd flows back
+                # to the hypernetwork.
+                lora_dict = _generate_lora_dict(
+                    hypernet, context, base_model, tokenizer,
+                    layer_indices, cfg.max_seq_length,
                 )
                 student_logits = _student_logits(
-                    base_model, tokenizer, answer, weights, ans_slice
+                    base_model, tokenizer, answer, lora_dict,
+                    ans_slice, layer_indices, cfg.train_scaling,
                 )
 
                 loss = distill_step_loss(
@@ -161,7 +161,10 @@ def run_hypernet_distillation(config: Any) -> None:
                     k=cfg.topk,
                 )
                 if cfg.l1_reg_coef > 0.0:
-                    l1 = sum(w.abs().sum() for w in weights.values())
+                    l1 = sum(
+                        w["A"].abs().sum() + w["B"].abs().sum()
+                        for w in lora_dict.values()
+                    )
                     loss = loss + cfg.l1_reg_coef * l1
 
                 if not loss.requires_grad:
@@ -191,7 +194,7 @@ def run_hypernet_distillation(config: Any) -> None:
                     logger.info("step=%d loss=%.4f", step, rec["loss"])
 
                 step += 1
-                del weights, teacher_logits, base_logits, student_logits
+                del lora_dict, teacher_logits, base_logits, student_logits
                 gc.collect()
                 torch.cuda.empty_cache()
 
@@ -242,27 +245,117 @@ def _teacher_base_logits(
     return teacher, base, ans_slice
 
 
+def _generate_lora_dict(
+    hypernet: Any,
+    context: str,
+    base_model: Any,
+    tokenizer: Any,
+    layer_indices: list[int],
+    max_length: int,
+) -> Any:
+    """Generate the grad-carrying ``{module: {A, B}}`` lora_dict for one context.
+
+    Extracts activations under ``disable_adapter`` (so conditioning is never
+    contaminated by a previously-applied adapter), then runs the perceiver WITHOUT
+    ``no_grad`` so gradients flow back to the hypernetwork. This is the training
+    counterpart of ``generate_adapter_weights`` (which is no_grad + PEFT-keyed and
+    is only for inference/hotswap).
+    """
+    from rune.model.hypernetwork import (  # noqa: PLC0415
+        extract_activations_with_model,
+    )
+
+    features, attn_mask = extract_activations_with_model(
+        text=context,
+        model=base_model,
+        tokenizer=tokenizer,
+        layer_indices=layer_indices,
+        max_length=max_length,
+    )
+    lora_dict, _ = hypernet.generate_weights(features, attn_mask, None)
+    return lora_dict
+
+
+def _functional_lora(
+    base_model: Any,
+    layer_indices: list[int],
+    lora_dict: dict[str, Any],
+    scaling: float,
+    n_qs: Any,
+) -> Any:
+    """Context manager applying ``lora_dict`` functionally to the base model.
+
+    Patches each target ``Linear.forward`` with ctx_to_lora's ``lora_forward``
+    (which adds ``B @ A @ x * scaling`` using the grad-carrying tensors), then
+    restores the original forwards on exit. Indexing is POSITIONAL — the lora_dict
+    tensor's layer axis has length ``len(layer_indices)`` (built positionally by
+    ``_to_lora_dict``), so ``[:, layer_pos]`` is correct even when the selected
+    layers are non-contiguous (the package's ``apply_lora_to_layers`` indexes by
+    absolute layer id and would misapply for non-contiguous layers).
+    """
+    import contextlib  # noqa: PLC0415
+    from functools import partial  # noqa: PLC0415
+    from operator import attrgetter  # noqa: PLC0415
+
+    from ctx_to_lora.modeling.lora_layer import lora_forward  # noqa: PLC0415
+    from ctx_to_lora.utils import get_layers  # noqa: PLC0415
+
+    _ATTN = {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"}
+
+    @contextlib.contextmanager
+    def _ctx() -> Any:
+        layers = get_layers(base_model)
+        tot_q = int(n_qs.sum())
+        patched: list[Any] = []
+        try:
+            for layer_pos, layer_idx in enumerate(layer_indices):
+                layer = layers[layer_idx]
+                for mname, w in lora_dict.items():
+                    long = f"self_attn.{mname}" if mname in _ATTN else f"mlp.{mname}"
+                    module = attrgetter(long)(layer)
+                    module.forward_orig = module.forward
+                    module.forward = partial(
+                        lora_forward,
+                        n_qs=n_qs,
+                        tot_q=tot_q,
+                        A=w["A"][:, layer_pos],
+                        B=w["B"][:, layer_pos],
+                        lora_dropout_p=0.0,
+                        scaling=scaling,
+                        self=module,
+                    )
+                    patched.append(module)
+            yield
+        finally:
+            for module in patched:
+                module.forward = module.forward_orig
+                del module.forward_orig
+
+    return _ctx()
+
+
 def _student_logits(
     base_model: Any,
     tokenizer: Any,
     answer: str,
-    weights: dict[str, Any],
+    lora_dict: dict[str, Any],
     ans_slice: slice,
+    layer_indices: list[int],
+    scaling: float,
 ) -> Any:
-    """Student logits over the answer span with the generated adapter hot-swapped.
+    """Student logits over the answer span with the generated adapter applied.
 
-    The adapter weights are produced (with grad) by the hypernetwork; loading
-    them into the base model keeps them in the autograd graph so gradients flow
-    back to the hypernetwork.
+    The adapter is applied functionally (not via load_state_dict) so the generated
+    A/B tensors stay in the autograd graph and gradients flow to the hypernetwork.
     """
     import torch  # noqa: PLC0415
 
     device = next(base_model.parameters()).device
     ans_ids = tokenizer(answer, add_special_tokens=False)["input_ids"]
     ans_only = torch.tensor([ans_ids], device=device)
-    if hasattr(base_model, "load_state_dict"):
-        base_model.load_state_dict(weights, strict=False)
-    return base_model(ans_only, use_cache=False).logits[0, ans_slice]
+    n_qs = torch.tensor([1], device=device)
+    with _functional_lora(base_model, layer_indices, lora_dict, scaling, n_qs):
+        return base_model(ans_only, use_cache=False).logits[0, ans_slice]
 
 
 def _grad_norm_summary(hypernet: Any) -> dict[str, float]:
