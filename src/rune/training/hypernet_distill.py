@@ -205,7 +205,6 @@ def run_hypernet_distillation(config: Any) -> None:
     log_path = ckpt_dir / "distill_metrics.jsonl"
 
     from rune.training.contrastive import (  # noqa: PLC0415
-        contrastive_margin_loss,
         edit_local_mask,
         extract_review_feedback,
         make_hard_negative,
@@ -287,11 +286,20 @@ def run_hypernet_distillation(config: Any) -> None:
                     student_logits, teacher_logits, base_top1, teacher_top1,
                     labels, k=cfg.topk,
                 )
+                student_top1 = student_logits.argmax(dim=-1).detach()
                 kl_val = float(loss.detach()) if loss.requires_grad else 0.0
                 margin_val = 0.0
                 # Contrastive specificity term: matched adapter must beat a hard-neg
-                # (same row, feedback swapped) on edit-local gold tokens. neg is
-                # detached (no_grad): push matched UP vs a fixed neg.
+                # (same row, feedback swapped) on edit-local gold tokens. Gradient
+                # must flow through BOTH paths — the hinge needs to push the negative
+                # adapter's gold logprob DOWN, not only matched UP (else a generic
+                # booster lifts both and the gap never opens). Memory-bounded: a
+                # detached neg pass fixes the hinge active-set, then the matched piece
+                # and neg piece backward sequentially so only one student grad-graph
+                # is alive at a time (keeps seq=768, peak ~ single-path).
+                neg_ctx: str | None = None
+                gold = active = None
+                neg_em = None
                 if cfg.contrastive and feedback_pool and mapped.get("feedback"):
                     emask = edit_local_mask(
                         tokenizer, mapped.get("pre_code", ""), ans_ids
@@ -301,30 +309,39 @@ def run_hypernet_distillation(config: Any) -> None:
                     )
                     if int(em.sum()) > 0:
                         gold = torch.tensor(ans_ids[1:], device=student_logits.device)
-                        lp_m_all = torch.log_softmax(
+                        lp_m = torch.log_softmax(
                             student_logits[:-1].float(), dim=-1
-                        ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)
-                        lp_m = lp_m_all[em]
+                        ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[em]
                         neg_fb = feedback_pool[micro % len(feedback_pool)]
                         neg_ctx = make_hard_negative(context, other_feedback=neg_fb)
-                        with torch.no_grad():
-                            neg_ld = _generate_lora_dict(
+                        with torch.no_grad():  # detached neg pass: active-set + value
+                            neg_ld0 = _generate_lora_dict(
                                 hypernet, neg_ctx, base_model, tokenizer,
                                 layer_indices, cfg.max_seq_length,
                             )
-                            neg_logits = _student_logits(
-                                base_model, tokenizer, ans_ids, neg_ld,
+                            neg_logits0 = _student_logits(
+                                base_model, tokenizer, ans_ids, neg_ld0,
                                 layer_indices, cfg.train_scaling,
                             )
-                            lp_n = torch.log_softmax(
-                                neg_logits[:-1].float(), dim=-1
+                            lp_n_det = torch.log_softmax(
+                                neg_logits0[:-1].float(), dim=-1
                             ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[em]
-                        margin = contrastive_margin_loss(
-                            lp_m, lp_n, cfg.contrastive_margin
+                            del neg_ld0, neg_logits0
+                        n_tok = int(em.sum())
+                        hinge = torch.clamp(
+                            cfg.contrastive_margin - (lp_m.detach() - lp_n_det),
+                            min=0.0,
                         )
-                        margin_val = float(margin.detach())
-                        loss = loss + cfg.contrastive_weight * margin
-                        del neg_ld, neg_logits
+                        margin_val = float(hinge.mean())
+                        active = hinge > 0.0
+                        if int(active.sum()) > 0:
+                            # matched piece (-lp_m on active set) joins the KL graph
+                            loss = loss + cfg.contrastive_weight * (
+                                -(lp_m[active]).sum() / n_tok
+                            )
+                            neg_em = em  # signal: run neg-grad backward post-matched
+                        else:
+                            neg_ctx = None
                 if cfg.l1_reg_coef > 0.0:
                     l1 = sum(
                         w["A"].abs().sum() + w["B"].abs().sum()
@@ -338,6 +355,28 @@ def run_hypernet_distillation(config: Any) -> None:
                 # Gradient accumulation: average over grad_accum_steps rows to damp
                 # the per-row difficulty variance before each optimizer update.
                 (loss / cfg.grad_accum_steps).backward()
+                del student_logits  # free matched graph before neg-grad forward
+                # Contrastive neg piece (+lp_n on the active set): grad through the
+                # negative context so the hinge pushes the wrong-context adapter DOWN.
+                if (neg_ctx is not None and neg_em is not None
+                        and active is not None and gold is not None):
+                    neg_ld = _generate_lora_dict(
+                        hypernet, neg_ctx, base_model, tokenizer,
+                        layer_indices, cfg.max_seq_length,
+                    )
+                    neg_logits = _student_logits(
+                        base_model, tokenizer, ans_ids, neg_ld,
+                        layer_indices, cfg.train_scaling,
+                    )
+                    lp_n = torch.log_softmax(
+                        neg_logits[:-1].float(), dim=-1
+                    ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[neg_em]
+                    n_tok = int(neg_em.sum())
+                    loss_neg: Any = (
+                        cfg.contrastive_weight * (lp_n[active]).sum() / n_tok
+                    )
+                    (loss_neg / cfg.grad_accum_steps).backward()
+                    del neg_ld, neg_logits, lp_n
                 accum += 1
                 did_step = accum >= cfg.grad_accum_steps
                 grad_norms: dict[str, float] = {}
@@ -352,7 +391,6 @@ def run_hypernet_distillation(config: Any) -> None:
                     step += 1
 
                 if did_step and step % cfg.log_steps == 0:
-                    student_top1 = student_logits.argmax(dim=-1)
                     da = diff_agreement(student_top1, teacher_top1, base_top1)
                     pres = preservation_agreement(student_top1, teacher_top1, base_top1)
                     recent_da.append(da)
@@ -420,7 +458,7 @@ def run_hypernet_distillation(config: Any) -> None:
                             mlflow.set_tag("best_val_diff_agreement", f"{best_val:.4f}")
                             mlflow.set_tag("best_val_step", str(step))
 
-                del lora_dict, teacher_logits, base_logits, student_logits
+                del lora_dict, teacher_logits, base_logits  # student freed earlier
                 gc.collect()
                 torch.cuda.empty_cache()
 
