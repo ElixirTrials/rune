@@ -247,9 +247,20 @@ def _map_record(rec: dict[str, Any]) -> dict[str, str] | None:
     return {"context": ctx, "answer": ans}
 
 
-def _corpus_stats(path: str) -> dict[str, int]:
-    """One-pass row accounting (reviewer): raw/mapped/skipped/empty contexts+answers."""
+def _corpus_stats(path: str) -> dict[str, Any]:
+    """One-pass row accounting (reviewer).
+
+    Beyond raw/mapped/skipped, reports the prefix-strip health that the S3 mapper
+    depends on: exact-prefix rate (teacher_text starts with activation_text) vs
+    fallback rate (it does not — brittle to whitespace/template drift), the answer
+    char-length distribution after stripping, and a few sampled fallback task_ids
+    so silent template drift can't pass unnoticed. (Token-length / diff-token
+    fraction need the tokenizer + base model — those live in the GPU readiness pass.)
+    """
     raw = mapped = empty_ctx = empty_ans = 0
+    exact_prefix = fallback = s3_rows = 0
+    ans_lens: list[int] = []
+    fallback_samples: list[str] = []
     for rec in _iter_corpus(path):
         raw += 1
         if "context" in rec and "answer" in rec:
@@ -259,16 +270,34 @@ def _corpus_stats(path: str) -> dict[str, int]:
             if at is None or tt is None:
                 continue
             at, tt = str(at), str(tt)
-            ctx = at
-            ans = tt[len(at):] if tt.startswith(at) else tt
+            s3_rows += 1
+            if tt.startswith(at):
+                exact_prefix += 1
+                ctx, ans = at, tt[len(at):]
+            else:
+                fallback += 1
+                if len(fallback_samples) < 5:
+                    fallback_samples.append(str(rec.get("task_id", "?")))
+                ctx, ans = at, tt
         if not ctx.strip():
             empty_ctx += 1
         if not ans.strip():
             empty_ans += 1
         if _map_record(rec) is not None:
             mapped += 1
-    stats = {"raw": raw, "mapped": mapped, "skipped": raw - mapped,
-             "empty_context": empty_ctx, "empty_answer": empty_ans}
+            ans_lens.append(len(ans.strip()))
+    ans_lens.sort()
+    dist = {}
+    if ans_lens:
+        n = len(ans_lens)
+        dist = {"min": ans_lens[0], "median": ans_lens[n // 2],
+                "p90": ans_lens[min(n - 1, int(0.9 * n))], "max": ans_lens[-1]}
+    stats: dict[str, Any] = {
+        "raw": raw, "mapped": mapped, "skipped": raw - mapped,
+        "empty_context": empty_ctx, "empty_answer": empty_ans,
+        "s3_rows": s3_rows, "exact_prefix": exact_prefix, "fallback": fallback,
+        "answer_char_len": dist, "fallback_task_ids": fallback_samples,
+    }
     logger.info("corpus stats: %s", stats)
     return stats
 
