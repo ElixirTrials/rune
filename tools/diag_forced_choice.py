@@ -164,8 +164,8 @@ def main() -> int:
     for step in range(args.steps):
         ctx, ans = records[step % 2]
         ld = _generate_lora_dict(hypernet, ctx, base, tok, layer_indices, max_len)
-        t, b, sl = _teacher_base_logits(base, tok, ctx, ans, max_len)
-        s = _student_logits(base, tok, ans, ld, sl, layer_indices, args.train_scaling)
+        t, b, ans_ids = _teacher_base_logits(base, tok, ctx, ans, max_len)
+        s = _student_logits(base, tok, ans_ids, ld, layer_indices, args.train_scaling)
         lab = torch.ones(t.shape[0], dtype=torch.long, device="cuda")
         loss = distill_step_loss(s, t, b.argmax(-1), t.argmax(-1), lab, k=50)
         if not loss.requires_grad:

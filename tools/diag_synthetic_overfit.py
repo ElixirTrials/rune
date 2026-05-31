@@ -110,15 +110,15 @@ def main() -> int:
     # ---- PHASE 0: adapter-application contract -----------------------------
     r0 = RECORDS[0]
     lora_dict = _generate_lora_dict(hypernet, r0["context"], base, tok, layer_indices, max_len)
-    teacher, base_logits, ans_slice = _teacher_base_logits(
+    teacher, base_logits, ans_ids = _teacher_base_logits(
         base, tok, r0["context"], r0["answer"], max_len
     )
     student = _student_logits(
-        base, tok, r0["answer"], lora_dict, ans_slice, layer_indices, args.scaling
+        base, tok, ans_ids, lora_dict, layer_indices, args.scaling
     )
     # base-no-adapter logits over the same answer span (scaling=0 -> adapter off):
     student_off = _student_logits(
-        base, tok, r0["answer"], lora_dict, ans_slice, layer_indices, 0.0
+        base, tok, ans_ids, lora_dict, layer_indices, 0.0
     )
     applies = float((student - student_off).abs().max())
     labels = torch.ones(teacher.shape[0], dtype=torch.long, device=device)
@@ -159,8 +159,8 @@ def main() -> int:
             if step >= args.max_steps:
                 break
             ld = _generate_lora_dict(hypernet, rec["context"], base, tok, layer_indices, max_len)
-            t, b, sl = _teacher_base_logits(base, tok, rec["context"], rec["answer"], max_len)
-            s = _student_logits(base, tok, rec["answer"], ld, sl, layer_indices, args.scaling)
+            t, b, ans_ids = _teacher_base_logits(base, tok, rec["context"], rec["answer"], max_len)
+            s = _student_logits(base, tok, ans_ids, ld, layer_indices, args.scaling)
             lab = torch.ones(t.shape[0], dtype=torch.long, device=device)
             loss = distill_step_loss(s, t, b.argmax(-1), t.argmax(-1), lab, k=hypernet_topk())
             if not loss.requires_grad:

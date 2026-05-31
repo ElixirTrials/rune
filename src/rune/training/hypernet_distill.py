@@ -121,6 +121,8 @@ def run_hypernet_distillation(config: Any) -> None:
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     log_path = ckpt_dir / "distill_metrics.jsonl"
 
+    _corpus_stats(cfg.corpus_path)
+
     step = 0
     skipped = 0
     with log_path.open("w") as logf:
@@ -128,11 +130,14 @@ def run_hypernet_distillation(config: Any) -> None:
             for record in _iter_corpus(cfg.corpus_path):
                 if cfg.max_steps is not None and step >= cfg.max_steps:
                     break
-                context = record["context"]
-                answer = record["answer"]
+                mapped = _map_record(record)
+                if mapped is None:
+                    skipped += 1
+                    continue
+                context, answer = mapped["context"], mapped["answer"]
 
                 # Teacher: base + context + answer, adapters disabled.
-                teacher_logits, base_logits, ans_slice = _teacher_base_logits(
+                teacher_logits, base_logits, ans_ids = _teacher_base_logits(
                     base_model, tokenizer, context, answer, cfg.max_seq_length
                 )
                 teacher_top1 = teacher_logits.argmax(dim=-1)
@@ -148,8 +153,8 @@ def run_hypernet_distillation(config: Any) -> None:
                     layer_indices, cfg.max_seq_length,
                 )
                 student_logits = _student_logits(
-                    base_model, tokenizer, answer, lora_dict,
-                    ans_slice, layer_indices, cfg.train_scaling,
+                    base_model, tokenizer, ans_ids, lora_dict,
+                    layer_indices, cfg.train_scaling,
                 )
 
                 loss = distill_step_loss(
@@ -206,12 +211,88 @@ def run_hypernet_distillation(config: Any) -> None:
 
 
 def _iter_corpus(path: str) -> Any:
-    """Yield {context, answer} records from a JSONL corpus."""
+    """Yield raw JSON records from a JSONL corpus."""
     with open(path) as f:
         for line in f:
             stripped = line.strip()
             if stripped:
                 yield json.loads(stripped)
+
+
+def _map_record(rec: dict[str, Any]) -> dict[str, str] | None:
+    """Map a raw corpus record to {context, answer}, or None if unusable.
+
+    Two schemas are supported:
+      - synthetic: {"context", "answer"} used directly.
+      - S3 github-pairs: {"activation_text", "teacher_text", ...}. teacher_text
+        is activation_text + the "## Revision ..." block, so context =
+        activation_text and answer = teacher_text minus the activation_text prefix
+        (the revision the adapter must reproduce). If teacher_text does not start
+        with activation_text (unexpected), fall back to the whole teacher_text.
+    Returns None when context or answer is empty after stripping.
+    """
+    if "context" in rec and "answer" in rec:
+        ctx, ans = str(rec.get("context", "")), str(rec.get("answer", ""))
+    else:
+        at = rec.get("activation_text")
+        tt = rec.get("teacher_text")
+        if at is None or tt is None:
+            return None
+        at, tt = str(at), str(tt)
+        ctx = at
+        ans = tt[len(at):] if tt.startswith(at) else tt
+    ctx, ans = ctx.strip(), ans.strip()
+    if not ctx or not ans:
+        return None
+    return {"context": ctx, "answer": ans}
+
+
+def _corpus_stats(path: str) -> dict[str, int]:
+    """One-pass row accounting (reviewer): raw/mapped/skipped/empty contexts+answers."""
+    raw = mapped = empty_ctx = empty_ans = 0
+    for rec in _iter_corpus(path):
+        raw += 1
+        if "context" in rec and "answer" in rec:
+            ctx, ans = str(rec.get("context", "")), str(rec.get("answer", ""))
+        else:
+            at, tt = rec.get("activation_text"), rec.get("teacher_text")
+            if at is None or tt is None:
+                continue
+            at, tt = str(at), str(tt)
+            ctx = at
+            ans = tt[len(at):] if tt.startswith(at) else tt
+        if not ctx.strip():
+            empty_ctx += 1
+        if not ans.strip():
+            empty_ans += 1
+        if _map_record(rec) is not None:
+            mapped += 1
+    stats = {"raw": raw, "mapped": mapped, "skipped": raw - mapped,
+             "empty_context": empty_ctx, "empty_answer": empty_ans}
+    logger.info("corpus stats: %s", stats)
+    return stats
+
+
+def _prepare_ids(
+    tokenizer: Any, context: str, answer: str, max_length: int
+) -> tuple[list[int], list[int]]:
+    """Answer-preserving truncation (issue #49 / reviewer).
+
+    The supervised span is the answer, so it must never be truncated away. Keep the
+    FULL answer; spend the remaining budget on the END of the context (the part
+    nearest the answer — for code-review rows that is the review feedback / current
+    code tail). If the answer alone exceeds max_length, keep the answer HEAD and use
+    no context. Returns (full_ids, ans_ids); the answer is always the suffix of
+    full_ids so teacher logits over the last len(ans_ids) positions are answer tokens.
+    """
+    ctx_ids = tokenizer(context, add_special_tokens=False)["input_ids"]
+    ans_ids = tokenizer(answer, add_special_tokens=False)["input_ids"]
+    if len(ans_ids) >= max_length:
+        ans_ids = ans_ids[:max_length]
+        return list(ans_ids), list(ans_ids)
+    budget = max_length - len(ans_ids)
+    ctx_ids = ctx_ids[-budget:]
+    return list(ctx_ids) + list(ans_ids), list(ans_ids)
 
 
 def _teacher_base_logits(
@@ -221,17 +302,20 @@ def _teacher_base_logits(
     answer: str,
     max_length: int,
 ) -> Any:
-    """Teacher (context+answer) and base (answer-only) logits over the answer span."""
+    """Teacher (context+answer) and base (answer-only) logits over the answer span.
+
+    Uses answer-preserving truncation so the supervised span is always answer
+    tokens (issue #49 / reviewer). Returns (teacher_logits, base_logits, ans_ids);
+    both logit tensors cover exactly the len(ans_ids) answer positions and are
+    position-aligned with the student's answer-only forward.
+    """
     import torch  # noqa: PLC0415
 
     device = next(base_model.parameters()).device
-    ctx_ids = tokenizer(context, add_special_tokens=False)["input_ids"]
-    ans_ids = tokenizer(answer, add_special_tokens=False)["input_ids"]
-
-    full = torch.tensor([ctx_ids + ans_ids], device=device)[:, :max_length]
-    ans_only = torch.tensor([ans_ids], device=device)[:, :max_length]
-    ans_len = min(len(ans_ids), max_length)
-    ans_slice = slice(-ans_len, None)
+    full_ids, ans_ids = _prepare_ids(tokenizer, context, answer, max_length)
+    ans_len = len(ans_ids)
+    full = torch.tensor([full_ids], device=device)
+    ans_only = torch.tensor([ans_ids], device=device)
 
     with torch.no_grad():
         ctx_disable = (
@@ -240,9 +324,9 @@ def _teacher_base_logits(
             else _nullctx()
         )
         with ctx_disable:
-            teacher = base_model(full, use_cache=False).logits[0, ans_slice]
-            base = base_model(ans_only, use_cache=False).logits[0, ans_slice]
-    return teacher, base, ans_slice
+            teacher = base_model(full, use_cache=False).logits[0, -ans_len:]
+            base = base_model(ans_only, use_cache=False).logits[0, -ans_len:]
+    return teacher, base, ans_ids
 
 
 def _generate_lora_dict(
@@ -337,25 +421,25 @@ def _functional_lora(
 def _student_logits(
     base_model: Any,
     tokenizer: Any,
-    answer: str,
+    ans_ids: list[int],
     lora_dict: dict[str, Any],
-    ans_slice: slice,
     layer_indices: list[int],
     scaling: float,
 ) -> Any:
     """Student logits over the answer span with the generated adapter applied.
 
-    The adapter is applied functionally (not via load_state_dict) so the generated
-    A/B tensors stay in the autograd graph and gradients flow to the hypernetwork.
+    Takes the prepared ans_ids (from _teacher_base_logits) so the student's
+    supervised span matches the teacher's exactly. The adapter is applied
+    functionally (not via load_state_dict) so the generated A/B tensors stay in the
+    autograd graph and gradients flow to the hypernetwork.
     """
     import torch  # noqa: PLC0415
 
     device = next(base_model.parameters()).device
-    ans_ids = tokenizer(answer, add_special_tokens=False)["input_ids"]
     ans_only = torch.tensor([ans_ids], device=device)
     n_qs = torch.tensor([1], device=device)
     with _functional_lora(base_model, layer_indices, lora_dict, scaling, n_qs):
-        return base_model(ans_only, use_cache=False).logits[0, ans_slice]
+        return base_model(ans_only, use_cache=False).logits[0]
 
 
 def _grad_norm_summary(hypernet: Any) -> dict[str, float]:

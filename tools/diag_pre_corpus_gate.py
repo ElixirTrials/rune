@@ -87,8 +87,8 @@ def _train(base, tok, hypernet, pairs, layer_indices, train_scaling, steps, lr, 
     for step in range(steps):
         ctx, ans = recs[step % len(recs)]
         ld = _generate_lora_dict(hypernet, ctx, base, tok, layer_indices, max_len)
-        t, b, sl = _teacher_base_logits(base, tok, ctx, ans, max_len)
-        s = _student_logits(base, tok, ans, ld, sl, layer_indices, train_scaling)
+        t, b, ans_ids = _teacher_base_logits(base, tok, ctx, ans, max_len)
+        s = _student_logits(base, tok, ans_ids, ld, layer_indices, train_scaling)
         lab = torch.ones(t.shape[0], dtype=torch.long, device=next(base.parameters()).device)
         loss = distill_step_loss(s, t, b.argmax(-1), t.argmax(-1), lab, k=50)
         if not loss.requires_grad:
