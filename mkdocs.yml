@@ -35,11 +35,11 @@ nav:
           - Adapter: api/model/adapter.md
       - Training:
           - Orchestrator: api/training/orchestrator.md
+          - HyperLoRA Distillation: api/training/hypernet_distill.md
+          - Collapse Metrics: api/training/collapse_metrics.md
           - Gate: api/training/gate.md
-          - Distillation Training: api/training/d2l_train.md
+          - D2L Train Config: api/training/d2l_train.md
           - Diff-Aware Loss: api/training/diff_loss.md
-          - Oracle Cache: api/training/oracle_cache.md
-          - Training Config: api/training/config.md
       - Benchmark:
           - Runner: api/benchmark.md
           - HPO: api/bench/hpo.md
@@ -50,6 +50,7 @@ nav:
       - Sandbox: api/sandbox.md
       - CLI: api/cli.md
   - Design Notes:
+      - "Issue #49 D2L Retrain": superpowers/specs/2026-05-30-issue49-d2l-self-distillation-retrain-design.md
       - Rune v2 Simplification Design: superpowers/specs/2026-05-21-rune-v2-simplification-design.md
       - Adapter Continuation Design: superpowers/specs/2026-05-26-adapter-continuation-design.md
       - Engine v2 Design: superpowers/specs/2026-05-26-engine-v2-design.md
