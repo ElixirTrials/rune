@@ -357,7 +357,11 @@ def run_hypernet_distillation(config: Any) -> None:
                 torch.cuda.empty_cache()
 
                 if did_step and cfg.save_steps and step % cfg.save_steps == 0:
-                    _save_checkpoint(hypernet, cfg, step, ckpt_dir)
+                    # Numbered (kept) checkpoints so the specificity trajectory can
+                    # be gated post-hoc — distinguishes "specificity emerges with
+                    # training" from "objective is structurally generic".
+                    _save_checkpoint(hypernet, cfg, step, ckpt_dir,
+                                     name=f"checkpoint_step{step}.pt")
 
     _save_checkpoint(hypernet, cfg, step, ckpt_dir)
     logger.info("distillation complete: steps=%d skipped=%d", step, skipped)
