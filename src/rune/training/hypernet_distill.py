@@ -457,7 +457,9 @@ def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
                         weight_decay=cfg.weight_decay)
         except Exception as exc:  # noqa: BLE001
             logger.warning("8-bit Adam unavailable (%s); falling back to AdamW", exc)
-    return torch.optim.AdamW(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
+    return torch.optim.AdamW(
+        params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay
+    )
 
 
 def _try_mlflow(cfg: Any) -> Any:
