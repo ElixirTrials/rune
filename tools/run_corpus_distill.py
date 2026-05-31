@@ -29,6 +29,7 @@ def main() -> int:
     ap.add_argument("--val-corpus", default="")
     ap.add_argument("--grad-accum", type=int, default=8)
     ap.add_argument("--val-steps", type=int, default=200)
+    ap.add_argument("--save-steps", type=int, default=200)
     ap.add_argument("--contrastive", action="store_true")
     ap.add_argument("--contrastive-weight", type=float, default=1.0)
     ap.add_argument("--contrastive-margin", type=float, default=1.0)
@@ -51,7 +52,7 @@ def main() -> int:
         contrastive_weight=a.contrastive_weight,
         contrastive_margin=a.contrastive_margin,
         experiment_name=a.exp,
-        save_steps=200,
+        save_steps=a.save_steps,
         log_steps=10,
     )
     run_hypernet_distillation(cfg)
