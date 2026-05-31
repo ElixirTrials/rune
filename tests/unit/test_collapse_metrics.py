@@ -4,6 +4,9 @@ import torch
 from rune.training.collapse_metrics import (
     assert_optimizer_covers,
     diff_agreement,
+    diff_token_fraction,
+    preservation_agreement,
+    should_early_stop,
     summarize_named_tensors,
 )
 
@@ -40,6 +43,56 @@ def test_diff_agreement_one_when_student_matches_teacher_on_diffs() -> None:
     teacher = torch.tensor([1, 2, 3, 1])
     student = teacher.clone()
     assert diff_agreement(student, teacher, base) == 1.0
+
+
+def test_diff_token_fraction() -> None:
+    base = torch.tensor([1, 1, 1, 1])
+    teacher = torch.tensor([1, 2, 3, 1])  # differs at 2 of 4
+    assert diff_token_fraction(base, teacher) == 0.5
+
+
+def test_preservation_agreement_high_when_student_keeps_agreement_region() -> None:
+    base = torch.tensor([5, 5, 5, 9])
+    teacher = torch.tensor([5, 5, 5, 1])  # agreement region = first 3 positions
+    student = torch.tensor([5, 5, 5, 0])  # keeps all 3 agreement positions
+    assert preservation_agreement(student, teacher, base) == 1.0
+
+
+def test_preservation_agreement_drops_when_adapter_breaks_agreement_region() -> None:
+    base = torch.tensor([5, 5, 5, 5])
+    teacher = torch.tensor([5, 5, 5, 5])  # all agreement
+    student = torch.tensor([5, 9, 9, 9])  # breaks 3 of 4
+    assert preservation_agreement(student, teacher, base) == 0.25
+
+
+def test_should_early_stop_none_during_warmup() -> None:
+    assert should_early_stop(
+        10, 100, [0.0], [0.0], 100, 100,
+        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
+    ) is None
+
+
+def test_should_early_stop_fires_on_collapsed_preservation() -> None:
+    reason = should_early_stop(
+        200, 100, [0.3], [0.1], 0, 100,
+        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
+    )
+    assert reason is not None and "preservation" in reason
+
+
+def test_should_early_stop_fires_on_high_skip_frac() -> None:
+    reason = should_early_stop(
+        200, 100, [0.3], [0.9], 80, 100,
+        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
+    )
+    assert reason is not None and "skip_frac" in reason
+
+
+def test_should_early_stop_passes_when_healthy() -> None:
+    assert should_early_stop(
+        200, 100, [0.3], [0.9], 5, 100,
+        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
+    ) is None
 
 
 def test_summarize_named_tensors_reports_absmax() -> None:

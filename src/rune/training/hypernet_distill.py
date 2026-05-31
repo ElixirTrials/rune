@@ -47,6 +47,12 @@ class DistillConfig(D2LTrainConfig):
     log_steps: int = 10
     device: str = "cuda"
     train_scaling: float = 2.0
+    # Early-stop guardrails (reviewer): abort a long run that is learning nothing
+    # useful or damaging the preservation region.
+    early_stop_warmup: int = 150
+    min_diff_agreement: float = 0.02
+    min_preservation: float = 0.5
+    max_skip_frac: float = 0.5
 
 
 def run_hypernet_distillation(config: Any) -> None:
@@ -79,10 +85,15 @@ def run_hypernet_distillation(config: Any) -> None:
     from rune.training.collapse_metrics import (  # noqa: PLC0415
         assert_optimizer_covers,
         diff_agreement,
+        diff_token_fraction,
+        preservation_agreement,
+        should_early_stop,
         summarize_named_tensors,
     )
 
     cfg = config if isinstance(config, DistillConfig) else DistillConfig(**dict(config))
+
+    mlflow = _try_mlflow(cfg)
 
     free = subprocess.run(["free", "-g"], capture_output=True, text=True, check=False)
     logger.info("free -g:\n%s", free.stdout)
@@ -125,8 +136,13 @@ def run_hypernet_distillation(config: Any) -> None:
 
     step = 0
     skipped = 0
+    recent_da: list[float] = []
+    recent_pres: list[float] = []
+    stop_reason: str | None = None
     with log_path.open("w") as logf:
         for _epoch in range(cfg.num_epochs):
+            if stop_reason is not None:
+                break
             for record in _iter_corpus(cfg.corpus_path):
                 if cfg.max_steps is not None and step >= cfg.max_steps:
                     break
@@ -184,19 +200,47 @@ def run_hypernet_distillation(config: Any) -> None:
 
                 if step % cfg.log_steps == 0:
                     student_top1 = student_logits.argmax(dim=-1)
+                    da = diff_agreement(student_top1, teacher_top1, base_top1)
+                    pres = preservation_agreement(student_top1, teacher_top1, base_top1)
+                    recent_da.append(da)
+                    recent_pres.append(pres)
+                    recent_da[:] = recent_da[-20:]
+                    recent_pres[:] = recent_pres[-20:]
                     rec = {
                         "step": step,
                         "loss": float(loss.detach()),
-                        "diff_agreement": diff_agreement(
-                            student_top1, teacher_top1, base_top1
-                        ),
+                        "diff_agreement": da,
+                        "preservation": pres,
+                        "diff_token_frac": diff_token_fraction(base_top1, teacher_top1),
                         "skipped": skipped,
                         **summarize_named_tensors(watched),
                         **_grad_norm_summary(hypernet),
                     }
                     logf.write(json.dumps(rec) + "\n")
                     logf.flush()
-                    logger.info("step=%d loss=%.4f", step, rec["loss"])
+                    if mlflow is not None:
+                        mlflow.log_metrics(
+                            {k: v for k, v in rec.items()
+                             if isinstance(v, (int, float))},
+                            step=step,
+                        )
+                    logger.info(
+                        "step=%d loss=%.4f diff_agr=%.3f pres=%.3f difftok=%.3f",
+                        step, rec["loss"], da, pres, rec["diff_token_frac"],
+                    )
+
+                    stop_reason = should_early_stop(
+                        step, cfg.early_stop_warmup, recent_da, recent_pres,
+                        skipped, skipped + step,
+                        min_diff_agreement=cfg.min_diff_agreement,
+                        min_preservation=cfg.min_preservation,
+                        max_skip_frac=cfg.max_skip_frac,
+                    )
+                    if stop_reason is not None:
+                        logger.warning("EARLY STOP at step %d: %s", step, stop_reason)
+                        if mlflow is not None:
+                            mlflow.set_tag("early_stop_reason", stop_reason)
+                        break
 
                 step += 1
                 del lora_dict, teacher_logits, base_logits, student_logits
@@ -208,6 +252,35 @@ def run_hypernet_distillation(config: Any) -> None:
 
     _save_checkpoint(hypernet, cfg, step, ckpt_dir)
     logger.info("distillation complete: steps=%d skipped=%d", step, skipped)
+    if mlflow is not None:
+        mlflow.set_tag("final_step", str(step))
+        mlflow.end_run()
+
+
+def _try_mlflow(cfg: Any) -> Any:
+    """Start an MLflow run for live training monitoring; None if unavailable.
+
+    Tracking URI defaults to the repo's live server (localhost:5000) but honours
+    MLFLOW_TRACKING_URI. Never fatal — a monitoring backend must not break training.
+    """
+    import os  # noqa: PLC0415
+
+    try:
+        import mlflow  # noqa: PLC0415
+
+        mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+        mlflow.set_experiment(cfg.experiment_name)
+        mlflow.start_run(run_name=cfg.experiment_name)
+        keys = ("model_id", "corpus_path", "learning_rate", "num_epochs",
+                "max_seq_length", "scaler_b_init", "train_scaling", "topk",
+                "l1_reg_coef", "max_steps", "early_stop_warmup",
+                "min_diff_agreement", "min_preservation", "max_skip_frac")
+        mlflow.log_params({k: getattr(cfg, k, None) for k in keys})
+        logger.info("MLflow run started (experiment=%s)", cfg.experiment_name)
+        return mlflow
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("MLflow disabled (%s); continuing with JSONL only", exc)
+        return None
 
 
 def _iter_corpus(path: str) -> Any:
