@@ -75,6 +75,12 @@ class DistillConfig(D2LTrainConfig):
     val_corpus_path: str = ""
     val_sample: int = 40
     val_steps: int = 200
+    # Contrastive specificity term (issue #49): force the matched adapter to beat a
+    # hard-negative (same row, feedback content swapped) on edit-local gold tokens,
+    # so the objective rewards trajectory MEMORY, not a generic edit-booster.
+    contrastive: bool = False
+    contrastive_weight: float = 1.0
+    contrastive_margin: float = 1.0
 
 
 def run_hypernet_distillation(config: Any) -> None:
@@ -198,9 +204,30 @@ def run_hypernet_distillation(config: Any) -> None:
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     log_path = ckpt_dir / "distill_metrics.jsonl"
 
+    from rune.training.contrastive import (  # noqa: PLC0415
+        contrastive_margin_loss,
+        edit_local_mask,
+        extract_review_feedback,
+        make_hard_negative,
+    )
+
     _corpus_stats(cfg.corpus_path)
-    records = [m for rec in _iter_corpus(cfg.corpus_path) if (m := _map_record(rec))]
+    records = []
+    for rec in _iter_corpus(cfg.corpus_path):
+        m = _map_record(rec)
+        if not m:
+            continue
+        if cfg.contrastive:
+            m["pre_code"] = str(rec.get("pre_code", ""))
+            m["feedback"] = extract_review_feedback(m["context"])
+        records.append(m)
     logger.info("loaded %d mapped training records", len(records))
+    # Feedback pool for distribution-matched hard negatives (swap a DIFFERENT row's
+    # real feedback into this row's scaffold).
+    feedback_pool = (
+        [r["feedback"] for r in records if r.get("feedback")]
+        if cfg.contrastive else []
+    )
     val_records: list[dict[str, str]] = []
     if cfg.val_corpus_path:
         val_records = [
@@ -260,6 +287,44 @@ def run_hypernet_distillation(config: Any) -> None:
                     student_logits, teacher_logits, base_top1, teacher_top1,
                     labels, k=cfg.topk,
                 )
+                kl_val = float(loss.detach()) if loss.requires_grad else 0.0
+                margin_val = 0.0
+                # Contrastive specificity term: matched adapter must beat a hard-neg
+                # (same row, feedback swapped) on edit-local gold tokens. neg is
+                # detached (no_grad): push matched UP vs a fixed neg.
+                if cfg.contrastive and feedback_pool and mapped.get("feedback"):
+                    emask = edit_local_mask(
+                        tokenizer, mapped.get("pre_code", ""), ans_ids
+                    )
+                    em = torch.tensor(
+                        emask[1:], device=student_logits.device, dtype=torch.bool
+                    )
+                    if int(em.sum()) > 0:
+                        gold = torch.tensor(ans_ids[1:], device=student_logits.device)
+                        lp_m_all = torch.log_softmax(
+                            student_logits[:-1].float(), dim=-1
+                        ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)
+                        lp_m = lp_m_all[em]
+                        neg_fb = feedback_pool[micro % len(feedback_pool)]
+                        neg_ctx = make_hard_negative(context, other_feedback=neg_fb)
+                        with torch.no_grad():
+                            neg_ld = _generate_lora_dict(
+                                hypernet, neg_ctx, base_model, tokenizer,
+                                layer_indices, cfg.max_seq_length,
+                            )
+                            neg_logits = _student_logits(
+                                base_model, tokenizer, ans_ids, neg_ld,
+                                layer_indices, cfg.train_scaling,
+                            )
+                            lp_n = torch.log_softmax(
+                                neg_logits[:-1].float(), dim=-1
+                            ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[em]
+                        margin = contrastive_margin_loss(
+                            lp_m, lp_n, cfg.contrastive_margin
+                        )
+                        margin_val = float(margin.detach())
+                        loss = loss + cfg.contrastive_weight * margin
+                        del neg_ld, neg_logits
                 if cfg.l1_reg_coef > 0.0:
                     l1 = sum(
                         w["A"].abs().sum() + w["B"].abs().sum()
@@ -302,6 +367,8 @@ def run_hypernet_distillation(config: Any) -> None:
                         "preservation": pres,
                         "diff_token_frac": diff_token_fraction(base_top1, teacher_top1),
                         "skipped": skipped,
+                        "kl_loss": kl_val,
+                        "margin_loss": margin_val,
                         "ans_len": float(len(ans_ids)),
                         "gpu_peak_gb": torch.cuda.max_memory_allocated() / 1e9,
                         **summarize_named_tensors(watched),
