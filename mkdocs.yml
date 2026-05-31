@@ -2,6 +2,10 @@ site_name: Rune
 site_description: Local-first coding agent with hypernetwork-generated LoRA adapters
 repo_url: https://github.com/elixir-trials/rune
 
+validation:
+  nav:
+    omitted_files: ignore
+
 theme:
   name: material
   palette:
