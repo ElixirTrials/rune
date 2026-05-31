@@ -26,6 +26,9 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--epochs", type=int, default=1)
     ap.add_argument("--max-seq-length", type=int, default=1024)
+    ap.add_argument("--val-corpus", default="")
+    ap.add_argument("--grad-accum", type=int, default=8)
+    ap.add_argument("--val-steps", type=int, default=200)
     ap.add_argument("--exp", default="issue49-d2l-corpus")
     a = ap.parse_args()
     cfg = DistillConfig(
@@ -38,6 +41,9 @@ def main() -> int:
         learning_rate=a.lr,
         num_epochs=a.epochs,
         max_seq_length=a.max_seq_length,
+        val_corpus_path=a.val_corpus,
+        grad_accum_steps=a.grad_accum,
+        val_steps=a.val_steps,
         experiment_name=a.exp,
         save_steps=200,
         log_steps=10,

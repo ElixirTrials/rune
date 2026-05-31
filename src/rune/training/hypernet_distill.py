@@ -63,6 +63,17 @@ class DistillConfig(D2LTrainConfig):
     load_in_4bit: bool = True
     gradient_checkpointing: bool = False
     use_8bit_optim: bool = True
+    # Optimization regime (loss-investigation fixes): the corpus is repo-grouped, so
+    # shuffle to decorrelate consecutive batch-1 steps; accumulate gradients to
+    # average over per-row difficulty variance; skip zero-diff rows (no signal);
+    # evaluate on a held-out split for the honest, ordering-independent progress curve.
+    shuffle: bool = True
+    seed: int = 0
+    grad_accum_steps: int = 8
+    skip_zero_diff: bool = True
+    val_corpus_path: str = ""
+    val_sample: int = 40
+    val_steps: int = 200
 
 
 def run_hypernet_distillation(config: Any) -> None:
@@ -187,37 +198,49 @@ def run_hypernet_distillation(config: Any) -> None:
     log_path = ckpt_dir / "distill_metrics.jsonl"
 
     _corpus_stats(cfg.corpus_path)
+    records = [m for rec in _iter_corpus(cfg.corpus_path) if (m := _map_record(rec))]
+    logger.info("loaded %d mapped training records", len(records))
+    val_records: list[dict[str, str]] = []
+    if cfg.val_corpus_path:
+        val_records = [
+            m for rec in _iter_corpus(cfg.val_corpus_path) if (m := _map_record(rec))
+        ]
+        logger.info("loaded %d held-out val records", len(val_records))
 
-    step = 0
+    step = 0          # optimizer steps
+    micro = 0         # records consumed (micro-steps)
     skipped = 0
     recent_da: list[float] = []
     recent_pres: list[float] = []
     stop_reason: str | None = None
+    optimizer.zero_grad()
+    accum = 0
     with log_path.open("w") as logf:
-        for _epoch in range(cfg.num_epochs):
+        for epoch in range(cfg.num_epochs):
             if stop_reason is not None:
                 break
-            for record in _iter_corpus(cfg.corpus_path):
+            epoch_records = (
+                _shuffled(records, cfg.seed, epoch) if cfg.shuffle else records
+            )
+            for mapped in epoch_records:
                 if cfg.max_steps is not None and step >= cfg.max_steps:
                     break
-                mapped = _map_record(record)
-                if mapped is None:
-                    skipped += 1
-                    continue
                 context, answer = mapped["context"], mapped["answer"]
+                micro += 1
 
-                # Teacher: base + context + answer, adapters disabled.
                 teacher_logits, base_logits, ans_ids = _teacher_base_logits(
                     base_model, tokenizer, context, answer, cfg.max_seq_length
                 )
                 teacher_top1 = teacher_logits.argmax(dim=-1)
                 base_top1 = base_logits.argmax(dim=-1)
+                # Skip rows with no diff positions: the masked objective has no signal
+                # there (loss==0), so they only add batch-1 noise / wasted compute.
+                if cfg.skip_zero_diff and int((base_top1 != teacher_top1).sum()) == 0:
+                    skipped += 1
+                    del teacher_logits, base_logits
+                    continue
                 labels = torch.ones_like(teacher_top1)
 
-                # Student: base + generated adapter (grad-carrying), answer-only
-                # prompt. lora_dict comes straight from generate_weights (NOT the
-                # PEFT export) and is applied functionally so autograd flows back
-                # to the hypernetwork.
                 lora_dict = _generate_lora_dict(
                     hypernet, context, base_model, tokenizer,
                     layer_indices, cfg.max_seq_length,
@@ -228,12 +251,8 @@ def run_hypernet_distillation(config: Any) -> None:
                 )
 
                 loss = distill_step_loss(
-                    student_logits,
-                    teacher_logits,
-                    base_top1,
-                    teacher_top1,
-                    labels,
-                    k=cfg.topk,
+                    student_logits, teacher_logits, base_top1, teacher_top1,
+                    labels, k=cfg.topk,
                 )
                 if cfg.l1_reg_coef > 0.0:
                     l1 = sum(
@@ -241,18 +260,23 @@ def run_hypernet_distillation(config: Any) -> None:
                         for w in lora_dict.values()
                     )
                     loss = loss + cfg.l1_reg_coef * l1
-
                 if not loss.requires_grad:
                     skipped += 1
-                    step += 1
                     continue
 
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(trainable, cfg.grad_clip)
-                optimizer.step()
+                # Gradient accumulation: average over grad_accum_steps rows to damp
+                # the per-row difficulty variance before each optimizer update.
+                (loss / cfg.grad_accum_steps).backward()
+                accum += 1
+                did_step = accum >= cfg.grad_accum_steps
+                if did_step:
+                    torch.nn.utils.clip_grad_norm_(trainable, cfg.grad_clip)
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    accum = 0
+                    step += 1
 
-                if step % cfg.log_steps == 0:
+                if did_step and step % cfg.log_steps == 0:
                     student_top1 = student_logits.argmax(dim=-1)
                     da = diff_agreement(student_top1, teacher_top1, base_top1)
                     pres = preservation_agreement(student_top1, teacher_top1, base_top1)
@@ -262,6 +286,7 @@ def run_hypernet_distillation(config: Any) -> None:
                     recent_pres[:] = recent_pres[-20:]
                     rec = {
                         "step": step,
+                        "micro": micro,
                         "loss": float(loss.detach()),
                         "diff_agreement": da,
                         "preservation": pres,
@@ -282,10 +307,9 @@ def run_hypernet_distillation(config: Any) -> None:
                         "step=%d loss=%.4f diff_agr=%.3f pres=%.3f difftok=%.3f",
                         step, rec["loss"], da, pres, rec["diff_token_frac"],
                     )
-
                     stop_reason = should_early_stop(
                         step, cfg.early_stop_warmup, recent_da, recent_pres,
-                        skipped, skipped + step,
+                        skipped, skipped + micro,
                         min_diff_agreement=cfg.min_diff_agreement,
                         min_preservation=cfg.min_preservation,
                         max_skip_frac=cfg.max_skip_frac,
@@ -296,12 +320,22 @@ def run_hypernet_distillation(config: Any) -> None:
                             mlflow.set_tag("early_stop_reason", stop_reason)
                         break
 
-                step += 1
+                # Periodic held-out val eval — the ordering/difficulty-independent
+                # progress curve (train-loss is confounded by per-row difficulty).
+                if did_step and val_records and step % cfg.val_steps == 0:
+                    vmet = _eval_on_split(
+                        base_model, hypernet, tokenizer, val_records,
+                        layer_indices, cfg, hypernet_topk=cfg.topk,
+                    )
+                    if mlflow is not None:
+                        mlflow.log_metrics(vmet, step=step)
+                    logger.info("VAL step=%d %s", step, json.dumps(vmet))
+
                 del lora_dict, teacher_logits, base_logits, student_logits
                 gc.collect()
                 torch.cuda.empty_cache()
 
-                if cfg.save_steps and step % cfg.save_steps == 0:
+                if did_step and cfg.save_steps and step % cfg.save_steps == 0:
                     _save_checkpoint(hypernet, cfg, step, ckpt_dir)
 
     _save_checkpoint(hypernet, cfg, step, ckpt_dir)
@@ -320,6 +354,68 @@ def _base_is_deterministic(base_model: Any, device: str) -> bool:
         a = base_model(ids, use_cache=False).logits
         b = base_model(ids, use_cache=False).logits
     return bool(torch.allclose(a, b, atol=1e-4))
+
+
+def _shuffled(records: list[Any], seed: int, epoch: int) -> list[Any]:
+    """Deterministic per-epoch shuffle (decorrelate repo-grouped consecutive rows)."""
+    import random  # noqa: PLC0415
+
+    out = list(records)
+    random.Random(seed + epoch).shuffle(out)
+    return out
+
+
+def _eval_on_split(
+    base_model: Any,
+    hypernet: Any,
+    tokenizer: Any,
+    val_records: list[dict[str, str]],
+    layer_indices: list[int],
+    cfg: DistillConfig,
+    hypernet_topk: int,
+) -> dict[str, float]:
+    """Held-out diff_agreement/preservation on val families (never trained on).
+
+    The honest, ordering/difficulty-independent progress curve — train-loss is
+    confounded by per-row diff-token count (corr ~0.88). Eval-only (no grad).
+    """
+    import statistics  # noqa: PLC0415
+
+    import torch  # noqa: PLC0415
+
+    from rune.training.collapse_metrics import (  # noqa: PLC0415
+        diff_agreement,
+        preservation_agreement,
+    )
+
+    hypernet.eval()
+    das: list[float] = []
+    press: list[float] = []
+    with torch.no_grad():
+        for m in val_records[: cfg.val_sample]:
+            ctx, ans = m["context"], m["answer"]
+            t, b, ans_ids = _teacher_base_logits(
+                base_model, tokenizer, ctx, ans, cfg.max_seq_length
+            )
+            tt, bt = t.argmax(dim=-1), b.argmax(dim=-1)
+            if int((bt != tt).sum()) == 0:
+                continue
+            ld = _generate_lora_dict(
+                hypernet, ctx, base_model, tokenizer, layer_indices, cfg.max_seq_length
+            )
+            s = _student_logits(
+                base_model, tokenizer, ans_ids, ld, layer_indices, cfg.train_scaling
+            )
+            stt = s.argmax(dim=-1)
+            das.append(diff_agreement(stt, tt, bt))
+            press.append(preservation_agreement(stt, tt, bt))
+            del ld, t, b, s
+    hypernet.train()
+    return {
+        "val_diff_agreement": statistics.mean(das) if das else 0.0,
+        "val_preservation": statistics.mean(press) if press else 1.0,
+        "val_n": float(len(das)),
+    }
 
 
 def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
