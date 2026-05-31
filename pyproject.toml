@@ -54,7 +54,6 @@ dev = [
     "types-PyYAML>=6.0",
     "ruff>=0.14.0",
     "mkdocs>=1.6.0",
-    "mkdocs-material>=9.6.0",
     "mkdocstrings[python]>=0.27.0",
     "pre-commit>=4.6.0",
     "ggshield>=1.10.8",

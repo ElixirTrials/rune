@@ -1,5 +1,8 @@
-# Oracle Cache
+# Retired Oracle Cache
 
-Provides round-2 oracle-adapter routing: deriving bin keys from records, auditing oracle coverage, loading PEFT safetensors into functional-LoRA dicts, and an LRU OracleAdapterCache keyed by bin_key.
+The previous oracle-adapter cache was removed from the active training path.
+Rune currently trains the HyperLoRA generator with privileged-context D2L
+self-distillation: the teacher is the frozen base model with trajectory context
+in prompt, not a per-bin oracle adapter.
 
-::: rune.training.oracle_cache
+This page is retained only to explain the API removal for older links.

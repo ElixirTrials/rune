@@ -1,5 +1,8 @@
-# Distillation Training
+# D2L Train Config
 
-Declares the D2LTrainConfig pydantic base config and the run_distillation entrypoint that loads the JSONL corpus and runs a DiffAwareSFTTrainer (built via trl.SFTConfig + LoRA) for round-2 distillation.
+Declares the `D2LTrainConfig` pydantic base config shared by the active
+HyperLoRA distillation loop. The GPU-heavy training implementation is in
+`rune.training.hypernet_distill`; this module intentionally stays lightweight
+and CPU-importable.
 
 ::: rune.training.d2l_train

@@ -1,5 +1,10 @@
-# Training Config
+# Retired Training Config
 
-Defines Round2TrainConfig, extending D2LTrainConfig with oracle-teacher routing fields (registry URL, oracle LRU cache cap, minimum coverage gate, fallback policy) and validators.
+The previous `rune.training.config` module and `Round2TrainConfig` oracle
+routing surface have been removed from the active Issue #49 training path.
 
-::: rune.training.config
+Use `rune.training.d2l_train.D2LTrainConfig` for shared config fields and
+`rune.training.hypernet_distill.DistillConfig` for the active HyperLoRA D2L
+distillation knobs.
+
+This page is retained only to explain the API removal for older links.

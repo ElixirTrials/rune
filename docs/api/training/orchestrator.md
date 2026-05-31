@@ -1,5 +1,8 @@
 # Orchestrator
 
-Drives the three-stage training pipeline (oracle QLoRA stub -> hypernetwork distillation -> success gate), with an optional Optuna HPO mode over training hyperparameters; the success-gate scores are currently placeholders.
+Dispatches the active HyperLoRA D2L distillation stage and optional Optuna HPO
+wrapper. The benchmark success gate is evaluated outside the inline training
+pipeline, after adapter checkpoints are trained and held-out evaluation is
+wired.
 
 ::: rune.training.orchestrator
