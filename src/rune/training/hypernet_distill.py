@@ -347,7 +347,8 @@ def run_hypernet_distillation(config: Any) -> None:
                     if vmet["val_diff_agreement"] > best_val:
                         best_val = vmet["val_diff_agreement"]
                         _save_checkpoint(hypernet, cfg, step, ckpt_dir,
-                                         name="checkpoint_best.pt")
+                                         name="checkpoint_best.pt",
+                                         mlflow_handle=mlflow)
                         if mlflow is not None:
                             mlflow.set_tag("best_val_diff_agreement", f"{best_val:.4f}")
                             mlflow.set_tag("best_val_step", str(step))
@@ -361,9 +362,10 @@ def run_hypernet_distillation(config: Any) -> None:
                     # be gated post-hoc — distinguishes "specificity emerges with
                     # training" from "objective is structurally generic".
                     _save_checkpoint(hypernet, cfg, step, ckpt_dir,
-                                     name=f"checkpoint_step{step}.pt")
+                                     name=f"checkpoint_step{step}.pt",
+                                     mlflow_handle=mlflow)
 
-    _save_checkpoint(hypernet, cfg, step, ckpt_dir)
+    _save_checkpoint(hypernet, cfg, step, ckpt_dir, mlflow_handle=mlflow)
     logger.info("distillation complete: steps=%d skipped=%d", step, skipped)
     if mlflow is not None:
         mlflow.set_tag("final_step", str(step))
@@ -782,9 +784,14 @@ def _grad_norm_summary(hypernet: Any) -> dict[str, float]:
 
 def _save_checkpoint(
     hypernet: Any, cfg: DistillConfig, step: int, ckpt_dir: Any,
-    name: str = "checkpoint.pt",
+    name: str = "checkpoint.pt", mlflow_handle: Any = None,
 ) -> None:
-    """Persist the hypernetwork state dict + config + step."""
+    """Persist the hypernetwork state dict + config + step.
+
+    Also logs the file as an MLflow artifact when a handle is given, so the
+    checkpoint is durable in the artifact store (S3) and not just in ephemeral
+    local /tmp (issue #49: prior runs logged NO checkpoint artifact).
+    """
     import torch  # noqa: PLC0415
 
     path = ckpt_dir / name
@@ -797,6 +804,12 @@ def _save_checkpoint(
         path,
     )
     logger.info("saved checkpoint step=%d → %s", step, path)
+    if mlflow_handle is not None:
+        try:
+            mlflow_handle.log_artifact(str(path), artifact_path="checkpoints")
+            logger.info("logged checkpoint artifact to MLflow: %s", name)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MLflow log_artifact failed for %s: %s", name, exc)
 
 
 def _nullctx() -> Any:
