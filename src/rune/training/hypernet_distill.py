@@ -273,8 +273,12 @@ def run_hypernet_distillation(config: Any) -> None:
                 (loss / cfg.grad_accum_steps).backward()
                 accum += 1
                 did_step = accum >= cfg.grad_accum_steps
+                grad_norms: dict[str, float] = {}
                 if did_step:
                     torch.nn.utils.clip_grad_norm_(trainable, cfg.grad_clip)
+                    # Capture grad norms BEFORE zero_grad, else they read as empty
+                    # (the grad-accum logging bug): confirms scaler_B/head get gradient.
+                    grad_norms = _grad_norm_summary(hypernet)
                     optimizer.step()
                     optimizer.zero_grad()
                     accum = 0
@@ -299,7 +303,7 @@ def run_hypernet_distillation(config: Any) -> None:
                         "ans_len": float(len(ans_ids)),
                         "gpu_peak_gb": torch.cuda.max_memory_allocated() / 1e9,
                         **summarize_named_tensors(watched),
-                        **_grad_norm_summary(hypernet),
+                        **grad_norms,
                     }
                     logf.write(json.dumps(rec) + "\n")
                     logf.flush()
