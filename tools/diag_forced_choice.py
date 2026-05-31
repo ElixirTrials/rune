@@ -56,6 +56,11 @@ ANS_B = "The MAGIC_OFFSET value is 11111."
 PREFIX = "The MAGIC_OFFSET value is"
 VAL_A = " 73921"
 VAL_B = " 11111"
+# Held-out generalization pair (NEVER trained): tests a reusable content-binding
+# mechanism vs. mere memorization of the A/B prompt-label associations (reviewer).
+CTX_D = "Internal note: MAGIC_OFFSET = 55555 for the payload."
+VAL_D = " 55555"
+VAL_D_FOIL = " 88888"
 
 
 def _value_logprob(base, tok, hypernet, context, prefix, value, layer_indices, scaling, max_len) -> float:
@@ -193,21 +198,31 @@ def main() -> int:
         a_foil = _value_logprob(base, tok, hypernet, CTX_A, PREFIX, VAL_B, layer_indices, s, max_len)
         b_correct = _value_logprob(base, tok, hypernet, CTX_B, PREFIX, VAL_B, layer_indices, s, max_len)
         b_foil = _value_logprob(base, tok, hypernet, CTX_B, PREFIX, VAL_A, layer_indices, s, max_len)
+        # held-out generalization (unseen value 55555): reusable binding, not memorization
+        d_correct = _value_logprob(base, tok, hypernet, CTX_D, PREFIX, VAL_D, layer_indices, s, max_len)
+        d_foil = _value_logprob(base, tok, hypernet, CTX_D, PREFIX, VAL_D_FOIL, layer_indices, s, max_len)
         degen = _degeneration(base, tok, hypernet, CTX_A, PREFIX, layer_indices, s, max_len)
         sweep.append({
             "scaling": s,
             "margin_A": a_correct - a_foil,
             "margin_B": b_correct - b_foil,
-            "both_positive": (a_correct - a_foil > 0) and (b_correct - b_foil > 0),
+            "margin_heldout_D": d_correct - d_foil,
+            "train_pair_fits": (a_correct - a_foil > 0) and (b_correct - b_foil > 0),
+            "heldout_generalizes": (d_correct - d_foil > 0),
             "degeneration": degen,
         })
         print("margin", json.dumps(sweep[-1]))
     out["forced_choice_sweep"] = sweep
-    out["H2_supported"] = any(x["both_positive"] and x["degeneration"] < 0.5 for x in sweep)
+    # Downgraded interpretation (reviewer): positive train-pair margins prove the
+    # pathway CAN FIT the synthetic pair, not readiness. Held-out positivity is the
+    # stronger signal of a reusable content-binding mechanism.
+    out["train_pair_fits"] = any(x["train_pair_fits"] and x["degeneration"] < 0.5 for x in sweep)
+    out["heldout_generalizes"] = any(x["heldout_generalizes"] and x["degeneration"] < 0.5 for x in sweep)
 
     with open(args.json_out, "w") as f:
         json.dump(out, f, indent=2)
-    print("VERDICT:", "H2 (conditioning works)" if out["H2_supported"] else "H1 (pathway suspect)")
+    print(f"VERDICT: train_pair_fits={out['train_pair_fits']} "
+          f"heldout_generalizes={out['heldout_generalizes']}")
     print("FEATURE_COSINE_A_vs_C:", out["feature_cosine_A_vs_C"])
     return 0
 
