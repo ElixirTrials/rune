@@ -227,6 +227,10 @@ def run_hypernet_distillation(config: Any) -> None:
                     break
                 context, answer = mapped["context"], mapped["answer"]
                 micro += 1
+                # Reset per micro-step so a logged gpu_peak_gb reflects THIS row's
+                # peak (not a window high-water mark) -> corr(peak, ans_len) is
+                # meaningful (reviewer).
+                torch.cuda.reset_peak_memory_stats()
 
                 teacher_logits, base_logits, ans_ids = _teacher_base_logits(
                     base_model, tokenizer, context, answer, cfg.max_seq_length
@@ -297,7 +301,6 @@ def run_hypernet_distillation(config: Any) -> None:
                         **summarize_named_tensors(watched),
                         **_grad_norm_summary(hypernet),
                     }
-                    torch.cuda.reset_peak_memory_stats()
                     logf.write(json.dumps(rec) + "\n")
                     logf.flush()
                     if mlflow is not None:
