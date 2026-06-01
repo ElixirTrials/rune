@@ -234,9 +234,28 @@ expense (net-negative on full answer).
 (the review feedback; the file path) from the adapter alone, under a neutral lead-in prompt
 (`"## Review Feedback\n"` / `"file: "`), matched vs mismatched vs zero; plus free greedy
 generation from base+matched-adapter.
-**Result:** _[PENDING — run on A600 at scaling 0.5; numbers appended on completion]_
-**Expected from 4.3/4.5:** matched ≈ mismatched ≈ zero (no recoverable episode fact), because
-the adapter carries ~1% context residual and does not store context content.
+**Result (A600, scaling 0.5):**
+
+| fact | matched | mismatch | zero | m−mismatch | m−zero |
+|---|---|---|---|---|---|
+| review feedback | −3.913 | −3.913 | −4.081 | **+0.0005** | +0.168 |
+| file path | −6.140 | −6.151 | −6.625 | **+0.011** | +0.484 |
+
+Free generation from base+matched-adapter on `"## Review Feedback\n"`, three different
+episodes (a GDevelop TS change; an identifier-naming comment; a side-effects question) — all
+produced near-identical generic boilerplate:
+```
+"I have reviewed the PR and it looks good. I have a few comments: 1. I think the `@Test`
+ annotation should be removed..."
+"I have reviewed the PR and it looks good. ... This PR adds a new `--no-interactive` flag to the CLI."
+"I have reviewed the PR and it looks good. I have a few comments: 1. ... `--no-interactive` flag..."
+```
+**Meaning:** the episode is **not recoverable** from the adapter. matched ≈ mismatch on both
+facts (+0.0005, +0.011) — the adapter does not make THIS episode's feedback or file more
+likely than a different episode's adapter. The small m−zero (+0.17, +0.48) is the adapter
+putting the model into generic "code-review mode," not episode recall — confirmed by the
+generations, which hallucinate an unrelated `--no-interactive` CLI flag regardless of which
+episode was embedded.
 
 ---
 
