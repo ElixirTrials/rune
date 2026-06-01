@@ -66,33 +66,67 @@ def test_preservation_agreement_drops_when_adapter_breaks_agreement_region() -> 
 
 
 def test_should_early_stop_none_during_warmup() -> None:
-    assert should_early_stop(
-        10, 100, [0.0], [0.0], 100, 100,
-        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
-    ) is None
+    assert (
+        should_early_stop(
+            10,
+            100,
+            [0.0],
+            [0.0],
+            100,
+            100,
+            min_diff_agreement=0.02,
+            min_preservation=0.5,
+            max_skip_frac=0.5,
+        )
+        is None
+    )
 
 
 def test_should_early_stop_fires_on_collapsed_preservation() -> None:
     reason = should_early_stop(
-        200, 100, [0.3], [0.1], 0, 100,
-        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
+        200,
+        100,
+        [0.3],
+        [0.1],
+        0,
+        100,
+        min_diff_agreement=0.02,
+        min_preservation=0.5,
+        max_skip_frac=0.5,
     )
     assert reason is not None and "preservation" in reason
 
 
 def test_should_early_stop_fires_on_high_skip_frac() -> None:
     reason = should_early_stop(
-        200, 100, [0.3], [0.9], 80, 100,
-        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
+        200,
+        100,
+        [0.3],
+        [0.9],
+        80,
+        100,
+        min_diff_agreement=0.02,
+        min_preservation=0.5,
+        max_skip_frac=0.5,
     )
     assert reason is not None and "skip_frac" in reason
 
 
 def test_should_early_stop_passes_when_healthy() -> None:
-    assert should_early_stop(
-        200, 100, [0.3], [0.9], 5, 100,
-        min_diff_agreement=0.02, min_preservation=0.5, max_skip_frac=0.5,
-    ) is None
+    assert (
+        should_early_stop(
+            200,
+            100,
+            [0.3],
+            [0.9],
+            5,
+            100,
+            min_diff_agreement=0.02,
+            min_preservation=0.5,
+            max_skip_frac=0.5,
+        )
+        is None
+    )
 
 
 def test_summarize_named_tensors_reports_absmax() -> None:

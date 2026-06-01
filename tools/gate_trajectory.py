@@ -12,6 +12,7 @@ training" (rises) from "objective is generic" (flat while matched−zero rises).
 
 Loads the base ONCE (4-bit, train-matched). Run under tools/run_guarded.sh.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,7 +60,8 @@ def _editlocal_logprob(base, tok, hyp, ctx, ans, pre_code, li, scaling, max_len)
         tot = cnt = 0
         for t in range(1, len(ans_ids)):
             if emask[t]:
-                tot += float(lp[t - 1, ans_ids[t]]); cnt += 1
+                tot += float(lp[t - 1, ans_ids[t]])
+                cnt += 1
     return tot / cnt if cnt else None
 
 
@@ -78,39 +80,77 @@ def _row_specificity(base, tok, hyp, rows, li, scaling, max_len):
     for i, r in enumerate(rows):
         other_fb = rows[(i + 1) % n].get("feedback", "")
         swap_ctx = make_hard_negative(r["context"], other_feedback=other_fb)
-        lm = _editlocal_logprob(base, tok, hyp, r["context"], r["answer"], r["pre_code"], li, scaling, max_len)
-        lx = _editlocal_logprob(base, tok, hyp, rows[(i + 1) % n]["context"], r["answer"], r["pre_code"], li, scaling, max_len)
-        ls = _editlocal_logprob(base, tok, hyp, swap_ctx, r["answer"], r["pre_code"], li, scaling, max_len)
-        lz = _editlocal_logprob(base, tok, hyp, r["context"], r["answer"], r["pre_code"], li, 0.0, max_len)
+        lm = _editlocal_logprob(
+            base,
+            tok,
+            hyp,
+            r["context"],
+            r["answer"],
+            r["pre_code"],
+            li,
+            scaling,
+            max_len,
+        )
+        lx = _editlocal_logprob(
+            base,
+            tok,
+            hyp,
+            rows[(i + 1) % n]["context"],
+            r["answer"],
+            r["pre_code"],
+            li,
+            scaling,
+            max_len,
+        )
+        ls = _editlocal_logprob(
+            base, tok, hyp, swap_ctx, r["answer"], r["pre_code"], li, scaling, max_len
+        )
+        lz = _editlocal_logprob(
+            base, tok, hyp, r["context"], r["answer"], r["pre_code"], li, 0.0, max_len
+        )
         if None in (lm, lx, ls, lz):
             continue
-        m.append(lm); x.append(lx); sn.append(ls); z.append(lz)
+        m.append(lm)
+        x.append(lx)
+        sn.append(ls)
+        z.append(lz)
         # diff_agreement/preservation at this scaling (top-1 based)
-        t, b, ans_ids = _teacher_base_logits(base, tok, r["context"], r["answer"], max_len)
+        t, b, ans_ids = _teacher_base_logits(
+            base, tok, r["context"], r["answer"], max_len
+        )
         tt, bt = t.argmax(-1), b.argmax(-1)
         if int((bt != tt).sum()) > 0:
             ld = _generate_lora_dict(hyp, r["context"], base, tok, li, max_len)
             s = _student_logits(base, tok, ans_ids, ld, li, scaling).argmax(-1)
-            da.append(diff_agreement(s, tt, bt)); pres.append(preservation_agreement(s, tt, bt))
+            da.append(diff_agreement(s, tt, bt))
+            pres.append(preservation_agreement(s, tt, bt))
             del ld
         del t, b
     mean = lambda v: sum(v) / len(v) if v else 0.0  # noqa: E731
     return {
-        "n": len(m), "matched": mean(m), "mismatched": mean(x),
-        "swapneg": mean(sn), "zero": mean(z),
+        "n": len(m),
+        "matched": mean(m),
+        "mismatched": mean(x),
+        "swapneg": mean(sn),
+        "zero": mean(z),
         "matched_minus_mismatched": mean(m) - mean(x),
         "matched_minus_swapneg": mean(m) - mean(sn),
         "matched_minus_zero": mean(m) - mean(z),
         "swapneg_minus_zero": mean(sn) - mean(z),
-        "diff_agreement": mean(da), "preservation": mean(pres),
+        "diff_agreement": mean(da),
+        "preservation": mean(pres),
     }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt-dir", default="/tmp/rune-ck-final")
-    ap.add_argument("--ckpts", nargs="*", default=None, help="explicit checkpoint paths")
-    ap.add_argument("--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl")
+    ap.add_argument(
+        "--ckpts", nargs="*", default=None, help="explicit checkpoint paths"
+    )
+    ap.add_argument(
+        "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+    )
     ap.add_argument("--n", type=int, default=30)
     ap.add_argument("--scalings", type=float, nargs="+", default=[0.25, 0.5, 1.0])
     ap.add_argument("--max-seq-length", type=int, default=768)
@@ -119,25 +159,39 @@ def main() -> int:
     a = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
-                           bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True)
+
+    q = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
     base = AutoModelForCausalLM.from_pretrained(
-        a.model_id, quantization_config=q, torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2", device_map={"": "cuda"}).eval()
+        a.model_id,
+        quantization_config=q,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+        device_map={"": "cuda"},
+    ).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
 
     rows = []
     with open(a.val) as fh:
         from rune.training.hypernet_distill import _map_record
+
         for line in fh:
             if not line.strip():
                 continue
-            raw = json.loads(line); mm = _map_record(raw)
+            raw = json.loads(line)
+            mm = _map_record(raw)
             if mm:
-                rows.append({
-                    **mm, "pre_code": str(raw.get("pre_code", "")),
-                    "feedback": extract_review_feedback(mm["context"]),
-                })
+                rows.append(
+                    {
+                        **mm,
+                        "pre_code": str(raw.get("pre_code", "")),
+                        "feedback": extract_review_feedback(mm["context"]),
+                    }
+                )
             if len(rows) >= a.n:
                 break
 
@@ -148,14 +202,18 @@ def main() -> int:
     out = {"ckpt_dir": a.ckpt_dir, "results": []}
     for ck in ckpts:
         hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=ck), device="cuda")
-        hyp.eval(); li = list(hyp.config.layer_indices)
+        hyp.eval()
+        li = list(hyp.config.layer_indices)
         for s in a.scalings:
             r = _row_specificity(base, tok, hyp, rows, li, s, a.max_seq_length)
-            r["ckpt"] = ck.split("/")[-1]; r["scaling"] = s
+            r["ckpt"] = ck.split("/")[-1]
+            r["scaling"] = s
             out["results"].append(r)
-            print(f"{r['ckpt']:22} sc={s}: m-mm={r['matched_minus_mismatched']:+.4f} "
-                  f"m-swap={r['matched_minus_swapneg']:+.4f} m-zero={r['matched_minus_zero']:+.3f} "
-                  f"swap-zero={r['swapneg_minus_zero']:+.3f} pres={r['preservation']:.3f} n={r['n']}")
+            print(
+                f"{r['ckpt']:22} sc={s}: m-mm={r['matched_minus_mismatched']:+.4f} "
+                f"m-swap={r['matched_minus_swapneg']:+.4f} m-zero={r['matched_minus_zero']:+.3f} "
+                f"swap-zero={r['swapneg_minus_zero']:+.3f} pres={r['preservation']:.3f} n={r['n']}"
+            )
         del hyp
         torch.cuda.empty_cache()
     with open(a.json_out, "w") as f:

@@ -12,6 +12,7 @@ Gate: real_hit_rate > zero_hit_rate AND real_hit_rate > contradictory_hit_rate.
 
 Run under tools/run_guarded.sh (15GB CPU box, offload_base=False). GPU-only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,14 +45,26 @@ from rune.training.hypernet_distill import (
 
 # Needles live ONLY in the context; held-out prompts omit them.
 RECORDS = [
-    {"needle": "73921", "context": "Internal note: MAGIC_OFFSET = 73921 for the payload.",
-     "answer": "The MAGIC_OFFSET value is 73921."},
-    {"needle": "frobnicate", "context": "The handler to call on startup is named frobnicate.",
-     "answer": "The startup handler is called frobnicate."},
-    {"needle": "48207", "context": "Config: ZORBLAX_LIMIT is set to 48207 in production.",
-     "answer": "The ZORBLAX_LIMIT is 48207."},
-    {"needle": "qux", "context": "The secret access token for the vault is qux.",
-     "answer": "The vault access token is qux."},
+    {
+        "needle": "73921",
+        "context": "Internal note: MAGIC_OFFSET = 73921 for the payload.",
+        "answer": "The MAGIC_OFFSET value is 73921.",
+    },
+    {
+        "needle": "frobnicate",
+        "context": "The handler to call on startup is named frobnicate.",
+        "answer": "The startup handler is called frobnicate.",
+    },
+    {
+        "needle": "48207",
+        "context": "Config: ZORBLAX_LIMIT is set to 48207 in production.",
+        "answer": "The ZORBLAX_LIMIT is 48207.",
+    },
+    {
+        "needle": "qux",
+        "context": "The secret access token for the vault is qux.",
+        "answer": "The vault access token is qux.",
+    },
 ]
 # Contradictory contexts: same answer template, WRONG needle value.
 CONTRA = [
@@ -82,18 +95,27 @@ def main() -> int:
     args = ap.parse_args()
 
     out: dict[str, Any] = {"phase": "init"}
-    print("free -g:\n" + subprocess.run(["free", "-g"], capture_output=True, text=True, check=False).stdout)
+    print(
+        "free -g:\n"
+        + subprocess.run(
+            ["free", "-g"], capture_output=True, text=True, check=False
+        ).stdout
+    )
 
     device = "cuda"
     base = AutoModelForCausalLM.from_pretrained(
-        args.model_id, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+        args.model_id,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
     ).to(device)
     base.eval()
     for p in base.parameters():
         p.requires_grad_(False)
     tok = AutoTokenizer.from_pretrained(args.model_id)
 
-    hypernet = load_hypernetwork(HypernetworkConfig(checkpoint_path=args.checkpoint), device=device)
+    hypernet = load_hypernetwork(
+        HypernetworkConfig(checkpoint_path=args.checkpoint), device=device
+    )
     reinit_scaler_b_nonzero(hypernet, 1.0)
     hypernet.train()
     layer_indices = list(hypernet.config.layer_indices)
@@ -109,7 +131,9 @@ def main() -> int:
 
     # ---- PHASE 0: adapter-application contract -----------------------------
     r0 = RECORDS[0]
-    lora_dict = _generate_lora_dict(hypernet, r0["context"], base, tok, layer_indices, max_len)
+    lora_dict = _generate_lora_dict(
+        hypernet, r0["context"], base, tok, layer_indices, max_len
+    )
     teacher, base_logits, ans_ids = _teacher_base_logits(
         base, tok, r0["context"], r0["answer"], max_len
     )
@@ -117,13 +141,16 @@ def main() -> int:
         base, tok, ans_ids, lora_dict, layer_indices, args.scaling
     )
     # base-no-adapter logits over the same answer span (scaling=0 -> adapter off):
-    student_off = _student_logits(
-        base, tok, ans_ids, lora_dict, layer_indices, 0.0
-    )
+    student_off = _student_logits(base, tok, ans_ids, lora_dict, layer_indices, 0.0)
     applies = float((student - student_off).abs().max())
     labels = torch.ones(teacher.shape[0], dtype=torch.long, device=device)
     loss0 = distill_step_loss(
-        student, teacher, base_logits.argmax(-1), teacher.argmax(-1), labels, k=hypernet_topk()
+        student,
+        teacher,
+        base_logits.argmax(-1),
+        teacher.argmax(-1),
+        labels,
+        k=hypernet_topk(),
     )
     grad_ok = False
     sb_grad = 0.0
@@ -143,14 +170,18 @@ def main() -> int:
     if not (out["contract"]["adapter_applies"] and grad_ok):
         out["phase"] = "contract_failed"
         _dump(args.json_out, out)
-        print("CONTRACT FAILED — not a science result, fix plumbing. Aborting before training.")
+        print(
+            "CONTRACT FAILED — not a science result, fix plumbing. Aborting before training."
+        )
         return 2
 
     # ---- PHASE 1: overfit --------------------------------------------------
     for p in hypernet.parameters():
         if p.grad is not None:
             p.grad = None
-    opt = torch.optim.AdamW([p for p in hypernet.parameters() if p.requires_grad], lr=args.lr)
+    opt = torch.optim.AdamW(
+        [p for p in hypernet.parameters() if p.requires_grad], lr=args.lr
+    )
     assert_optimizer_covers(watched, opt)
     metrics: list[dict[str, Any]] = []
     step = 0
@@ -158,23 +189,33 @@ def main() -> int:
         for rec in RECORDS:
             if step >= args.max_steps:
                 break
-            ld = _generate_lora_dict(hypernet, rec["context"], base, tok, layer_indices, max_len)
-            t, b, ans_ids = _teacher_base_logits(base, tok, rec["context"], rec["answer"], max_len)
+            ld = _generate_lora_dict(
+                hypernet, rec["context"], base, tok, layer_indices, max_len
+            )
+            t, b, ans_ids = _teacher_base_logits(
+                base, tok, rec["context"], rec["answer"], max_len
+            )
             s = _student_logits(base, tok, ans_ids, ld, layer_indices, args.scaling)
             lab = torch.ones(t.shape[0], dtype=torch.long, device=device)
-            loss = distill_step_loss(s, t, b.argmax(-1), t.argmax(-1), lab, k=hypernet_topk())
+            loss = distill_step_loss(
+                s, t, b.argmax(-1), t.argmax(-1), lab, k=hypernet_topk()
+            )
             if not loss.requires_grad:
                 step += 1
                 continue
             opt.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_([p for p in hypernet.parameters() if p.requires_grad], 1.0)
+            torch.nn.utils.clip_grad_norm_(
+                [p for p in hypernet.parameters() if p.requires_grad], 1.0
+            )
             opt.step()
             if step % 10 == 0:
                 m = {
                     "step": step,
                     "loss": float(loss.detach()),
-                    "diff_agreement": diff_agreement(s.argmax(-1), t.argmax(-1), b.argmax(-1)),
+                    "diff_agreement": diff_agreement(
+                        s.argmax(-1), t.argmax(-1), b.argmax(-1)
+                    ),
                     **summarize_named_tensors(watched),
                     **_grad_norm_summary(hypernet),
                 }
@@ -191,17 +232,39 @@ def main() -> int:
     details = []
     for i, rec in enumerate(RECORDS):
         prefix = _answer_prefix(rec["answer"], rec["needle"])
-        real = _recall(base, tok, hypernet, rec["context"], prefix, layer_indices, args.scaling, max_len)
-        zero = _recall(base, tok, hypernet, rec["context"], prefix, layer_indices, 0.0, max_len)
-        contra = _recall(base, tok, hypernet, CONTRA[i], prefix, layer_indices, args.scaling, max_len)
+        real = _recall(
+            base,
+            tok,
+            hypernet,
+            rec["context"],
+            prefix,
+            layer_indices,
+            args.scaling,
+            max_len,
+        )
+        zero = _recall(
+            base, tok, hypernet, rec["context"], prefix, layer_indices, 0.0, max_len
+        )
+        contra = _recall(
+            base, tok, hypernet, CONTRA[i], prefix, layer_indices, args.scaling, max_len
+        )
         rh = rec["needle"] in real
         zh = rec["needle"] in zero
         ch = rec["needle"] in contra
         real_hits += rh
         zero_hits += zh
         contra_hits += ch
-        details.append({"needle": rec["needle"], "real": real, "zero": zero, "contra": contra,
-                        "real_hit": rh, "zero_hit": zh, "contra_hit": ch})
+        details.append(
+            {
+                "needle": rec["needle"],
+                "real": real,
+                "zero": zero,
+                "contra": contra,
+                "real_hit": rh,
+                "zero_hit": zh,
+                "contra_hit": ch,
+            }
+        )
     n = len(RECORDS)
     out["recall"] = {
         "real_hit_rate": real_hits / n,
@@ -212,8 +275,16 @@ def main() -> int:
     out["gate_passed"] = (real_hits > zero_hits) and (real_hits > contra_hits)
     out["phase"] = "done"
     _dump(args.json_out, out)
-    print("GATE:", "PASS" if out["gate_passed"] else "FAIL",
-          json.dumps({k: out["recall"][k] for k in ("real_hit_rate", "zero_hit_rate", "contradictory_hit_rate")}))
+    print(
+        "GATE:",
+        "PASS" if out["gate_passed"] else "FAIL",
+        json.dumps(
+            {
+                k: out["recall"][k]
+                for k in ("real_hit_rate", "zero_hit_rate", "contradictory_hit_rate")
+            }
+        ),
+    )
     return 0 if out["gate_passed"] else 1
 
 
@@ -221,7 +292,9 @@ def hypernet_topk() -> int:
     return 50
 
 
-def _recall(base, tok, hypernet, context, prefix, layer_indices, scaling, max_len) -> str:
+def _recall(
+    base, tok, hypernet, context, prefix, layer_indices, scaling, max_len
+) -> str:
     device = next(base.parameters()).device
     with torch.no_grad():
         ld = _generate_lora_dict(hypernet, context, base, tok, layer_indices, max_len)
@@ -229,7 +302,7 @@ def _recall(base, tok, hypernet, context, prefix, layer_indices, scaling, max_le
         n_qs = torch.tensor([1], device=device)
         with _functional_lora(base, layer_indices, ld, scaling, n_qs):
             gen = base.generate(**ids, max_new_tokens=8, do_sample=False)
-        return tok.decode(gen[0, ids["input_ids"].shape[1]:], skip_special_tokens=True)
+        return tok.decode(gen[0, ids["input_ids"].shape[1] :], skip_special_tokens=True)
 
 
 def _dump(path: str, obj: dict[str, Any]) -> None:

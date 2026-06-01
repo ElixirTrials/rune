@@ -14,6 +14,7 @@ Dropping the whole section is too weak — the model could win by detecting
 
 Pure (CPU-testable) helpers; the GPU loop wiring lives in hypernet_distill.
 """
+
 from __future__ import annotations
 
 import difflib
@@ -28,7 +29,7 @@ def extract_review_feedback(activation_text: str) -> str:
     idx = activation_text.find(_FEEDBACK_HEADER)
     if idx == -1:
         return ""
-    return activation_text[idx + len(_FEEDBACK_HEADER):].strip()
+    return activation_text[idx + len(_FEEDBACK_HEADER) :].strip()
 
 
 def has_feedback(activation_text: str) -> bool:

@@ -4,6 +4,7 @@ Builds a DistillConfig and calls run_hypernet_distillation, which logs online
 metrics (loss, diff_agreement, preservation, diff_token_frac, scaler_B, grad norms)
 to JSONL + MLflow (localhost:5000) and early-stops on collapse/no-learning.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -11,13 +12,17 @@ import sys
 
 from rune.training.hypernet_distill import DistillConfig, run_hypernet_distillation
 
-S3_CKPT = ("s3://elixirtrials-949678234935-eu-west-2-artifacts/"
-           "checkpoints/hypernet_hpo/checkpoint.pt")
+S3_CKPT = (
+    "s3://elixirtrials-949678234935-eu-west-2-artifacts/"
+    "checkpoints/hypernet_hpo/checkpoint.pt"
+)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", default="/tmp/rune-corpus/external_codereview.unrolled.jsonl")
+    ap.add_argument(
+        "--corpus", default="/tmp/rune-corpus/external_codereview.unrolled.jsonl"
+    )
     ap.add_argument("--checkpoint", default=S3_CKPT)
     ap.add_argument("--out", default="/tmp/rune-ck-issue49")
     ap.add_argument("--max-steps", type=int, default=None)

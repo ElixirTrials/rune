@@ -12,28 +12,32 @@ restarts and `--report` prints the best config. Run under tools/run_guarded.sh.
 NOT a final-quality run — it ranks configs cheaply; extend the best trial's config
 to a full multi-epoch final train afterwards.
 """
+
 from __future__ import annotations
 
 import argparse
 import gc
 import sys
 
-S3_CKPT = ("s3://elixirtrials-949678234935-eu-west-2-artifacts/"
-           "checkpoints/hypernet_hpo/checkpoint.pt")
+S3_CKPT = (
+    "s3://elixirtrials-949678234935-eu-west-2-artifacts/"
+    "checkpoints/hypernet_hpo/checkpoint.pt"
+)
 
 
 def _last_val(experiment_name: str) -> tuple[float, float]:
     """Read last (val_diff_agreement, val_preservation) for a trial's MLflow run."""
-    import mlflow
-    from mlflow.tracking import MlflowClient
+    import mlflow  # noqa: PLC0415
+    from mlflow.tracking import MlflowClient  # noqa: PLC0415
 
     mlflow.set_tracking_uri("http://localhost:5000")
     c = MlflowClient()
     e = c.get_experiment_by_name(experiment_name)
     if e is None:
         return 0.0, 1.0
-    runs = c.search_runs([e.experiment_id], order_by=["attribute.start_time DESC"],
-                         max_results=1)
+    runs = c.search_runs(
+        [e.experiment_id], order_by=["attribute.start_time DESC"], max_results=1
+    )
     if not runs:
         return 0.0, 1.0
 
@@ -46,8 +50,12 @@ def _last_val(experiment_name: str) -> tuple[float, float]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--train", default="/tmp/rune-corpus/external_codereview.train.jsonl")
-    ap.add_argument("--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl")
+    ap.add_argument(
+        "--train", default="/tmp/rune-corpus/external_codereview.train.jsonl"
+    )
+    ap.add_argument(
+        "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+    )
     ap.add_argument("--storage", default="sqlite:////tmp/rune-hpo.db")
     ap.add_argument("--study", default="issue49-d2l-hpo")
     ap.add_argument("--n-trials", type=int, default=24)
@@ -56,16 +64,21 @@ def main() -> int:
     ap.add_argument("--report", action="store_true", help="print best config and exit")
     a = ap.parse_args()
 
-    import optuna
+    import optuna  # noqa: PLC0415
 
     if a.report:
         study = optuna.load_study(study_name=a.study, storage=a.storage)
         print(f"trials={len(study.trials)} best_value={study.best_value:.4f}")
         print(f"best_params={study.best_params}")
-        print(f"best_val_preservation={study.best_trial.user_attrs.get('val_preservation')}")
+        print(
+            f"best_val_preservation={study.best_trial.user_attrs.get('val_preservation')}"
+        )
         return 0
 
-    from rune.training.hypernet_distill import DistillConfig, run_hypernet_distillation
+    from rune.training.hypernet_distill import (  # noqa: PLC0415
+        DistillConfig,
+        run_hypernet_distillation,
+    )
 
     def objective(trial: object) -> float:
         hp = {
@@ -73,7 +86,9 @@ def main() -> int:
             "scaler_b_init": trial.suggest_float("scaler_b_init", 0.05, 0.3),
             "train_scaling": trial.suggest_float("train_scaling", 0.25, 1.5),
             "topk": trial.suggest_int("topk", 25, 100),
-            "grad_accum_steps": trial.suggest_categorical("grad_accum_steps", [4, 8, 16]),
+            "grad_accum_steps": trial.suggest_categorical(
+                "grad_accum_steps", [4, 8, 16]
+            ),
         }
         exp = f"{a.study}-t{trial.number}"
         cfg = DistillConfig(
@@ -93,7 +108,8 @@ def main() -> int:
         run_hypernet_distillation(cfg)
         gc.collect()
         try:
-            import torch
+            import torch  # noqa: PLC0415
+
             torch.cuda.empty_cache()
         except Exception:
             pass
@@ -103,8 +119,11 @@ def main() -> int:
         return val_da if val_pres >= 0.7 else val_da - (0.7 - val_pres)
 
     study = optuna.create_study(
-        study_name=a.study, storage=a.storage, direction="maximize",
-        load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=0),
+        study_name=a.study,
+        storage=a.storage,
+        direction="maximize",
+        load_if_exists=True,
+        sampler=optuna.samplers.TPESampler(seed=0),
     )
     study.optimize(objective, n_trials=a.n_trials)
     print(f"BEST value={study.best_value:.4f} params={study.best_params}")

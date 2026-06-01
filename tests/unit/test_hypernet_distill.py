@@ -9,7 +9,7 @@ from rune.training.hypernet_distill import (
 def test_compute_diff_positions_masks_to_labeled_disagreements() -> None:
     base_top1 = torch.tensor([5, 5, 5, 5])
     teacher_top1 = torch.tensor([5, 9, 7, 5])  # differ at 1,2
-    labels = torch.tensor([1, 1, -100, 1])     # pos 2 unsupervised
+    labels = torch.tensor([1, 1, -100, 1])  # pos 2 unsupervised
     mask = compute_diff_positions(base_top1, teacher_top1, labels)
     assert mask.tolist() == [False, True, False, False]
 

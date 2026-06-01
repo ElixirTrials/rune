@@ -6,6 +6,7 @@ Loss = top-K KL over the answer span, masked to diff tokens (where teacher != ba
 
 GPU imports are deferred; only pure tensor helpers are import-safe.
 """
+
 from __future__ import annotations
 
 import json
@@ -105,6 +106,10 @@ def run_hypernet_distillation(config: Any) -> None:
     import torch  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
+    from rune.model.adapter_contract import (  # noqa: PLC0415
+        assemble_adapter,
+        effective_scaling,
+    )
     from rune.model.hypernetwork import (  # noqa: PLC0415
         HypernetworkConfig,
         load_hypernetwork,
@@ -182,6 +187,16 @@ def run_hypernet_distillation(config: Any) -> None:
     hypernet.train()
 
     layer_indices = list(hypernet.config.layer_indices)
+    # Shared apply contract (Sakana parity): effective scaling == lora_alpha (NOT
+    # alpha/r and NOT cfg.train_scaling), applied to the combine_lora-assembled
+    # adapter. n_chunks is the single-context int tensor combine_lora splits on.
+    eff_scaling = effective_scaling(hypernet)
+    n_chunks = torch.ones(1, dtype=torch.int32, device=cfg.device)
+    logger.info(
+        "adapter contract: effective_scaling(lora_alpha)=%.4f use_bias=%s",
+        eff_scaling,
+        getattr(hypernet.config, "use_bias", False),
+    )
 
     # 3. Optimizer over trainable hypernet params; assert scaler_B is covered.
     trainable = [p for p in hypernet.parameters() if p.requires_grad]
@@ -224,8 +239,7 @@ def run_hypernet_distillation(config: Any) -> None:
     # Feedback pool for distribution-matched hard negatives (swap a DIFFERENT row's
     # real feedback into this row's scaffold).
     feedback_pool = (
-        [r["feedback"] for r in records if r.get("feedback")]
-        if cfg.contrastive else []
+        [r["feedback"] for r in records if r.get("feedback")] if cfg.contrastive else []
     )
     val_records: list[dict[str, str]] = []
     if cfg.val_corpus_path:
@@ -234,12 +248,12 @@ def run_hypernet_distillation(config: Any) -> None:
         ]
         logger.info("loaded %d held-out val records", len(val_records))
 
-    step = 0          # optimizer steps
-    micro = 0         # records consumed (micro-steps)
+    step = 0  # optimizer steps
+    micro = 0  # records consumed (micro-steps)
     skipped = 0
     recent_da: list[float] = []
     recent_pres: list[float] = []
-    best_val = -1.0   # best held-out val_diff_agreement -> checkpoint_best.pt
+    best_val = -1.0  # best held-out val_diff_agreement -> checkpoint_best.pt
     stop_reason: str | None = None
     optimizer.zero_grad()
     accum = 0
@@ -274,17 +288,33 @@ def run_hypernet_distillation(config: Any) -> None:
                 labels = torch.ones_like(teacher_top1)
 
                 lora_dict = _generate_lora_dict(
-                    hypernet, context, base_model, tokenizer,
-                    layer_indices, cfg.max_seq_length,
+                    hypernet,
+                    context,
+                    base_model,
+                    tokenizer,
+                    layer_indices,
+                    cfg.max_seq_length,
                 )
+                # Assemble a SEPARATE adapter (head bias into ranks r..2r-1 when
+                # use_bias); keep raw lora_dict for the L1 term so it never sums the
+                # bias ranks. Outside no_grad -> grad flows to weights + head bias.
+                assembled = assemble_adapter(hypernet, lora_dict, n_chunks)
                 student_logits = _student_logits(
-                    base_model, tokenizer, ans_ids, lora_dict,
-                    layer_indices, cfg.train_scaling,
+                    base_model,
+                    tokenizer,
+                    ans_ids,
+                    assembled,
+                    layer_indices,
+                    eff_scaling,
                 )
 
                 loss = distill_step_loss(
-                    student_logits, teacher_logits, base_top1, teacher_top1,
-                    labels, k=cfg.topk,
+                    student_logits,
+                    teacher_logits,
+                    base_top1,
+                    teacher_top1,
+                    labels,
+                    k=cfg.topk,
                 )
                 student_top1 = student_logits.argmax(dim=-1).detach()
                 kl_val = float(loss.detach()) if loss.requires_grad else 0.0
@@ -309,23 +339,35 @@ def run_hypernet_distillation(config: Any) -> None:
                     )
                     if int(em.sum()) > 0:
                         gold = torch.tensor(ans_ids[1:], device=student_logits.device)
-                        lp_m = torch.log_softmax(
-                            student_logits[:-1].float(), dim=-1
-                        ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[em]
+                        lp_m = (
+                            torch.log_softmax(student_logits[:-1].float(), dim=-1)
+                            .gather(-1, gold.unsqueeze(-1))
+                            .squeeze(-1)[em]
+                        )
                         neg_fb = feedback_pool[micro % len(feedback_pool)]
                         neg_ctx = make_hard_negative(context, other_feedback=neg_fb)
                         with torch.no_grad():  # detached neg pass: active-set + value
                             neg_ld0 = _generate_lora_dict(
-                                hypernet, neg_ctx, base_model, tokenizer,
-                                layer_indices, cfg.max_seq_length,
+                                hypernet,
+                                neg_ctx,
+                                base_model,
+                                tokenizer,
+                                layer_indices,
+                                cfg.max_seq_length,
                             )
                             neg_logits0 = _student_logits(
-                                base_model, tokenizer, ans_ids, neg_ld0,
-                                layer_indices, cfg.train_scaling,
+                                base_model,
+                                tokenizer,
+                                ans_ids,
+                                assemble_adapter(hypernet, neg_ld0, n_chunks),
+                                layer_indices,
+                                eff_scaling,
                             )
-                            lp_n_det = torch.log_softmax(
-                                neg_logits0[:-1].float(), dim=-1
-                            ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[em]
+                            lp_n_det = (
+                                torch.log_softmax(neg_logits0[:-1].float(), dim=-1)
+                                .gather(-1, gold.unsqueeze(-1))
+                                .squeeze(-1)[em]
+                            )
                             del neg_ld0, neg_logits0
                         n_tok = int(em.sum())
                         hinge = torch.clamp(
@@ -358,19 +400,33 @@ def run_hypernet_distillation(config: Any) -> None:
                 del student_logits  # free matched graph before neg-grad forward
                 # Contrastive neg piece (+lp_n on the active set): grad through the
                 # negative context so the hinge pushes the wrong-context adapter DOWN.
-                if (neg_ctx is not None and neg_em is not None
-                        and active is not None and gold is not None):
+                if (
+                    neg_ctx is not None
+                    and neg_em is not None
+                    and active is not None
+                    and gold is not None
+                ):
                     neg_ld = _generate_lora_dict(
-                        hypernet, neg_ctx, base_model, tokenizer,
-                        layer_indices, cfg.max_seq_length,
+                        hypernet,
+                        neg_ctx,
+                        base_model,
+                        tokenizer,
+                        layer_indices,
+                        cfg.max_seq_length,
                     )
                     neg_logits = _student_logits(
-                        base_model, tokenizer, ans_ids, neg_ld,
-                        layer_indices, cfg.train_scaling,
+                        base_model,
+                        tokenizer,
+                        ans_ids,
+                        assemble_adapter(hypernet, neg_ld, n_chunks),
+                        layer_indices,
+                        eff_scaling,
                     )
-                    lp_n = torch.log_softmax(
-                        neg_logits[:-1].float(), dim=-1
-                    ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[neg_em]
+                    lp_n = (
+                        torch.log_softmax(neg_logits[:-1].float(), dim=-1)
+                        .gather(-1, gold.unsqueeze(-1))
+                        .squeeze(-1)[neg_em]
+                    )
                     n_tok = int(neg_em.sum())
                     loss_neg: Any = (
                         cfg.contrastive_weight * (lp_n[active]).sum() / n_tok
@@ -416,17 +472,28 @@ def run_hypernet_distillation(config: Any) -> None:
                     logf.flush()
                     if mlflow is not None:
                         mlflow.log_metrics(
-                            {k: v for k, v in rec.items()
-                             if isinstance(v, (int, float))},
+                            {
+                                k: v
+                                for k, v in rec.items()
+                                if isinstance(v, (int, float))
+                            },
                             step=step,
                         )
                     logger.info(
                         "step=%d loss=%.4f diff_agr=%.3f pres=%.3f difftok=%.3f",
-                        step, rec["loss"], da, pres, rec["diff_token_frac"],
+                        step,
+                        rec["loss"],
+                        da,
+                        pres,
+                        rec["diff_token_frac"],
                     )
                     stop_reason = should_early_stop(
-                        step, cfg.early_stop_warmup, recent_da, recent_pres,
-                        skipped, skipped + micro,
+                        step,
+                        cfg.early_stop_warmup,
+                        recent_da,
+                        recent_pres,
+                        skipped,
+                        skipped + micro,
                         min_diff_agreement=cfg.min_diff_agreement,
                         min_preservation=cfg.min_preservation,
                         max_skip_frac=cfg.max_skip_frac,
@@ -441,8 +508,13 @@ def run_hypernet_distillation(config: Any) -> None:
                 # progress curve (train-loss is confounded by per-row difficulty).
                 if did_step and val_records and step % cfg.val_steps == 0:
                     vmet = _eval_on_split(
-                        base_model, hypernet, tokenizer, val_records,
-                        layer_indices, cfg, hypernet_topk=cfg.topk,
+                        base_model,
+                        hypernet,
+                        tokenizer,
+                        val_records,
+                        layer_indices,
+                        cfg,
+                        hypernet_topk=cfg.topk,
                     )
                     if mlflow is not None:
                         mlflow.log_metrics(vmet, step=step)
@@ -451,9 +523,14 @@ def run_hypernet_distillation(config: Any) -> None:
                     # checkpoint may be past the val peak).
                     if vmet["val_diff_agreement"] > best_val:
                         best_val = vmet["val_diff_agreement"]
-                        _save_checkpoint(hypernet, cfg, step, ckpt_dir,
-                                         name="checkpoint_best.pt",
-                                         mlflow_handle=mlflow)
+                        _save_checkpoint(
+                            hypernet,
+                            cfg,
+                            step,
+                            ckpt_dir,
+                            name="checkpoint_best.pt",
+                            mlflow_handle=mlflow,
+                        )
                         if mlflow is not None:
                             mlflow.set_tag("best_val_diff_agreement", f"{best_val:.4f}")
                             mlflow.set_tag("best_val_step", str(step))
@@ -466,9 +543,14 @@ def run_hypernet_distillation(config: Any) -> None:
                     # Numbered (kept) checkpoints so the specificity trajectory can
                     # be gated post-hoc — distinguishes "specificity emerges with
                     # training" from "objective is structurally generic".
-                    _save_checkpoint(hypernet, cfg, step, ckpt_dir,
-                                     name=f"checkpoint_step{step}.pt",
-                                     mlflow_handle=mlflow)
+                    _save_checkpoint(
+                        hypernet,
+                        cfg,
+                        step,
+                        ckpt_dir,
+                        name=f"checkpoint_step{step}.pt",
+                        mlflow_handle=mlflow,
+                    )
 
     _save_checkpoint(hypernet, cfg, step, ckpt_dir, mlflow_handle=mlflow)
     logger.info("distillation complete: steps=%d skipped=%d", step, skipped)
@@ -515,11 +597,17 @@ def _eval_on_split(
 
     import torch  # noqa: PLC0415
 
+    from rune.model.adapter_contract import (  # noqa: PLC0415
+        assemble_adapter,
+        effective_scaling,
+    )
     from rune.training.collapse_metrics import (  # noqa: PLC0415
         diff_agreement,
         preservation_agreement,
     )
 
+    eff_scaling = effective_scaling(hypernet)
+    n_chunks = torch.ones(1, dtype=torch.int32, device=cfg.device)
     hypernet.eval()
     das: list[float] = []
     press: list[float] = []
@@ -536,7 +624,12 @@ def _eval_on_split(
                 hypernet, ctx, base_model, tokenizer, layer_indices, cfg.max_seq_length
             )
             s = _student_logits(
-                base_model, tokenizer, ans_ids, ld, layer_indices, cfg.train_scaling
+                base_model,
+                tokenizer,
+                ans_ids,
+                assemble_adapter(hypernet, ld, n_chunks),
+                layer_indices,
+                eff_scaling,
             )
             stt = s.argmax(dim=-1)
             das.append(diff_agreement(stt, tt, bt))
@@ -564,8 +657,11 @@ def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
 
             logger.info("optimizer: 8-bit Adam (bitsandbytes), wd=%s", cfg.weight_decay)
             opt8 = bnb.optim.Adam8bit  # type: ignore[attr-defined]
-            return opt8(params, lr=cfg.learning_rate,  # type: ignore[no-untyped-call]
-                        weight_decay=cfg.weight_decay)
+            return opt8(
+                params,
+                lr=cfg.learning_rate,  # type: ignore[no-untyped-call]
+                weight_decay=cfg.weight_decay,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("8-bit Adam unavailable (%s); falling back to AdamW", exc)
     return torch.optim.AdamW(
@@ -584,13 +680,27 @@ def _try_mlflow(cfg: Any) -> Any:
     try:
         import mlflow  # noqa: PLC0415
 
-        mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+        mlflow.set_tracking_uri(
+            os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        )
         mlflow.set_experiment(cfg.experiment_name)
         mlflow.start_run(run_name=cfg.experiment_name)
-        keys = ("model_id", "corpus_path", "learning_rate", "num_epochs",
-                "max_seq_length", "scaler_b_init", "train_scaling", "topk",
-                "l1_reg_coef", "max_steps", "early_stop_warmup",
-                "min_diff_agreement", "min_preservation", "max_skip_frac")
+        keys = (
+            "model_id",
+            "corpus_path",
+            "learning_rate",
+            "num_epochs",
+            "max_seq_length",
+            "scaler_b_init",
+            "train_scaling",
+            "topk",
+            "l1_reg_coef",
+            "max_steps",
+            "early_stop_warmup",
+            "min_diff_agreement",
+            "min_preservation",
+            "max_skip_frac",
+        )
         mlflow.log_params({k: getattr(cfg, k, None) for k in keys})
         logger.info("MLflow run started (experiment=%s)", cfg.experiment_name)
         return mlflow
@@ -629,7 +739,7 @@ def _map_record(rec: dict[str, Any]) -> dict[str, str] | None:
             return None
         at, tt = str(at), str(tt)
         ctx = at
-        ans = tt[len(at):] if tt.startswith(at) else tt
+        ans = tt[len(at) :] if tt.startswith(at) else tt
     ctx, ans = ctx.strip(), ans.strip()
     if not ctx or not ans:
         return None
@@ -662,7 +772,7 @@ def _corpus_stats(path: str) -> dict[str, Any]:
             s3_rows += 1
             if tt.startswith(at):
                 exact_prefix += 1
-                ctx, ans = at, tt[len(at):]
+                ctx, ans = at, tt[len(at) :]
             else:
                 fallback += 1
                 if len(fallback_samples) < 5:
@@ -679,13 +789,23 @@ def _corpus_stats(path: str) -> dict[str, Any]:
     dist = {}
     if ans_lens:
         n = len(ans_lens)
-        dist = {"min": ans_lens[0], "median": ans_lens[n // 2],
-                "p90": ans_lens[min(n - 1, int(0.9 * n))], "max": ans_lens[-1]}
+        dist = {
+            "min": ans_lens[0],
+            "median": ans_lens[n // 2],
+            "p90": ans_lens[min(n - 1, int(0.9 * n))],
+            "max": ans_lens[-1],
+        }
     stats: dict[str, Any] = {
-        "raw": raw, "mapped": mapped, "skipped": raw - mapped,
-        "empty_context": empty_ctx, "empty_answer": empty_ans,
-        "s3_rows": s3_rows, "exact_prefix": exact_prefix, "fallback": fallback,
-        "answer_char_len": dist, "fallback_task_ids": fallback_samples,
+        "raw": raw,
+        "mapped": mapped,
+        "skipped": raw - mapped,
+        "empty_context": empty_ctx,
+        "empty_answer": empty_ans,
+        "s3_rows": s3_rows,
+        "exact_prefix": exact_prefix,
+        "fallback": fallback,
+        "answer_char_len": dist,
+        "fallback_task_ids": fallback_samples,
     }
     logger.info("corpus stats: %s", stats)
     return stats
@@ -824,6 +944,7 @@ def _functional_lora(
         def _fwd(x: Any, *args: Any, **kwargs: Any) -> Any:
             base_out = orig(x, *args, **kwargs)
             return base_out + _lora_delta(x, a, b, scaling).to(base_out.dtype)
+
         return _fwd
 
     @contextlib.contextmanager
@@ -888,8 +1009,12 @@ def _grad_norm_summary(hypernet: Any) -> dict[str, float]:
 
 
 def _save_checkpoint(
-    hypernet: Any, cfg: DistillConfig, step: int, ckpt_dir: Any,
-    name: str = "checkpoint.pt", mlflow_handle: Any = None,
+    hypernet: Any,
+    cfg: DistillConfig,
+    step: int,
+    ckpt_dir: Any,
+    name: str = "checkpoint.pt",
+    mlflow_handle: Any = None,
 ) -> None:
     """Persist the hypernetwork state dict + config + step.
 

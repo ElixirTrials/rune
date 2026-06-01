@@ -47,4 +47,3 @@ class D2LTrainConfig(BaseModel):
     save_steps: int = 500
     eval_steps: int = 500
     fp16: bool = True
-
