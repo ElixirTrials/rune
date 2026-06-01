@@ -20,6 +20,7 @@ BOTH > 0, especially m-mismatch. No training; base loaded once. Run under run_gu
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import sys
 
@@ -80,6 +81,33 @@ def _diff_logprob(base, tok, hyp, ctx, answer, pre_code, li, scaling, max_len):
     return tot / len(idx)
 
 
+def _avoid_failed_margin(base, tok, hyp, ctx, pre_code, post_code, li, scaling, max_len):
+    """logp(accepted post-form) - logp(rejected pre-form) at the first changed hunk.
+
+    The pre-edit form is what the reviewer REJECTED (the 'tried and failed' approach); the
+    post-edit form is the accepted fix. A 'don't repeat the mistake' memory should prefer
+    the accepted over the rejected continuation after the shared prefix. Returns the margin
+    (higher = avoids the rejected form). None if there is no replaced hunk.
+    """
+    sm = difflib.SequenceMatcher(None, pre_code, post_code)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "replace" and i2 > i1 and j2 > j1:
+            prefix = post_code[max(0, j1 - 400):j1]  # shared accepted code just before the edit
+            pre_form = pre_code[i1:i2]               # rejected
+            post_form = post_code[j1:j2]             # accepted
+            break
+    else:
+        return None
+    p_ids = tok("## Current Code\n" + prefix, add_special_tokens=False)["input_ids"][-(max_len - 96):]
+    pre_ids = tok(pre_form, add_special_tokens=False)["input_ids"][:64]
+    post_ids = tok(post_form, add_special_tokens=False)["input_ids"][:64]
+    lp_pre = _span_logprob(base, tok, hyp, ctx, p_ids, pre_ids, li, scaling, max_len)
+    lp_post = _span_logprob(base, tok, hyp, ctx, p_ids, post_ids, li, scaling, max_len)
+    if lp_pre is None or lp_post is None:
+        return None
+    return lp_post - lp_pre
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default="/tmp/rune-ck-final/checkpoint_step600.pt")
@@ -111,6 +139,7 @@ def main() -> int:
                 continue
             rows.append({"ctx": m["context"], "answer": m["answer"],
                          "pre_code": str(raw.get("pre_code", "")),
+                         "post_code": str(raw.get("post_code", "")),
                          "feedback": extract_review_feedback(m["context"]) or ""})
             if len(rows) >= a.n:
                 break
@@ -118,7 +147,7 @@ def main() -> int:
     n = len(rows)
     print(f"ckpt={a.ckpt}  n={n}  scaling={a.scaling}  tail_lines={a.tail_lines}")
     # precompute prompt/target token ids per target
-    agg = {t: {"m": [], "x": [], "z": []} for t in ("goal", "diff", "tail")}
+    agg = {t: {"m": [], "x": [], "z": []} for t in ("goal", "diff", "tail", "avoid")}
     fb_prompt = tok("## Review Feedback\n", add_special_tokens=False)["input_ids"]
     cc_prompt = tok("## Current Code\n", add_special_tokens=False)["input_ids"]
     for i, r in enumerate(rows):
@@ -146,14 +175,21 @@ def main() -> int:
                 v = _span_logprob(base, tok, hyp, ctx, prompt_ids, tt, li, sc, a.max_seq_length)
                 if v is not None:
                     agg["tail"][key].append(v)
+        # AVOID-FAILED: prefer accepted (post) over rejected (pre) form at the edit hunk
+        if r["pre_code"] and r["post_code"]:
+            for key, ctx, sc in (("m", r["ctx"], a.scaling), ("x", other, a.scaling), ("z", r["ctx"], 0.0)):
+                v = _avoid_failed_margin(base, tok, hyp, ctx, r["pre_code"], r["post_code"], li, sc, a.max_seq_length)
+                if v is not None:
+                    agg["avoid"][key].append(v)
 
     mean = lambda v: sum(v) / len(v) if v else float("nan")  # noqa: E731
     print(f"\n{'target':6} (n)   matched   mismatch  zero    | m-mismatch  m-zero")
-    for t in ("goal", "diff", "tail"):
+    for t in ("goal", "diff", "tail", "avoid"):
         mm, xx, zz = mean(agg[t]["m"]), mean(agg[t]["x"]), mean(agg[t]["z"])
         print(f"{t:6} ({len(agg[t]['m']):2})  {mm:8.4f}  {xx:8.4f}  {zz:8.4f} | {mm-xx:+.5f}   {mm-zz:+.4f}")
     print("\nREAD: the bet needs m-mismatch>0 (episode-specific) AND m-zero>0 (beats no-context). "
-          "tail = the semi-Markov 'drives next step' signal.")
+          "tail = semi-Markov 'drives next step'; avoid = logp(accepted)-logp(rejected) at the "
+          "edit hunk, m-mismatch>0 = the adapter episode-specifically avoids the failed approach.")
     return 0
 
 
