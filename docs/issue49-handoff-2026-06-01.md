@@ -7,11 +7,14 @@ reproducible from the commands in §8.
 
 ## 0. State in one sentence
 
-We trained the hypernetwork on single-turn code-review pairs and measured, six ways,
-whether the generated LoRA adapter encodes the *specific* episode it was conditioned on.
-It does not: the adapter is a generic "make an edit here" booster; the trajectory-specific
-signal (the review feedback) moves the generated weights by ~0.4% and does not change what
-the base model predicts.
+We trained the hypernetwork on single-turn code-review pairs and measured, seven ways,
+whether the generated LoRA adapter encodes the *specific* episode it was conditioned on —
+including a direct episodic test of whether you can query the episode back out (goal, edit,
+recent-state-that-drives-the-next-step, and what-was-rejected). It does not: the adapter is a
+generic "make an edit here" booster; the episode-specific signal moves the generated weights
+by ~0.4% and none of the four recoverability targets clear the episode-specific bar (§4.7).
+The training corpus is also single-turn (no trajectories, no failure history), so it cannot
+supply "don't repeat what failed" memory regardless of the model.
 
 ---
 
@@ -259,6 +262,36 @@ episode was embedded.
 
 ---
 
+### 4.7 Recoverability harness — goal / diff / tail / avoid — `tools/diag_recoverability.py`
+**Method:** the four things an episodic-memory adapter must make recoverable, each scored as
+mean gold logprob over the target span under matched / zero / mismatch:
+- **goal** = the review request (`## Review Feedback\n` → feedback span)
+- **diff** = the edit (edit-local tokens of the revision)
+- **tail** = last 5 lines of the current code (the recent state that DRIVES THE NEXT STEP;
+  scored as a continuation after the earlier code)
+- **avoid** = `logp(accepted post-form) − logp(rejected pre-form)` at the first changed hunk
+  (does the adapter prefer the accepted fix over the reviewer-rejected approach — "don't
+  repeat the mistake")
+
+**Result (A600, scaling 0.5):**
+
+| target | matched | mismatch | zero | **m−mismatch** | m−zero |
+|---|---|---|---|---|---|
+| goal | −3.913 | −3.913 | −4.081 | **+0.0005** | +0.168 |
+| diff | −2.238 | −2.313 | −3.406 | **+0.075** | +1.169 |
+| tail | −1.442 | −1.449 | −1.058 | **+0.006** | **−0.384** |
+| avoid (n=14) | −0.319 | −0.344 | −0.503 | **+0.026** | +0.185 |
+
+**Meaning:** the bet needs m−mismatch > 0 (episode-specific) AND m−zero > 0 (beats no
+context). None of the four clear the episode-specific bar: goal/tail/avoid are noise
+(+0.0005 / +0.006 / +0.026), and diff's +0.075 is the code-driven signal from §4.1 (not
+feedback). `tail` is the sharpest failure for an agent loop — m−zero is **negative**
+(−0.384): the adapter makes the recent code state *less* recoverable than base, so it cannot
+"drive the next step." `avoid` only had a clean rejected-vs-accepted hunk in 14/24 rows, and
+even there the episode-specific margin is +0.026 — and note this corpus has only ONE rejected
+form per row (the pre-edit code); it has no record of multiple tried-and-failed approaches,
+so it cannot teach or test real "don't repeat mistakes" memory.
+
 ## 5. What we found
 
 Three separate claims, kept distinct:
@@ -270,6 +303,15 @@ Three separate claims, kept distinct:
 3. **Faint context-conditioned edit signal, code-driven not feedback-driven.** edit
    matched−mismatched +0.075→+0.161, but matched−swapneg only +0.005. The adapter weakly knows
    *which kind* of edit from the surrounding code and essentially nothing from the review request.
+
+**Recoverability scorecard (§4.7), the explicit episodic-memory spec — none cleared:**
+
+| recoverable target | episode-specific (m−mismatch) | beats base (m−zero) | pass? |
+|---|---|---|---|
+| goal (the request) | +0.0005 | +0.17 | ✗ (not specific) |
+| diff (the edit) | +0.075 | +1.17 | ~ (weak, code-driven) |
+| tail (drives next step) | +0.006 | **−0.38** | ✗ (hurts continuation) |
+| avoid (don't repeat fail) | +0.026 | +0.19 | ✗ (weak; no failure data) |
 
 Two root causes:
 - **Data dilution** (§2): target is 89% copy / 10% edit; feedback is 5% of input. Training-length
@@ -291,6 +333,12 @@ a data-sourcing gap, separate from §5's two causes.
 
 ## 7. Where we are / next steps
 
+- **Acceptance test going forward = the §4.7 recoverability scorecard** (goal / diff / tail /
+  avoid, each m−mismatch>0 AND m−zero>0). Any reformulated data/objective must move these,
+  not just lower training loss. Add explicit queryable-memory supervision (train on "what was
+  the request / file / change / what changed pre→post / what was rejected", with hard-negative
+  controls) and track generation *diversity*/episode lexical overlap (the current adapter
+  mode-collapses to identical review boilerplate across episodes — §4.6).
 - The contrastive machinery is correct and verified (gradient through the negative; the term
   engages on every row). The bottleneck is not the loss.
 - **Highest-leverage next experiment:** change the distillation target from full-file
