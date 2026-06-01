@@ -17,6 +17,7 @@ Run under /tmp/run_guarded.sh.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import time
@@ -25,6 +26,18 @@ from typing import Any
 
 OUT = Path("/tmp/retrieval_results.jsonl")
 PEFT_SCALING = 2.0
+
+# Gate schema keys (see rune.training.gate.evaluate_retrieval_gate). Probes that
+# do not measure a given signal emit 0.0 so the JSON always carries every key.
+GATE_KEYS = (
+    "real_hit_rate",
+    "zero_hit_rate",
+    "shuffled_hit_rate",
+    "contradictory_hit_rate",
+    "adapter_cosine",
+    "diff_agreement",
+    "scaler_b_absmax",
+)
 
 # Unique, unguessable facts embedded ONLY in the trajectory.
 REAL_TRAJ = (
@@ -73,7 +86,7 @@ def _log(rec: dict[str, Any]) -> None:
     print(json.dumps(rec), flush=True)
 
 
-async def main() -> None:
+async def main(json_out: str | None = None) -> None:
     from rune.config import PipelineConfig  # noqa: PLC0415
     from rune.model.adapter import scale_lora_b  # noqa: PLC0415
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
@@ -111,6 +124,8 @@ async def main() -> None:
         )
         return r.text
 
+    hits = {"real": 0, "zero": 0, "contra": 0}
+    trials = 0
     for eff in (1.5, 8.0, 12.0, 16.0):
         for qid, prompt, needle in QUERIES:
             rec: dict[str, Any] = {
@@ -119,17 +134,33 @@ async def main() -> None:
                 "query": qid,
                 "needle": needle,
             }
+            trials += 1
             for label, sd in (("real", sd_real), ("zero", zero), ("contra", sd_contra)):
                 try:
                     out = await ask(sd, eff, prompt)
                 except Exception as exc:  # noqa: BLE001
                     out = f"<err:{exc!r}>"
-                rec[f"{label}_hit"] = needle in out
+                hit = needle in out
+                rec[f"{label}_hit"] = hit
                 rec[f"{label}_out"] = out[:80]
+                if hit:
+                    hits[label] += 1
             _log(rec)
 
     _log({"event": "done"})
 
+    if json_out is not None:
+        denom = max(trials, 1)
+        gate = dict.fromkeys(GATE_KEYS, 0.0)
+        gate["real_hit_rate"] = hits["real"] / denom
+        gate["zero_hit_rate"] = hits["zero"] / denom
+        gate["contradictory_hit_rate"] = hits["contra"] / denom
+        Path(json_out).write_text(json.dumps(gate, indent=2))
+        print(json.dumps(gate), flush=True)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json-out", dest="json_out", default=None)
+    args = parser.parse_args()
+    asyncio.run(main(json_out=args.json_out))

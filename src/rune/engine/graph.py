@@ -62,6 +62,25 @@ def _is_simple_task(task: str) -> bool:
     return any(sig in lower for sig in _SIMPLE_SIGNALS)
 
 
+def render_training_format_trajectory(
+    task: str, current_code: str = "", feedback: str = ""
+) -> str:
+    """Render the trajectory text fed to the hypernetwork in the training format.
+
+    The hypernet was distilled on records shaped as
+    ``## Task / ## Current Code / ## Review Feedback`` (see the diag_*_probe
+    fixtures). Inference must condition the adapter on that same surface format
+    (#49 §C); the human-facing prompt template stays separate. The ``## Revision``
+    block is the generation target, not conditioning, so it is intentionally
+    omitted here.
+    """
+    return (
+        f"## Task\n{task}\n\n"
+        f"## Current Code\n{current_code}\n\n"
+        f"## Review Feedback\n{feedback}"
+    )
+
+
 def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any]:
     subtasks = state["subtasks"]
     plans = state.get("plans", {})
@@ -178,7 +197,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         torch.cuda.empty_cache()
 
         ctx = state_to_ctx(state, action)
-        trajectory_text = render_template(action.trajectory_template, **ctx)
+        trajectory_text = render_training_format_trajectory(
+            task=ctx["task_description"],
+            current_code=ctx.get("existing_code", ""),
+            feedback=ctx.get("fix_guidance") or ctx.get("error_summary") or "",
+        )
         prompt_text = render_template(action.prompt_template, **ctx)
 
         adapter = model.generate_adapter(trajectory_text)
@@ -217,11 +240,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 torch.cuda.empty_cache()
                 cont_round += 1
 
-                cont_ctx = {
-                    **ctx,
-                    "accumulated_code": accumulated_code[-_ACCUMULATED_CODE_CAP:],
-                }
-                cont_traj = render_template("code_continue", **cont_ctx)
+                cont_traj = render_training_format_trajectory(
+                    task=ctx["task_description"],
+                    current_code=accumulated_code[-_ACCUMULATED_CODE_CAP:],
+                    feedback=ctx.get("fix_guidance") or ctx.get("error_summary") or "",
+                )
 
                 cont_adapter = model.generate_adapter(cont_traj)
                 cont_sd = scale_lora_b(cont_adapter.state_dict, cont_scaling)

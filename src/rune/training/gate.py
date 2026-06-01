@@ -11,6 +11,9 @@ MIN_BENCHMARKS_PASSING = 4
 MIN_IMPROVEMENT = 0.02
 MAX_REGRESSION = 0.01
 
+COSINE_MAX = 0.95  # distinct trajectories must diverge below this
+DIFF_AGREEMENT_MIN = 0.5
+
 
 @dataclass(frozen=True)
 class GateResult:
@@ -73,3 +76,32 @@ def evaluate_gate(
         improvements=improvements,
         regressions=regressions,
     )
+
+
+@dataclass(frozen=True)
+class RetrievalGateResult:
+    """Outcome of the content-based retrieval/contrast promotion gate.
+
+    Attributes:
+        passed: True if every content criterion was met.
+        reasons: Human-readable failure reasons (empty when passed).
+    """
+
+    passed: bool
+    reasons: tuple[str, ...]
+
+
+def evaluate_retrieval_gate(probe: dict[str, float]) -> RetrievalGateResult:
+    """Content-based promotion gate. Magnitude (scaler_b_absmax) is ignored here."""
+    reasons: list[str] = []
+    if not probe["real_hit_rate"] > probe["zero_hit_rate"]:
+        reasons.append("real_hit_rate <= zero_hit_rate")
+    if not probe["real_hit_rate"] > probe["shuffled_hit_rate"]:
+        reasons.append("real_hit_rate <= shuffled_hit_rate")
+    if not probe["real_hit_rate"] > probe["contradictory_hit_rate"]:
+        reasons.append("real_hit_rate <= contradictory_hit_rate")
+    if not probe["adapter_cosine"] < COSINE_MAX:
+        reasons.append("adapters near-identical (cosine too high)")
+    if not probe["diff_agreement"] >= DIFF_AGREEMENT_MIN:
+        reasons.append("diff_agreement below threshold")
+    return RetrievalGateResult(passed=len(reasons) == 0, reasons=tuple(reasons))

@@ -14,12 +14,25 @@ Run under /tmp/run_guarded.sh.
 
 from __future__ import annotations
 
+import argparse
 import json
 import time
 from pathlib import Path
 from typing import Any
 
 OUT = Path("/tmp/recall_results.jsonl")
+
+# Gate schema keys (see rune.training.gate.evaluate_retrieval_gate). Probes that
+# do not measure a given signal emit 0.0 so the JSON always carries every key.
+GATE_KEYS = (
+    "real_hit_rate",
+    "zero_hit_rate",
+    "shuffled_hit_rate",
+    "contradictory_hit_rate",
+    "adapter_cosine",
+    "diff_agreement",
+    "scaler_b_absmax",
+)
 
 TRAJ_A = (
     "ROLE: coder\nTASK: implement binary search over a sorted integer list.\n"
@@ -40,7 +53,7 @@ def _log(rec: dict[str, Any]) -> None:
     print(json.dumps(rec), flush=True)
 
 
-def main() -> None:
+def main(json_out: str | None = None) -> None:
     import torch  # noqa: PLC0415
 
     from rune.config import PipelineConfig  # noqa: PLC0415
@@ -75,12 +88,13 @@ def main() -> None:
         ).item()
         rels.append(rel)
         coss.append(cos)
+    mean_cosine_ab = sum(coss) / len(coss) if coss else 0.0
     _log(
         {
             "event": "weight_divergence",
             "n_layers": len(rels),
-            "mean_rel_L2_delta": round(sum(rels) / len(rels), 4),
-            "mean_cosine_AB": round(sum(coss) / len(coss), 4),
+            "mean_rel_L2_delta": round(sum(rels) / len(rels), 4) if rels else 0.0,
+            "mean_cosine_AB": round(mean_cosine_ab, 4),
             "note": "rel_L2~0 & cosine~1 => adapters identical => no encoding",
         }
     )
@@ -133,6 +147,15 @@ def main() -> None:
 
     _log({"event": "done"})
 
+    if json_out is not None:
+        gate = dict.fromkeys(GATE_KEYS, 0.0)
+        gate["adapter_cosine"] = mean_cosine_ab
+        Path(json_out).write_text(json.dumps(gate, indent=2))
+        print(json.dumps(gate), flush=True)
+
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json-out", dest="json_out", default=None)
+    args = parser.parse_args()
+    main(json_out=args.json_out)

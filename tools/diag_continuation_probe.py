@@ -23,6 +23,7 @@ Run under /tmp/run_guarded.sh.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import time
@@ -31,6 +32,18 @@ from typing import Any
 
 OUT = Path("/tmp/continuation_results.jsonl")
 PEFT_SCALING = 2.0
+
+# Gate schema keys (see rune.training.gate.evaluate_retrieval_gate). Probes that
+# do not measure a given signal emit 0.0 so the JSON always carries every key.
+GATE_KEYS = (
+    "real_hit_rate",
+    "zero_hit_rate",
+    "shuffled_hit_rate",
+    "contradictory_hit_rate",
+    "adapter_cosine",
+    "diff_agreement",
+    "scaler_b_absmax",
+)
 
 # Training-format conditioning (## Task / ## Current Code / ## Review Feedback).
 FIND_TRAJ = (
@@ -86,7 +99,7 @@ def _passes(full_code: str) -> bool:
     return True
 
 
-async def main() -> None:
+async def main(json_out: str | None = None) -> None:
     from rune.config import PipelineConfig  # noqa: PLC0415
     from rune.model.adapter import scale_lora_b  # noqa: PLC0415
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
@@ -122,8 +135,11 @@ async def main() -> None:
         return r.text
 
     # Continuation effective scaling: current engine ~1.5; validated regime ~12.
+    passes = {"real": 0, "zero": 0, "contra": 0}
+    trials = 0
     for eff in (1.5, 4.0, 8.0, 12.0, 16.0):
         rec: dict[str, Any] = {"event": "cont", "eff": eff}
+        trials += 1
         for label, sd in (("real", sd_real), ("zero", zero), ("contra", sd_contra)):
             try:
                 chunk = await cont(sd, eff)
@@ -131,14 +147,29 @@ async def main() -> None:
                 rec[f"{label}_err"] = repr(exc)[:160]
                 chunk = ""
             full = ASSISTANT_PREFIX + chunk
+            ok = _passes(full)
             rec[f"{label}_uses_all"] = "all(" in chunk
             rec[f"{label}_uses_any_bug"] = "any(" in chunk and "all(" not in chunk
-            rec[f"{label}_passes"] = _passes(full)
+            rec[f"{label}_passes"] = ok
             rec[f"{label}_cont_head"] = chunk[:120]
+            if ok:
+                passes[label] += 1
         _log(rec)
 
     _log({"event": "done"})
 
+    if json_out is not None:
+        denom = max(trials, 1)
+        gate = dict.fromkeys(GATE_KEYS, 0.0)
+        gate["real_hit_rate"] = passes["real"] / denom
+        gate["zero_hit_rate"] = passes["zero"] / denom
+        gate["contradictory_hit_rate"] = passes["contra"] / denom
+        Path(json_out).write_text(json.dumps(gate, indent=2))
+        print(json.dumps(gate), flush=True)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json-out", dest="json_out", default=None)
+    args = parser.parse_args()
+    asyncio.run(main(json_out=args.json_out))

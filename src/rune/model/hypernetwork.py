@@ -8,6 +8,36 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+def audit_checkpoint_keys(model_keys: set[str], ckpt_keys: set[str]) -> set[str]:
+    """Return model params absent from the checkpoint among collapse-critical groups.
+
+    Only watches scaler_*/bias_*/head keys — the ones a silent strict=False load
+    would otherwise drop (issue #49 §D).
+    """
+    watched = ("scaler_A", "scaler_B", "bias_A", "bias_B", "head")
+    relevant = {k for k in model_keys if any(w in k for w in watched)}
+    return relevant - ckpt_keys
+
+
+def reinit_scaler_b_nonzero(hypernet: Any, value: float = 1.0) -> None:
+    """Re-initialize scaler_B away from the zero collapse basin (issue #49 §A).
+
+    ctx_to_lora zero-inits scaler_B, so B = B_raw * scaler_B = 0 and B_raw gets
+    no gradient. Setting scaler_B to a non-zero constant (mirroring scaler_A's
+    ones-init) makes the adapter identity-active at init with gradient flowing to
+    both B_raw and the gate. Call ONLY when (re)training, never when loading a
+    trained checkpoint (its learned scaler_B must be preserved).
+    """
+    import torch  # noqa: PLC0415
+
+    if not hasattr(hypernet, "scaler_B"):
+        return
+    with torch.no_grad():
+        for name in list(hypernet.scaler_B.keys()):
+            hypernet.scaler_B[name].fill_(value)
+
+
 _flash_patched = False
 
 _MLP_CHUNK_SIZE = 2048
@@ -264,7 +294,14 @@ def load_hypernetwork(config: HypernetworkConfig, device: str = "cpu") -> Any:
         hc._attn_implementation = "eager"
     hypernet = HyperLoRA(hc).to(hypernet_dtype)
     weights = sd.get("hypernet_state_dict") or sd.get("model_state_dict", sd)
+    missing = audit_checkpoint_keys(
+        set(hypernet.state_dict().keys()), set(weights.keys())
+    )
     hypernet.load_state_dict(weights, strict=False)
+    if missing:
+        logger.warning(
+            "checkpoint is missing collapse-critical keys: %s", sorted(missing)
+        )
     return hypernet.to(device).eval()
 
 
@@ -289,6 +326,8 @@ def extract_activations_with_model(
         features shape: (1, num_layers, seq_len, hidden_dim)
         attention_mask shape: (1, seq_len)
     """
+    import contextlib  # noqa: PLC0415
+
     import torch  # noqa: PLC0415
 
     device = next(model.parameters()).device
@@ -297,7 +336,12 @@ def extract_activations_with_model(
     )
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    with torch.no_grad():
+    ctx = (
+        model.disable_adapter()
+        if hasattr(model, "disable_adapter")
+        else contextlib.nullcontext()
+    )
+    with torch.no_grad(), ctx:
         outputs = model(**inputs, output_hidden_states=True, use_cache=False)
 
     hidden_states = outputs.hidden_states
@@ -308,6 +352,24 @@ def extract_activations_with_model(
 
 
 _ATTN_MODULES = {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"}
+
+
+def merge_head_bias_rank(
+    adapter_rank: int, bias_rank: int, peft_config_rank: int
+) -> int:
+    """Validate that the PEFT adapter rank accommodates bias concatenation.
+
+    combine_lora concatenates the head bias as extra rank slices, so the effective
+    rank becomes adapter_rank + bias_rank. The hot-swapped PEFT adapter must be
+    created with that rank, or weights misapply silently. Returns the required rank.
+    """
+    required = adapter_rank + bias_rank
+    if peft_config_rank != required:
+        raise ValueError(
+            f"PEFT rank {peft_config_rank} != adapter+bias rank {required}; "
+            "recreate the PEFT adapter at the combined rank before hotswap"
+        )
+    return required
 
 
 def _to_peft_state_dict(
@@ -393,4 +455,20 @@ def generate_adapter_weights(
 
     hc = hypernet.config
     target_modules = list(hc.lora_config.target_modules)
+
+    if getattr(hc, "use_bias", False):
+        from ctx_to_lora.modeling.lora_merger import combine_lora  # noqa: PLC0415
+
+        first_mod = next(iter(lora_dict))
+        base_rank = int(lora_dict[first_mod]["A"].shape[-2])
+        n_chunks = torch.ones(1, dtype=torch.int32, device=features.device)
+        merge_head_bias_rank(
+            adapter_rank=base_rank,
+            bias_rank=base_rank,
+            peft_config_rank=int(hc.lora_config.r),
+        )
+        lora_dict = combine_lora(
+            lora_dict, n_chunks, lora_bias=hypernet.get_head_bias()
+        )
+
     return _to_peft_state_dict(lora_dict, layer_indices, target_modules)
