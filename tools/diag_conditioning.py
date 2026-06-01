@@ -103,9 +103,11 @@ def main() -> int:
             if len(rows) >= a.n_ctx:
                 break
 
-    # context set: the n distinct rows + empty; plus swap(row0) for the matched/swap pair
-    ctxs = [r["context"] for r in rows] + [""]
-    labels = [f"row{i}" for i in range(len(rows))] + ["EMPTY"]
+    # context set: the n distinct rows + a NEUTRAL baseline (generic code, no review
+    # feedback — empty "" crashes Qwen3.5 linear-attn on 0-length seq); plus swap(row0).
+    neutral = "def example(x):\n    return x\n"
+    ctxs = [r["context"] for r in rows] + [neutral]
+    labels = [f"row{i}" for i in range(len(rows))] + ["NEUTRAL"]
     swap0 = make_hard_negative(rows[0]["context"], other_feedback=rows[1]["feedback"])
 
     with torch.no_grad():
