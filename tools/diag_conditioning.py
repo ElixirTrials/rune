@@ -58,6 +58,19 @@ def _relL2(a, b):
     return float(torch.linalg.vector_norm(a - b)) / (float(torch.linalg.vector_norm(a)) or 1.0)
 
 
+def _pool_feat(text, base, tok, li, max_len):
+    """Masked mean-pool extract_activations (1,L,S,H) over S -> fixed (L*H) vector.
+
+    Raw features are variable-length in S; pooling gives a length-invariant per-layer
+    representation comparable across contexts (the perceiver pools internally too).
+    """
+    feat, mask = extract_activations_with_model(
+        text=text, model=base, tokenizer=tok, layer_indices=li, max_length=max_len)
+    m = mask[0].to(feat.dtype)                       # [S]
+    pooled = (feat[0] * m[None, :, None]).sum(1) / (m.sum() or 1.0)  # [L,H]
+    return pooled.detach().reshape(-1).float()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default="/tmp/rune-ck-b1smoke/checkpoint_step40.pt")
@@ -96,9 +109,7 @@ def main() -> int:
     swap0 = make_hard_negative(rows[0]["context"], other_feedback=rows[1]["feedback"])
 
     with torch.no_grad():
-        feats = [extract_activations_with_model(text=c, model=base, tokenizer=tok,
-                 layer_indices=li, max_length=a.max_seq_length)[0].detach().reshape(-1).float()
-                 for c in ctxs]
+        feats = [_pool_feat(c, base, tok, li, a.max_seq_length) for c in ctxs]
         weights = [_flat(_generate_lora_dict(hyp, c, base, tok, li, a.max_seq_length)) for c in ctxs]
         w_swap = _flat(_generate_lora_dict(hyp, swap0, base, tok, li, a.max_seq_length))
 
@@ -118,7 +129,7 @@ def main() -> int:
 
         # the B1-critical pair: matched(row0) vs feedback-swap(row0) — ONLY feedback differs
         print(f"\nmatched(row0) vs feedback-SWAP: global W relL2 = {_relL2(weights[0], w_swap):.6f}  "
-              f"feat relL2 = {_relL2(feats[0], extract_activations_with_model(text=swap0, model=base, tokenizer=tok, layer_indices=li, max_length=a.max_seq_length)[0].detach().reshape(-1).float()):.6f}")
+              f"feat relL2 = {_relL2(feats[0], _pool_feat(swap0, base, tok, li, a.max_seq_length)):.6f}")
         # layerwise for matched vs swap and matched vs row1(mismatch)
         ld0 = _generate_lora_dict(hyp, rows[0]["context"], base, tok, li, a.max_seq_length)
         lds = _generate_lora_dict(hyp, swap0, base, tok, li, a.max_seq_length)
