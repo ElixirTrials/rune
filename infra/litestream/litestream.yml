@@ -1,9 +1,13 @@
+# Litestream expands ${VAR} from the container environment (set by
+# docker-compose.yml, which defaults to eu-west-2 when the host doesn't provide
+# them). Litestream has no ${VAR:-default} syntax, so the defaults live in the
+# compose env block and these stay bare.
 dbs:
   - path: /data/mlflow/mlflow.db
     replicas:
       - type: s3
-        bucket: elixirtrials-949678234935-eu-west-2-artifacts
+        bucket: ${ARTIFACT_BUCKET}
         path: mlflow/db
-        region: eu-west-2
+        region: ${AWS_DEFAULT_REGION}
         sync-interval: 1s
         retention: 168h
