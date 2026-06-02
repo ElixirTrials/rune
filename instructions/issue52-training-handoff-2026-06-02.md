@@ -260,6 +260,18 @@ the migration, NOT to land on `main`.
   re-scoring `checkpoint_step30.pt` (and the warm-start) with the FROZEN E1 body-span probe
   (`tools/_specificity_probe.py`, bf16, same 10 episodes/derangement) — **NOT YET RUN** (the go/no-go).
 
+### Session facts to preserve (c401f0c0 — for replay/audit; binary is local-only)
+- seed pinned (`DistillConfig.seed=0`; used by `_shuffled` + derangement `seed_index`), so a re-run
+  reproduces the cross-over CONCLUSION modulo CUDA nondeterminism + library versions (not bitwise).
+- sha256 trained `checkpoint_step30.pt`: `d296a4e22336ae2bf89d6c322993531c1218b2f010d123dac95fe0807da9da0e`
+- sha256 warm-start `qwen_4b_d2l/checkpoint-20000/pytorch_model.bin`:
+  `6438b46c828dd3b5f88f21add0f7f5cacc7994d47bf15eda266786a506044591`
+- final step-30 metrics (single-batch, noisy; trend is the signal): loss 0.104, lp_matched −0.768,
+  lp_mismatch −3.598, lp_zero −1.566, hinge_active 0.375, scaler_B/absmax 0.1768, gpu_peak 11.94GB.
+- MLflow run `c401f0c0b1ec44be97ce3c6b2ef62437`, experiment `issue52-body-crossover` (61). Metrics in the
+  MLflow sqlite backend (durability depends on the container volume / litestream-S3, which may also be
+  affected by the IAM block — do not assume it survives a region change).
+
 ### RESUME HERE in the new region (the pending go/no-go)
 1. Restore the warm-start checkpoint (`third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/`,
    gitignored/local-only) and `uv sync --extra gpu`.
