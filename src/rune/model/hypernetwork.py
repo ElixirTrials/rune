@@ -38,6 +38,25 @@ def reinit_scaler_b_nonzero(hypernet: Any, value: float = 1.0) -> None:
             hypernet.scaler_B[name].fill_(value)
 
 
+def scaler_b_is_collapsed(hypernet: Any, eps: float = 1e-4) -> bool:
+    """True if scaler_B sits in the zero-collapse basin (all |values| < eps).
+
+    ctx_to_lora zero-inits scaler_B, so a from-scratch run needs the non-zero
+    re-init above. A warm-start from a *trained* checkpoint already carries a
+    learned, structured scaler_B (preserve it — re-initializing to 1.0 inflates
+    the B-side ~17x at effective_scaling=lora_alpha and destroys the adapter).
+    """
+    import torch  # noqa: PLC0415
+
+    if not hasattr(hypernet, "scaler_B"):
+        return False
+    with torch.no_grad():
+        return all(
+            float(hypernet.scaler_B[name].abs().max()) < eps
+            for name in hypernet.scaler_B
+        )
+
+
 _flash_patched = False
 
 _MLP_CHUNK_SIZE = 2048

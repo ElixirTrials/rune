@@ -114,6 +114,7 @@ def run_hypernet_distillation(config: Any) -> None:
         HypernetworkConfig,
         load_hypernetwork,
         reinit_scaler_b_nonzero,
+        scaler_b_is_collapsed,
     )
     from rune.training.collapse_metrics import (  # noqa: PLC0415
         assert_optimizer_covers,
@@ -179,11 +180,27 @@ def run_hypernet_distillation(config: Any) -> None:
         base_model.eval()
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_id)
 
-    # 2. Hypernetwork, re-initialized out of the collapse basin (#49 §A).
+    # 2. Hypernetwork. ctx_to_lora zero-inits scaler_B (the collapse basin: B =
+    # B_raw * scaler_B = 0, no gradient to B_raw), so a from-scratch run must
+    # re-init it non-zero. A WARM-START from a trained checkpoint already carries
+    # a learned, structured scaler_B (~0.057) that MUST be preserved — clobbering
+    # it with 1.0 inflates the B-side ~17x at effective_scaling=lora_alpha and
+    # destroys the adapter (60-step smoke: matched-zero -8.8). Re-init ONLY when
+    # actually collapsed (#49 §A).
     hypernet = load_hypernetwork(
         HypernetworkConfig(checkpoint_path=cfg.checkpoint_path), device=cfg.device
     )
-    reinit_scaler_b_nonzero(hypernet, cfg.scaler_b_init)
+    if scaler_b_is_collapsed(hypernet):
+        reinit_scaler_b_nonzero(hypernet, cfg.scaler_b_init)
+        logger.info(
+            "scaler_B in collapse basin at load → re-init to %.3f", cfg.scaler_b_init
+        )
+    elif hasattr(hypernet, "scaler_B"):
+        sb0 = hypernet.scaler_B[next(iter(hypernet.scaler_B.keys()))]
+        logger.info(
+            "scaler_B preserved from warm-start checkpoint (mean|·|=%.4f)",
+            float(sb0.abs().mean()),
+        )
     hypernet.train()
 
     layer_indices = list(hypernet.config.layer_indices)

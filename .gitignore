@@ -384,3 +384,5 @@ optuna_*.db
 *.pt
 *.json
 *.txt
+# issue#52 training checkpoints (durable in MLflow artifact store, not git)
+checkpoints/

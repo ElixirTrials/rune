@@ -61,6 +61,18 @@ def main(argv: list[str] | None = None) -> int:
 
     result = asyncio.run(run_benchmark(tasks, engine, bench_config))
 
+    # Per-task dump (diagnostic): the actual generated code + pass/fail per task.
+    # Lets the structured-gen-closure (did it produce real parseable code?) and
+    # correctness signals be read directly, not just the aggregate pass@1.
+    for tr in result.per_task:
+        print(
+            f"\n--- TASK {tr.task_id} passed={tr.passed} code_len={len(tr.code)} ---",
+            file=sys.stderr,
+        )
+        print(tr.code or "<EMPTY>", file=sys.stderr)
+        if tr.stderr:
+            print(f"[stderr] {tr.stderr[:400]}", file=sys.stderr)
+
     # Best-effort MLflow logging (experiment "issue52-recipe", one run per gate).
     # An unreachable server degrades to a stderr note; never breaks the run or
     # pollutes the single stdout JSON line.

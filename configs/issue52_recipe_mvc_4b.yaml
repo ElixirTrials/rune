@@ -22,7 +22,11 @@ experiment_name: "issue52-recipe"
 learning_rate: 2.0e-5
 warmup_ratio: 0.1            # inherited field; not consumed by the distill loop (no scheduler)
 num_epochs: 1
-max_seq_length: 2048
+# 768 is the memory regime the contrastive loop was designed for ("keeps seq=768,
+# peak ~ single-path" — hypernet_distill.py). 2048 OOMs the 22GB card: training
+# retains base-over-context forward graphs (matched + neg) + fp32 full-vocab
+# log_softmax. p50 episode ctx+ans ~= 774 tok, so the median fits; longer truncate.
+max_seq_length: 768
 
 # --- batch / accumulation ---
 batch_size: 1               # inherited field; loop is batch-1 micro-steps (not consumed)
@@ -36,6 +40,15 @@ lora_alpha: 16
 # --- pilot budget (DistillConfig) ---
 max_steps: 300
 early_stop_warmup: 100
+
+# --- validation + periodic saves: val_corpus_path was empty (no val/best-ckpt).
+# val_diff_agreement is matched-vs-base (discipline confound), so we also save
+# periodically and pick the final checkpoint post-hoc on the matched-vs-feedback-
+# swap success metric (tools/_feedback_swap_eval.py). ---
+val_corpus_path: "/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+val_sample: 40
+val_steps: 100
+save_steps: 100
 
 # --- corrected-recipe specificity levers (DistillConfig) ---
 contrastive: true

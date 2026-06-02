@@ -142,3 +142,5 @@ GPU rules (CLAUDE.md): `free -g` first; runs under `tools/run_guarded.sh`; 4-bit
   `third_party/doc-to-lora/rune_episode_recall.py`. Rune venv = `uv run` (transformers 5.8).
 - Corpus: `/tmp/rune-corpus/external_codereview.{train,val.clean}.jsonl`. Bench: `benchmarks/mbpp_*.json`.
 - CPU RAM ~15GB (tiny) — `offload_base=False`, load the 9B in 4-bit.
+- ALWAYS write your observations, plans, considerations, interpretation of results to instructions/scratchpad.md 
+- Arm a monitor for instructions/reflections.md and respond to the critiques there. 
