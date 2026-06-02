@@ -675,10 +675,14 @@ def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
             import bitsandbytes as bnb  # noqa: PLC0415
 
             logger.info("optimizer: 8-bit Adam (bitsandbytes), wd=%s", cfg.weight_decay)
-            opt8 = bnb.optim.Adam8bit  # type: ignore[attr-defined]
+            # bitsandbytes ships no stubs for Adam8bit; route through an Any-typed
+            # base so the attribute access + call type-check cleanly whether or not
+            # bnb is installed (CI runs CPU-only `uv sync` and treats bnb as Any).
+            bnb_any: Any = bnb
+            opt8 = bnb_any.optim.Adam8bit
             return opt8(
                 params,
-                lr=cfg.learning_rate,  # type: ignore[no-untyped-call]
+                lr=cfg.learning_rate,
                 weight_decay=cfg.weight_decay,
             )
         except Exception as exc:  # noqa: BLE001
