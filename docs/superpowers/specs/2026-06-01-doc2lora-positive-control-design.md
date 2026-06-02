@@ -121,8 +121,10 @@ so it runs unchanged in both venvs and does not break isolation.
   **effect size at known-good recall**, not just sign.
 - **Bridge:** scorecard numbers on the Rune code episodes **+ explicit asymmetric
   interpretation** (see §7).
-- **Record:** chronological log appended to `instructions/scratchpad.md`; a short findings doc
-  when the deliverable completes.
+- **Record:** chronological working log appended to `instructions/scratchpad.md` — note that
+  `instructions/` is a deliberate local working-notes directory and is gitignored
+  (`.gitignore`), so the scratchpad is **not** committed; the auditable, committed artifact is
+  the findings doc (`docs/issue52-findings-2026-06-01.md`) produced when the deliverable completes.
 
 ## 7. Interpretation rules (set before running)
 
