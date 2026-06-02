@@ -151,6 +151,8 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--model-id", type=str, default=BASE)
     ap.add_argument("--max-seq-length", type=int, default=MAX_SEQ_LENGTH)
+    ap.add_argument("--load-4bit", action="store_true",
+                    help="4-bit nf4 base (default bf16 = engine parity)")
     ap.add_argument("--out", type=str, required=True,
                     help="per-episode JSONL output path")
     a = ap.parse_args()
@@ -188,20 +190,22 @@ def main() -> int:
         flush=True,
     )
 
-    # 4-bit nf4 base (mirror _specificity_probe.py:202-207 / diag_pre_corpus_gate
-    # PEFT setup). bf16 compute, double-quant, flash_attention_2, device_map.
-    print("loading 4-bit base...", flush=True)
-    base = AutoModelForCausalLM.from_pretrained(
-        a.model_id,
-        quantization_config=BitsAndBytesConfig(
+    # Base: bf16 by default (engine parity); 4-bit nf4 opt-in (--load-4bit). bf16
+    # compute, flash_attention_2, device_map; mirrors _specificity_probe.
+    print(f"loading {'4bit-nf4' if a.load_4bit else 'bf16'} base...", flush=True)
+    load_kw = dict(
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+        device_map={"": "cuda"},
+    )
+    if a.load_4bit:
+        load_kw["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
-        ),
-        attn_implementation="flash_attention_2",
-        device_map={"": "cuda"},
-    )
+        )
+    base = AutoModelForCausalLM.from_pretrained(a.model_id, **load_kw)
     tok = AutoTokenizer.from_pretrained(a.model_id)
     device = next(base.parameters()).device
 

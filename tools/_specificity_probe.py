@@ -34,7 +34,7 @@ DECISIVE READ (pre-registered):
   NOTE: a flat present-margin does NOT refute #52's episodic-memory bet for hidden
   multi-turn feedback/tried/critique facts (those are not in the prompt at all).
 
-Run in RUNE's venv (bf16, flash-attn): uv run python tools/_specificity_probe.py --bf16
+Run in RUNE's venv (bf16 default, flash-attn): uv run python tools/_specificity_probe.py
 """
 
 from __future__ import annotations
@@ -179,7 +179,8 @@ def build_full(tok, device, prompt: str, answer: str):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bf16", action="store_true")
+    ap.add_argument("--load-4bit", action="store_true",
+                    help="4-bit nf4 base (default bf16 = engine parity)")
     ap.add_argument("--ckpt", type=str, default=CKPT)
     ap.add_argument("--model-id", type=str, default=BASE)
     ap.add_argument("--max-seq-length", type=int, default=2048)
@@ -215,14 +216,14 @@ def main() -> int:
         attn_implementation="flash_attention_2",
         device_map={"": "cuda"},
     )
-    if not a.bf16:
+    if a.load_4bit:
         load_kw["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
         )
-    print(f"  base dtype = {'bf16' if a.bf16 else '4bit-nf4'}", flush=True)
+    print(f"  base dtype = {'4bit-nf4' if a.load_4bit else 'bf16'}", flush=True)
     base = AutoModelForCausalLM.from_pretrained(a.model_id, **load_kw).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
     hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda")

@@ -56,7 +56,8 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=60)
     ap.add_argument("--max-seq-length", type=int, default=768,
                     help="ONE value threaded to BOTH conditioning + scored span (training regime)")
-    ap.add_argument("--bf16", action="store_true", help="bf16 base (default 4bit = train)")
+    ap.add_argument("--load-4bit", action="store_true",
+                    help="4-bit nf4 base (default bf16 = engine parity)")
     ap.add_argument("--out", type=str, default=None, help="per-episode JSONL dump path")
     a = ap.parse_args()
 
@@ -85,12 +86,12 @@ def main() -> int:
 
     load_kw = dict(dtype=torch.bfloat16, attn_implementation="flash_attention_2",
                    device_map={"": "cuda"})
-    if not a.bf16:
+    if a.load_4bit:
         load_kw["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True, bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True,
         )
-    print(f"[load] base={a.model_id} ({'bf16' if a.bf16 else '4bit'}) "
+    print(f"[load] base={a.model_id} ({'4bit' if a.load_4bit else 'bf16'}) "
           f"max_seq_length={a.max_seq_length}", flush=True)
     base = AutoModelForCausalLM.from_pretrained(a.model_id, **load_kw).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)

@@ -834,3 +834,19 @@ References:
 - The unchanged BF16-vs-4-bit E1 body result is useful because it stabilizes the representation-wall diagnosis. But prior 4-bit T0 feedback-swap numbers should not silently become BF16 evidence; rerun only the metrics that will be used as engine-parity gates, or mark the others as legacy 4-bit diagnostics.
 
 - Update the durable handoff/spec or add an erratum so future sessions do not inherit the wrong "product runs 4-bit" assumption from earlier reflections. Otherwise the next agent may optimize the wrong precision path.
+
+## 2026-06-02 - Training Handoff Review
+
+- The handoff is directionally strong, but it still overstates E1 in a few places. "Capacity is not the wall" and "rank cannot" should be scoped to the 10-episode MBPP absent/body micro-probe. The r8 oracle proves short-body train-surface memorization capacity, not that r8/chunk count will remain sufficient for longer trajectories, multi-file state, or failure-history memory.
+
+- There is a direct precision inconsistency: the handoff says BF16 is the operative training/eval regime, but the cross-over section says to re-score with `_specificity_probe.py` in 4-bit. That should be BF16 for engine parity, or explicitly labeled as a legacy 4-bit diagnostic. Do not mix this into the BF16 baseline-to-beat.
+
+- The cross-over negative conclusion is too strong. If the tiny body trainer fails to move from `+0.14`, that does not yet prove "rank/chunks won't help" or that fine-tuning cannot work. It could be a trainer bug, insufficient steps/LR, gradient flow through functional LoRA, scaler preservation, a bad hinge margin, or a too-small/heterogeneous 10-row corpus. Require an overfit sanity check showing the intended loss actually decreases before escalating to architecture/conditioning attenuation.
+
+- The `>= +1.0` cross-over bar is a useful predeclared target, but treat it as a decision threshold rather than a truth boundary. A smaller but statistically broad movement, with matched rising more than mismatch and signature retained, would still be evidence that the representation is gradient-reachable and may justify a better-designed pilot before declaring null.
+
+- The handoff correctly rejects CE alone, but the hinge objective needs safeguards: log matched, mismatch, zero, and hinge separately. A run can satisfy a hinge by pushing the deranged partner down or by destabilizing both paths; the desired behavior is matched-body improvement with mismatch/zero controls, not margin movement alone.
+
+- Full-run language is ahead of the data. "Real engine trajectories + action-determining failure-bearing episodes" are the right target, but they still need a corpus-quality gate: yield, causal alignment of failure reason to next action, in-prompt ceiling, positive-control episodes, and provenance labels. Do not launch a long body/direction run just because the 10-row cross-over moves.
+
+- The BF16 memory claim is plausible for Qwen3-4B, but still needs a guarded smoke with logged GPU peak before any multi-hour run. The previous OOM history came from graph-retaining contrastive training, not just model weights; optimizer state and dual forward/backward paths can eat the apparent headroom.
