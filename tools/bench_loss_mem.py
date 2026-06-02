@@ -7,6 +7,7 @@ so the ~full-vocab-fp32-copy saving is shown directly, not inferred.
 
 Run on the GPU box when free (needs a few GB). Tiny + fast.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,7 +39,9 @@ def _new_loss(student_logits, teacher_logits, k):
 def _measure(fn, n, vocab, k):
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
-    student = torch.randn(n, vocab, device="cuda", dtype=torch.bfloat16, requires_grad=True)
+    student = torch.randn(
+        n, vocab, device="cuda", dtype=torch.bfloat16, requires_grad=True
+    )
     teacher = torch.randn(n, vocab, device="cuda", dtype=torch.bfloat16)
     before = torch.cuda.memory_allocated() / 1e9
     loss = fn(student, teacher, k)
@@ -59,8 +62,12 @@ def main() -> int:
     old = _measure(_old_loss, a.n, a.vocab, a.k)
     new = _measure(_new_loss, a.n, a.vocab, a.k)
     print(f"N={a.n} vocab={a.vocab} k={a.k}")
-    print(f"OLD: peak={old['peak_gb']:.3f}GB  (base inputs {old['base_tensors_gb']:.3f}GB)")
-    print(f"NEW: peak={new['peak_gb']:.3f}GB  (base inputs {new['base_tensors_gb']:.3f}GB)")
+    print(
+        f"OLD: peak={old['peak_gb']:.3f}GB  (base inputs {old['base_tensors_gb']:.3f}GB)"
+    )
+    print(
+        f"NEW: peak={new['peak_gb']:.3f}GB  (base inputs {new['base_tensors_gb']:.3f}GB)"
+    )
     print(f"SAVING: {old['peak_gb'] - new['peak_gb']:.3f}GB")
     return 0
 

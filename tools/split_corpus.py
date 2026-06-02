@@ -6,6 +6,7 @@ individual row would leak a PR's rounds across splits, so we split by FAMILY
 same bucket, and held-out val/test families are never seen in training. This makes
 any post-training eval a real generalization test, not a train-fit.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,9 @@ def bucket(key: str, val_pct: int, test_pct: int) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", default="/tmp/rune-corpus/external_codereview.unrolled.jsonl")
+    ap.add_argument(
+        "--corpus", default="/tmp/rune-corpus/external_codereview.unrolled.jsonl"
+    )
     ap.add_argument("--out-dir", default="/tmp/rune-corpus")
     ap.add_argument("--val-pct", type=int, default=5)
     ap.add_argument("--test-pct", type=int, default=5)

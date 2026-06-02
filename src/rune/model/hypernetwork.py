@@ -38,6 +38,25 @@ def reinit_scaler_b_nonzero(hypernet: Any, value: float = 1.0) -> None:
             hypernet.scaler_B[name].fill_(value)
 
 
+def scaler_b_is_collapsed(hypernet: Any, eps: float = 1e-4) -> bool:
+    """True if scaler_B sits in the zero-collapse basin (all |values| < eps).
+
+    ctx_to_lora zero-inits scaler_B, so a from-scratch run needs the non-zero
+    re-init above. A warm-start from a *trained* checkpoint already carries a
+    learned, structured scaler_B (preserve it — re-initializing to 1.0 inflates
+    the B-side ~17x at effective_scaling=lora_alpha and destroys the adapter).
+    """
+    import torch  # noqa: PLC0415
+
+    if not hasattr(hypernet, "scaler_B"):
+        return False
+    with torch.no_grad():
+        return all(
+            float(hypernet.scaler_B[name].abs().max()) < eps
+            for name in hypernet.scaler_B
+        )
+
+
 _flash_patched = False
 
 _MLP_CHUNK_SIZE = 2048
@@ -354,6 +373,24 @@ def extract_activations_with_model(
 _ATTN_MODULES = {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"}
 
 
+def _peft_adapter_rank(base_model: Any, fallback: int) -> int:
+    """Read the active PEFT adapter's rank from a wrapped model.
+
+    Returns ``peft_config[active_adapter].r`` when available, else ``fallback``.
+    The base_model passed to generate_adapter_weights is the get_peft_model
+    wrapper from wrapper.from_config, whose r already accounts for use_bias
+    (r_peft = 2*r). Reading it here (instead of the checkpoint r) makes the
+    merge_head_bias_rank guard meaningful: it catches a PEFT/adapter rank drift
+    while passing when they agree.
+    """
+    cfgs = getattr(base_model, "peft_config", None)
+    if not cfgs:
+        return fallback
+    active = getattr(base_model, "active_adapter", None)
+    cfg = cfgs.get(active) if active in cfgs else next(iter(cfgs.values()))
+    return int(getattr(cfg, "r", fallback))
+
+
 def merge_head_bias_rank(
     adapter_rank: int, bias_rank: int, peft_config_rank: int
 ) -> int:
@@ -462,10 +499,15 @@ def generate_adapter_weights(
         first_mod = next(iter(lora_dict))
         base_rank = int(lora_dict[first_mod]["A"].shape[-2])
         n_chunks = torch.ones(1, dtype=torch.int32, device=features.device)
+        # Validate against the ACTUAL PEFT adapter rank (2r), not the checkpoint
+        # r. combine_lora doubles the rank axis to base_rank+bias_rank, and
+        # wrapper.from_config builds the PEFT LoraConfig at r_peft = 2*r for
+        # use_bias. Reading hc.lora_config.r here (the checkpoint r) would make
+        # the guard demand r == 2r and crash on every use_bias checkpoint.
         merge_head_bias_rank(
             adapter_rank=base_rank,
             bias_rank=base_rank,
-            peft_config_rank=int(hc.lora_config.r),
+            peft_config_rank=_peft_adapter_rank(base_model, fallback=2 * base_rank),
         )
         lora_dict = combine_lora(
             lora_dict, n_chunks, lora_bias=hypernet.get_head_bias()

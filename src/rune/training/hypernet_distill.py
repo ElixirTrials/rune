@@ -6,6 +6,7 @@ Loss = top-K KL over the answer span, masked to diff tokens (where teacher != ba
 
 GPU imports are deferred; only pure tensor helpers are import-safe.
 """
+
 from __future__ import annotations
 
 import json
@@ -55,12 +56,13 @@ class DistillConfig(D2LTrainConfig):
     # floor that won't false-abort on normal per-row fluctuation (reviewer).
     min_preservation: float = 0.7
     max_skip_frac: float = 0.5
-    # Memory: a frozen 9B bf16 base (~18GB) + trainable hypernet + optimizer +
-    # activations does not fit 22GB. 4-bit NF4 base (QLoRA) frees ~13GB and is the
-    # primary lever; 8-bit Adam shrinks optimizer state ~4x. Gradient checkpointing
-    # is INCOMPATIBLE with the monkeypatched functional-LoRA forward (checkpoint
+    # Precision: the current 4B base in bf16 (~8GB) + trainable hypernet + optimizer +
+    # activations fits the 23GB GPU and MATCHES the engine (wrapper.py loads bf16), so
+    # bf16 is the default. 4-bit NF4 (QLoRA) is opt-in for a larger base / tighter
+    # memory; 8-bit Adam shrinks optimizer state ~4x. Gradient checkpointing is
+    # INCOMPATIBLE with the monkeypatched functional-LoRA forward (checkpoint
     # tensor-count mismatch on recompute), so it defaults off.
-    load_in_4bit: bool = True
+    load_in_4bit: bool = False
     gradient_checkpointing: bool = False
     use_8bit_optim: bool = True
     # Optimization regime (loss-investigation fixes): the corpus is repo-grouped, so
@@ -105,10 +107,15 @@ def run_hypernet_distillation(config: Any) -> None:
     import torch  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
+    from rune.model.adapter_contract import (  # noqa: PLC0415
+        assemble_adapter,
+        effective_scaling,
+    )
     from rune.model.hypernetwork import (  # noqa: PLC0415
         HypernetworkConfig,
         load_hypernetwork,
         reinit_scaler_b_nonzero,
+        scaler_b_is_collapsed,
     )
     from rune.training.collapse_metrics import (  # noqa: PLC0415
         assert_optimizer_covers,
@@ -126,7 +133,8 @@ def run_hypernet_distillation(config: Any) -> None:
     free = subprocess.run(["free", "-g"], capture_output=True, text=True, check=False)
     logger.info("free -g:\n%s", free.stdout)
 
-    # 1. Base model (frozen) + tokenizer. 4-bit NF4 (QLoRA) by default for memory.
+    # 1. Base model (frozen) + tokenizer. bf16 by default (engine parity); 4-bit NF4
+    #    (QLoRA) opt-in via load_in_4bit for a larger base / tighter memory.
     base_model: Any
     if cfg.load_in_4bit:
         from transformers import BitsAndBytesConfig  # noqa: PLC0415
@@ -174,14 +182,40 @@ def run_hypernet_distillation(config: Any) -> None:
         base_model.eval()
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_id)
 
-    # 2. Hypernetwork, re-initialized out of the collapse basin (#49 §A).
+    # 2. Hypernetwork. ctx_to_lora zero-inits scaler_B (the collapse basin: B =
+    # B_raw * scaler_B = 0, no gradient to B_raw), so a from-scratch run must
+    # re-init it non-zero. A WARM-START from a trained checkpoint already carries
+    # a learned, structured scaler_B (~0.057) that MUST be preserved — clobbering
+    # it with 1.0 inflates the B-side ~17x at effective_scaling=lora_alpha and
+    # destroys the adapter (60-step smoke: matched-zero -8.8). Re-init ONLY when
+    # actually collapsed (#49 §A).
     hypernet = load_hypernetwork(
         HypernetworkConfig(checkpoint_path=cfg.checkpoint_path), device=cfg.device
     )
-    reinit_scaler_b_nonzero(hypernet, cfg.scaler_b_init)
+    if scaler_b_is_collapsed(hypernet):
+        reinit_scaler_b_nonzero(hypernet, cfg.scaler_b_init)
+        logger.info(
+            "scaler_B in collapse basin at load → re-init to %.3f", cfg.scaler_b_init
+        )
+    elif hasattr(hypernet, "scaler_B"):
+        sb0 = hypernet.scaler_B[next(iter(hypernet.scaler_B.keys()))]
+        logger.info(
+            "scaler_B preserved from warm-start checkpoint (mean|·|=%.4f)",
+            float(sb0.abs().mean()),
+        )
     hypernet.train()
 
     layer_indices = list(hypernet.config.layer_indices)
+    # Shared apply contract (Sakana parity): effective scaling == lora_alpha (NOT
+    # alpha/r and NOT cfg.train_scaling), applied to the combine_lora-assembled
+    # adapter. n_chunks is the single-context int tensor combine_lora splits on.
+    eff_scaling = effective_scaling(hypernet)
+    n_chunks = torch.ones(1, dtype=torch.int32, device=cfg.device)
+    logger.info(
+        "adapter contract: effective_scaling(lora_alpha)=%.4f use_bias=%s",
+        eff_scaling,
+        getattr(hypernet.config, "use_bias", False),
+    )
 
     # 3. Optimizer over trainable hypernet params; assert scaler_B is covered.
     trainable = [p for p in hypernet.parameters() if p.requires_grad]
@@ -224,8 +258,7 @@ def run_hypernet_distillation(config: Any) -> None:
     # Feedback pool for distribution-matched hard negatives (swap a DIFFERENT row's
     # real feedback into this row's scaffold).
     feedback_pool = (
-        [r["feedback"] for r in records if r.get("feedback")]
-        if cfg.contrastive else []
+        [r["feedback"] for r in records if r.get("feedback")] if cfg.contrastive else []
     )
     val_records: list[dict[str, str]] = []
     if cfg.val_corpus_path:
@@ -234,12 +267,12 @@ def run_hypernet_distillation(config: Any) -> None:
         ]
         logger.info("loaded %d held-out val records", len(val_records))
 
-    step = 0          # optimizer steps
-    micro = 0         # records consumed (micro-steps)
+    step = 0  # optimizer steps
+    micro = 0  # records consumed (micro-steps)
     skipped = 0
     recent_da: list[float] = []
     recent_pres: list[float] = []
-    best_val = -1.0   # best held-out val_diff_agreement -> checkpoint_best.pt
+    best_val = -1.0  # best held-out val_diff_agreement -> checkpoint_best.pt
     stop_reason: str | None = None
     optimizer.zero_grad()
     accum = 0
@@ -274,17 +307,33 @@ def run_hypernet_distillation(config: Any) -> None:
                 labels = torch.ones_like(teacher_top1)
 
                 lora_dict = _generate_lora_dict(
-                    hypernet, context, base_model, tokenizer,
-                    layer_indices, cfg.max_seq_length,
+                    hypernet,
+                    context,
+                    base_model,
+                    tokenizer,
+                    layer_indices,
+                    cfg.max_seq_length,
                 )
+                # Assemble a SEPARATE adapter (head bias into ranks r..2r-1 when
+                # use_bias); keep raw lora_dict for the L1 term so it never sums the
+                # bias ranks. Outside no_grad -> grad flows to weights + head bias.
+                assembled = assemble_adapter(hypernet, lora_dict, n_chunks)
                 student_logits = _student_logits(
-                    base_model, tokenizer, ans_ids, lora_dict,
-                    layer_indices, cfg.train_scaling,
+                    base_model,
+                    tokenizer,
+                    ans_ids,
+                    assembled,
+                    layer_indices,
+                    eff_scaling,
                 )
 
                 loss = distill_step_loss(
-                    student_logits, teacher_logits, base_top1, teacher_top1,
-                    labels, k=cfg.topk,
+                    student_logits,
+                    teacher_logits,
+                    base_top1,
+                    teacher_top1,
+                    labels,
+                    k=cfg.topk,
                 )
                 student_top1 = student_logits.argmax(dim=-1).detach()
                 kl_val = float(loss.detach()) if loss.requires_grad else 0.0
@@ -309,23 +358,35 @@ def run_hypernet_distillation(config: Any) -> None:
                     )
                     if int(em.sum()) > 0:
                         gold = torch.tensor(ans_ids[1:], device=student_logits.device)
-                        lp_m = torch.log_softmax(
-                            student_logits[:-1].float(), dim=-1
-                        ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[em]
+                        lp_m = (
+                            torch.log_softmax(student_logits[:-1].float(), dim=-1)
+                            .gather(-1, gold.unsqueeze(-1))
+                            .squeeze(-1)[em]
+                        )
                         neg_fb = feedback_pool[micro % len(feedback_pool)]
                         neg_ctx = make_hard_negative(context, other_feedback=neg_fb)
                         with torch.no_grad():  # detached neg pass: active-set + value
                             neg_ld0 = _generate_lora_dict(
-                                hypernet, neg_ctx, base_model, tokenizer,
-                                layer_indices, cfg.max_seq_length,
+                                hypernet,
+                                neg_ctx,
+                                base_model,
+                                tokenizer,
+                                layer_indices,
+                                cfg.max_seq_length,
                             )
                             neg_logits0 = _student_logits(
-                                base_model, tokenizer, ans_ids, neg_ld0,
-                                layer_indices, cfg.train_scaling,
+                                base_model,
+                                tokenizer,
+                                ans_ids,
+                                assemble_adapter(hypernet, neg_ld0, n_chunks),
+                                layer_indices,
+                                eff_scaling,
                             )
-                            lp_n_det = torch.log_softmax(
-                                neg_logits0[:-1].float(), dim=-1
-                            ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[em]
+                            lp_n_det = (
+                                torch.log_softmax(neg_logits0[:-1].float(), dim=-1)
+                                .gather(-1, gold.unsqueeze(-1))
+                                .squeeze(-1)[em]
+                            )
                             del neg_ld0, neg_logits0
                         n_tok = int(em.sum())
                         hinge = torch.clamp(
@@ -358,19 +419,33 @@ def run_hypernet_distillation(config: Any) -> None:
                 del student_logits  # free matched graph before neg-grad forward
                 # Contrastive neg piece (+lp_n on the active set): grad through the
                 # negative context so the hinge pushes the wrong-context adapter DOWN.
-                if (neg_ctx is not None and neg_em is not None
-                        and active is not None and gold is not None):
+                if (
+                    neg_ctx is not None
+                    and neg_em is not None
+                    and active is not None
+                    and gold is not None
+                ):
                     neg_ld = _generate_lora_dict(
-                        hypernet, neg_ctx, base_model, tokenizer,
-                        layer_indices, cfg.max_seq_length,
+                        hypernet,
+                        neg_ctx,
+                        base_model,
+                        tokenizer,
+                        layer_indices,
+                        cfg.max_seq_length,
                     )
                     neg_logits = _student_logits(
-                        base_model, tokenizer, ans_ids, neg_ld,
-                        layer_indices, cfg.train_scaling,
+                        base_model,
+                        tokenizer,
+                        ans_ids,
+                        assemble_adapter(hypernet, neg_ld, n_chunks),
+                        layer_indices,
+                        eff_scaling,
                     )
-                    lp_n = torch.log_softmax(
-                        neg_logits[:-1].float(), dim=-1
-                    ).gather(-1, gold.unsqueeze(-1)).squeeze(-1)[neg_em]
+                    lp_n = (
+                        torch.log_softmax(neg_logits[:-1].float(), dim=-1)
+                        .gather(-1, gold.unsqueeze(-1))
+                        .squeeze(-1)[neg_em]
+                    )
                     n_tok = int(neg_em.sum())
                     loss_neg: Any = (
                         cfg.contrastive_weight * (lp_n[active]).sum() / n_tok
@@ -416,17 +491,28 @@ def run_hypernet_distillation(config: Any) -> None:
                     logf.flush()
                     if mlflow is not None:
                         mlflow.log_metrics(
-                            {k: v for k, v in rec.items()
-                             if isinstance(v, (int, float))},
+                            {
+                                k: v
+                                for k, v in rec.items()
+                                if isinstance(v, (int, float))
+                            },
                             step=step,
                         )
                     logger.info(
                         "step=%d loss=%.4f diff_agr=%.3f pres=%.3f difftok=%.3f",
-                        step, rec["loss"], da, pres, rec["diff_token_frac"],
+                        step,
+                        rec["loss"],
+                        da,
+                        pres,
+                        rec["diff_token_frac"],
                     )
                     stop_reason = should_early_stop(
-                        step, cfg.early_stop_warmup, recent_da, recent_pres,
-                        skipped, skipped + micro,
+                        step,
+                        cfg.early_stop_warmup,
+                        recent_da,
+                        recent_pres,
+                        skipped,
+                        skipped + micro,
                         min_diff_agreement=cfg.min_diff_agreement,
                         min_preservation=cfg.min_preservation,
                         max_skip_frac=cfg.max_skip_frac,
@@ -441,8 +527,13 @@ def run_hypernet_distillation(config: Any) -> None:
                 # progress curve (train-loss is confounded by per-row difficulty).
                 if did_step and val_records and step % cfg.val_steps == 0:
                     vmet = _eval_on_split(
-                        base_model, hypernet, tokenizer, val_records,
-                        layer_indices, cfg, hypernet_topk=cfg.topk,
+                        base_model,
+                        hypernet,
+                        tokenizer,
+                        val_records,
+                        layer_indices,
+                        cfg,
+                        hypernet_topk=cfg.topk,
                     )
                     if mlflow is not None:
                         mlflow.log_metrics(vmet, step=step)
@@ -451,9 +542,14 @@ def run_hypernet_distillation(config: Any) -> None:
                     # checkpoint may be past the val peak).
                     if vmet["val_diff_agreement"] > best_val:
                         best_val = vmet["val_diff_agreement"]
-                        _save_checkpoint(hypernet, cfg, step, ckpt_dir,
-                                         name="checkpoint_best.pt",
-                                         mlflow_handle=mlflow)
+                        _save_checkpoint(
+                            hypernet,
+                            cfg,
+                            step,
+                            ckpt_dir,
+                            name="checkpoint_best.pt",
+                            mlflow_handle=mlflow,
+                        )
                         if mlflow is not None:
                             mlflow.set_tag("best_val_diff_agreement", f"{best_val:.4f}")
                             mlflow.set_tag("best_val_step", str(step))
@@ -466,9 +562,14 @@ def run_hypernet_distillation(config: Any) -> None:
                     # Numbered (kept) checkpoints so the specificity trajectory can
                     # be gated post-hoc — distinguishes "specificity emerges with
                     # training" from "objective is structurally generic".
-                    _save_checkpoint(hypernet, cfg, step, ckpt_dir,
-                                     name=f"checkpoint_step{step}.pt",
-                                     mlflow_handle=mlflow)
+                    _save_checkpoint(
+                        hypernet,
+                        cfg,
+                        step,
+                        ckpt_dir,
+                        name=f"checkpoint_step{step}.pt",
+                        mlflow_handle=mlflow,
+                    )
 
     _save_checkpoint(hypernet, cfg, step, ckpt_dir, mlflow_handle=mlflow)
     logger.info("distillation complete: steps=%d skipped=%d", step, skipped)
@@ -515,11 +616,17 @@ def _eval_on_split(
 
     import torch  # noqa: PLC0415
 
+    from rune.model.adapter_contract import (  # noqa: PLC0415
+        assemble_adapter,
+        effective_scaling,
+    )
     from rune.training.collapse_metrics import (  # noqa: PLC0415
         diff_agreement,
         preservation_agreement,
     )
 
+    eff_scaling = effective_scaling(hypernet)
+    n_chunks = torch.ones(1, dtype=torch.int32, device=cfg.device)
     hypernet.eval()
     das: list[float] = []
     press: list[float] = []
@@ -536,7 +643,12 @@ def _eval_on_split(
                 hypernet, ctx, base_model, tokenizer, layer_indices, cfg.max_seq_length
             )
             s = _student_logits(
-                base_model, tokenizer, ans_ids, ld, layer_indices, cfg.train_scaling
+                base_model,
+                tokenizer,
+                ans_ids,
+                assemble_adapter(hypernet, ld, n_chunks),
+                layer_indices,
+                eff_scaling,
             )
             stt = s.argmax(dim=-1)
             das.append(diff_agreement(stt, tt, bt))
@@ -563,9 +675,16 @@ def _build_optimizer(params: list[Any], cfg: DistillConfig) -> Any:
             import bitsandbytes as bnb  # noqa: PLC0415
 
             logger.info("optimizer: 8-bit Adam (bitsandbytes), wd=%s", cfg.weight_decay)
-            opt8 = bnb.optim.Adam8bit  # type: ignore[attr-defined]
-            return opt8(params, lr=cfg.learning_rate,  # type: ignore[no-untyped-call]
-                        weight_decay=cfg.weight_decay)
+            # bitsandbytes ships no stubs for Adam8bit; route through an Any-typed
+            # base so the attribute access + call type-check cleanly whether or not
+            # bnb is installed (CI runs CPU-only `uv sync` and treats bnb as Any).
+            bnb_any: Any = bnb
+            opt8 = bnb_any.optim.Adam8bit
+            return opt8(
+                params,
+                lr=cfg.learning_rate,
+                weight_decay=cfg.weight_decay,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("8-bit Adam unavailable (%s); falling back to AdamW", exc)
     return torch.optim.AdamW(
@@ -584,13 +703,27 @@ def _try_mlflow(cfg: Any) -> Any:
     try:
         import mlflow  # noqa: PLC0415
 
-        mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+        mlflow.set_tracking_uri(
+            os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        )
         mlflow.set_experiment(cfg.experiment_name)
         mlflow.start_run(run_name=cfg.experiment_name)
-        keys = ("model_id", "corpus_path", "learning_rate", "num_epochs",
-                "max_seq_length", "scaler_b_init", "train_scaling", "topk",
-                "l1_reg_coef", "max_steps", "early_stop_warmup",
-                "min_diff_agreement", "min_preservation", "max_skip_frac")
+        keys = (
+            "model_id",
+            "corpus_path",
+            "learning_rate",
+            "num_epochs",
+            "max_seq_length",
+            "scaler_b_init",
+            "train_scaling",
+            "topk",
+            "l1_reg_coef",
+            "max_steps",
+            "early_stop_warmup",
+            "min_diff_agreement",
+            "min_preservation",
+            "max_skip_frac",
+        )
         mlflow.log_params({k: getattr(cfg, k, None) for k in keys})
         logger.info("MLflow run started (experiment=%s)", cfg.experiment_name)
         return mlflow
@@ -629,7 +762,7 @@ def _map_record(rec: dict[str, Any]) -> dict[str, str] | None:
             return None
         at, tt = str(at), str(tt)
         ctx = at
-        ans = tt[len(at):] if tt.startswith(at) else tt
+        ans = tt[len(at) :] if tt.startswith(at) else tt
     ctx, ans = ctx.strip(), ans.strip()
     if not ctx or not ans:
         return None
@@ -662,7 +795,7 @@ def _corpus_stats(path: str) -> dict[str, Any]:
             s3_rows += 1
             if tt.startswith(at):
                 exact_prefix += 1
-                ctx, ans = at, tt[len(at):]
+                ctx, ans = at, tt[len(at) :]
             else:
                 fallback += 1
                 if len(fallback_samples) < 5:
@@ -679,13 +812,23 @@ def _corpus_stats(path: str) -> dict[str, Any]:
     dist = {}
     if ans_lens:
         n = len(ans_lens)
-        dist = {"min": ans_lens[0], "median": ans_lens[n // 2],
-                "p90": ans_lens[min(n - 1, int(0.9 * n))], "max": ans_lens[-1]}
+        dist = {
+            "min": ans_lens[0],
+            "median": ans_lens[n // 2],
+            "p90": ans_lens[min(n - 1, int(0.9 * n))],
+            "max": ans_lens[-1],
+        }
     stats: dict[str, Any] = {
-        "raw": raw, "mapped": mapped, "skipped": raw - mapped,
-        "empty_context": empty_ctx, "empty_answer": empty_ans,
-        "s3_rows": s3_rows, "exact_prefix": exact_prefix, "fallback": fallback,
-        "answer_char_len": dist, "fallback_task_ids": fallback_samples,
+        "raw": raw,
+        "mapped": mapped,
+        "skipped": raw - mapped,
+        "empty_context": empty_ctx,
+        "empty_answer": empty_ans,
+        "s3_rows": s3_rows,
+        "exact_prefix": exact_prefix,
+        "fallback": fallback,
+        "answer_char_len": dist,
+        "fallback_task_ids": fallback_samples,
     }
     logger.info("corpus stats: %s", stats)
     return stats
@@ -824,6 +967,7 @@ def _functional_lora(
         def _fwd(x: Any, *args: Any, **kwargs: Any) -> Any:
             base_out = orig(x, *args, **kwargs)
             return base_out + _lora_delta(x, a, b, scaling).to(base_out.dtype)
+
         return _fwd
 
     @contextlib.contextmanager
@@ -888,14 +1032,28 @@ def _grad_norm_summary(hypernet: Any) -> dict[str, float]:
 
 
 def _save_checkpoint(
-    hypernet: Any, cfg: DistillConfig, step: int, ckpt_dir: Any,
-    name: str = "checkpoint.pt", mlflow_handle: Any = None,
+    hypernet: Any,
+    cfg: DistillConfig,
+    step: int,
+    ckpt_dir: Any,
+    name: str = "checkpoint.pt",
+    mlflow_handle: Any = None,
+    keep_local: bool = False,
 ) -> None:
-    """Persist the hypernetwork state dict + config + step.
+    """Persist the hypernetwork state dict + config + step to the MLflow (S3)
+    artifact store, keeping no local copy.
 
-    Also logs the file as an MLflow artifact when a handle is given, so the
-    checkpoint is durable in the artifact store (S3) and not just in ephemeral
-    local /tmp (issue #49: prior runs logged NO checkpoint artifact).
+    The local file is a transient staging path: we torch.save it, upload it via
+    MLflow ``log_artifact`` (the server's ``--artifacts-destination`` is S3), verify
+    the artifact is present in the store, then delete the local copy. This keeps the
+    tiny ~15GB VM disk from filling with multi-hundred-MB checkpoints (the prior
+    failure mode). Retrieve later by the ``s3://`` / ``mlflow-artifacts:`` URI —
+    ``load_hypernetwork`` downloads + caches s3:// URIs automatically.
+
+    The local file is preserved (and a warning logged) only when upload is impossible
+    or unverified — no MLflow handle, ``log_artifact`` raises, or the artifact is not
+    found in the store afterward — so a checkpoint is never lost to a failed upload.
+    Pass ``keep_local=True`` to force-retain (e.g. a caller that needs the path now).
     """
     import torch  # noqa: PLC0415
 
@@ -908,13 +1066,53 @@ def _save_checkpoint(
         },
         path,
     )
-    logger.info("saved checkpoint step=%d → %s", step, path)
-    if mlflow_handle is not None:
-        try:
-            mlflow_handle.log_artifact(str(path), artifact_path="checkpoints")
-            logger.info("logged checkpoint artifact to MLflow: %s", name)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("MLflow log_artifact failed for %s: %s", name, exc)
+    logger.info("saved checkpoint step=%d → %s (staging)", step, path)
+
+    if mlflow_handle is None:
+        logger.warning("no MLflow handle — keeping local checkpoint %s", path)
+        return
+
+    artifact_path = "checkpoints"
+    try:
+        mlflow_handle.log_artifact(str(path), artifact_path=artifact_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("log_artifact failed for %s — keeping local: %s", name, exc)
+        return
+
+    local_size = path.stat().st_size
+    if not keep_local and _artifact_uploaded(
+        mlflow_handle, f"{artifact_path}/{name}", local_size
+    ):
+        import contextlib  # noqa: PLC0415
+
+        with contextlib.suppress(OSError):
+            path.unlink()
+        logger.info("checkpoint %s on S3 via MLflow; local staging copy removed", name)
+    else:
+        logger.info("logged checkpoint %s to MLflow (local copy retained)", name)
+
+
+def _artifact_uploaded(mlflow_handle: Any, rel_path: str, local_size: int) -> bool:
+    """Confirm ``rel_path`` is present in the active run's artifact store WITH the
+    expected byte size before we delete the local staging file. Path-existence alone is
+    insufficient — a reusable name (checkpoint.pt) can list-present while the bytes are
+    stale/zero. A False return keeps the local copy."""
+    try:
+        run = mlflow_handle.active_run()
+        if run is None:
+            return False
+        listed = mlflow_handle.artifacts.list_artifacts(
+            run_id=run.info.run_id, artifact_path=rel_path.rsplit("/", 1)[0]
+        )
+        return any(
+            a.path == rel_path and getattr(a, "file_size", None) == local_size
+            for a in listed
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "could not verify artifact %s — keeping local copy: %s", rel_path, exc
+        )
+        return False
 
 
 def _nullctx() -> Any:

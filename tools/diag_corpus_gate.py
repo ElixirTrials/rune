@@ -14,6 +14,7 @@ mean(real) > mean(contra), with preservation staying high.
 Dual-precision (reviewer): run with the 4-bit train-matched base AND the bf16
 engine-target base; report both. Run under tools/run_guarded.sh.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,18 +38,29 @@ from rune.training.hypernet_distill import (
 
 def _load_base(model_id: str, four_bit: bool):
     from transformers import AutoModelForCausalLM, AutoTokenizer
+
     if four_bit:
         from transformers import BitsAndBytesConfig
-        q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
-                               bnb_4bit_compute_dtype=torch.bfloat16,
-                               bnb_4bit_use_double_quant=True)
+
+        q = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
         m = AutoModelForCausalLM.from_pretrained(
-            model_id, quantization_config=q, torch_dtype=torch.bfloat16,
-            attn_implementation="flash_attention_2", device_map={"": "cuda"})
+            model_id,
+            quantization_config=q,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
+            device_map={"": "cuda"},
+        )
     else:
         m = AutoModelForCausalLM.from_pretrained(
-            model_id, torch_dtype=torch.bfloat16,
-            attn_implementation="flash_attention_2").to("cuda")
+            model_id,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
+        ).to("cuda")
     m.eval()
     return m, AutoTokenizer.from_pretrained(model_id)
 
@@ -74,18 +86,27 @@ def _gate(base, tok, hypernet, rows, layer_indices, scaling, max_len):
             sc = _student_logits(base, tok, ans_ids, cld, layer_indices, scaling)
             contra.append(diff_agreement(sc.argmax(-1), tt, bt))
             del t, b, s, sz, sc, ld, cld
+
     def mean(x):
         return sum(x) / len(x) if x else 0.0
-    return {"n": len(real), "real": mean(real), "zero": mean(zero),
-            "contra": mean(contra), "preservation": mean(pres),
-            "real_gt_zero": mean(real) > mean(zero),
-            "real_gt_contra": mean(real) > mean(contra)}
+
+    return {
+        "n": len(real),
+        "real": mean(real),
+        "zero": mean(zero),
+        "contra": mean(contra),
+        "preservation": mean(pres),
+        "real_gt_zero": mean(real) > mean(zero),
+        "real_gt_contra": mean(real) > mean(contra),
+    }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl")
+    ap.add_argument(
+        "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+    )
     ap.add_argument("--n", type=int, default=40)
     ap.add_argument("--scaling", type=float, default=0.5)
     ap.add_argument("--max-seq-length", type=int, default=768)
@@ -94,13 +115,20 @@ def main() -> int:
     a = ap.parse_args()
 
     with open(a.val) as fh:
-        rows = [m for line in fh if line.strip() if (m := _map_record(json.loads(line)))][: a.n]
+        rows = [
+            m for line in fh if line.strip() if (m := _map_record(json.loads(line)))
+        ][: a.n]
     print(f"held-out clean val rows: {len(rows)}")
 
     out = {"checkpoint": a.checkpoint, "scaling": a.scaling, "n_rows": len(rows)}
-    for label, four_bit in (("4bit_train_matched", True), ("bf16_engine_target", False)):
+    for label, four_bit in (
+        ("4bit_train_matched", True),
+        ("bf16_engine_target", False),
+    ):
         base, tok = _load_base(a.model_id, four_bit)
-        hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.checkpoint), device="cuda")
+        hyp = load_hypernetwork(
+            HypernetworkConfig(checkpoint_path=a.checkpoint), device="cuda"
+        )
         hyp.eval()
         li = list(hyp.config.layer_indices)
         res = _gate(base, tok, hyp, rows, li, a.scaling, a.max_seq_length)

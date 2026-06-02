@@ -3,6 +3,7 @@
 No GPU imports at module load (CPU-importable invariant). torch is imported
 lazily inside function bodies.
 """
+
 from __future__ import annotations
 
 from typing import Any

@@ -11,6 +11,7 @@ DATA-layer value with libs we already have:
 Complements the family split + `_corpus_stats` + teacher audit. NOT a training
 monitor or model-quality gate. Run ad-hoc (CPU).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,15 +36,19 @@ def _ctx(r: dict) -> str:
 def _ans(r: dict) -> str:
     tt = str(r.get("teacher_text") or "")
     at = str(r.get("activation_text") or "")
-    return tt[len(at):] if tt.startswith(at) else str(r.get("answer") or tt)
+    return tt[len(at) :] if tt.startswith(at) else str(r.get("answer") or tt)
 
 
 def _dist(vals: list[int]) -> dict:
     if not vals:
         return {}
     s = sorted(vals)
-    return {"median": s[len(s) // 2], "p10": s[len(s) // 10],
-            "p90": s[min(len(s) - 1, 9 * len(s) // 10)], "max": s[-1]}
+    return {
+        "median": s[len(s) // 2],
+        "p10": s[len(s) // 10],
+        "p90": s[min(len(s) - 1, 9 * len(s) // 10)],
+        "max": s[-1],
+    }
 
 
 def main() -> int:
@@ -74,7 +79,9 @@ def main() -> int:
     }
 
     # near-duplicate leakage: TF-IDF char 3-5 grams; max cosine val/test -> train
-    vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), min_df=2, max_features=50000)
+    vec = TfidfVectorizer(
+        analyzer="char_wb", ngram_range=(3, 5), min_df=2, max_features=50000
+    )
     Xtrain = vec.fit_transform(ctrain)
     out["leakage"] = {}
     for s in ("val", "test"):
@@ -84,7 +91,7 @@ def main() -> int:
         max_sim = np.zeros(Xs.shape[0])
         step = 256
         for i in range(0, Xtrain.shape[0], step):
-            sims = cosine_similarity(Xs, Xtrain[i:i + step])
+            sims = cosine_similarity(Xs, Xtrain[i : i + step])
             max_sim = np.maximum(max_sim, sims.max(axis=1))
         leaked = int((max_sim >= a.leak_threshold).sum())
         out["leakage"][s] = {

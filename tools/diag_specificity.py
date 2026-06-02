@@ -17,6 +17,7 @@ real row) was inconclusive (real ~= contra). These tests are sharper:
 
 4-bit base (train-matched; avoids the bf16 OOM). Run under tools/run_guarded.sh.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,7 +40,9 @@ def _edit_mask(tok, pre_code: str, ans_ids: list[int]) -> list[bool]:
         return [True] * len(ans_ids)
     pre = tok(pre_code, add_special_tokens=False)["input_ids"]
     mask = [False] * len(ans_ids)
-    for op, _i1, _i2, j1, j2 in difflib.SequenceMatcher(a=pre, b=ans_ids, autojunk=False).get_opcodes():
+    for op, _i1, _i2, j1, j2 in difflib.SequenceMatcher(
+        a=pre, b=ans_ids, autojunk=False
+    ).get_opcodes():
         if op in ("insert", "replace"):
             for j in range(j1, j2):
                 mask[j] = True
@@ -75,7 +78,9 @@ def _editlocal_logprob(base, tok, hyp, ctx, ans, pre_code, li, scaling, max_len)
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl")
+    ap.add_argument(
+        "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+    )
     ap.add_argument("--n", type=int, default=30)
     ap.add_argument("--scaling", type=float, default=0.5)
     ap.add_argument("--max-seq-length", type=int, default=768)
@@ -84,13 +89,24 @@ def main() -> int:
     a = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
-                           bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True)
+
+    q = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
     base = AutoModelForCausalLM.from_pretrained(
-        a.model_id, quantization_config=q, torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2", device_map={"": "cuda"}).eval()
+        a.model_id,
+        quantization_config=q,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+        device_map={"": "cuda"},
+    ).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
-    hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.checkpoint), device="cuda")
+    hyp = load_hypernetwork(
+        HypernetworkConfig(checkpoint_path=a.checkpoint), device="cuda"
+    )
     hyp.eval()
     li = list(hyp.config.layer_indices)
 
@@ -110,22 +126,56 @@ def main() -> int:
     per = []
     for i, r in enumerate(rows):
         j = (i + 1) % len(rows)
-        lm = _editlocal_logprob(base, tok, hyp, r["context"], r["answer"], r["pre_code"], li, a.scaling, a.max_seq_length)
-        lx = _editlocal_logprob(base, tok, hyp, rows[j]["context"], r["answer"], r["pre_code"], li, a.scaling, a.max_seq_length)
-        lz = _editlocal_logprob(base, tok, hyp, r["context"], r["answer"], r["pre_code"], li, 0.0, a.max_seq_length)
+        lm = _editlocal_logprob(
+            base,
+            tok,
+            hyp,
+            r["context"],
+            r["answer"],
+            r["pre_code"],
+            li,
+            a.scaling,
+            a.max_seq_length,
+        )
+        lx = _editlocal_logprob(
+            base,
+            tok,
+            hyp,
+            rows[j]["context"],
+            r["answer"],
+            r["pre_code"],
+            li,
+            a.scaling,
+            a.max_seq_length,
+        )
+        lz = _editlocal_logprob(
+            base,
+            tok,
+            hyp,
+            r["context"],
+            r["answer"],
+            r["pre_code"],
+            li,
+            0.0,
+            a.max_seq_length,
+        )
         if None in (lm, lx, lz):
             continue
         matched.append(lm)
         mismatched.append(lx)
         zero.append(lz)
         wins += int(lm > lx)
-        per.append({"matched": round(lm, 4), "mismatched": round(lx, 4), "zero": round(lz, 4)})
+        per.append(
+            {"matched": round(lm, 4), "mismatched": round(lx, 4), "zero": round(lz, 4)}
+        )
 
     def mean(x):
         return sum(x) / len(x) if x else 0.0
+
     n = len(matched)
     out = {
-        "n": n, "scaling": a.scaling,
+        "n": n,
+        "scaling": a.scaling,
         "matched_editlocal_logprob": mean(matched),
         "mismatched_editlocal_logprob": mean(mismatched),
         "zero_editlocal_logprob": mean(zero),
@@ -137,8 +187,10 @@ def main() -> int:
     with open(a.json_out, "w") as f:
         json.dump(out, f, indent=2)
     print("SPECIFICITY:", json.dumps({k: out[k] for k in out if k != "per"}, indent=2))
-    print(f"SPECIFIC: {out['specific']} (margin matched-mismatched={out['matched_minus_mismatched']:+.4f}, "
-          f"frac wins={out['frac_rows_matched_gt_mismatched']:.2f})")
+    print(
+        f"SPECIFIC: {out['specific']} (margin matched-mismatched={out['matched_minus_mismatched']:+.4f}, "
+        f"frac wins={out['frac_rows_matched_gt_mismatched']:.2f})"
+    )
     return 0
 
 

@@ -38,9 +38,9 @@ def test_peft_export_maps_positional_slot_to_absolute_layer_noncontiguous() -> N
         assert torch.equal(sd[ka], a[0, pos])
         assert torch.equal(sd[kb], b[0, pos].t())
     # slot/layer divergence is real: layer-5 key must NOT equal slot 5 (doesn't exist)
-    assert torch.equal(sd[
-        "base_model.model.model.layers.5.self_attn.q_proj.lora_A.weight"
-    ], a[0, 1])
+    assert torch.equal(
+        sd["base_model.model.model.layers.5.self_attn.q_proj.lora_A.weight"], a[0, 1]
+    )
 
 
 def test_merge_head_bias_rank_raises_on_rank_mismatch() -> None:

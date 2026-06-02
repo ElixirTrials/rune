@@ -1,4 +1,5 @@
 """Contrastive / specificity primitives (issue #49)."""
+
 import torch
 
 from rune.training.contrastive import (
@@ -17,7 +18,10 @@ _CTX = (
 
 
 def test_extract_review_feedback() -> None:
-    assert extract_review_feedback(_CTX) == "Use all() not any() so every element is checked."
+    assert (
+        extract_review_feedback(_CTX)
+        == "Use all() not any() so every element is checked."
+    )
     assert extract_review_feedback("## Task\nx") == ""
     assert has_feedback(_CTX) and not has_feedback("## Task\nx")
 
@@ -73,4 +77,6 @@ def test_contrastive_margin_loss_positive_when_neg_competitive() -> None:
 
 
 def test_contrastive_margin_loss_empty() -> None:
-    assert float(contrastive_margin_loss(torch.tensor([]), torch.tensor([]), 0.5)) == 0.0
+    assert (
+        float(contrastive_margin_loss(torch.tensor([]), torch.tensor([]), 0.5)) == 0.0
+    )

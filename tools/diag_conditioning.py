@@ -17,6 +17,7 @@ Decision:
     (-> Sakana up-scaling: re-gate across 0.25..2.0)
 No training; loads base once. Run under tools/run_guarded.sh.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,7 +56,9 @@ def _per_layer(lora_dict, n_layers):
 
 
 def _relL2(a, b):
-    return float(torch.linalg.vector_norm(a - b)) / (float(torch.linalg.vector_norm(a)) or 1.0)
+    return float(torch.linalg.vector_norm(a - b)) / (
+        float(torch.linalg.vector_norm(a)) or 1.0
+    )
 
 
 def _pool_feat(text, base, tok, li, max_len):
@@ -65,8 +68,9 @@ def _pool_feat(text, base, tok, li, max_len):
     representation comparable across contexts (the perceiver pools internally too).
     """
     feat, mask = extract_activations_with_model(
-        text=text, model=base, tokenizer=tok, layer_indices=li, max_length=max_len)
-    m = mask[0].to(feat.dtype)                       # [S]
+        text=text, model=base, tokenizer=tok, layer_indices=li, max_length=max_len
+    )
+    m = mask[0].to(feat.dtype)  # [S]
     pooled = (feat[0] * m[None, :, None]).sum(1) / (m.sum() or 1.0)  # [L,H]
     return pooled.detach().reshape(-1).float()
 
@@ -74,21 +78,35 @@ def _pool_feat(text, base, tok, li, max_len):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default="/tmp/rune-ck-b1smoke/checkpoint_step40.pt")
-    ap.add_argument("--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl")
+    ap.add_argument(
+        "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+    )
     ap.add_argument("--max-seq-length", type=int, default=768)
-    ap.add_argument("--n-ctx", type=int, default=5, help="distinct rows for the residual set")
+    ap.add_argument(
+        "--n-ctx", type=int, default=5, help="distinct rows for the residual set"
+    )
     ap.add_argument("--model-id", default="Qwen/Qwen3.5-9B")
     a = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
-                           bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True)
+
+    q = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
     base = AutoModelForCausalLM.from_pretrained(
-        a.model_id, quantization_config=q, dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2", device_map={"": "cuda"}).eval()
+        a.model_id,
+        quantization_config=q,
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+        device_map={"": "cuda"},
+    ).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
     hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda")
-    hyp.eval(); li = list(hyp.config.layer_indices)
+    hyp.eval()
+    li = list(hyp.config.layer_indices)
     n_layers = len(li)
 
     rows = []
@@ -112,41 +130,66 @@ def main() -> int:
 
     with torch.no_grad():
         feats = [_pool_feat(c, base, tok, li, a.max_seq_length) for c in ctxs]
-        weights = [_flat(_generate_lora_dict(hyp, c, base, tok, li, a.max_seq_length)) for c in ctxs]
+        weights = [
+            _flat(_generate_lora_dict(hyp, c, base, tok, li, a.max_seq_length))
+            for c in ctxs
+        ]
         w_swap = _flat(_generate_lora_dict(hyp, swap0, base, tok, li, a.max_seq_length))
 
         f_mean = torch.stack(feats).mean(0)
         w_mean = torch.stack(weights).mean(0)
         print(f"ckpt={a.ckpt}  n_layers={n_layers}  n_ctx={len(ctxs)}")
-        print(f"||W_mean||={float(torch.linalg.vector_norm(w_mean)):.4f}  "
-              f"||feat_mean||={float(torch.linalg.vector_norm(f_mean)):.4f}")
-        print("\nctx       ||W||     ||W-Wmean||  resid/Wmean | ||feat||  feat_resid/featmean")
-        for lab, w, f in zip(labels, weights, feats):
+        print(
+            f"||W_mean||={float(torch.linalg.vector_norm(w_mean)):.4f}  "
+            f"||feat_mean||={float(torch.linalg.vector_norm(f_mean)):.4f}"
+        )
+        print(
+            "\nctx       ||W||     ||W-Wmean||  resid/Wmean | ||feat||  feat_resid/featmean"
+        )
+        for lab, w, f in zip(labels, weights, feats, strict=False):
             wr = float(torch.linalg.vector_norm(w - w_mean))
             wn = float(torch.linalg.vector_norm(w))
             fr = float(torch.linalg.vector_norm(f - f_mean))
             fn = float(torch.linalg.vector_norm(f))
-            print(f"{lab:8} {wn:9.4f} {wr:10.5f}  {wr/(float(torch.linalg.vector_norm(w_mean)) or 1):9.5f}  | "
-                  f"{fn:8.3f}  {fr/(float(torch.linalg.vector_norm(f_mean)) or 1):.5f}")
+            print(
+                f"{lab:8} {wn:9.4f} {wr:10.5f}  {wr / (float(torch.linalg.vector_norm(w_mean)) or 1):9.5f}  | "
+                f"{fn:8.3f}  {fr / (float(torch.linalg.vector_norm(f_mean)) or 1):.5f}"
+            )
 
         # the B1-critical pair: matched(row0) vs feedback-swap(row0) — ONLY feedback differs
-        print(f"\nmatched(row0) vs feedback-SWAP: global W relL2 = {_relL2(weights[0], w_swap):.6f}  "
-              f"feat relL2 = {_relL2(feats[0], _pool_feat(swap0, base, tok, li, a.max_seq_length)):.6f}")
+        print(
+            f"\nmatched(row0) vs feedback-SWAP: global W relL2 = {_relL2(weights[0], w_swap):.6f}  "
+            f"feat relL2 = {_relL2(feats[0], _pool_feat(swap0, base, tok, li, a.max_seq_length)):.6f}"
+        )
         # layerwise for matched vs swap and matched vs row1(mismatch)
-        ld0 = _generate_lora_dict(hyp, rows[0]["context"], base, tok, li, a.max_seq_length)
+        ld0 = _generate_lora_dict(
+            hyp, rows[0]["context"], base, tok, li, a.max_seq_length
+        )
         lds = _generate_lora_dict(hyp, swap0, base, tok, li, a.max_seq_length)
-        ld1 = _generate_lora_dict(hyp, rows[1]["context"], base, tok, li, a.max_seq_length)
-        pl0, pls, pl1 = _per_layer(ld0, n_layers), _per_layer(lds, n_layers), _per_layer(ld1, n_layers)
+        ld1 = _generate_lora_dict(
+            hyp, rows[1]["context"], base, tok, li, a.max_seq_length
+        )
+        pl0, pls, pl1 = (
+            _per_layer(ld0, n_layers),
+            _per_layer(lds, n_layers),
+            _per_layer(ld1, n_layers),
+        )
         sw = [_relL2(pl0[L], pls[L]) for L in range(n_layers)]
         mm = [_relL2(pl0[L], pl1[L]) for L in range(n_layers)]
         top_sw = sorted(range(n_layers), key=lambda L: sw[L], reverse=True)[:5]
-        print("layerwise relL2 (matched vs swap)   max@layers:",
-              [(li[L], round(sw[L], 5)) for L in top_sw])
+        print(
+            "layerwise relL2 (matched vs swap)   max@layers:",
+            [(li[L], round(sw[L], 5)) for L in top_sw],
+        )
         top_mm = sorted(range(n_layers), key=lambda L: mm[L], reverse=True)[:5]
-        print("layerwise relL2 (matched vs row1)   max@layers:",
-              [(li[L], round(mm[L], 5)) for L in top_mm])
-    print("\nREAD: resid/Wmean ~0 across rows -> ~constant adapter (conditioning failure). "
-          "Substantial resid but flat edit-logprob @0.5 -> scale/rank/generic-swallow (Sakana up-scale).")
+        print(
+            "layerwise relL2 (matched vs row1)   max@layers:",
+            [(li[L], round(mm[L], 5)) for L in top_mm],
+        )
+    print(
+        "\nREAD: resid/Wmean ~0 across rows -> ~constant adapter (conditioning failure). "
+        "Substantial resid but flat edit-logprob @0.5 -> scale/rank/generic-swallow (Sakana up-scale)."
+    )
     return 0
 
 

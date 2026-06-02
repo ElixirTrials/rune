@@ -16,6 +16,7 @@ pairs, the EXTRACTED FEATURES and the GENERATED WEIGHTS directly:
 Pairs: two unrelated rows (diff code+feedback), matched-vs-feedback-swap (same code,
 only the review feedback changed = the exact pair B1 must separate), and row-vs-empty.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,27 +52,40 @@ def _rel(a, b):
 
 def _feat_vec(text, base, tok, li, max_len):
     feats, _ = extract_activations_with_model(
-        text=text, model=base, tokenizer=tok, layer_indices=li, max_length=max_len)
+        text=text, model=base, tokenizer=tok, layer_indices=li, max_length=max_len
+    )
     return feats.detach().reshape(-1).float()
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default="/tmp/rune-ck-b1smoke/checkpoint_step40.pt")
-    ap.add_argument("--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl")
+    ap.add_argument(
+        "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+    )
     ap.add_argument("--max-seq-length", type=int, default=768)
     ap.add_argument("--model-id", default="Qwen/Qwen3.5-9B")
     a = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
-                           bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True)
+
+    q = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+    )
     base = AutoModelForCausalLM.from_pretrained(
-        a.model_id, quantization_config=q, dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2", device_map={"": "cuda"}).eval()
+        a.model_id,
+        quantization_config=q,
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+        device_map={"": "cuda"},
+    ).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
     hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda")
-    hyp.eval(); li = list(hyp.config.layer_indices)
+    hyp.eval()
+    li = list(hyp.config.layer_indices)
 
     rows = []
     with open(a.val) as fh:
@@ -86,8 +100,10 @@ def main() -> int:
                 break
 
     ctx0 = rows[0]["context"]
-    ctx1 = rows[1]["context"]                                   # unrelated row
-    swap = make_hard_negative(ctx0, other_feedback=rows[1]["feedback"])  # only feedback changed
+    ctx1 = rows[1]["context"]  # unrelated row
+    swap = make_hard_negative(
+        ctx0, other_feedback=rows[1]["feedback"]
+    )  # only feedback changed
     empt = ""
 
     print(f"ckpt={a.ckpt}")
@@ -99,15 +115,24 @@ def main() -> int:
     ]
     with torch.no_grad():
         for name, ca, cb in cases:
-            fa, fb = _feat_vec(ca, base, tok, li, a.max_seq_length), _feat_vec(cb, base, tok, li, a.max_seq_length)
+            fa, fb = (
+                _feat_vec(ca, base, tok, li, a.max_seq_length),
+                _feat_vec(cb, base, tok, li, a.max_seq_length),
+            )
             frel, fcos = _rel(fa, fb)
-            wa = _flat_weights(_generate_lora_dict(hyp, ca, base, tok, li, a.max_seq_length))
-            wb = _flat_weights(_generate_lora_dict(hyp, cb, base, tok, li, a.max_seq_length))
+            wa = _flat_weights(
+                _generate_lora_dict(hyp, ca, base, tok, li, a.max_seq_length)
+            )
+            wb = _flat_weights(
+                _generate_lora_dict(hyp, cb, base, tok, li, a.max_seq_length)
+            )
             wrel, wcos = _rel(wa, wb)
             print(f"{name}  {frel:7.4f}  {fcos:7.5f}  |  {wrel:7.4f}  {wcos:7.5f}")
             del fa, fb, wa, wb
-    print("\nREAD: W_rel ~0 / W_cos ~1 with feat_rel>0 -> generate_weights ignores input "
-          "(upstream, no loss fixes it). W_rel substantial -> result REAL, loss has a lever.")
+    print(
+        "\nREAD: W_rel ~0 / W_cos ~1 with feat_rel>0 -> generate_weights ignores input "
+        "(upstream, no loss fixes it). W_rel substantial -> result REAL, loss has a lever."
+    )
     return 0
 
 

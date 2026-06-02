@@ -22,6 +22,7 @@ Healthy => green light for corpus training.
 
 Run under tools/run_guarded.sh. GPU-only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,8 +58,9 @@ def _edit_mask(tok: Any, pre_code: str, ans_ids: list[int]) -> list[bool]:
     return mask
 
 
-def _row_metrics(base: Any, tok: Any, context: str, answer: str, pre_code: str,
-                 max_length: int) -> dict[str, Any] | None:
+def _row_metrics(
+    base: Any, tok: Any, context: str, answer: str, pre_code: str, max_length: int
+) -> dict[str, Any] | None:
     device = next(base.parameters()).device
     full_ids, ans_ids = _prepare_ids(tok, context, answer, max_length)
     if len(ans_ids) < 2:
@@ -67,14 +69,14 @@ def _row_metrics(base: Any, tok: Any, context: str, answer: str, pre_code: str,
     full = torch.tensor([full_ids], device=device)
     ans_only = torch.tensor([ans_ids], device=device)
     with torch.no_grad():
-        teacher = base(full, use_cache=False).logits[0, -len(ans_ids):].float()
+        teacher = base(full, use_cache=False).logits[0, -len(ans_ids) :].float()
         base_l = base(ans_only, use_cache=False).logits[0].float()
     # causal shift: logits[:-1] predict ans_ids[1:]
     gold = torch.tensor(ans_ids[1:], device=device)
     t_pred, b_pred = teacher[:-1], base_l[:-1]
     t_top1, b_top1 = t_pred.argmax(-1), b_pred.argmax(-1)
-    t_correct = (t_top1 == gold)
-    b_correct = (b_top1 == gold)
+    t_correct = t_top1 == gold
+    b_correct = b_top1 == gold
     diff = t_correct & (~b_correct)
     mask = torch.tensor(edit_mask[1:], device=device, dtype=torch.bool)
     t_nll = torch.nn.functional.cross_entropy(t_pred, gold).item()
@@ -111,13 +113,21 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=120)
     ap.add_argument("--max-length", type=int, default=1024)
-    ap.add_argument("--corpus", type=str, default="/tmp/rune-corpus/external_codereview.unrolled.jsonl")
-    ap.add_argument("--json-out", type=str, default="/tmp/rune-issue49-teacher-quality.json")
+    ap.add_argument(
+        "--corpus",
+        type=str,
+        default="/tmp/rune-corpus/external_codereview.unrolled.jsonl",
+    )
+    ap.add_argument(
+        "--json-out", type=str, default="/tmp/rune-issue49-teacher-quality.json"
+    )
     ap.add_argument("--model-id", type=str, default="Qwen/Qwen3.5-9B")
     args = ap.parse_args()
 
     base = AutoModelForCausalLM.from_pretrained(
-        args.model_id, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+        args.model_id,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
     ).to("cuda")
     base.eval()
     tok = AutoTokenizer.from_pretrained(args.model_id)
@@ -130,12 +140,17 @@ def main() -> int:
         m = _map_record(r)
         if m is None:
             continue
-        items.append({
-            "context": m["context"], "answer": m["answer"],
-            "pre_code": str(r.get("pre_code", "")),
-            "edit_size": len(str(r.get("post_code", ""))),
-            "quality": (r.get("metadata", {}) or {}).get("quality_score", r.get("quality_score")),
-        })
+        items.append(
+            {
+                "context": m["context"],
+                "answer": m["answer"],
+                "pre_code": str(r.get("pre_code", "")),
+                "edit_size": len(str(r.get("post_code", ""))),
+                "quality": (r.get("metadata", {}) or {}).get(
+                    "quality_score", r.get("quality_score")
+                ),
+            }
+        )
     # leakage check (reviewer): context must NOT contain the ## Revision answer,
     # else base+context lift is a formatting/leakage artifact not trajectory memory.
     leakage_rows = sum(1 for it in items if "## Revision" in it["context"])
@@ -148,7 +163,9 @@ def main() -> int:
 
     rows = []
     for it in items:
-        m = _row_metrics(base, tok, it["context"], it["answer"], it["pre_code"], args.max_length)
+        m = _row_metrics(
+            base, tok, it["context"], it["answer"], it["pre_code"], args.max_length
+        )
         if m is None:
             continue
         m["edit_size"] = it["edit_size"]
@@ -156,14 +173,26 @@ def main() -> int:
         m["stratum"] = "large" if it["edit_size"] >= median_edit else "small"
         rows.append(m)
 
-    keys = ["teacher_acc", "base_acc", "teacher_nll", "base_nll", "nll_improvement",
-            "diff_token_frac_whole", "diff_token_frac_edit"]
+    keys = [
+        "teacher_acc",
+        "base_acc",
+        "teacher_nll",
+        "base_nll",
+        "nll_improvement",
+        "diff_token_frac_whole",
+        "diff_token_frac_edit",
+    ]
     overall = _agg(rows, keys)
-    by_stratum = {s: _agg([r for r in rows if r["stratum"] == s], keys)
-                  for s in ("small", "large")}
+    by_stratum = {
+        s: _agg([r for r in rows if r["stratum"] == s], keys)
+        for s in ("small", "large")
+    }
     # quality correlation with edit-local diff-token fraction (Pearson, cheap)
-    q = [(r["quality"], r["diff_token_frac_edit"]) for r in rows
-         if isinstance(r["quality"], (int, float))]
+    q = [
+        (r["quality"], r["diff_token_frac_edit"])
+        for r in rows
+        if isinstance(r["quality"], (int, float))
+    ]
     qcorr = None
     if len(q) > 2:
         qs = [a for a, _ in q]
@@ -189,9 +218,11 @@ def main() -> int:
     print("LEAKAGE_ROWS (context has ## Revision):", leakage_rows)
     print("OVERALL:", json.dumps(overall))
     print("BY_STRATUM:", json.dumps(by_stratum))
-    print(f"VERDICT_GREEN: {out['verdict_green']} "
-          f"(edit diff-token frac={overall['diff_token_frac_edit']:.3f}, "
-          f"nll_improvement={overall['nll_improvement']:.3f})")
+    print(
+        f"VERDICT_GREEN: {out['verdict_green']} "
+        f"(edit diff-token frac={overall['diff_token_frac_edit']:.3f}, "
+        f"nll_improvement={overall['nll_improvement']:.3f})"
+    )
     return 0
 
 

@@ -14,6 +14,7 @@ context encoder simply not condition on the trajectory (adapters cosine ~ 1.0)?
 
 Run under tools/run_guarded.sh. GPU-only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,9 @@ def _flatten(lora_dict: dict[str, Any]) -> Any:
     return torch.cat(parts)
 
 
-def _needle_logprob(base, tok, hypernet, context, prefix, needle, layer_indices, scaling, max_len) -> float:
+def _needle_logprob(
+    base, tok, hypernet, context, prefix, needle, layer_indices, scaling, max_len
+) -> float:
     device = next(base.parameters()).device
     with torch.no_grad():
         ld = _generate_lora_dict(hypernet, context, base, tok, layer_indices, max_len)
@@ -57,7 +60,11 @@ def _needle_logprob(base, tok, hypernet, context, prefix, needle, layer_indices,
         n_ids = tok(needle, add_special_tokens=False)["input_ids"]
         full = torch.tensor([p_ids + n_ids], device=device)
         n_qs = torch.tensor([1], device=device)
-        ctx = _functional_lora(base, layer_indices, ld, scaling, n_qs) if scaling > 0 else _null()
+        ctx = (
+            _functional_lora(base, layer_indices, ld, scaling, n_qs)
+            if scaling > 0
+            else _null()
+        )
         with ctx:
             logits = base(full, use_cache=False).logits[0]  # [T, V]
         lp = torch.log_softmax(logits.float(), dim=-1)
@@ -72,7 +79,9 @@ def _null():
     return contextlib.nullcontext()
 
 
-def _degeneration(base, tok, hypernet, context, prompt, layer_indices, scaling, max_len) -> float:
+def _degeneration(
+    base, tok, hypernet, context, prompt, layer_indices, scaling, max_len
+) -> float:
     """1 - distinct/total over a short greedy continuation. High => degenerate.
 
     Measures preservation/non-degeneration at a given scaling (reviewer point 3):
@@ -83,10 +92,14 @@ def _degeneration(base, tok, hypernet, context, prompt, layer_indices, scaling, 
         ld = _generate_lora_dict(hypernet, context, base, tok, layer_indices, max_len)
         ids = tok(prompt, add_special_tokens=False, return_tensors="pt").to(device)
         n_qs = torch.tensor([1], device=device)
-        ctx = _functional_lora(base, layer_indices, ld, scaling, n_qs) if scaling > 0 else _null()
+        ctx = (
+            _functional_lora(base, layer_indices, ld, scaling, n_qs)
+            if scaling > 0
+            else _null()
+        )
         with ctx:
             gen = base.generate(**ids, max_new_tokens=24, do_sample=False)
-        new = gen[0, ids["input_ids"].shape[1]:].tolist()
+        new = gen[0, ids["input_ids"].shape[1] :].tolist()
         if not new:
             return 0.0
         return 1.0 - len(set(new)) / len(new)
@@ -94,20 +107,33 @@ def _degeneration(base, tok, hypernet, context, prompt, layer_indices, scaling, 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--reinit", action="store_true", help="reinit scaler_B=1 (match training)")
-    ap.add_argument("--scalings", type=float, nargs="+", default=[0.0, 0.25, 0.5, 1.0, 2.0])
-    ap.add_argument("--json-out", type=str, default="/tmp/rune-issue49-sensitivity.json")
-    ap.add_argument("--checkpoint", type=str,
-                    default="s3://elixirtrials-949678234935-eu-west-2-artifacts/checkpoints/hypernet_hpo/checkpoint.pt")
+    ap.add_argument(
+        "--reinit", action="store_true", help="reinit scaler_B=1 (match training)"
+    )
+    ap.add_argument(
+        "--scalings", type=float, nargs="+", default=[0.0, 0.25, 0.5, 1.0, 2.0]
+    )
+    ap.add_argument(
+        "--json-out", type=str, default="/tmp/rune-issue49-sensitivity.json"
+    )
+    ap.add_argument(
+        "--checkpoint",
+        type=str,
+        default="s3://elixirtrials-949678234935-eu-west-2-artifacts/checkpoints/hypernet_hpo/checkpoint.pt",
+    )
     ap.add_argument("--model-id", type=str, default="Qwen/Qwen3.5-9B")
     args = ap.parse_args()
 
     base = AutoModelForCausalLM.from_pretrained(
-        args.model_id, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+        args.model_id,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
     ).to("cuda")
     base.eval()
     tok = AutoTokenizer.from_pretrained(args.model_id)
-    hypernet = load_hypernetwork(HypernetworkConfig(checkpoint_path=args.checkpoint), device="cuda")
+    hypernet = load_hypernetwork(
+        HypernetworkConfig(checkpoint_path=args.checkpoint), device="cuda"
+    )
     if args.reinit:
         reinit_scaler_b_nonzero(hypernet, 1.0)
     hypernet.eval()
@@ -118,15 +144,21 @@ def main() -> int:
 
     # 1. weight sensitivity across contexts (no training)
     with torch.no_grad():
-        vecs = {k: _flatten(_generate_lora_dict(hypernet, c, base, tok, layer_indices, max_len))
-                for k, c in CTXS.items()}
+        vecs = {
+            k: _flatten(
+                _generate_lora_dict(hypernet, c, base, tok, layer_indices, max_len)
+            )
+            for k, c in CTXS.items()
+        }
     keys = list(vecs)
     cos = {}
     rell2 = {}
     for i in range(len(keys)):
         for j in range(i + 1, len(keys)):
             a, b = vecs[keys[i]], vecs[keys[j]]
-            cos[f"{keys[i]}|{keys[j]}"] = float(torch.nn.functional.cosine_similarity(a, b, dim=0))
+            cos[f"{keys[i]}|{keys[j]}"] = float(
+                torch.nn.functional.cosine_similarity(a, b, dim=0)
+            )
             rell2[f"{keys[i]}|{keys[j]}"] = float((a - b).norm() / (b.norm() + 1e-8))
     out["weight_cosine"] = cos
     out["weight_rel_l2"] = rell2
@@ -134,11 +166,40 @@ def main() -> int:
     # 2. needle logprob sweep: real(A) vs contra(B) vs zero
     sweep = []
     for s in args.scalings:
-        real = _needle_logprob(base, tok, hypernet, CTXS["A_73921"], PREFIX, NEEDLE, layer_indices, s, max_len)
-        contra = _needle_logprob(base, tok, hypernet, CTXS["B_11111"], PREFIX, NEEDLE, layer_indices, s, max_len)
-        degen = _degeneration(base, tok, hypernet, CTXS["A_73921"], PREFIX, layer_indices, s, max_len)
-        sweep.append({"scaling": s, "real_logprob": real, "contra_logprob": contra,
-                      "real_minus_contra": real - contra, "degeneration": degen})
+        real = _needle_logprob(
+            base,
+            tok,
+            hypernet,
+            CTXS["A_73921"],
+            PREFIX,
+            NEEDLE,
+            layer_indices,
+            s,
+            max_len,
+        )
+        contra = _needle_logprob(
+            base,
+            tok,
+            hypernet,
+            CTXS["B_11111"],
+            PREFIX,
+            NEEDLE,
+            layer_indices,
+            s,
+            max_len,
+        )
+        degen = _degeneration(
+            base, tok, hypernet, CTXS["A_73921"], PREFIX, layer_indices, s, max_len
+        )
+        sweep.append(
+            {
+                "scaling": s,
+                "real_logprob": real,
+                "contra_logprob": contra,
+                "real_minus_contra": real - contra,
+                "degeneration": degen,
+            }
+        )
     out["needle_logprob_sweep"] = sweep
 
     with open(args.json_out, "w") as f:

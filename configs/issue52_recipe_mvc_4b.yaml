@@ -1,0 +1,60 @@
+# configs/issue52_recipe_mvc_4b.yaml — issue #52 Deliverable 2, corrected-recipe MVC
+# Qwen3-4B-Instruct-2507 + qwen_4b_d2l warm-start, recall-specialization PILOT (CPU author; GPU run).
+#
+# Consumed by rune.training.hypernet_distill.run_hypernet_distillation(DistillConfig).
+# NOTE on adapter geometry: lora_rank/lora_alpha below are INERT on warm-start. The HyperLoRA
+# architecture (rank, alpha, layer_indices, target_modules={'down_proj'}) is reconstructed from the
+# checkpoint's embedded HypernetConfig in load_hypernetwork(); the loop never reads cfg.lora_*.
+# The warm-start checkpoint is r=8, lora_alpha=45.2548, 36 layers, target_modules={'down_proj'}.
+#
+# NOTE on grad accumulation: the distill loop reads grad_accum_steps (DistillConfig field), NOT the
+# inherited gradient_accumulation_steps. Both are set to 8 so the intended accumulation holds
+# regardless of which the loop consumes.
+
+# --- base + warm-start (D2LTrainConfig) ---
+model_id: "Qwen/Qwen3-4B-Instruct-2507"
+checkpoint_path: "/workspaces/rune-gpu/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
+corpus_path: "/tmp/rune-corpus/external_codereview.train.jsonl"
+checkpoint_dir: "./checkpoints/issue52-recipe-4b"
+experiment_name: "issue52-recipe"
+
+# --- optimizer / sequence (consumed) ---
+learning_rate: 2.0e-5
+warmup_ratio: 0.1            # inherited field; not consumed by the distill loop (no scheduler)
+num_epochs: 1
+# 768 is the memory regime the contrastive loop was designed for ("keeps seq=768,
+# peak ~ single-path" — hypernet_distill.py). 2048 OOMs the 22GB card: training
+# retains base-over-context forward graphs (matched + neg) + fp32 full-vocab
+# log_softmax. p50 episode ctx+ans ~= 774 tok, so the median fits; longer truncate.
+max_seq_length: 768
+
+# --- precision: bf16 base (4B fits the 23GB GPU + matches the engine wrapper.py). ---
+# 4-bit nf4 was the 9B-era memory regime; opt back in only if a larger base / OOM needs it.
+load_in_4bit: false
+
+# --- batch / accumulation ---
+batch_size: 1               # inherited field; loop is batch-1 micro-steps (not consumed)
+gradient_accumulation_steps: 8   # inherited field; INERT in the distill loop
+grad_accum_steps: 8         # the field the distill loop actually reads
+
+# --- adapter geometry (INERT on warm-start; reconstructed from checkpoint config) ---
+lora_rank: 8
+lora_alpha: 16
+
+# --- pilot budget (DistillConfig) ---
+max_steps: 300
+early_stop_warmup: 100
+
+# --- validation + periodic saves: val_corpus_path was empty (no val/best-ckpt).
+# val_diff_agreement is matched-vs-base (discipline confound), so we also save
+# periodically and pick the final checkpoint post-hoc on the matched-vs-feedback-
+# swap success metric (tools/_feedback_swap_eval.py). ---
+val_corpus_path: "/tmp/rune-corpus/external_codereview.val.clean.jsonl"
+val_sample: 40
+val_steps: 100
+save_steps: 100
+
+# --- corrected-recipe specificity levers (DistillConfig) ---
+contrastive: true
+contrastive_weight: 1.0
+contrastive_margin: 1.0

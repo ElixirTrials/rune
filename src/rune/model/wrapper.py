@@ -18,6 +18,32 @@ if TYPE_CHECKING:
     from rune.config import PipelineConfig
 
 
+def peft_scaling_params(
+    checkpoint_alpha: float, rank: int, use_bias: bool
+) -> tuple[int, float]:
+    """Compute the engine's PEFT ``(r, lora_alpha)`` from the checkpoint contract.
+
+    PEFT applies the LoRA delta as ``delta * (lora_alpha / r)``. To realize the
+    shared contract's effective scaling (the RAW checkpoint ``lora_alpha``,
+    applied un-divided; see ``rune.model.adapter_contract.effective_scaling``),
+    we pick ``lora_alpha_peft = checkpoint_alpha * r_peft`` so the quotient is
+    exactly ``checkpoint_alpha`` and uniform across all ranks.
+
+    When the hypernet was trained ``use_bias``, ``generate_adapter_weights``
+    emits a ``combine_lora``-assembled state_dict whose rank axis is doubled to
+    ``2r`` (ranks ``0..r-1`` context A/B, ``r..2r-1`` head bias), so the PEFT
+    adapter must be built at ``2r`` or hot-swap misapplies (the rank-16 crash).
+
+    This is the ONE place the engine's PEFT sizing is derived; both
+    ``from_config`` and its unit test call it so the formula can't drift.
+
+    Returns:
+        ``(r_peft, lora_alpha_peft)``.
+    """
+    r_peft = 2 * rank if use_bias else rank
+    return r_peft, checkpoint_alpha * r_peft
+
+
 class ModelWrapper:
     """Bridges step_node's model interface to the underlying model layer.
 
@@ -84,23 +110,25 @@ class ModelWrapper:
         hc = hypernet.config
         target_modules = list(hc.lora_config.target_modules)
         rank = hc.lora_config.r
-        alpha = getattr(hc.lora_config, "lora_alpha", rank * 2)
+        # Sakana's contract (rune.model.adapter_contract.effective_scaling):
+        # the effective LoRA scaling is the RAW checkpoint lora_alpha, applied
+        # un-divided in ctx_to_lora.lora_forward (NOT alpha/r). The prior code
+        # set PEFT (r=rank, lora_alpha=alpha) -> PEFT scaling alpha/r, which is
+        # 8x too weak at r=8 and collapsed recall.
+        checkpoint_alpha = float(getattr(hc.lora_config, "lora_alpha", rank * 2))
+        use_bias = bool(getattr(hc, "use_bias", False))
+        r_peft, lora_alpha_peft = peft_scaling_params(checkpoint_alpha, rank, use_bias)
         _raw_model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
             dtype=torch.bfloat16,
             attn_implementation="flash_attention_2",
         ).to(device)
-        # PEFT scaling = lora_alpha / r must reproduce the scaling the
-        # hypernetwork was distilled against (ctx_to_lora applies alpha/r; see
-        # text_to_lora.py).  The prior `alpha * rank` made scaling = alpha (8x
-        # too strong at r=8), over-driving the adapter so structured generation
-        # never closed the JSON.  adapter_scaling (run_config) is the single
-        # runtime tuning knob layered on top of this correct structural base.
         lora_config = LoraConfig(
-            r=rank,
-            lora_alpha=alpha,
+            r=r_peft,
+            lora_alpha=lora_alpha_peft,
             target_modules=target_modules,
             lora_dropout=0.0,
+            use_rslora=False,
         )
         base_model: Any = get_peft_model(_raw_model, lora_config)
         tokenizer = AutoTokenizer.from_pretrained(config.model_id)
