@@ -1032,12 +1032,22 @@ def _save_checkpoint(
     ckpt_dir: Any,
     name: str = "checkpoint.pt",
     mlflow_handle: Any = None,
+    keep_local: bool = False,
 ) -> None:
-    """Persist the hypernetwork state dict + config + step.
+    """Persist the hypernetwork state dict + config + step to the MLflow (S3)
+    artifact store, keeping no local copy.
 
-    Also logs the file as an MLflow artifact when a handle is given, so the
-    checkpoint is durable in the artifact store (S3) and not just in ephemeral
-    local /tmp (issue #49: prior runs logged NO checkpoint artifact).
+    The local file is a transient staging path: we torch.save it, upload it via
+    MLflow ``log_artifact`` (the server's ``--artifacts-destination`` is S3), verify
+    the artifact is present in the store, then delete the local copy. This keeps the
+    tiny ~15GB VM disk from filling with multi-hundred-MB checkpoints (the prior
+    failure mode). Retrieve later by the ``s3://`` / ``mlflow-artifacts:`` URI —
+    ``load_hypernetwork`` downloads + caches s3:// URIs automatically.
+
+    The local file is preserved (and a warning logged) only when upload is impossible
+    or unverified — no MLflow handle, ``log_artifact`` raises, or the artifact is not
+    found in the store afterward — so a checkpoint is never lost to a failed upload.
+    Pass ``keep_local=True`` to force-retain (e.g. a caller that needs the path now).
     """
     import torch  # noqa: PLC0415
 
@@ -1050,13 +1060,45 @@ def _save_checkpoint(
         },
         path,
     )
-    logger.info("saved checkpoint step=%d → %s", step, path)
-    if mlflow_handle is not None:
-        try:
-            mlflow_handle.log_artifact(str(path), artifact_path="checkpoints")
-            logger.info("logged checkpoint artifact to MLflow: %s", name)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("MLflow log_artifact failed for %s: %s", name, exc)
+    logger.info("saved checkpoint step=%d → %s (staging)", step, path)
+
+    if mlflow_handle is None:
+        logger.warning("no MLflow handle — keeping local checkpoint %s", path)
+        return
+
+    artifact_path = "checkpoints"
+    try:
+        mlflow_handle.log_artifact(str(path), artifact_path=artifact_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("log_artifact failed for %s — keeping local: %s", name, exc)
+        return
+
+    if not keep_local and _artifact_uploaded(mlflow_handle, f"{artifact_path}/{name}"):
+        import contextlib  # noqa: PLC0415
+
+        with contextlib.suppress(OSError):
+            path.unlink()
+        logger.info("checkpoint %s on S3 via MLflow; local staging copy removed", name)
+    else:
+        logger.info("logged checkpoint %s to MLflow (local copy retained)", name)
+
+
+def _artifact_uploaded(mlflow_handle: Any, rel_path: str) -> bool:
+    """Confirm ``rel_path`` exists in the active run's artifact store before we
+    delete the local staging file. A False return keeps the local copy."""
+    try:
+        run = mlflow_handle.active_run()
+        if run is None:
+            return False
+        listed = mlflow_handle.artifacts.list_artifacts(
+            run_id=run.info.run_id, artifact_path=rel_path.rsplit("/", 1)[0]
+        )
+        return any(a.path == rel_path for a in listed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "could not verify artifact %s — keeping local copy: %s", rel_path, exc
+        )
+        return False
 
 
 def _nullctx() -> Any:

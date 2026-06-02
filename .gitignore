@@ -386,3 +386,19 @@ optuna_*.db
 *.txt
 # issue#52 training checkpoints (durable in MLflow artifact store, not git)
 checkpoints/
+
+# issue#52 research scratch tools — snapshot on the scratch/issue52-research-tools
+# orphan branch (not for merge); kept local for ongoing experiments. Listed by name so
+# the tracked tools/_{bench,distill,gate_load,pathab}_*.py entrypoints are NOT ignored.
+tools/_avoid_ceiling_probe.py
+tools/_e1_oracle.py
+tools/_e2_build.py
+tools/_feedback_swap_eval.py
+tools/_feedback_swap_stats.py
+tools/_mine_semantic_sessions.py
+tools/_parity_engine_vs_functional.py
+tools/_rune_freeform_gen.py
+tools/_specificity_probe.py
+tools/_temp_sample_avoid_probe.py
+tools/_wf_e1e2_author.mjs
+tools/_wf_scout_predeclare.mjs
