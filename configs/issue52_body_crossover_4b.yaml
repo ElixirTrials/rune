@@ -1,0 +1,45 @@
+# configs/issue52_body_crossover_4b.yaml — issue #52 E1 cross-over control (BODY+derangement)
+#
+# ⚠️ REMOVE BEFORE MERGE — trained-on-test cross-over trainability-probe scaffolding.
+# Committed only to carry the in-progress probe across an instance/region relaunch.
+# See instructions/issue52-training-handoff-2026-06-02.md "REMOVE-BEFORE-MERGE manifest".
+#
+# Trained-on-test trainability probe: fine-tune the warm-start hypernet for a few
+# steps on the 10 frozen MBPP facts, using a BODY-span derangement contrastive term.
+#
+# corpus_path points at the committed 10-row corpus (configs/issue52_mbpp_body_crossover.jsonl)
+# so a fresh clone can train WITHOUT the local-only builder deps. To regenerate it:
+#   uv run python tools/build_issue52_mbpp_body_corpus.py --out configs/issue52_mbpp_body_crossover.jsonl
+#   (needs the gitignored tools/_specificity_probe.py + benchmarks/mbpp_phase0_iter.json,
+#    snapshotted on the scratch/issue52-research-tools remote branch)
+# Run:
+#   tools/run_guarded.sh /tmp/issue52_crossover.log tools/_distill_entry.py --config configs/issue52_body_crossover_4b.yaml --max-steps 30
+#
+model_id: "Qwen/Qwen3-4B-Instruct-2507"
+checkpoint_path: "/workspaces/rune-gpu/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
+corpus_path: "/workspaces/rune-gpu/configs/issue52_mbpp_body_crossover.jsonl"
+checkpoint_dir: "./checkpoints/issue52-body-crossover-4b"
+experiment_name: "issue52-body-crossover"
+
+learning_rate: 2.0e-5
+# 10 rows / grad_accum_steps=5 gives 2 optimizer steps per epoch; 15 epochs
+# reaches the intended 30-step trainability probe.
+num_epochs: 15
+max_seq_length: 768
+load_in_4bit: false
+
+# With only 10 rows, ensure we actually step the optimizer.
+grad_accum_steps: 5
+gradient_accumulation_steps: 5
+
+skip_zero_diff: false
+max_steps: 30
+early_stop_warmup: 100
+log_steps: 1
+save_steps: 10
+
+contrastive: true
+contrastive_mode: "body_derangement"
+contrastive_weight: 1.0
+contrastive_margin: 1.0
+

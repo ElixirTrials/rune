@@ -81,6 +81,16 @@ class DistillConfig(D2LTrainConfig):
     # hard-negative (same row, feedback content swapped) on edit-local gold tokens,
     # so the objective rewards trajectory MEMORY, not a generic edit-booster.
     contrastive: bool = False
+    # Contrastive mode:
+    # - "feedback_swap_edit_local": issue #49 reviewer objective
+    #   (edit-local mask, feedback swapped).
+    # - "body_derangement": issue #52 cross-over control
+    #   (BODY span, adapter derangement negative).
+    #   REMOVE BEFORE MERGE unless the cross-over probe validates the lever — the
+    #   body_derangement branch + helpers (_body_span_mask, _deranged_partner_context,
+    #   _contrastive_logprob_readout) are issue-52 trainability-probe code under
+    #   evaluation. See the handoff "REMOVE-BEFORE-MERGE manifest".
+    contrastive_mode: str = "feedback_swap_edit_local"
     contrastive_weight: float = 1.0
     contrastive_margin: float = 1.0
 
@@ -201,7 +211,7 @@ def run_hypernet_distillation(config: Any) -> None:
         sb0 = hypernet.scaler_B[next(iter(hypernet.scaler_B.keys()))]
         logger.info(
             "scaler_B preserved from warm-start checkpoint (mean|·|=%.4f)",
-            float(sb0.abs().mean()),
+            float(sb0.detach().abs().mean()),
         )
     hypernet.train()
 
@@ -250,15 +260,20 @@ def run_hypernet_distillation(config: Any) -> None:
         m = _map_record(rec)
         if not m:
             continue
-        if cfg.contrastive:
+        if cfg.contrastive and cfg.contrastive_mode == "feedback_swap_edit_local":
             m["pre_code"] = str(rec.get("pre_code", ""))
             m["feedback"] = extract_review_feedback(m["context"])
+        if cfg.contrastive and cfg.contrastive_mode == "body_derangement":
+            m["entry_point"] = str(rec.get("entry_point", ""))
+            m["task_id"] = str(rec.get("task_id", ""))
         records.append(m)
     logger.info("loaded %d mapped training records", len(records))
     # Feedback pool for distribution-matched hard negatives (swap a DIFFERENT row's
     # real feedback into this row's scaffold).
     feedback_pool = (
-        [r["feedback"] for r in records if r.get("feedback")] if cfg.contrastive else []
+        [r["feedback"] for r in records if r.get("feedback")]
+        if (cfg.contrastive and cfg.contrastive_mode == "feedback_swap_edit_local")
+        else []
     )
     val_records: list[dict[str, str]] = []
     if cfg.val_corpus_path:
@@ -338,8 +353,10 @@ def run_hypernet_distillation(config: Any) -> None:
                 student_top1 = student_logits.argmax(dim=-1).detach()
                 kl_val = float(loss.detach()) if loss.requires_grad else 0.0
                 margin_val = 0.0
+                contrastive_metrics = _empty_contrastive_metrics()
                 # Contrastive specificity term: matched adapter must beat a hard-neg
-                # (same row, feedback swapped) on edit-local gold tokens. Gradient
+                # (feedback-swap edit-local OR body-derangement) on gold tokens.
+                # Gradient
                 # must flow through BOTH paths — the hinge needs to push the negative
                 # adapter's gold logprob DOWN, not only matched UP (else a generic
                 # booster lifts both and the gap never opens). Memory-bounded: a
@@ -349,22 +366,48 @@ def run_hypernet_distillation(config: Any) -> None:
                 neg_ctx: str | None = None
                 gold = active = None
                 neg_em = None
-                if cfg.contrastive and feedback_pool and mapped.get("feedback"):
-                    emask = edit_local_mask(
-                        tokenizer, mapped.get("pre_code", ""), ans_ids
-                    )
-                    em = torch.tensor(
-                        emask[1:], device=student_logits.device, dtype=torch.bool
-                    )
-                    if int(em.sum()) > 0:
+                if cfg.contrastive:
+                    cmode = cfg.contrastive_mode
+                    if (
+                        cmode == "feedback_swap_edit_local"
+                        and feedback_pool
+                        and mapped.get("feedback")
+                    ):
+                        emask = edit_local_mask(
+                            tokenizer, mapped.get("pre_code", ""), ans_ids
+                        )
+                        em = torch.tensor(
+                            emask[1:], device=student_logits.device, dtype=torch.bool
+                        )
+                        neg_ctx = make_hard_negative(
+                            context,
+                            other_feedback=feedback_pool[micro % len(feedback_pool)],
+                        )
+                    elif cmode == "body_derangement":
+                        # BODY-span contrastive (issue #52): adapter conditioned on this
+                        # episode must beat an adapter conditioned on a derangement
+                        # partner episode when scoring THIS episode's BODY gold tokens.
+                        em = _body_span_mask(
+                            tokenizer,
+                            answer,
+                            mapped.get("entry_point", ""),
+                            ans_ids,
+                            device=student_logits.device,
+                        )
+                        neg_ctx = _deranged_partner_context(
+                            records, mapped, seed_index=micro
+                        )
+                    else:
+                        em = None
+                        neg_ctx = None
+
+                    if neg_ctx is not None and em is not None and int(em.sum()) > 0:
                         gold = torch.tensor(ans_ids[1:], device=student_logits.device)
                         lp_m = (
                             torch.log_softmax(student_logits[:-1].float(), dim=-1)
                             .gather(-1, gold.unsqueeze(-1))
                             .squeeze(-1)[em]
                         )
-                        neg_fb = feedback_pool[micro % len(feedback_pool)]
-                        neg_ctx = make_hard_negative(context, other_feedback=neg_fb)
                         with torch.no_grad():  # detached neg pass: active-set + value
                             neg_ld0 = _generate_lora_dict(
                                 hypernet,
@@ -387,6 +430,14 @@ def run_hypernet_distillation(config: Any) -> None:
                                 .gather(-1, gold.unsqueeze(-1))
                                 .squeeze(-1)[em]
                             )
+                            contrastive_metrics = _contrastive_logprob_readout(
+                                matched_logits=student_logits[:-1],
+                                mismatch_logits=neg_logits0[:-1],
+                                zero_logits=base_logits[:-1],
+                                gold=gold,
+                                mask=em,
+                                margin=cfg.contrastive_margin,
+                            )
                             del neg_ld0, neg_logits0
                         n_tok = int(em.sum())
                         hinge = torch.clamp(
@@ -396,7 +447,6 @@ def run_hypernet_distillation(config: Any) -> None:
                         margin_val = float(hinge.mean())
                         active = hinge > 0.0
                         if int(active.sum()) > 0:
-                            # matched piece (-lp_m on active set) joins the KL graph
                             loss = loss + cfg.contrastive_weight * (
                                 -(lp_m[active]).sum() / n_tok
                             )
@@ -482,6 +532,7 @@ def run_hypernet_distillation(config: Any) -> None:
                         "skipped": skipped,
                         "kl_loss": kl_val,
                         "margin_loss": margin_val,
+                        **contrastive_metrics,
                         "ans_len": float(len(ans_ids)),
                         "gpu_peak_gb": torch.cuda.max_memory_allocated() / 1e9,
                         **summarize_named_tensors(watched),
@@ -1113,6 +1164,116 @@ def _artifact_uploaded(mlflow_handle: Any, rel_path: str, local_size: int) -> bo
             "could not verify artifact %s — keeping local copy: %s", rel_path, exc
         )
         return False
+
+
+def _deranged_partner_context(
+    records: list[dict[str, str]], current: dict[str, str], seed_index: int
+) -> str | None:
+    """Return a deterministic non-current episode context for contrastive scoring."""
+    if len(records) < 2:
+        return None
+
+    current_task_id = current.get("task_id")
+    current_context = current.get("context")
+    start = seed_index % len(records)
+    for offset in range(len(records)):
+        candidate = records[(start + offset) % len(records)]
+        if current_task_id and candidate.get("task_id") == current_task_id:
+            continue
+        if not current_task_id and candidate.get("context") == current_context:
+            continue
+        return candidate["context"]
+    return None
+
+
+def _contrastive_logprob_readout(
+    *,
+    matched_logits: Any,
+    mismatch_logits: Any,
+    zero_logits: Any,
+    gold: Any,
+    mask: Any,
+    margin: float,
+) -> dict[str, float]:
+    """Summarize BODY-span contrastive logprobs for trainability diagnostics."""
+    import torch  # noqa: PLC0415
+
+    if int(mask.sum()) == 0:
+        return _empty_contrastive_metrics()
+
+    lp_matched = _gold_logprobs(matched_logits, gold, mask)
+    lp_mismatch = _gold_logprobs(mismatch_logits, gold, mask)
+    lp_zero = _gold_logprobs(zero_logits, gold, mask)
+    hinge = torch.clamp(margin - (lp_matched - lp_mismatch), min=0.0)
+    return {
+        "lp_matched": float(lp_matched.mean()),
+        "lp_mismatch": float(lp_mismatch.mean()),
+        "lp_zero": float(lp_zero.mean()),
+        "hinge_active_frac": float((hinge > 0.0).float().mean()),
+        "contrastive_tokens": float(int(mask.sum())),
+    }
+
+
+def _empty_contrastive_metrics() -> dict[str, float]:
+    """Default contrastive metric values when no contrastive tokens are scored."""
+    return {
+        "lp_matched": 0.0,
+        "lp_mismatch": 0.0,
+        "lp_zero": 0.0,
+        "hinge_active_frac": 0.0,
+        "contrastive_tokens": 0.0,
+    }
+
+
+def _gold_logprobs(logits: Any, gold: Any, mask: Any) -> Any:
+    """Gold-token logprobs at masked positions."""
+    return (
+        logits.float()
+        .log_softmax(dim=-1)
+        .gather(-1, gold.unsqueeze(-1))
+        .squeeze(-1)[mask]
+    )
+
+
+def _body_span_mask(
+    tokenizer: Any,
+    answer: str,
+    entry_point: str,
+    ans_ids: list[int],
+    *,
+    device: Any,
+) -> Any:
+    """Boolean mask (len == len(ans_ids)-1) selecting BODY gold tokens.
+
+    The scored tokens follow the t-1 convention (student_logits[:-1] predicts
+    ans_ids[1:]),
+    so the mask indexes the gold-token sequence ans_ids[1:].
+    """
+    import torch  # noqa: PLC0415
+
+    signature_marker = f"def {entry_point}("
+    signature_start = answer.find(signature_marker) if entry_point else -1
+    if signature_start < 0:
+        raise ValueError(
+            "def-<entry_point>( signature marker not found in answer; refusing to "
+            "silently score signature as BODY"
+        )
+    signature_line_end = answer.find("\n", signature_start)
+    if signature_line_end < 0:
+        signature_line_end = len(answer)
+    body_start_token = len(
+        tokenizer(answer[: signature_line_end + 1], add_special_tokens=False)[
+            "input_ids"
+        ]
+    )
+    # Mask for gold tokens ans_ids[1:], so shift by 1: gold position k corresponds
+    # to answer token k+1.
+    body_start_gold_index = max(0, body_start_token - 1)
+    gold_count = max(0, len(ans_ids) - 1)
+    body_start_gold_index = min(body_start_gold_index, gold_count)
+    mask = torch.zeros(gold_count, dtype=torch.bool, device=device)
+    mask[body_start_gold_index:] = True
+    return mask
 
 
 def _nullctx() -> Any:
