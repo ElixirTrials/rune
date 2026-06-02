@@ -13,7 +13,9 @@ DISK_PATHS="${RUNE_DISK_PATHS:-/ /tmp /workspaces/rune-gpu}"
 PIDDIR="${RUNE_GUARD_PIDDIR:-/tmp/rune-guard}"
 mkdir -p "$PIDDIR"
 
-uv run python "$SCRIPT" "$@" >"$LOG" 2>&1 &
+# setsid → the job leads its own process group (PGID == PID); we kill the whole group
+# so a uv/python/CUDA child can't survive the parent kill and keep eating GPU/RAM.
+setsid uv run python "$SCRIPT" "$@" >"$LOG" 2>&1 &
 PID=$!
 PIDFILE="$PIDDIR/$PID.pid"
 echo "$SCRIPT" >"$PIDFILE"
@@ -34,12 +36,12 @@ while kill -0 "$PID" 2>/dev/null; do
   AVAIL_KB=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
   if [ "$AVAIL_KB" -lt $((16000000 - THRESHOLD_KB)) ]; then
     echo "WATCHDOG: MemAvailable ${AVAIL_KB}kB too low — killing $PID" | tee -a "$LOG"
-    kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; exit 137
+    kill -9 -"$PID" "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; exit 137
   fi
   DISK_KB=$(min_disk_free_kb)
   if [ "$DISK_KB" -lt "$DISK_MIN_KB" ]; then
     echo "WATCHDOG: disk free ${DISK_KB}kB below floor ${DISK_MIN_KB}kB — killing $PID (offload checkpoints to S3)" | tee -a "$LOG"
-    kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; exit 138
+    kill -9 -"$PID" "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; exit 138
   fi
   sleep 2
 done

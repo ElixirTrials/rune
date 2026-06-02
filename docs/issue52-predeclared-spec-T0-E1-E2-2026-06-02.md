@@ -106,7 +106,7 @@ Decision table:
 - oracle bad @ r8, good @ higher rank → CAPACITY. Next lever: raise r / add chunks.
 - both bad @ high rank → DATA / ARCHITECTURE (facts not learnable on down_proj substrate, or supervision wrong).
 
-Minimal GPU plan: serialized single-GPU. (1) train oracle r8 down_proj (1 smoke-unit). (2) score oracle + hypernet on BODY span, one process (0.5 unit; hypernet matched/mismatch/zero on disk for episode recall but NOT for the BODY span, so this run is required). (3) optional oracle r16/r32 if r8 oracle is bad (1 unit each). (4) cross-over tiny fine-tune + re-score (0.5 unit) only if branch 1 fires. Implementation path: mirror tools/diag_pre_corpus_gate.py:149–162 PEFT setup; 4-bit base via the hypernet_distill BitsAndBytesConfig block (lines 137–152).
+Minimal GPU plan: serialized single-GPU. (1) train oracle r8 down_proj (1 smoke-unit). (2) score oracle + hypernet on BODY span, one process (0.5 unit; hypernet matched/mismatch/zero on disk for episode recall but NOT for the BODY span, so this run is required). (3) optional oracle r16/r32 if r8 oracle is bad (1 unit each). (4) cross-over tiny fine-tune + re-score (0.5 unit) only if branch 1 fires. Implementation path: mirror tools/diag_pre_corpus_gate.py:149–162 PEFT setup; **BF16 base** (engine parity; the executed E1 runs used bf16 — body m−mismatch +0.137 ≈ 4-bit +0.141). [Erratum: an earlier draft said 4-bit; bf16 is the regime.]
 
 ---
 
@@ -187,7 +187,8 @@ DESIGN (advisor-hardened):
 - Reuse hypernet_distill's generation->apply->backprop core + scaler_B preservation (do NOT reinit
   scaler_B). Swap 3 knobs: span edit-local->BODY; negative feedback-swap->derangement partner; corpus
   codereview->10 MBPP absent episodes.
-- Re-score with _specificity_probe.py (4-bit, absent, body span) on the fine-tuned ckpt.
+- Re-score with _specificity_probe.py (**BF16** — engine parity; absent, body span) on the fine-tuned
+  ckpt. (E1 baseline-to-beat is the bf16 body m−mismatch +0.137, not the 4-bit +0.141.)
 
 FRAMING: this measures TRAINABILITY (can gradient move the representation at all), trained-on-test by
 design (mirrors the oracle). A gain is NOT product-generalization evidence.

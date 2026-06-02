@@ -56,12 +56,13 @@ class DistillConfig(D2LTrainConfig):
     # floor that won't false-abort on normal per-row fluctuation (reviewer).
     min_preservation: float = 0.7
     max_skip_frac: float = 0.5
-    # Memory: a frozen 9B bf16 base (~18GB) + trainable hypernet + optimizer +
-    # activations does not fit 22GB. 4-bit NF4 base (QLoRA) frees ~13GB and is the
-    # primary lever; 8-bit Adam shrinks optimizer state ~4x. Gradient checkpointing
-    # is INCOMPATIBLE with the monkeypatched functional-LoRA forward (checkpoint
+    # Precision: the current 4B base in bf16 (~8GB) + trainable hypernet + optimizer +
+    # activations fits the 23GB GPU and MATCHES the engine (wrapper.py loads bf16), so
+    # bf16 is the default. 4-bit NF4 (QLoRA) is opt-in for a larger base / tighter
+    # memory; 8-bit Adam shrinks optimizer state ~4x. Gradient checkpointing is
+    # INCOMPATIBLE with the monkeypatched functional-LoRA forward (checkpoint
     # tensor-count mismatch on recompute), so it defaults off.
-    load_in_4bit: bool = True
+    load_in_4bit: bool = False
     gradient_checkpointing: bool = False
     use_8bit_optim: bool = True
     # Optimization regime (loss-investigation fixes): the corpus is repo-grouped, so
@@ -132,7 +133,8 @@ def run_hypernet_distillation(config: Any) -> None:
     free = subprocess.run(["free", "-g"], capture_output=True, text=True, check=False)
     logger.info("free -g:\n%s", free.stdout)
 
-    # 1. Base model (frozen) + tokenizer. 4-bit NF4 (QLoRA) by default for memory.
+    # 1. Base model (frozen) + tokenizer. bf16 by default (engine parity); 4-bit NF4
+    #    (QLoRA) opt-in via load_in_4bit for a larger base / tighter memory.
     base_model: Any
     if cfg.load_in_4bit:
         from transformers import BitsAndBytesConfig  # noqa: PLC0415
@@ -1073,7 +1075,10 @@ def _save_checkpoint(
         logger.warning("log_artifact failed for %s — keeping local: %s", name, exc)
         return
 
-    if not keep_local and _artifact_uploaded(mlflow_handle, f"{artifact_path}/{name}"):
+    local_size = path.stat().st_size
+    if not keep_local and _artifact_uploaded(
+        mlflow_handle, f"{artifact_path}/{name}", local_size
+    ):
         import contextlib  # noqa: PLC0415
 
         with contextlib.suppress(OSError):
@@ -1083,9 +1088,11 @@ def _save_checkpoint(
         logger.info("logged checkpoint %s to MLflow (local copy retained)", name)
 
 
-def _artifact_uploaded(mlflow_handle: Any, rel_path: str) -> bool:
-    """Confirm ``rel_path`` exists in the active run's artifact store before we
-    delete the local staging file. A False return keeps the local copy."""
+def _artifact_uploaded(mlflow_handle: Any, rel_path: str, local_size: int) -> bool:
+    """Confirm ``rel_path`` is present in the active run's artifact store WITH the
+    expected byte size before we delete the local staging file. Path-existence alone is
+    insufficient — a reusable name (checkpoint.pt) can list-present while the bytes are
+    stale/zero. A False return keeps the local copy."""
     try:
         run = mlflow_handle.active_run()
         if run is None:
@@ -1093,7 +1100,10 @@ def _artifact_uploaded(mlflow_handle: Any, rel_path: str) -> bool:
         listed = mlflow_handle.artifacts.list_artifacts(
             run_id=run.info.run_id, artifact_path=rel_path.rsplit("/", 1)[0]
         )
-        return any(a.path == rel_path for a in listed)
+        return any(
+            a.path == rel_path and getattr(a, "file_size", None) == local_size
+            for a in listed
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "could not verify artifact %s — keeping local copy: %s", rel_path, exc

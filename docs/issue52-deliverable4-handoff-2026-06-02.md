@@ -1,5 +1,14 @@
 # Issue #52 — Deliverable 4 handoff: experimentation phase (2026-06-02)
 
+> **ERRATUM (added 2026-06-02, post-experimentation — read before the numbers below):**
+> 1. **Attribution:** the warm-start headline numbers in this doc (goal +2.30 / file +1.76 / diff +1.01
+>    and **tail/continuation +2.01**) are **GEMMA (gemma_demo)**, NOT qwen_4b_d2l. True qwen warm-start:
+>    goal +2.235 / file +1.596 / diff +0.983; code-recall +2.597. **There is NO qwen continuation/tail
+>    number on disk** — do not resurrect the gemma +2.01 as a qwen fact.
+> 2. **Precision:** the engine runs the 4B base in **bf16** (`src/rune/model/wrapper.py`), not 4-bit; the
+>    4-bit nf4 here was a 9B-era leftover. bf16 is the operative training/eval regime.
+> See `docs/issue52-deliverable4-results-2026-06-02.md` for the corrected T0/E1 numbers and ladder.
+
 Self-contained handoff. Companion durable docs:
 - `docs/issue52-pretraining-facts-dossier-2026-06-02.md` — facts (§0–10) + research synthesis (A–F) +
   advisor-informed interpretation. **Read this for the numbers.**

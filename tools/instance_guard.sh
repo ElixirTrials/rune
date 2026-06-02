@@ -34,8 +34,8 @@ kill_guarded() {  # reason
   for f in $(ls -t "$PIDDIR"/*.pid 2>/dev/null); do
     pid=$(basename "$f" .pid)
     if kill -0 "$pid" 2>/dev/null; then
-      log "BREACH ($1): killing guarded pid=$pid ($(cat "$f" 2>/dev/null))"
-      kill -9 "$pid" 2>/dev/null; killed=1
+      log "BREACH ($1): killing guarded pgroup pid=$pid ($(cat "$f" 2>/dev/null))"
+      kill -9 -"$pid" "$pid" 2>/dev/null; killed=1  # whole process group, not just leader
       break  # relieve one job, re-measure next tick
     fi
     rm -f "$f"

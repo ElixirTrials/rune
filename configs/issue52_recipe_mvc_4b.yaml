@@ -28,6 +28,10 @@ num_epochs: 1
 # log_softmax. p50 episode ctx+ans ~= 774 tok, so the median fits; longer truncate.
 max_seq_length: 768
 
+# --- precision: bf16 base (4B fits the 23GB GPU + matches the engine wrapper.py). ---
+# 4-bit nf4 was the 9B-era memory regime; opt back in only if a larger base / OOM needs it.
+load_in_4bit: false
+
 # --- batch / accumulation ---
 batch_size: 1               # inherited field; loop is batch-1 micro-steps (not consumed)
 gradient_accumulation_steps: 8   # inherited field; INERT in the distill loop

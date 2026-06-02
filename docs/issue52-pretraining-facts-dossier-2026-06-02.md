@@ -1,5 +1,11 @@
 # Issue #52 — Facts dossier ahead of a long-duration training run (2026-06-02)
 
+> **ERRATUM (added 2026-06-02, post-experimentation):** any warm-start recall numbers here sourced from
+> `gemma_demo` (notably goal +2.30 / file +1.76 / diff +1.01 / **tail +2.01**) are **GEMMA, not qwen**.
+> True qwen warm-start: goal +2.235 / file +1.596 / diff +0.983; code-recall +2.597; **no qwen
+> continuation/tail number exists on disk**. Also: the engine runs the 4B base in **bf16** (not 4-bit).
+> See `docs/issue52-deliverable4-results-2026-06-02.md`.
+
 Facts only. No interpretation. Every number is from a logged run (MLflow, eval logs, scratchpad,
 or state-dict inspection). Sources noted inline. "m−mismatch" = matched-minus-mismatch logprob
 margin; "m−zero" = matched-minus-base; "matched−swap" = matched-minus-feedback-swapped-negative.
