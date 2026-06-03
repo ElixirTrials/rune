@@ -1,8 +1,9 @@
 # Issue #52 — Phase-1 results (recall objective: trainability → generalization → bench)
 
-**Status: LIVE — Phase-1 HPO running overnight (2026-06-03/04 UTC). This doc + the PR comment
-update as configs land.** Durable companions: `issue52-crossover-frozen-probe-results-2026-06-03.md`
-(pilot 1), `issue52-pilot2-recall-guarded-results-2026-06-03.md` (pilot 2).
+**Status: COMPLETE (2026-06-04 UTC) — Phase-1 PASSES (weak-but-real, generalizing). See VERDICT.**
+Durable companions: `issue52-crossover-frozen-probe-results-2026-06-03.md` (pilot 1),
+`issue52-pilot2-recall-guarded-results-2026-06-03.md` (pilot 2). Best checkpoint: MLflow
+experiment `issue52-phase1`, config c3 (τ=−0.7, λ_p=2, λ_g=1) — see run id below.
 
 ## The arc so far
 
@@ -61,20 +62,52 @@ EXCLUDES ZERO** (sign-test p=0.064; CI is the stronger statistic for heavy-taile
 **unseen** tasks — weak-but-real (~36% of the +0.290 trained-on-test gain), unlike the
 trained-on-10 ckpt which was flat. **Phase-1 accessibility-generalization: PASS (weak).**
 
-### Bench pass@1 (held-out 24) — pending best
-| arm | present (stability) | absent (capability) |
+### Bench pass@1 (held-out 24, REAL MBPP 3-test suites) — best = c3
+| arm | present (spec in prompt, stability) | **absent (from memory, capability)** |
 |---|---|---|
-| scale=0 (base) | _pending_ | _pending_ |
-| warm-start adapter | _pending_ | _pending_ |
-| best-trained | _pending_ | _pending_ |
+| scale=0 (base, no adapter) | 19/24 | **0/24** |
+| warm-start adapter | 18/24 | 3/24 |
+| **best-trained (c3)** | 19/24 | **8/24** |
 
-## Honest read (either outcome is informative)
-- **If held-out accessibility moves** (m−zero materially > +0.530, CI excludes 0) **and pass@1
-  beats scale=0 in the absent regime** → the recall objective is a *generalizing* lever; Phase 1
-  passes; the checkpoint becomes the Phase-2 retention baseline.
-- **If held-out stays flat** → the objective *memorizes* regardless of corpus size — a deeper
-  limit (more data / different conditioning needed), and Phase 2 RL would be built on sand. Do
-  not proceed to Phase 2.
+The trained adapter makes the frozen base generate **correct, test-passing code from memory
+alone for 8/24 held-out tasks it was never trained on** (vs 0 for the base — no adapter, no spec
+= no information — and 3 for warm-start), while **not regressing in-context generation**
+(present 19/24 = base; it even repaired warm-start's −1 in-context dip). The adapter supplies
+ALL of the absent-regime capability, and training **2.7×'d it over warm-start** (3→8).
+
+## VERDICT — Phase-1 PASSES (weak-but-real, generalizing)
+The `body_recall_guarded` objective (best: τ=−0.7, λ_p=2, λ_g=1; trained on 40 disjoint tasks)
+produces a checkpoint that, on **held-out** tasks:
+1. **generalizes body accessibility** — Δlp_matched +0.105, bootstrap CI [+0.033,+0.182]
+   excludes 0 (17/24 up);
+2. **translates to functional pass@1** — 8/24 solved from memory alone vs base 0/24, warm 3/24;
+3. **does not break generation** — present 19/24 = base.
+
+⇒ The recall objective is a **generalizing lever**, not just memorization. This checkpoint is the
+**Phase-2 retention baseline** (the number stage-2 RL must not regress below). The primary
+matched-recall term (λ_p) is the driver; the derangement guard is not (λ_g=2 slightly hurt).
+
+**Best checkpoint (the "good checkpoint"):** MLflow experiment `issue52-phase1` (id 45), run
+`fe72f9ddd69c` (config c3, 3rd of 4 in train order), artifact `checkpoints/checkpoint.pt`,
+sha256 `53e24af243a38dfbfad82f7293635bfc592922dd2058fefbbfa10714b5457a3f`. Trained on
+`mbpp_recall_train.jsonl` (40 tasks), 48 steps, bf16. Reproduce:
+`uv run python tools/_phase1_orchestrate.py` (config c3 = τ−0.7/λ_p2/λ_g1).
+
+**Honest limits:** magnitude is modest — 8/24 (33%) from memory, 16/24 still fail; the memory is
+*partial*. n=24, binary, raw-greedy (NOT xgrammar-constrained engine pass@1). "Absent" single-shot
+is the harshest proxy; the product mode (spec in prompt + accumulated facts in adapter) sits
+between present and absent, so 8/24 is a **lower bound** on functional value. Retention
+(goal/file/diff/code-recall via `diag_recoverability`) is the remaining gate-1 piece. The deeper
+eval — the engine running multi-step with state evicted to the adapter (fixed prompt, growing
+adapter memory) — is the next gate before scaling.
+
+## Next (gated, per the two-stage research + AI-engineer review)
+1. Retention scorecard (the other half of gate 1).
+2. Memory-exercising **engine** eval (multi-step, prompt fixed, facts in adapter only).
+3. Scale the corpus (more train tasks) — generalization rose with data (10→40); test 40→N.
+4. THEN Phase 2 (outcome RL): **cooperative** (distill + recall-replay + GRPO on pass@1/process),
+   NOT strict-sequential, with KL-anchor to this checkpoint + accessibility/signature canaries
+   every N RL steps (forgetting guard).
 
 ## Method caveats (carried)
 n is small (24 held-out); pass@1 is raw greedy + real tests, **not** xgrammar-constrained engine
