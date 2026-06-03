@@ -42,7 +42,7 @@ trained on the 10 was FLAT on held-out: +0.514.)
 | config | τ | λ_p | λ_g | held-out absent/body m−zero | Δ vs warm | lp_matched | sig retained |
 |---|---|---|---|---|---|---|---|
 | c1 | −0.7 | 1 | 1 | **+0.593** | **+0.063** | −0.967 | +5.16 ✓ |
-| c2 | −0.5 | 1 | 1 | _running_ | | | |
+| c2 | −0.5 | 1 | 1 | **+0.601** | **+0.071** | −0.959 | +5.15 ✓ |
 | c3 | −0.7 | 2 | 1 | _pending_ | | | |
 | c4 | −0.5 | 2 | 2 | _pending_ | | | |
 
