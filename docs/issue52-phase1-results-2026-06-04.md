@@ -54,6 +54,13 @@ primary matched-recall term is the lever, the derangement guard is not. All reta
 (+5.2…+5.4). Modest vs the +0.290 trained-on-test, and n=24 (significance assessed on the
 per-episode deltas in the final bench). Bench (pass@1 vs scale=0) on c3 running.
 
+### Generalization significance (best = c3, held-out 24, paired vs warm-start)
+**Δlp_matched (absent/body) = +0.105, 17/24 positive, bootstrap 95% CI [+0.033, +0.182] —
+EXCLUDES ZERO** (sign-test p=0.064; CI is the stronger statistic for heavy-tailed margins).
+⇒ the recall objective trained on 40 disjoint tasks **generalizes** body accessibility to
+**unseen** tasks — weak-but-real (~36% of the +0.290 trained-on-test gain), unlike the
+trained-on-10 ckpt which was flat. **Phase-1 accessibility-generalization: PASS (weak).**
+
 ### Bench pass@1 (held-out 24) — pending best
 | arm | present (stability) | absent (capability) |
 |---|---|---|
