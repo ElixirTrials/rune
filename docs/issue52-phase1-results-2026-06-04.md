@@ -101,6 +101,15 @@ between present and absent, so 8/24 is a **lower bound** on functional value. Re
 eval — the engine running multi-step with state evicted to the adapter (fixed prompt, growing
 adapter memory) — is the next gate before scaling.
 
+## Retention (gate-1 other half) — partially assessed; goal/diff facets deferred (data)
+Measured and **passing** on held-out 24: **signature** accessibility retained/improved
+(warm +3.56 → c3 +5.26), **generation-stability** held (present pass@1 19/24 = base, no
+in-context regression), **recitation** clean (pilot-2 cross-conditioned 0/10; the c3 stability
+arm corroborates). The `diag_recoverability` goal/diff/tail facets are **deferred — the session
+corpus (`external_codereview.val.clean.jsonl`) is not on disk** (gitignored, lost on recycle;
+needs the #49 mining data + a base-model/4-bit default fix). Not a skip: named as a data gap to
+restore before Phase 2.
+
 ## Next (gated, per the two-stage research + AI-engineer review)
 1. Retention scorecard (the other half of gate 1).
 2. Memory-exercising **engine** eval (multi-step, prompt fixed, facts in adapter only).
