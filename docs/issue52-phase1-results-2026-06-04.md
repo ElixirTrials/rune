@@ -43,7 +43,7 @@ trained on the 10 was FLAT on held-out: +0.514.)
 |---|---|---|---|---|---|---|---|
 | c1 | −0.7 | 1 | 1 | **+0.593** | **+0.063** | −0.967 | +5.16 ✓ |
 | c2 | −0.5 | 1 | 1 | **+0.601** | **+0.071** | −0.959 | +5.15 ✓ |
-| c3 | −0.7 | 2 | 1 | _pending_ | | | |
+| c3 | −0.7 | 2 | 1 | **+0.635** | **+0.105** | −0.925 | +5.26 ✓ |
 | c4 | −0.5 | 2 | 2 | _pending_ | | | |
 
 **Early read:** training on 40 disjoint tasks produces a *small but positive* held-out
