@@ -5,6 +5,8 @@ from rune.training.hypernet_distill import (
     _artifact_uploaded,
     _contrastive_logprob_readout,
     _deranged_partner_context,
+    _empty_recall_metrics,
+    _recall_terms,
     _shuffled,
 )
 
@@ -70,6 +72,45 @@ def test_contrastive_logprob_readout_reports_raw_body_metrics() -> None:
     assert readout["contrastive_tokens"] == 1.0
     assert readout["lp_matched"] > readout["lp_mismatch"] > readout["lp_zero"]
     assert readout["hinge_active_frac"] == 0.0
+
+
+def test_body_recall_guarded_config_defaults() -> None:
+    cfg = DistillConfig(corpus_path="/tmp/x.jsonl", checkpoint_dir="/tmp/ck")
+    assert cfg.matched_target_lp == -0.7  # accessibility floor
+    assert cfg.primary_weight == 1.0
+    assert cfg.guard_weight == 1.0
+    assert cfg.snapshot_steps == 0  # disabled unless a pilot sets it
+
+
+def test_recall_terms_primary_raises_only_below_target() -> None:
+    target = -0.7
+    # lp_m below target on tokens 0,1 (raise them); at/above target on 2,3 (leave).
+    lp_m = torch.tensor([-1.5, -0.9, -0.7, -0.2])
+    lp_n = torch.zeros(4)
+    lp_n0 = torch.zeros(4)
+    primary, _ = _recall_terms(lp_m, lp_n, lp_n0, target)
+    assert torch.allclose(primary, torch.tensor([0.8, 0.2, 0.0, 0.0]))
+    assert (primary[:2] > 0).all()  # below target -> active
+    assert (primary[2:] == 0).all()  # at/above target -> no push (no over-recitation)
+
+
+def test_recall_terms_guard_penalizes_only_rise_no_suppression_reward() -> None:
+    target = -0.7
+    lp_m = torch.zeros(3)
+    lp_n0 = torch.tensor([-1.0, -1.0, -1.0])  # frozen warm-start deranged baseline
+    # deranged: rose above baseline (generic boost), held, suppressed below.
+    lp_n = torch.tensor([-0.4, -1.0, -2.0])
+    _, guard = _recall_terms(lp_m, lp_n, lp_n0, target)
+    assert guard[0] > 0  # rose above baseline -> penalized (anti generic-boost)
+    assert guard[1] == 0  # held at baseline -> no penalty
+    assert guard[2] == 0  # suppressed below baseline -> NO reward (relu floor)
+
+
+def test_empty_recall_metrics_has_accessibility_keys() -> None:
+    m = _empty_recall_metrics()
+    for key in ("lp_matched", "lp_mismatch", "lp_n0_baseline", "primary_loss",
+                "guard_loss", "primary_active_frac", "guard_active_frac"):
+        assert key in m and m[key] == 0.0
 
 
 def test_artifact_uploaded_requires_matching_file_size() -> None:

@@ -1,0 +1,47 @@
+# configs/issue52_body_recall_crossover_4b.yaml — issue #52 PILOT 2 (matched-recall guarded)
+#
+# ⚠️ REMOVE BEFORE MERGE — trained-on-test trainability-probe scaffolding (handoff manifest).
+#
+# Pilot-2 objective (docs/issue52-crossover-frozen-probe-results-2026-06-03.md): raise the
+# matched BODY logprob (ACCESSIBILITY) toward matched_target_lp, with the derangement
+# negative demoted to a GUARD that only holds the partner at its frozen warm-start baseline
+# (anti generic-boost, no suppression reward). The win can only come from matched rising
+# with mismatch held — unlike body_derangement, which opened the margin by suppression.
+#
+# Success (predeclared): Δ snap_absent_matched material (frozen-probe surface) AND
+# snap_absent_mismatch not dominating AND generation valid-code not regressed.
+#
+# Run:
+#   export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+#   tools/run_guarded.sh /tmp/recall.log tools/_distill_entry.py \
+#     --config configs/issue52_body_recall_crossover_4b.yaml --max-steps 30
+#
+model_id: "Qwen/Qwen3-4B-Instruct-2507"
+checkpoint_path: "/workspaces/rune-gpu/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
+corpus_path: "/workspaces/rune-gpu/configs/issue52_mbpp_body_crossover.jsonl"
+checkpoint_dir: "./checkpoints/issue52-body-recall-4b"
+experiment_name: "issue52-body-recall"
+
+learning_rate: 2.0e-5
+num_epochs: 15
+max_seq_length: 768
+load_in_4bit: false
+
+grad_accum_steps: 5
+gradient_accumulation_steps: 5
+
+skip_zero_diff: false
+max_steps: 30
+early_stop_warmup: 100
+log_steps: 1
+save_steps: 10
+
+contrastive: true
+contrastive_mode: "body_recall_guarded"
+matched_target_lp: -0.7
+primary_weight: 1.0
+guard_weight: 1.0
+
+# Frozen-probe + generation snapshot at steps 0/10/20/30 on 8 episodes.
+snapshot_steps: 10
+snapshot_episodes: 8

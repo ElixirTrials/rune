@@ -86,13 +86,26 @@ class DistillConfig(D2LTrainConfig):
     #   (edit-local mask, feedback swapped).
     # - "body_derangement": issue #52 cross-over control
     #   (BODY span, adapter derangement negative).
-    #   REMOVE BEFORE MERGE unless the cross-over probe validates the lever — the
-    #   body_derangement branch + helpers (_body_span_mask, _deranged_partner_context,
-    #   _contrastive_logprob_readout) are issue-52 trainability-probe code under
-    #   evaluation. See the handoff "REMOVE-BEFORE-MERGE manifest".
+    # - "body_recall_guarded": issue #52 pilot-2 objective. PRIMARY raises matched
+    #   body lp toward matched_target_lp (accessibility); GUARD holds the deranged
+    #   partner's body lp at its frozen warm-start baseline (anti generic-boost),
+    #   with NO suppression reward. The win can only come from matched rising with
+    #   mismatch held — see docs/issue52-crossover-frozen-probe-results-2026-06-03.md.
+    #   REMOVE BEFORE MERGE unless the pilot validates the lever — the body_* branches
+    #   + helpers (_body_span_mask, _deranged_partner_context,
+    #   _contrastive_logprob_readout, _precompute_recall_baselines,
+    #   _recall_snapshot) are issue-52 probe code under eval (handoff RBM manifest).
     contrastive_mode: str = "feedback_swap_edit_local"
     contrastive_weight: float = 1.0
     contrastive_margin: float = 1.0
+    # body_recall_guarded knobs (issue #52 pilot 2).
+    matched_target_lp: float = -0.7  # accessibility floor (warm ~-1.0, oracle -0.22)
+    primary_weight: float = 1.0  # lambda_p on relu(target - lp_matched)
+    guard_weight: float = 1.0  # lambda_g on relu(lp_mismatch - lp_n0)
+    # Frozen-probe + generation snapshot cadence (0 disables). Mirrors absent/present
+    # body metric the go/no-go is decided on, plus a valid-code generation canary.
+    snapshot_steps: int = 0
+    snapshot_episodes: int = 8
 
 
 def run_hypernet_distillation(config: Any) -> None:
@@ -263,7 +276,10 @@ def run_hypernet_distillation(config: Any) -> None:
         if cfg.contrastive and cfg.contrastive_mode == "feedback_swap_edit_local":
             m["pre_code"] = str(rec.get("pre_code", ""))
             m["feedback"] = extract_review_feedback(m["context"])
-        if cfg.contrastive and cfg.contrastive_mode == "body_derangement":
+        if cfg.contrastive and cfg.contrastive_mode in (
+            "body_derangement",
+            "body_recall_guarded",
+        ):
             m["entry_point"] = str(rec.get("entry_point", ""))
             m["task_id"] = str(rec.get("task_id", ""))
         records.append(m)
@@ -281,6 +297,31 @@ def run_hypernet_distillation(config: Any) -> None:
             m for rec in _iter_corpus(cfg.val_corpus_path) if (m := _map_record(rec))
         ]
         logger.info("loaded %d held-out val records", len(val_records))
+
+    # body_recall_guarded: freeze the deranged-partner body baseline (lp_n0) under the
+    # PRISTINE warm-start hypernet BEFORE any optimizer step, so the guard penalizes the
+    # partner RISING above warm-start (anti generic-boost) without rewarding suppress.
+    recall_baselines: dict[str, dict[str, Any]] = {}
+    if cfg.contrastive and cfg.contrastive_mode == "body_recall_guarded":
+        recall_baselines = _precompute_recall_baselines(
+            records,
+            hypernet,
+            base_model,
+            tokenizer,
+            layer_indices,
+            eff_scaling,
+            n_chunks,
+            cfg.max_seq_length,
+        )
+        logger.info("precomputed %d recall baselines", len(recall_baselines))
+        if cfg.snapshot_steps:  # step-0 warm-start reference for post-hoc deltas
+            snap0 = _recall_snapshot(
+                records, recall_baselines, hypernet, base_model, tokenizer,
+                layer_indices, eff_scaling, n_chunks, cfg.snapshot_episodes,
+            )
+            if mlflow is not None and snap0:
+                mlflow.log_metrics(snap0, step=0)
+            logger.info("SNAPSHOT step=0 (warm-start) %s", json.dumps(snap0))
 
     step = 0  # optimizer steps
     micro = 0  # records consumed (micro-steps)
@@ -366,9 +407,32 @@ def run_hypernet_distillation(config: Any) -> None:
                 neg_ctx: str | None = None
                 gold = active = None
                 neg_em = None
+                em = None
+                guard_pending: dict[str, Any] | None = None
                 if cfg.contrastive:
                     cmode = cfg.contrastive_mode
-                    if (
+                    if cmode == "body_recall_guarded":
+                        # PRIMARY (raise matched toward target) + GUARD (hold deranged
+                        # at its frozen warm-start baseline). NO suppression reward: the
+                        # win can only come from matched up with mismatch held. Guard
+                        # piece backprops AFTER the main backward (memory-bounded).
+                        loss, contrastive_metrics, guard_pending = _recall_guarded_term(
+                            loss=loss,
+                            student_logits=student_logits,
+                            base_logits=base_logits,
+                            ans_ids=ans_ids,
+                            answer=answer,
+                            mapped=mapped,
+                            recall_baselines=recall_baselines,
+                            hypernet=hypernet,
+                            base_model=base_model,
+                            tokenizer=tokenizer,
+                            layer_indices=layer_indices,
+                            eff_scaling=eff_scaling,
+                            n_chunks=n_chunks,
+                            cfg=cfg,
+                        )
+                    elif (
                         cmode == "feedback_swap_edit_local"
                         and feedback_pool
                         and mapped.get("feedback")
@@ -502,6 +566,34 @@ def run_hypernet_distillation(config: Any) -> None:
                     )
                     (loss_neg / cfg.grad_accum_steps).backward()
                     del neg_ld, neg_logits, lp_n
+                # body_recall_guarded GUARD piece: grad through the deranged partner so
+                # it held DOWN to its frozen warm-start baseline (relu: no suppression
+                # below baseline). Runs only when the partner rose above baseline.
+                if guard_pending is not None:
+                    g_neg_ld = _generate_lora_dict(
+                        hypernet,
+                        guard_pending["neg_ctx"],
+                        base_model,
+                        tokenizer,
+                        layer_indices,
+                        cfg.max_seq_length,
+                    )
+                    g_neg_logits = _student_logits(
+                        base_model,
+                        tokenizer,
+                        ans_ids,
+                        assemble_adapter(hypernet, g_neg_ld, n_chunks),
+                        layer_indices,
+                        eff_scaling,
+                    )
+                    g_lp_n = _gold_logprobs(
+                        g_neg_logits[:-1], guard_pending["gold"], guard_pending["em"]
+                    )
+                    loss_guard: Any = cfg.guard_weight * torch.clamp(
+                        g_lp_n - guard_pending["lp_n0"], min=0.0
+                    ).mean()
+                    (loss_guard / cfg.grad_accum_steps).backward()
+                    del g_neg_ld, g_neg_logits, g_lp_n
                 accum += 1
                 did_step = accum >= cfg.grad_accum_steps
                 grad_norms: dict[str, float] = {}
@@ -573,6 +665,23 @@ def run_hypernet_distillation(config: Any) -> None:
                         if mlflow is not None:
                             mlflow.set_tag("early_stop_reason", stop_reason)
                         break
+
+                # Periodic frozen-probe + generation snapshot (body_recall_guarded): the
+                # absent/present BODY lp on the PROBE surface + valid-code gen rate so
+                # the objective is tuned against the deciding metric, not answer-only.
+                if (
+                    did_step
+                    and cfg.snapshot_steps
+                    and cfg.contrastive_mode == "body_recall_guarded"
+                    and step % cfg.snapshot_steps == 0
+                ):
+                    snap = _recall_snapshot(
+                        records, recall_baselines, hypernet, base_model, tokenizer,
+                        layer_indices, eff_scaling, n_chunks, cfg.snapshot_episodes,
+                    )
+                    if mlflow is not None and snap:
+                        mlflow.log_metrics(snap, step=step)
+                    logger.info("SNAPSHOT step=%d %s", step, json.dumps(snap))
 
                 # Periodic held-out val eval — the ordering/difficulty-independent
                 # progress curve (train-loss is confounded by per-row difficulty).
@@ -1274,6 +1383,336 @@ def _body_span_mask(
     mask = torch.zeros(gold_count, dtype=torch.bool, device=device)
     mask[body_start_gold_index:] = True
     return mask
+
+
+def _recall_terms(lp_m: Any, lp_n: Any, lp_n0: Any, target: float) -> tuple[Any, Any]:
+    """Pure directional terms for body_recall_guarded (testable on CPU).
+
+    primary = relu(target - lp_matched)  -> raises matched ONLY while below target.
+    guard   = relu(lp_mismatch - lp_n0)  -> penalizes the deranged partner ONLY when it
+              rises ABOVE its frozen warm-start baseline (anti generic-boost); zero when
+              held or suppressed below baseline, so there is NO suppression reward.
+    """
+    import torch  # noqa: PLC0415
+
+    return torch.clamp(target - lp_m, min=0.0), torch.clamp(lp_n - lp_n0, min=0.0)
+
+
+def _empty_recall_metrics() -> dict[str, float]:
+    """Zero-filled body_recall_guarded metrics (inactive/unscored row)."""
+    return {
+        "lp_matched": 0.0,
+        "lp_mismatch": 0.0,
+        "lp_zero": 0.0,
+        "lp_n0_baseline": 0.0,
+        "primary_loss": 0.0,
+        "guard_loss": 0.0,
+        "primary_active_frac": 0.0,
+        "guard_active_frac": 0.0,
+        "recall_m_mismatch": 0.0,
+        "recall_tokens": 0.0,
+    }
+
+
+def _precompute_recall_baselines(
+    records: list[dict[str, str]],
+    hypernet: Any,
+    base_model: Any,
+    tokenizer: Any,
+    layer_indices: list[int],
+    eff_scaling: float,
+    n_chunks: Any,
+    max_seq_length: int,
+) -> dict[str, dict[str, Any]]:
+    """Freeze each episode's deranged-partner BODY logprob baseline under the
+    PRISTINE warm-start hypernet (call BEFORE any optimizer step).
+
+    Uses a DETERMINISTIC episode-indexed derangement (``i -> (i+1) % n``, matching the
+    frozen E1 probe), so the partner — and thus ``lp_n0`` — is stable across epochs and
+    the in-loop guard is consistent with the frozen-probe eval. ``lp_n0[i]`` is the
+    per-token gold logprob of episode i's BODY under the partner's adapter.
+    """
+    import torch  # noqa: PLC0415
+
+    from rune.model.adapter_contract import assemble_adapter  # noqa: PLC0415
+
+    n = len(records)
+    baselines: dict[str, dict[str, Any]] = {}
+    if n < 2:
+        return baselines
+    device = next(base_model.parameters()).device
+    for i, rec in enumerate(records):
+        partner = records[(i + 1) % n]
+        tid = rec.get("task_id", "") or f"_idx{i}"
+        answer = rec["answer"]
+        # ans_ids IDENTICAL to the training loop's (same _teacher_base_logits path).
+        _, _, ans_ids = _teacher_base_logits(
+            base_model, tokenizer, rec["context"], answer, max_seq_length
+        )
+        try:
+            em = _body_span_mask(
+                tokenizer, answer, rec.get("entry_point", ""), ans_ids, device=device
+            )
+        except ValueError as exc:
+            logger.warning("recall baseline skip %s: %s", tid, exc)
+            continue
+        if int(em.sum()) == 0:
+            continue
+        gold = torch.tensor(ans_ids[1:], device=device)
+        with torch.no_grad():
+            neg_ld = _generate_lora_dict(
+                hypernet, partner["context"], base_model, tokenizer, layer_indices,
+                max_seq_length,
+            )
+            neg_logits = _student_logits(
+                base_model, tokenizer, ans_ids,
+                assemble_adapter(hypernet, neg_ld, n_chunks),
+                layer_indices, eff_scaling,
+            )
+            lp_n0 = _gold_logprobs(neg_logits[:-1], gold, em).detach()
+            del neg_ld, neg_logits
+        baselines[tid] = {"lp_n0": lp_n0, "partner_ctx": partner["context"]}
+    return baselines
+
+
+def _recall_guarded_term(
+    *,
+    loss: Any,
+    student_logits: Any,
+    base_logits: Any,
+    ans_ids: list[int],
+    answer: str,
+    mapped: dict[str, str],
+    recall_baselines: dict[str, dict[str, Any]],
+    hypernet: Any,
+    base_model: Any,
+    tokenizer: Any,
+    layer_indices: list[int],
+    eff_scaling: float,
+    n_chunks: Any,
+    cfg: Any,
+) -> tuple[Any, dict[str, float], dict[str, Any] | None]:
+    """body_recall_guarded contrastive term.
+
+    Returns ``(loss, metrics, guard_pending)``. ``loss`` has the PRIMARY term
+    ``lambda_p * relu(target - lp_matched)`` added (grad through matched only).
+    ``guard_pending`` (or None) carries the deranged context + frozen ``lp_n0`` for the
+    post-backward GUARD piece ``lambda_g * relu(lp_mismatch - lp_n0)`` (grad through the
+    partner, held DOWN to its warm-start baseline; relu, so NO suppression below it).
+    """
+    import torch  # noqa: PLC0415
+
+    from rune.model.adapter_contract import assemble_adapter  # noqa: PLC0415
+
+    tid = mapped.get("task_id", "")
+    baseline = recall_baselines.get(tid)
+    if baseline is None:
+        return loss, _empty_recall_metrics(), None
+    try:
+        em = _body_span_mask(
+            tokenizer, answer, mapped.get("entry_point", ""), ans_ids,
+            device=student_logits.device,
+        )
+    except ValueError:
+        return loss, _empty_recall_metrics(), None
+    lp_n0 = baseline["lp_n0"]
+    if int(em.sum()) == 0 or lp_n0.numel() != int(em.sum()):
+        return loss, _empty_recall_metrics(), None
+
+    gold = torch.tensor(ans_ids[1:], device=student_logits.device)
+    lp_m = _gold_logprobs(student_logits[:-1], gold, em)  # grad through matched
+    target = cfg.matched_target_lp
+
+    neg_ctx = baseline["partner_ctx"]
+    with torch.no_grad():  # detached neg pass: readout values + guard active set
+        neg_ld0 = _generate_lora_dict(
+            hypernet, neg_ctx, base_model, tokenizer, layer_indices, cfg.max_seq_length
+        )
+        neg_logits0 = _student_logits(
+            base_model, tokenizer, ans_ids,
+            assemble_adapter(hypernet, neg_ld0, n_chunks), layer_indices, eff_scaling,
+        )
+        lp_n_det = _gold_logprobs(neg_logits0[:-1], gold, em)
+        lp_z = _gold_logprobs(base_logits[:-1], gold, em)
+        del neg_ld0, neg_logits0
+    primary_excess, guard_excess = _recall_terms(lp_m.detach(), lp_n_det, lp_n0, target)
+
+    metrics = {
+        "lp_matched": float(lp_m.mean()),
+        "lp_mismatch": float(lp_n_det.mean()),
+        "lp_zero": float(lp_z.mean()),
+        "lp_n0_baseline": float(lp_n0.mean()),
+        "primary_loss": float(primary_excess.mean()),
+        "guard_loss": float(guard_excess.mean()),
+        "primary_active_frac": float((primary_excess > 0.0).float().mean()),
+        "guard_active_frac": float((guard_excess > 0.0).float().mean()),
+        "recall_m_mismatch": float(lp_m.mean() - lp_n_det.mean()),
+        "recall_tokens": float(int(em.sum())),
+    }
+
+    if float(primary_excess.sum()) > 0.0:  # raise matched toward target
+        loss = loss + cfg.primary_weight * torch.clamp(target - lp_m, min=0.0).mean()
+    guard_pending = None
+    if float(guard_excess.sum()) > 0.0:  # partner rose above warm-start -> hold it down
+        guard_pending = {"neg_ctx": neg_ctx, "em": em, "gold": gold, "lp_n0": lp_n0}
+    return loss, metrics, guard_pending
+
+
+_SNAP_ABSENT = "Write the Python function you have just studied. Return only the code."
+_SNAP_PRESENT = "Write the following Python function.\n\n{desc}\n\nReturn only code."
+_SNAP_MAX_ANS_TOK = 96
+
+
+def _snap_full(
+    tokenizer: Any, device: Any, prompt: str, answer: str
+) -> tuple[Any, int, int]:
+    """chat(prompt)+answer ids on the FROZEN-PROBE surface -> (ids, p_len, a_len)."""
+    import torch  # noqa: PLC0415
+
+    enc = tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        add_special_tokens=False,
+        add_generation_prompt=True,
+        return_tensors="pt",
+    )
+    p = (enc["input_ids"] if hasattr(enc, "keys") else enc).to(device)
+    a_ids = tokenizer(answer, add_special_tokens=False).input_ids[:_SNAP_MAX_ANS_TOK]
+    # dtype=long: an empty answer ("" for the gen prompt) otherwise yields a float
+    # tensor whose cat upcasts the ids -> embedding() rejects float indices.
+    a = torch.tensor([a_ids], device=device, dtype=torch.long)
+    return torch.cat([p, a], dim=1), p.shape[1], a.shape[1]
+
+
+def _snap_body_lp(
+    logits: Any, ids: Any, start: int, body_start: int, ans_len: int
+) -> float:
+    """Mean gold logprob over BODY span [start+body_start, start+ans_len) (t-1 conv)."""
+    import torch  # noqa: PLC0415
+
+    lp = torch.log_softmax(logits.float(), dim=-1)
+    lo, hi = start + body_start, start + ans_len
+    if hi <= lo:
+        return 0.0
+    tot = sum(float(lp[t - 1, ids[t]]) for t in range(lo, hi))
+    return tot / (hi - lo)
+
+
+def _snap_desc(ctx: str) -> str:
+    """Recover the task description from a rendered ## Task trajectory context."""
+    pre, suf = "## Task\n", "\n\n## Current Code"
+    if ctx.startswith(pre) and suf in ctx:
+        return ctx[len(pre) : ctx.find(suf)]
+    return ctx
+
+
+def _recall_snapshot(
+    records: list[dict[str, str]],
+    recall_baselines: dict[str, dict[str, Any]],
+    hypernet: Any,
+    base_model: Any,
+    tokenizer: Any,
+    layer_indices: list[int],
+    eff_scaling: float,
+    n_chunks: Any,
+    k: int,
+) -> dict[str, float]:
+    """Frozen-probe-surface snapshot (the PROBE surface, not the answer-only in-loop
+    readout — bridges the engineer-flagged gap). Scores BODY lp matched/mismatch/zero in
+    BOTH regimes (absent = operative; present = recitation canary) over k episodes,
+    guarded valid-Python generation rate. All under no_grad."""
+    import ast  # noqa: PLC0415
+
+    import torch  # noqa: PLC0415
+
+    from rune.engine.graph import render_training_format_trajectory  # noqa: PLC0415
+    from rune.model.adapter_contract import assemble_adapter  # noqa: PLC0415
+
+    device = next(base_model.parameters()).device
+    n_qs = torch.tensor([1], device=device)
+    acc: dict[str, list[float]] = {
+        f"{r}_{s}": []
+        for r in ("absent", "present")
+        for s in ("matched", "mismatch", "zero")
+    }
+    gen_valid: list[float] = []
+
+    def _lp(adapter: Any, full: Any, ids: Any, start: int, bs: int, al: int) -> float:
+        with _functional_lora(base_model, layer_indices, adapter, eff_scaling, n_qs):
+            lg = base_model(full, use_cache=False).logits[0]
+        return _snap_body_lp(lg, ids, start, bs, al)
+
+    with torch.no_grad():
+        for rec in records[:k]:
+            tid = rec.get("task_id", "")
+            baseline = recall_baselines.get(tid)
+            if baseline is None:
+                continue
+            answer, entry = rec["answer"], rec.get("entry_point", "")
+            j = answer.find(f"def {entry}(")
+            if j < 0:
+                continue
+            line_end = answer.find("\n", j)
+            line_end = len(answer) if line_end < 0 else line_end
+            body_start = len(
+                tokenizer(
+                    answer[: line_end + 1], add_special_tokens=False
+                ).input_ids[:_SNAP_MAX_ANS_TOK]
+            )
+            desc = _snap_desc(rec["context"])
+            traj = render_training_format_trajectory(task=desc)
+            m_ld = _generate_lora_dict(
+                hypernet, traj, base_model, tokenizer, layer_indices, 2048
+            )
+            m_ad = assemble_adapter(hypernet, m_ld, n_chunks)
+            n_ld = _generate_lora_dict(
+                hypernet, baseline["partner_ctx"], base_model, tokenizer,
+                layer_indices, 2048,
+            )
+            n_ad = assemble_adapter(hypernet, n_ld, n_chunks)
+            for regime, tmpl in (("absent", _SNAP_ABSENT), ("present", _SNAP_PRESENT)):
+                prompt = tmpl.format(desc=desc) if "{desc}" in tmpl else tmpl
+                full, start, al = _snap_full(tokenizer, device, prompt, answer)
+                ids = full[0]
+                acc[f"{regime}_matched"].append(_lp(m_ad,full,ids,start,body_start,al))
+                acc[f"{regime}_mismatch"].append(_lp(n_ad,full,ids,start,body_start,al))
+                lz = base_model(full, use_cache=False).logits[0]  # zero = no adapter
+                acc[f"{regime}_zero"].append(
+                    _snap_body_lp(lz, ids, start, body_start, al)
+                )
+            # Generation canary (absent, matched): valid code or spec-divergent?
+            try:
+                full, start, _ = _snap_full(tokenizer, device, _SNAP_ABSENT, "")
+                with _functional_lora(
+                    base_model, layer_indices, m_ad, eff_scaling, n_qs
+                ):
+                    gen_out = base_model.generate(
+                        full[:, :start], max_new_tokens=64, do_sample=False,
+                        pad_token_id=tokenizer.eos_token_id,
+                    )
+                text = tokenizer.decode(gen_out[0][start:], skip_special_tokens=True)
+                try:
+                    ast.parse(text)
+                    gen_valid.append(1.0)
+                except SyntaxError:
+                    gen_valid.append(0.0)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("snapshot gen failed for %s: %s", tid, exc)
+            del m_ld, m_ad, n_ld, n_ad
+
+    result: dict[str, float] = {
+        f"snap_{key}": sum(vals) / len(vals) for key, vals in acc.items() if vals
+    }
+    if "snap_absent_matched" in result and "snap_absent_mismatch" in result:
+        result["snap_absent_m_mismatch"] = (
+            result["snap_absent_matched"] - result["snap_absent_mismatch"]
+        )
+    if "snap_absent_matched" in result and "snap_absent_zero" in result:
+        result["snap_absent_m_zero"] = (
+            result["snap_absent_matched"] - result["snap_absent_zero"]
+        )
+    if gen_valid:
+        result["snap_gen_valid_absent"] = sum(gen_valid) / len(gen_valid)
+    return result
 
 
 def _nullctx() -> Any:
