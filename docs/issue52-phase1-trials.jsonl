@@ -1,0 +1,1 @@
+{"name": "c1_t07_lp1_lg1", "matched_target_lp": -0.7, "primary_weight": 1.0, "guard_weight": 1.0, "absent_body_mm": 0.1918, "absent_body_mz": 0.593, "absent_body_lpm": -0.9669, "absent_sig_mm": 5.1556, "ckpt": "/tmp/phase1/ckpt/c1_t07_lp1_lg1.pt"}

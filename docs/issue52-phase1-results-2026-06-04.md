@@ -37,9 +37,19 @@ generalize body accessibility to the **24-task** held-out eval (`mbpp_recall_hel
 lp_matched −1.030, sig +3.564.
 
 ### Train-HPO trials (held-out 24 accessibility) — updating
-| config | τ | λ_p | λ_g | held-out absent/body m−zero | Δ vs warm (+0.530) | sig retained |
-|---|---|---|---|---|---|---|
-| _(running — populated per config)_ | | | | | | |
+Warm-start held-out baseline: m−zero **+0.530**, lp_matched −1.030, sig +3.56. (Pilot-2 ckpt
+trained on the 10 was FLAT on held-out: +0.514.)
+| config | τ | λ_p | λ_g | held-out absent/body m−zero | Δ vs warm | lp_matched | sig retained |
+|---|---|---|---|---|---|---|---|
+| c1 | −0.7 | 1 | 1 | **+0.593** | **+0.063** | −0.967 | +5.16 ✓ |
+| c2 | −0.5 | 1 | 1 | _running_ | | | |
+| c3 | −0.7 | 2 | 1 | _pending_ | | | |
+| c4 | −0.5 | 2 | 2 | _pending_ | | | |
+
+**Early read:** training on 40 disjoint tasks produces a *small but positive* held-out
+generalization (+0.063 m−zero) where training on 10 produced none — directional evidence the
+recall objective transfers a little with more data. Modest vs the +0.290 trained-on-test;
+significance on n=24 to be assessed.
 
 ### Bench pass@1 (held-out 24) — pending best
 | arm | present (stability) | absent (capability) |
