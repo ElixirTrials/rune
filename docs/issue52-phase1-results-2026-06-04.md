@@ -44,12 +44,15 @@ trained on the 10 was FLAT on held-out: +0.514.)
 | c1 | −0.7 | 1 | 1 | **+0.593** | **+0.063** | −0.967 | +5.16 ✓ |
 | c2 | −0.5 | 1 | 1 | **+0.601** | **+0.071** | −0.959 | +5.15 ✓ |
 | c3 | −0.7 | 2 | 1 | **+0.635** | **+0.105** | −0.925 | +5.26 ✓ |
-| c4 | −0.5 | 2 | 2 | _pending_ | | | |
+| c4 | −0.5 | 2 | 2 | +0.604 | +0.074 | −0.956 | +5.43 ✓ |
 
-**Early read:** training on 40 disjoint tasks produces a *small but positive* held-out
-generalization (+0.063 m−zero) where training on 10 produced none — directional evidence the
-recall objective transfers a little with more data. Modest vs the +0.290 trained-on-test;
-significance on n=24 to be assessed.
+**Read (all 4 trials in):** training on 40 disjoint tasks produces a **small but consistently
+positive** held-out generalization (+0.063…+0.105 m−zero across configs) where training on 10
+produced **none** (flat/−0.016). Best = **c3 (τ=−0.7, λ_p=2, λ_g=1): +0.105**. Pattern:
+**stronger primary recall weight (λ_p=2) helps; stronger guard (λ_g=2) slightly hurts** — the
+primary matched-recall term is the lever, the derangement guard is not. All retain signature
+(+5.2…+5.4). Modest vs the +0.290 trained-on-test, and n=24 (significance assessed on the
+per-episode deltas in the final bench). Bench (pass@1 vs scale=0) on c3 running.
 
 ### Bench pass@1 (held-out 24) — pending best
 | arm | present (stability) | absent (capability) |
