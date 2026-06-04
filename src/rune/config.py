@@ -7,12 +7,17 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+# Single source of truth for the base model. The instruct variant is required so
+# the pre-warmed Sakana doc-to-lora adapter (warm start) is compatible. Override
+# per-process with the RUNE_BASE_MODEL env var or repo-root config.yaml.
+DEFAULT_MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507"
+
 
 @dataclass(frozen=True)
 class PipelineConfig:
     """Frozen configuration for the Rune inference and training pipeline."""
 
-    model_id: str = "Qwen/Qwen3.5-9B"
+    model_id: str = DEFAULT_MODEL_ID
     adapter_scaling: float = 1.0
     temperature: float = 0.3
     max_tokens: int = 2048
@@ -65,16 +70,12 @@ class PipelineConfig:
         d.update(kwargs)
         return PipelineConfig(**d)
 
-    @classmethod
-    def from_env(cls) -> PipelineConfig:
-        """Construct a config from RUNE_* environment variables.
-
-        Returns:
-            PipelineConfig with any recognised env vars applied as overrides,
-            or a default instance if none are set.
-        """
+    @staticmethod
+    def _env_overrides() -> dict[str, Any]:
+        """Collect field overrides from recognised RUNE_* environment variables."""
         overrides: dict[str, Any] = {}
         env_map: dict[str, tuple[str, type]] = {
+            "RUNE_BASE_MODEL": ("model_id", str),
             "RUNE_TEMPERATURE": ("temperature", float),
             "RUNE_MAX_TOKENS": ("max_tokens", int),
             "RUNE_REPETITION_PENALTY": ("repetition_penalty", float),
@@ -87,9 +88,47 @@ class PipelineConfig:
             val = os.environ.get(env_key)
             if val is not None:
                 overrides[field_name] = converter(val)
-        if not overrides:
-            return cls()
-        return cls(**overrides)
+        return overrides
+
+    @classmethod
+    def from_env(cls) -> PipelineConfig:
+        """Construct a config from RUNE_* environment variables.
+
+        Returns:
+            PipelineConfig with any recognised env vars applied as overrides,
+            or a default instance if none are set.
+        """
+        overrides = cls._env_overrides()
+        return cls(**overrides) if overrides else cls()
+
+
+def _repo_config_path() -> Path:
+    """Resolve the canonical config.yaml: RUNE_CONFIG env, else repo-root file."""
+    env = os.environ.get("RUNE_CONFIG")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[2] / "config.yaml"
+
+
+def load_rune_config(path: Path | None = None) -> PipelineConfig:
+    """Return the single source of truth for Rune settings.
+
+    Resolution order (later wins): dataclass defaults -> config.yaml -> RUNE_*
+    env overrides. This is what tools, scripts, and CLI commands should call
+    instead of hardcoding a model id or any other setting. Env overrides apply
+    whether or not an explicit path is given, so e.g. RUNE_BASE_MODEL wins
+    uniformly.
+
+    Args:
+        path: Config YAML to read. Defaults to the repo-root config.yaml
+            (or RUNE_CONFIG).
+
+    Returns:
+        The merged PipelineConfig.
+    """
+    cfg = load_config(path if path is not None else _repo_config_path())
+    overrides = PipelineConfig._env_overrides()
+    return cfg.override(**overrides) if overrides else cfg
 
 
 def load_config(path: Path) -> PipelineConfig:
@@ -113,5 +152,9 @@ def load_config(path: Path) -> PipelineConfig:
             raise ValueError(
                 f"{path} must contain a YAML mapping, got {type(d).__name__}"
             )
+        # `training:` is the D2LTrainConfig surface (read by load_train_config);
+        # the inference/engine PipelineConfig ignores it so one config.yaml can
+        # hold both.
+        d = {k: v for k, v in d.items() if k != "training"}
         return PipelineConfig(**d)
     return PipelineConfig()

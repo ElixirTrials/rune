@@ -1,0 +1,54 @@
+# Rune — single source of truth for all pipeline settings.
+#
+# Loaded by rune.config.load_rune_config(); maps 1:1 onto PipelineConfig fields.
+# RUNE_* env vars override anything here (e.g. RUNE_BASE_MODEL, RUNE_TEMPERATURE).
+# Point elsewhere with RUNE_CONFIG=/path/to/config.yaml.
+
+# Base model. Must be the *instruct* variant: the pre-warmed Sakana doc-to-lora
+# adapter (warm start for the hypernetwork) is trained against Qwen3-4B-Instruct.
+model_id: "Qwen/Qwen3-4B-Instruct-2507"
+
+# --- Inference / generation ---
+adapter_scaling: 1.0
+temperature: 0.3
+max_tokens: 2048
+repetition_penalty: 1.1
+top_p: 0.9
+thinking_budget: 1024
+no_repeat_ngram_size: 12
+presence_penalty: 1.5
+
+# --- Engine loop ---
+max_phase_iterations: 10
+cont_multiplier: 1.53   # continuation-round adapter scaling over base adapter_scaling
+cont_budget: 5
+
+# --- Checkpoint / reproducibility ---
+checkpoint_path: ""
+seed: null
+
+# --- Nested config (benchmark runner, Optuna HPO) ---
+bench: {}
+hpo: {}
+
+# --- Training (hypernetwork distillation) ---
+# Read by `rune train` (rune.training.d2l_train.load_train_config). model_id is
+# NOT repeated here: training inherits the top-level model_id above (single source).
+training:
+  checkpoint_path: ""
+  corpus_path: ""
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.1
+  num_epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  lora_rank: 8
+  lora_alpha: 16
+  neftune_alpha: 0.0
+  max_seq_length: 2048
+  checkpoint_dir: "./checkpoints"
+  experiment_name: "d2l-qwen3-round1"
+  logging_steps: 10
+  save_steps: 500
+  eval_steps: 500
+  fp16: true

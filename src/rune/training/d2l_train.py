@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from pydantic import BaseModel
+
+from rune.config import DEFAULT_MODEL_ID, _repo_config_path
 
 
 class D2LTrainConfig(BaseModel):
@@ -29,7 +34,7 @@ class D2LTrainConfig(BaseModel):
         fp16: Whether to train with FP16 mixed precision.
     """
 
-    model_id: str = "Qwen/Qwen3.5-9B"
+    model_id: str = DEFAULT_MODEL_ID
     checkpoint_path: str = ""
     corpus_path: str = ""
     learning_rate: float = 2e-5
@@ -47,3 +52,33 @@ class D2LTrainConfig(BaseModel):
     save_steps: int = 500
     eval_steps: int = 500
     fp16: bool = True
+
+
+def load_train_config(path: Path | None = None) -> D2LTrainConfig:
+    """Load training settings from the unified config.yaml `training:` section.
+
+    The model id is single-sourced: it is taken from the file's top-level
+    `model_id` (the same value the inference/engine config uses) unless the
+    `training:` section overrides it, and `RUNE_BASE_MODEL` overrides everything.
+
+    Args:
+        path: Path to a config YAML. Defaults to the repo-root config.yaml
+            (or RUNE_CONFIG). A missing file yields dataclass defaults.
+
+    Returns:
+        The parsed D2LTrainConfig.
+    """
+    import yaml  # noqa: PLC0415
+
+    p = Path(path) if path is not None else _repo_config_path()
+    d = yaml.safe_load(p.read_text()) if p.exists() else {}
+    d = d or {}
+    if not isinstance(d, dict):
+        raise ValueError(f"{p} must contain a YAML mapping, got {type(d).__name__}")
+    training = dict(d.get("training") or {})
+    if "model_id" not in training:
+        training["model_id"] = d.get("model_id", DEFAULT_MODEL_ID)
+    env_model = os.environ.get("RUNE_BASE_MODEL")
+    if env_model:
+        training["model_id"] = env_model
+    return D2LTrainConfig(**training)

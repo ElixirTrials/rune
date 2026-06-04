@@ -10,14 +10,14 @@ Local-first coding agent that encodes coding trajectories into LoRA adapters via
 - Engine: LangGraph single-loop (`src/rune/engine/`).
 - Model: xgrammar (structured output) + PEFT + transformers (`src/rune/model/`).
 - Training: hypernetwork distillation via DiffAwareSFTTrainer (`src/rune/training/`).
-- Base model: Qwen/Qwen3.5-9B.
+- Base model: Qwen/Qwen3-4B-Instruct-2507 — the *instruct* variant, required so the pre-warmed Sakana doc-to-lora adapter (hypernet warm start) stays compatible. Single source of truth: `config.yaml` / `RUNE_BASE_MODEL` via `rune.config.load_rune_config()`; never hardcode a model id.
 - Quality: ruff, mypy (strict), pytest.
 
 ## Hard rules
 **GPU / long-running ops** — OK to run directly on this GPU instance (engine runs, smoke tests, training, benchmarks). Capture/log output; prefer background runs for multi-minute jobs.
 **Deploy / install** — never.
 **GPU imports** — deferred inside function bodies (importable in CPU-only CI).
-**CPU RAM is tiny (~15GB).** Always check `free -g` before loading the base model + hypernet or setting `offload_base=True` — moving the 18GB base model to CPU RAM OOM-kills the VM. Prefer `offload_base=False` (base+hypernet fit in the 23GB GPU). When loading risks OOM, run under a RAM watchdog that kills the job before the VM dies.
+**CPU RAM is tiny (~15GB).** Always check `free -g` before loading the base model + hypernet or setting `offload_base=True` — moving the base model (~8GB bf16 for the 4B-Instruct base) to CPU RAM can OOM-kill the VM. Prefer `offload_base=False` (base+hypernet fit comfortably in the 23GB GPU). When loading risks OOM, run under a RAM watchdog that kills the job before the VM dies.
 
 ## Running Tests
 ```bash
