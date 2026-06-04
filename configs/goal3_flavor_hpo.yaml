@@ -7,6 +7,11 @@ model_id: "Qwen/Qwen3-4B-Instruct-2507"
 checkpoint_path: "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
 thinking_budget: 0
 presence_penalty: 0.0
+# Corrected runner: deterministic public-example oracle is the in-loop repair
+# signal. model_judge OFF — the in-loop judge false-positives correct code
+# (flagged a correct int_to_roman) and is slow; kept a separate, to-be-validated
+# arm so the HPO optimises against a clean signal, not judge noise.
+model_judge: false
 temperature: 0.3
 max_tokens: 768
 max_phase_iterations: 4

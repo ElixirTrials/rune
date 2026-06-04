@@ -53,6 +53,10 @@ def _build_cfg(arm: str, seed: int, max_iters: int, prompt_mode: str = "full") -
         seed=seed,
         max_phase_iterations=max_iters,
         prompt_mode=prompt_mode,
+        # Corrected runner uses the deterministic public-example oracle; the
+        # in-loop judge false-positives correct code + is slow, so it is OFF for
+        # these experiments (a separate, to-be-validated arm).
+        model_judge=False,
     )
 
 
