@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
-import json
 import logging
 from typing import Any
 
@@ -27,26 +27,12 @@ from rune.engine.state import (
     Feedback,
     RunState,
     StepRecord,
-    Subtask,
 )
 from rune.model.adapter import scale_lora_b
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
 
-_SIMPLE_SIGNALS = (
-    "write a function",
-    "implement a function",
-    "implement a method",
-    "create a function",
-    "write a method",
-    "create a method",
-    "write a class",
-    "implement a class",
-    "create a class",
-)
-
-_SIMPLE_WORD_LIMIT = 200
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
 _INTEGRATION_DOC_LINE_CAP = 200
 _PROJECT_CAP = 1200
@@ -54,33 +40,151 @@ _PROJECT_CAP = 1200
 # short spec mid-example (a 200-char cap cut MBPP docstring asserts off).
 _PROJECT_LABEL_CAP = 1200
 _ACCUMULATED_CODE_CAP = 3500
+# Cap on prior-attempt history folded into the adapter conditioning (R2).
+_ATTEMPT_HISTORY_CAP = 3
+_ATTEMPT_CODE_CAP = 400
+_ATTEMPT_ERR_CAP = 300
 
 
-def _is_simple_task(task: str) -> bool:
-    """Heuristic: short task with a single-unit signal skips decomposition."""
-    if len(task.split()) >= _SIMPLE_WORD_LIMIT:
-        return False
-    lower = task.lower()
-    return any(sig in lower for sig in _SIMPLE_SIGNALS)
+def _format_attempts(attempts: list[dict[str, Any]] | None) -> str:
+    """Render prior (failed) code attempts + their errors for the adapter (R2)."""
+    if not attempts:
+        return ""
+    blocks: list[str] = []
+    for i, a in enumerate(attempts[-_ATTEMPT_HISTORY_CAP:], 1):
+        code = (a.get("code") or "")[:_ATTEMPT_CODE_CAP]
+        err = (a.get("error") or "")[:_ATTEMPT_ERR_CAP]
+        blocks.append(f"### Attempt {i}\n{code}\n-- failed with --\n{err}")
+    return "\n\n".join(blocks)
 
 
 def render_training_format_trajectory(
-    task: str, current_code: str = "", feedback: str = ""
+    task: str,
+    current_code: str = "",
+    feedback: str = "",
+    attempts: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Render the trajectory text fed to the hypernetwork in the training format.
+    """Render the episode the hypernetwork conditions on.
 
-    The hypernet was distilled on records shaped as
-    ``## Task / ## Current Code / ## Review Feedback`` (see the diag_*_probe
-    fixtures). Inference must condition the adapter on that same surface format
-    (#49 §C); the human-facing prompt template stays separate. The ``## Revision``
-    block is the generation target, not conditioning, so it is intentionally
-    omitted here.
+    The hypernet was distilled on ``## Task / ## Current Code / ## Review
+    Feedback`` (the human-facing prompt template stays separate; the
+    ``## Revision`` block is the generation target, not conditioning). To make
+    the adapter a memory substrate, the conditioning now also carries **what has
+    already been tried** (R2, #52): a ``## Previous Attempts`` section with the
+    prior failing attempts and their errors. It is appended ONLY when there is
+    history, so attempt-1 stays byte-identical to the distillation surface; the
+    section is the new training surface for the RL stage.
     """
-    return (
+    out = (
         f"## Task\n{task}\n\n"
         f"## Current Code\n{current_code}\n\n"
         f"## Review Feedback\n{feedback}"
     )
+    prior = _format_attempts(attempts)
+    if prior:
+        out += f"\n\n## Previous Attempts\n{prior}"
+    return out
+
+
+def _split_spec(spec: str) -> tuple[str, str]:
+    """Split an MBPP-style spec into (prose, doctest asserts), dropping ``\"\"\"``."""
+    prose: list[str] = []
+    asserts: list[str] = []
+    seen_assert = False
+    for line in spec.splitlines():
+        if line.strip() in ('"""', "'''"):
+            continue
+        if line.lstrip().startswith(">>>") or seen_assert:
+            seen_assert = True
+            asserts.append(line)
+        else:
+            prose.append(line)
+    return "\n".join(prose).strip(), "\n".join(asserts).strip()
+
+
+def _derive_signature(entry_point: str, spec: str) -> str:
+    """``def entry_point(arg1, ...):`` with arity inferred from the doctest call."""
+    arity: int | None = None
+    for line in spec.splitlines():
+        if entry_point + "(" not in line:
+            continue
+        code = line.split(">>>", 1)[-1].strip()
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == entry_point
+            ):
+                arity = len(node.args)
+                break
+        if arity is not None:
+            break
+    args = ", ".join(f"arg{i + 1}" for i in range(arity)) if arity else "*args"
+    return f"def {entry_point}({args}):"
+
+
+def render_reference_adapter(
+    mode: str,
+    spec: str,
+    entry_point: str,
+    *,
+    signature: str = "",
+    current_code: str = "",
+    feedback: str = "",
+) -> str:
+    """Spec-in-adapter conditioning for the reference prompt modes (#52).
+
+    The spec lives ONLY here (the prompt refers to the mission by name); empty
+    sections are omitted. ``reference_a`` keeps c3's training surface (plain
+    ``## Task``); ``reference_b`` uses Mission / Specification / Definition of
+    Done + a ``## Current Code`` signature stub (Phase-1: condition on
+    task + partial code).
+    """
+    if mode == "training_exact":
+        # the byte-exact distillation surface: ## Task + EMPTY ## Current Code +
+        # EMPTY ## Review Feedback (headers kept). Most faithful to c3's training.
+        return render_training_format_trajectory(spec, current_code, feedback)
+
+    sections: list[tuple[str, str]] = []
+    if mode == "reference_b":
+        prose, asserts = _split_spec(spec)
+        sections.append(("Mission", entry_point))
+        sections.append(("Specification", prose))
+        sections.append(("Definition of Done", asserts))
+        body = current_code or _derive_signature(entry_point, spec)
+        sections.append(("Current Code", body))
+        sections.append(("Review Feedback", feedback))
+    elif mode == "reference_b1":
+        # reference_b's richer content on OUR training headers (closer to
+        # distribution): Mission under ## Task; signature + a comment under
+        # ## Current Code; the doctest as "to be done" under ## Review Feedback.
+        prose, asserts = _split_spec(spec)
+        sig = signature or _derive_signature(entry_point, spec)
+        to_do = asserts.replace(">>> ", "").strip()
+        code = current_code or f"{sig}\n    # complete the implementation"
+        sections.append(("Task", f"Mission: {entry_point}\n{prose}"))
+        sections.append(("Current Code", code))
+        sections.append(("Review Feedback", f"To be done: {to_do}" if to_do else ""))
+    elif mode == "reference_c":
+        # Strengthen the prompt<->context link: name the Mission explicitly (the
+        # prompt refers to it by name), keep c3's ## Task surface, and anchor
+        # ## Current Code with the REAL signature (real arg names bind better
+        # than generic ones).
+        sig = signature or _derive_signature(entry_point, spec)
+        body = current_code or sig
+        sections.append(("Mission", entry_point))
+        sections.append(("Task", spec))
+        sections.append(("Current Code", body))
+        sections.append(("Review Feedback", feedback))
+    else:  # reference_a
+        sections.append(("Task", spec))
+        sections.append(("Current Code", current_code))
+        sections.append(("Review Feedback", feedback))
+    return "\n\n".join(f"## {h}\n{c}" for h, c in sections if c.strip())
 
 
 def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any]:
@@ -98,6 +202,7 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         # Required function name (benchmark tasks); "" for free-form `rune run`.
         # Named in the code/repair prompts so the model doesn't invent a name.
         "entry_point": state.get("entry_point", ""),
+        "signature": state.get("signature", ""),
     }
 
     if action and action.name in _TARGETED_ACTIONS and not action.target_subtask:
@@ -173,17 +278,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     model = configurable["model"]
     run_config: dict[str, Any] = configurable.get("run_config", {})
 
-    # Complexity gate: simple tasks skip decomposition
-    gate_fired = False
-    if not state["subtasks"] and _is_simple_task(state["task"]):
-        synthetic = Subtask(
-            name="_main",
-            description=state["task"],
-            depends_on=[],
-        )
-        state = {**state, "subtasks": [synthetic], "plans": {"_main": state["task"]}}
-        gate_fired = True
-
+    # `decompose` always runs first and the MODEL decides 1 vs N subtasks (the
+    # decompose prompt instructs ONE subtask for a self-contained function). No
+    # fragile phrase/word-count heuristic pre-empts that decision.
     actions = select_action(dict(state))
     if not actions:
         return {"actions": [], "budget_remaining": state["budget_remaining"]}
@@ -202,12 +299,35 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         torch.cuda.empty_cache()
 
         ctx = state_to_ctx(state, action)
-        trajectory_text = render_training_format_trajectory(
-            task=ctx["task_description"],
-            current_code=ctx.get("existing_code", ""),
-            feedback=ctx.get("fix_guidance") or ctx.get("error_summary") or "",
+        feedback_text = ctx.get("fix_guidance") or ctx.get("error_summary") or ""
+        prompt_mode = run_config.get("prompt_mode", "full")
+        _ref_modes = (
+            "training_exact",
+            "reference_a", "reference_b", "reference_b1", "reference_c",
         )
-        prompt_text = render_template(action.prompt_template, **ctx)
+        if prompt_mode in _ref_modes and action.name in ("code", "repair"):
+            # spec-in-adapter (#52): the spec lives only in the conditioning; the
+            # prompt refers to the mission by name.
+            trajectory_text = render_reference_adapter(
+                prompt_mode,
+                ctx["task_description"],
+                ctx.get("entry_point", ""),
+                signature=ctx.get("signature", ""),
+                current_code=ctx.get("existing_code", ""),
+                feedback=feedback_text,
+            )
+            prompt_text = render_template(f"prompt_{prompt_mode}", **ctx)
+        else:
+            # Prior attempts (all code/repair tries before the current one, which
+            # is in ## Current Code) become the episode the adapter carries (R2).
+            prior_attempts = ctx.get("code_trajectory", [])[:-1]
+            trajectory_text = render_training_format_trajectory(
+                task=ctx["task_description"],
+                current_code=ctx.get("existing_code", ""),
+                feedback=feedback_text,
+                attempts=prior_attempts,
+            )
+            prompt_text = render_template(action.prompt_template, **ctx)
 
         adapter = model.generate_adapter(trajectory_text)
         scaled_sd = scale_lora_b(adapter.state_dict, adapter_scaling)
@@ -306,7 +426,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 len(accumulated_code),
                 validate_syntax(accumulated_code),
             )
-            raw_text = json.dumps({"code": accumulated_code})
+            raw_text = accumulated_code
         elif result.truncated:
             logger.warning(
                 "Truncated output for %s/%s after completion retry",
@@ -351,10 +471,10 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 step=state["step"],
             )
 
-    # extract_partial_code is the single code-extraction primitive (CodeResult
-    # and IntegrateResult are both {code: str}). Computed once here and threaded
-    # into parse_output below so the code recorded in state is exactly the code
-    # executed in the sandbox.
+    # extract_partial_code is the single code-extraction primitive (de-fence the
+    # freeform model output). Computed once here and threaded into parse_output
+    # below so the code recorded in state is exactly the code executed in the
+    # sandbox.
     code_map: dict[str, str] = {}
     code_action_names: list[str] = []
     for a, name, text, _, _traj, _prompt, _out in results:
@@ -399,9 +519,6 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         )
         for a, name, _, aid, traj, prompt, out in results
     ]
-    if gate_fired:
-        updates.setdefault("subtasks", state["subtasks"])
-        updates.setdefault("plans", state["plans"])
     updates["actions"] = actions
     updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
     updates["trajectory"] = state["trajectory"] + records

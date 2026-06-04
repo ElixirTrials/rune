@@ -45,6 +45,7 @@ class BenchTask:
     description: str
     test_code: str
     entry_point: str = "solution"
+    signature: str = ""  # real def line (reference_* adapter anchor); optional
 
 
 @dataclass(frozen=True)
@@ -137,7 +138,9 @@ async def run_benchmark(
     for i, task in enumerate(tasks):
         if seed is not None:
             _seed_rng(seed + i)
-        initial_state = make_initial_state(task.description, budget, task.entry_point)
+        initial_state = make_initial_state(
+            task.description, budget, task.entry_point, task.signature
+        )
 
         try:
             final_state: dict[str, Any] = await engine.ainvoke(

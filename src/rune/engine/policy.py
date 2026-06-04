@@ -8,10 +8,8 @@ from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
 from rune.engine.parse import (
-    CodeResult,
     DecomposeResult,
     DiagnoseResult,
-    IntegrateResult,
     PlanResult,
 )
 from rune.engine.state import Action, Subtask
@@ -45,7 +43,7 @@ ACTIONS: dict[str, Action] = {
         "code",
         "prompt_code",
         "You are a code generator.",
-        CodeResult,
+        None,  # freeform code (```python fence), de-fenced — never JSON-wrapped
         True,
         None,
     ),
@@ -54,7 +52,7 @@ ACTIONS: dict[str, Action] = {
         "code_repair",
         "prompt_code_repair",
         "You are a code generator.",
-        CodeResult,
+        None,  # freeform code (```python fence), de-fenced — never JSON-wrapped
         True,
         None,
     ),
@@ -63,7 +61,7 @@ ACTIONS: dict[str, Action] = {
         "integrate",
         "prompt_integrate",
         "You are a code integrator.",
-        IntegrateResult,
+        None,  # freeform code (```python fence), de-fenced — never JSON-wrapped
         True,
         None,
     ),

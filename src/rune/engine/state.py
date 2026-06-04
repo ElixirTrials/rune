@@ -98,6 +98,7 @@ class RunState(TypedDict):
 
     task: str
     entry_point: str
+    signature: str
     subtasks: list[Subtask]
     plans: dict[str, str]
     code_results: dict[str, str]
@@ -114,10 +115,13 @@ class RunState(TypedDict):
     budget_remaining: int
 
 
-def make_initial_state(task: str, budget: int, entry_point: str = "") -> RunState:
+def make_initial_state(
+    task: str, budget: int, entry_point: str = "", signature: str = ""
+) -> RunState:
     return {
         "task": task,
         "entry_point": entry_point,
+        "signature": signature,
         "subtasks": [],
         "plans": {},
         "code_results": {},

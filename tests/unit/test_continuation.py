@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 from rune.engine.continuation import (
     CONT_SYSTEM_PROMPT,
     degeneration_score,
@@ -26,24 +24,27 @@ def test_prompt_code_continue_renders_empty_when_absent() -> None:
 
 
 class TestExtractPartialCode:
-    def test_valid_json(self) -> None:
-        raw = json.dumps({"code": "def foo(): pass"})
-        assert extract_partial_code(raw) == "def foo(): pass"
+    """Code output is freeform (a ```python fence or bare code), never JSON."""
 
-    def test_truncated_json(self) -> None:
-        raw = '{"code": "class Foo:\\n    def b'
+    def test_fenced_block_returns_inner_code(self) -> None:
+        raw = "```python\ndef foo():\n    return 42\n```"
+        assert extract_partial_code(raw) == "def foo():\n    return 42"
+
+    def test_bare_code_passes_through(self) -> None:
+        raw = "def foo():\n    return 42"
+        assert extract_partial_code(raw) == raw
+
+    def test_multiline_newlines_preserved(self) -> None:
+        # Regression: real newlines survive (the JSON path collapsed code to 1 line).
+        raw = "```py\nclass Foo:\n    def bar(self):\n        return 1\n```"
+        result = extract_partial_code(raw)
+        assert result == "class Foo:\n    def bar(self):\n        return 1"
+
+    def test_unterminated_fence_returns_body(self) -> None:
+        raw = "```py\nclass Foo:\n    def b"
         result = extract_partial_code(raw)
         assert "class Foo:" in result
         assert "def b" in result
-
-    def test_truncated_json_with_escapes(self) -> None:
-        raw = '{"code": "line1\\nline2\\tindented'
-        result = extract_partial_code(raw)
-        assert result == "line1\nline2\tindented"
-
-    def test_non_json_plaintext(self) -> None:
-        raw = "def foo():\n    return 42"
-        assert extract_partial_code(raw) == raw
 
 
 class TestDegenerationScore:

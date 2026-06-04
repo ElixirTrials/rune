@@ -1,10 +1,8 @@
 import json
 
 from rune.engine.parse import (
-    CodeResult,
     DecomposeResult,
     DiagnoseResult,
-    IntegrateResult,
     PlanResult,
     parse_output,
     render_template,
@@ -65,25 +63,6 @@ class TestPlanResult:
         assert "<think>" not in result.plan
 
 
-class TestCodeResult:
-    def test_parse_code(self) -> None:
-        raw = json.dumps({"code": "def add(a, b):\n    return a + b"})
-        result = CodeResult.model_validate_json(raw)
-        assert "def add" in result.code
-
-    def test_code_with_special_chars(self) -> None:
-        raw = json.dumps({"code": 'x = "hello\\nworld"'})
-        result = CodeResult.model_validate_json(raw)
-        assert "hello" in result.code
-
-
-class TestIntegrateResult:
-    def test_parse_integrate(self) -> None:
-        raw = json.dumps({"code": "# Full integrated module\ndef main(): pass"})
-        result = IntegrateResult.model_validate_json(raw)
-        assert "def main" in result.code
-
-
 class TestDiagnoseResult:
     def test_parse_structured_json(self) -> None:
         raw = '{"entries": [{"subtask_name": "solver", "error_type": "name", "location": "line 5", "fix_guidance": "Add missing import for math module"}]}'
@@ -131,7 +110,7 @@ class TestParseOutput:
         assert "Architecture" in updates["plans"]["task_a"]
 
     def test_code_action_passing(self) -> None:
-        action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
+        action = Action("code", "code", "prompt_code", "", None, True, "task_a")
         fb = Feedback(stdout="ok", stderr="", exit_code=0)
         state_stub: dict = {
             "code_results": {},
@@ -140,13 +119,13 @@ class TestParseOutput:
             "feedback": {},
             "diagnosis": {},
         }
-        raw = json.dumps({"code": "print(1)"})
+        raw = "print(1)"
         updates = parse_output(action, raw, fb, state_stub)
         assert updates["code_passed"]["task_a"] is True
         assert "print(1)" in updates["code_results"]["task_a"]
 
     def test_single_subtask_code_pass_sets_integrated_code(self) -> None:
-        action = Action("code", "code", "prompt_code", "", CodeResult, True, "_main")
+        action = Action("code", "code", "prompt_code", "", None, True, "_main")
         fb = Feedback(stdout="ok", stderr="", exit_code=0)
         state_stub: dict = {
             "code_results": {},
@@ -156,12 +135,12 @@ class TestParseOutput:
             "diagnosis": {},
             "subtasks": [Subtask("_main", "task body", [])],
         }
-        raw = json.dumps({"code": "def solution(): return 42"})
+        raw = "def solution(): return 42"
         updates = parse_output(action, raw, fb, state_stub)
         assert updates["integrated_code"] == "def solution(): return 42"
 
     def test_code_increments_retries(self) -> None:
-        action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
+        action = Action("code", "code", "prompt_code", "", None, True, "task_a")
         fb = Feedback(stdout="ok", stderr="", exit_code=0)
         state_stub: dict = {
             "code_results": {"task_a": "old code"},
@@ -170,7 +149,7 @@ class TestParseOutput:
             "feedback": {},
             "diagnosis": {"task_a": "old diagnosis"},
         }
-        raw = json.dumps({"code": "print('new')"})
+        raw = "print('new')"
         updates = parse_output(action, raw, fb, state_stub)
         assert updates["retries"]["task_a"] == 3
         assert "task_a" not in updates["diagnosis"]
@@ -181,7 +160,7 @@ class TestParseOutput:
             "code_repair",
             "prompt_code_repair",
             "",
-            CodeResult,
+            None,
             True,
             "task_a",
         )
@@ -193,7 +172,7 @@ class TestParseOutput:
             "feedback": {},
             "diagnosis": {"task_a": "fix the bug"},
         }
-        raw = json.dumps({"code": "pass"})
+        raw = "pass"
         updates = parse_output(action, raw, fb, state_stub)
         assert updates["retries"]["task_a"] == 1
         assert "task_a" not in updates["diagnosis"]
@@ -256,39 +235,39 @@ class TestParseOutput:
             "integrate",
             "prompt_integrate",
             "",
-            IntegrateResult,
+            None,
             True,
             None,
         )
         fb = Feedback(stdout="ok", stderr="", exit_code=0)
         state_stub: dict = {"feedback": {}, "diagnosis": {}}
-        raw = json.dumps({"code": "print('all')"})
+        raw = "print('all')"
         updates = parse_output(action, raw, fb, state_stub)
         assert updates["integrated_code"] != ""
         assert updates["integration_feedback"].exit_code == 0
 
-    def test_integrate_truncated_json_uses_fallback(self) -> None:
+    def test_integrate_freeform_fenced_extracts(self) -> None:
         action = Action(
             "integrate",
             "integrate",
             "prompt_integrate",
             "",
-            IntegrateResult,
+            None,
             True,
             None,
         )
-        fb = Feedback(stdout="", stderr="SyntaxError", exit_code=1)
+        fb = Feedback(stdout="ok", stderr="", exit_code=0)
         state_stub: dict = {"feedback": {}, "diagnosis": {}}
-        raw = '{"code": "import os\\ndef main():\\n    print(\\"hello'
+        raw = "```python\nimport os\ndef main():\n    print('hello')\n```"
         updates = parse_output(action, raw, fb, state_stub)
         assert (
-            "import os" in updates["integrated_code"]
-            or updates["integrated_code"] == ""
+            updates["integrated_code"]
+            == "import os\ndef main():\n    print('hello')"
         )
-        assert updates["integration_feedback"].exit_code == 1
+        assert updates["integration_feedback"].exit_code == 0
 
-    def test_code_truncated_json_uses_fallback(self) -> None:
-        action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
+    def test_code_freeform_unterminated_fence_extracts(self) -> None:
+        action = Action("code", "code", "prompt_code", "", None, True, "task_a")
         fb = Feedback(stdout="", stderr="SyntaxError", exit_code=1)
         state_stub: dict = {
             "code_results": {},
@@ -297,9 +276,10 @@ class TestParseOutput:
             "feedback": {},
             "diagnosis": {},
         }
-        raw = '{"code": "x = 1\\ny = 2\\nz = x +'
+        # truncated freeform output: opening fence, no close -> body to EOF
+        raw = "```py\nx = 1\ny = 2\nz = x +"
         updates = parse_output(action, raw, fb, state_stub)
-        assert "x = 1" in updates["code_results"]["task_a"]
+        assert updates["code_results"]["task_a"] == "x = 1\ny = 2\nz = x +"
         assert updates["code_passed"]["task_a"] is False
 
     def test_decompose_drops_phantom_and_self_deps(self) -> None:
@@ -340,7 +320,7 @@ class TestParseOutput:
         assert updates == {}  # graceful: no crash, engine re-decomposes
 
     def test_first_code_attempt_not_counted_as_retry(self) -> None:
-        action = Action("code", "code", "prompt_code", "", CodeResult, True, "task_a")
+        action = Action("code", "code", "prompt_code", "", None, True, "task_a")
         fb = Feedback(stdout="ok", stderr="", exit_code=0)
         state_stub: dict = {
             "code_results": {},  # no prior code → first attempt
@@ -349,7 +329,7 @@ class TestParseOutput:
             "feedback": {},
             "diagnosis": {},
         }
-        updates = parse_output(action, json.dumps({"code": "print(1)"}), fb, state_stub)
+        updates = parse_output(action, "print(1)", fb, state_stub)
         assert updates["retries"].get("task_a", 0) == 0
 
     def test_diagnose_reopens_diagnosed_subtasks(self) -> None:
@@ -401,7 +381,7 @@ class TestParseOutput:
             "integrate",
             "prompt_integrate",
             "",
-            IntegrateResult,
+            None,
             True,
             None,
         )

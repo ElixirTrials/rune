@@ -39,6 +39,12 @@ class PipelineConfig:
     cont_multiplier: float = 1.53
     cont_budget: int = 5
     no_repeat_ngram_size: int = 12
+    # Prompt regime: "full" = spec in the prompt (default). "reference_a"/
+    # "reference_b" = spec lives ONLY in the adapter conditioning, prompt refers
+    # to the mission by name (issue #52 spec-in-adapter test). _a = plain ## Task
+    # (faithful to c3 training); _b = Mission/Specification/Definition of Done +
+    # signature in ## Current Code. Empty sections are omitted from the adapter.
+    prompt_mode: str = "full"
     # --- Adapter (hypernetwork) profile ---
     checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
     warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance

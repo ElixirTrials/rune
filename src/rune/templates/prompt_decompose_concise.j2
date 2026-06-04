@@ -1,16 +1,20 @@
-Decompose into subtasks with dependencies. Output a JSON object:
+Decide how many subtasks this task needs, then output them.
+
+DECISION RULE (decide first):
+- If the task is ONE self-contained function or class, output exactly ONE
+  subtask. Most function-writing tasks are a single subtask.
+- Only output MULTIPLE subtasks when the task genuinely has separable
+  components with dependencies (e.g. a data model + logic + interface).
+
+Output a JSON object:
 {"subtasks": [{"name": ..., "description": ..., "depends_on": [...]}]}
 Use depends_on: [] when a subtask has no prerequisites.
 No preamble, no analysis, no reasoning outside the JSON.
 
-A subtask is a unit of IMPLEMENTATION, not a project chore. For a single
-self-contained function, ONE subtask is correct.
-
-BAD subtasks (never emit these):
-- "Analyze the request" — that is reasoning, not a subtask.
+A subtask is a unit of IMPLEMENTATION, not a project chore. NEVER emit:
+- "Analyze the request" / "Define the signature" / "Add type hints" — reasoning.
 - "Add documentation" / "Write docstrings" — part of the implementation.
 - "Write unit tests" / "Handle edge cases" — part of the implementation.
-- "Define the function signature" / "Add type hints" — part of the implementation.
 
 [USER TASK]
 {{ task_description }}

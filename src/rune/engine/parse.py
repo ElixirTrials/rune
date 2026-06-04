@@ -6,7 +6,6 @@ import logging
 import re
 from typing import Any
 
-import json_repair
 from jinja2 import Environment, PackageLoader, StrictUndefined
 from markdown_it import MarkdownIt
 from pydantic import BaseModel
@@ -43,14 +42,6 @@ class DecomposeResult(BaseModel):
 
 class PlanResult(BaseModel):
     plan: str
-
-
-class CodeResult(BaseModel):
-    code: str
-
-
-class IntegrateResult(BaseModel):
-    code: str
 
 
 class DiagnosisEntry(BaseModel):
@@ -91,14 +82,15 @@ def _is_chore_subtask(s: SubtaskSchema) -> bool:
 _FIX_GUIDANCE_CAP = 150
 
 
-def _extract_code_block(value: str) -> str:
+def extract_code_block(value: str) -> str:
     """Return the first fenced code block's content, else *value* unchanged.
 
-    Even under xgrammar-constrained structured output the instruct model wraps
-    its code in a ```lang ... ``` fence *inside* the JSON ``code`` string
-    (verified: ``result.text == '{"code": "```py\\n..."}'``); the leading fence
-    line then crashes the sandbox with ``SyntaxError`` on line 1, turning a
-    correct solution into a spurious failure (and a wasted repair loop).
+    Code actions emit freeform Python — a ```lang ... ``` fence (the instruct
+    model's natural format) or bare code — never a JSON ``{"code": ...}`` object.
+    Wrapping code in a JSON string let the model over-escape newlines
+    (``\\n`` -> literal backslash-n) and collapse multi-line code to one line, a
+    phantom ``SyntaxError`` on line 1. De-fencing the raw output sidesteps that
+    class entirely.
 
     Extraction uses the CommonMark tokenizer (``markdown-it-py``), not regex:
     it handles ```lang info strings, an *unterminated* fence (truncated output
@@ -112,48 +104,6 @@ def _extract_code_block(value: str) -> str:
     return value
 
 
-def extract_code_from_raw(
-    raw: str, model: type[BaseModel], *, fallback_to_raw: bool = False
-) -> str:
-    """Parse *raw* as *model*'s ``code`` field, de-fenced.
-
-    Pipeline (maintained libraries, no fragile regex): ``json-repair`` robustly
-    parses the model's JSON (repairing truncation / prose-wrapping) → ``model``
-    (pydantic) validates the structure → ``markdown-it-py`` extracts the code
-    from the possibly-fenced ``code`` value. A non-pydantic path is logged
-    loudly — it is a signal, not silent behavior. ``fallback_to_raw`` de-fences
-    the raw text only when no structured ``code`` can be recovered at all.
-    """
-    obj: Any = None
-    try:
-        obj = json_repair.loads(raw)
-    except Exception:  # pragma: no cover - json_repair is very tolerant
-        obj = None
-
-    if isinstance(obj, dict):
-        try:
-            code: str = model.model_validate(obj).code  # type: ignore[attr-defined]
-            return _extract_code_block(code)
-        except Exception:
-            recovered = obj.get("code")
-            if isinstance(recovered, str):
-                logger.warning(
-                    "%s: json-repair recovered a code field that failed full "
-                    "schema validation; using it",
-                    model.__name__,
-                )
-                return _extract_code_block(recovered)
-
-    if fallback_to_raw:
-        logger.warning(
-            "%s: could not parse structured output even with json-repair; "
-            "de-fencing raw text (pydantic bypassed)",
-            model.__name__,
-        )
-        return _extract_code_block(raw)
-    return ""
-
-
 def _parse_code_action(
     target: str | None,
     raw: str,
@@ -164,7 +114,7 @@ def _parse_code_action(
     code: str | None = None,
 ) -> dict[str, Any]:
     if code is None:
-        code = extract_code_from_raw(raw, CodeResult)
+        code = extract_code_block(raw)
     passed = feedback is not None and feedback.exit_code == 0
     retries = dict(state.get("retries", {}))
     retries[target] = retries.get(target, 0) + retries_delta
@@ -264,7 +214,7 @@ def parse_output(
             )
         case "integrate":
             if code is None:
-                code = extract_code_from_raw(raw, IntegrateResult)
+                code = extract_code_block(raw)
             passed = feedback is not None and feedback.exit_code == 0
             return {
                 "integrated_code": code if passed else "",
