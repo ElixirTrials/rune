@@ -44,6 +44,19 @@ class PlanResult(BaseModel):
     plan: str
 
 
+class JudgeResult(BaseModel):
+    """Model correctness verdict on a candidate implementation.
+
+    ``correct=False`` must be grounded by a concrete failing input in
+    ``failing_input`` (and explained in ``reason``) — an ungrounded "looks wrong"
+    is treated as correct, to avoid false-positive repairs on already-correct code.
+    """
+
+    correct: bool
+    failing_input: str = ""
+    reason: str = ""
+
+
 class DiagnosisEntry(BaseModel):
     subtask_name: str
     error_type: str

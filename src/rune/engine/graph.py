@@ -20,7 +20,7 @@ from rune.engine.continuation import (
     validate_syntax,
 )
 from rune.engine.oracle import build_probe
-from rune.engine.parse import parse_output, render_template
+from rune.engine.parse import JudgeResult, parse_output, render_template
 from rune.engine.policy import select_action
 from rune.engine.state import (
     _CODE_HISTORY_CAP,
@@ -274,6 +274,44 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     return ctx
 
 
+_JUDGE_SYSTEM = "You are a meticulous code reviewer hunting for edge-case bugs."
+
+
+async def _run_model_judge(
+    model: Any,
+    spec: str,
+    entry_point: str,
+    code: str,
+    run_config: dict[str, Any],
+) -> JudgeResult | None:
+    """Ask the model for a grounded correctness verdict on *code*.
+
+    Returns the parsed ``JudgeResult`` or ``None`` if generation/parse fails
+    (fail-open: a flaky judge must not block already-passing code). Runs with the
+    adapter currently loaded from the code step (the adapted agent judging its own
+    work).
+    """
+    prompt = render_template(
+        "prompt_judge",
+        entry_point=entry_point,
+        task_description=spec,
+        candidate_code=code,
+    )
+    try:
+        result = await model.generate(
+            prompt=prompt,
+            system_prompt=_JUDGE_SYSTEM,
+            output_schema=JudgeResult,
+            max_tokens=run_config.get("judge_max_tokens", 256),
+            temperature=run_config.get("judge_temperature", 0.2),
+            thinking_budget=0,
+        )
+        return JudgeResult.model_validate_json(result.text)
+    except Exception:
+        logger.warning("model judge failed to produce a verdict; treating as correct")
+        return None
+
+
 async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     configurable: dict[str, Any] = config.get("configurable", {})
     model = configurable["model"]
@@ -514,6 +552,32 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             mlflow.log_metric(
                 f"oracle_fired/{name}", int(_fired), step=state["step"]
             )
+
+    # Model-judge (in-loop, always on): the public example is necessary but not
+    # sufficient — code can pass its one public case yet be wrong on a held-out
+    # input (e.g. integer-division edge cases). For each unit that passed the
+    # sandbox, ask the model for a SPECIFIC failing input; a grounded verdict
+    # flips feedback to failure so the existing diagnose->repair routing engages,
+    # and the named input becomes the repair signal carried in the adapter.
+    if run_config.get("model_judge", True):
+        for name in code_action_names:
+            if feedback_map[name].exit_code != 0:
+                continue  # already failing — nothing for the judge to add
+            verdict = await _run_model_judge(
+                model, spec, entry_point, code_map[name], run_config
+            )
+            if verdict is not None and not verdict.correct and verdict.failing_input:
+                feedback_map[name] = Feedback(
+                    stdout="",
+                    stderr=(
+                        f"Correctness judge: wrong on input {verdict.failing_input}. "
+                        f"{verdict.reason}"
+                    ),
+                    exit_code=1,
+                )
+                logger.info("judge flipped %s to failing: %s", name, verdict.reason)
+                if mlflow.active_run() is not None:
+                    mlflow.log_metric(f"judge_flagged/{name}", 1, step=state["step"])
 
     # Thread an accumulating running state through siblings so each parse_output
     # builds its full maps from the prior sibling's applied change. Reusing a

@@ -45,6 +45,13 @@ class PipelineConfig:
     # (faithful to c3 training); _b = Mission/Specification/Definition of Done +
     # signature in ## Current Code. Empty sections are omitted from the adapter.
     prompt_mode: str = "full"
+    # In-loop correctness judge: after a candidate passes the spec's public
+    # example, the model is asked for a specific failing input; a grounded verdict
+    # flips the result to failing so diagnose->repair engages on held-out-style
+    # logic bugs the single public example misses.
+    model_judge: bool = True
+    judge_temperature: float = 0.2
+    judge_max_tokens: int = 256
     # --- Adapter (hypernetwork) profile ---
     checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
     warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance
