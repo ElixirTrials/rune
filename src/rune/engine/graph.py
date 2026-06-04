@@ -50,7 +50,9 @@ _SIMPLE_WORD_LIMIT = 200
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
 _INTEGRATION_DOC_LINE_CAP = 200
 _PROJECT_CAP = 1200
-_PROJECT_LABEL_CAP = 200
+# Carries the task spec into the minimal generation prompt; must NOT truncate a
+# short spec mid-example (a 200-char cap cut MBPP docstring asserts off).
+_PROJECT_LABEL_CAP = 1200
 _ACCUMULATED_CODE_CAP = 3500
 
 
@@ -93,6 +95,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         "task_description": task[:_PROJECT_CAP],
         "project_label": task[:_PROJECT_LABEL_CAP],
         "subtask_count": len(subtasks),
+        # Required function name (benchmark tasks); "" for free-form `rune run`.
+        # Named in the code/repair prompts so the model doesn't invent a name.
+        "entry_point": state.get("entry_point", ""),
     }
 
     if action and action.name in _TARGETED_ACTIONS and not action.target_subtask:

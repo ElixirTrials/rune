@@ -137,7 +137,7 @@ async def run_benchmark(
     for i, task in enumerate(tasks):
         if seed is not None:
             _seed_rng(seed + i)
-        initial_state = make_initial_state(task.description, budget)
+        initial_state = make_initial_state(task.description, budget, task.entry_point)
 
         try:
             final_state: dict[str, Any] = await engine.ainvoke(

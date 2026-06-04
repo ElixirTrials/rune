@@ -18,6 +18,7 @@ def _ctx() -> dict[str, object]:
         "task_description": "build a thing",
         "project_label": "build a thing",
         "subtask_count": 1,
+        "entry_point": "do_it",
         "subtask": _SUBTASK,
         "subtask_name": "_main",
         "subtask_index": 1,
@@ -74,3 +75,20 @@ def test_renders_with_no_target(name: str) -> None:
     ctx = _ctx()
     ctx.update({"subtask": None, "target_subtask": None})
     render_template(name, **ctx)
+
+
+def test_prompt_code_names_entry_point_when_present() -> None:
+    ctx = _ctx()
+    ctx["entry_point"] = "add_lists"
+    out = render_template("prompt_code", **ctx)
+    assert "add_lists" in out
+    # neutral on tests: we neither force "write tests" nor forbid them
+    assert "tests FIRST" not in out
+    assert "no tests" not in out.lower()
+
+
+def test_prompt_code_omits_function_line_without_entry_point() -> None:
+    ctx = _ctx()
+    ctx["entry_point"] = ""
+    out = render_template("prompt_code", **ctx)
+    assert "Implement the function" not in out
