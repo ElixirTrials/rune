@@ -183,13 +183,32 @@ removing it made repair go silent (3 steps). The "adapter-as-repair-memory" thes
 exercised on correctness** — the loop terminates at the first parseable implementation, so there is
 no failure episode for the adapter to carry across turns.
 
-**Fix direction (decision pending, not implemented):** give the loop a trustworthy in-loop oracle
-from the **public example(s) / doctest in the spec** (e.g. `>>> assert decode_string("3[a]2[bc]") ==
-"aaabcbc"`), executed against the candidate and *not* stripped — distinct from model-authored
-asserts (which `strip_self_tests` rightly drops to avoid the model gaming itself) and from the
-held-out tests (kept out for scoring integrity). That single change converts the loop from
-"does it parse" to "does it satisfy the public example," producing the real failure signal that
-diagnose→repair (and any RL on repair) needs.
+**Fix (implemented + validated): public-example oracle.** `rune/engine/oracle.py` derives an
+in-loop check from the spec's public doctest examples (stdlib `doctest` → equality asserts that
+call the entry_point, emitted *with* an actual-vs-expected message), gated by an AST check that the
+candidate defines the entry_point; else bare-def fallback. Wired into the sandbox call with
+fired/fallback logging. No held-out leakage (the public example is already in the prompt; pass@1
+still gates on the full held-out set).
+
+Re-ran the 4 hard tasks (c3):
+
+| task | oracle | repair engaged | outcome |
+|---|---|---|---|
+| `decode_string` | fired, **fails** (IndexError on `3[a]2[bc]`) | **yes** (5 steps: …→diagnose→repair) | repair fixes the public case; still fails a held-out case → FAIL |
+| `merge_intervals` | fired, passes | no (3 steps) | PASS — no spurious repair |
+| `int_to_roman` | fired, passes | no | PASS |
+| `calculate` | fired, **passes** (only example `2+3*4`) | no | FAIL on held-out `100/10/2` — public example insufficient |
+
+The conveyed failure is now real: diagnose received the actual `decode_string('3[a]2[bc]')`
+traceback (line 11 `stack.pop()`) and produced an **accurate** fix ("ensure the stack is not empty
+before pop") — vs the earlier phantom "unclosed quote." `calculate` is the motivating case for a
+**model-judge arm**: its single public example passes but the code is still wrong.
+
+**Next:** (1) model-judge as a *separate* arm (advisor: it injects model content into the repair
+episode the adapter carries — keep it out of the deterministic baseline so adapter-memory effects
+stay separable); (2) re-run the multi-turn thesis on the de-confounded, repair-triggering path,
+with the slice defined as **tasks that fail the public example on attempt 1** (so "repair had a
+signal" isn't blended with "repair never fired").
 
 ## Limits
 
