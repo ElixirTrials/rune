@@ -1617,3 +1617,29 @@ REVISIONS (graph.py, 333 tests, ruff/mypy clean):
 NB the running flavor HPO imported the OLD code (gate present, minimal conditioning) -> unaffected; it
   still answers the 1-turn flavor x scaling question on single-subtask MBPP. Post-revision, MBPP will
   decompose (model-decided) — slightly more steps; that's intended.
+
+### [2026-06-04 20:52 UTC] Goal-3: codegen over-escape root cause + freeform fix (shipped)
+- **Encoding question answered (no).** episode + embed probes (toy + 3 hard tasks w/ headroom): adapter raises lp(FIX) a lot (not pure recitation), but task-conditioning collapses the fix-vs-failure margin even with NO failure in context (task_only control) — so embedding/prompt changes can't be the lever. Encoding is second-order. docs/issue52-goal3-encoding-probe-2026-06-04.md.
+- **Real bottleneck found via live engine run (c3, 4 hard tasks, pass@1 1/4).** Diagnose emitted phantom "syntax/unclosed-quote" guidance → misleading adapter conditioning → repair livelock. Root cause (MLflow raw outputs): model over-escapes `\n`→`\\n` inside JSON `{"code":...}` string → decodes to literal backslash-n → code collapses to ONE line → phantom line-1 SyntaxError. 2/4 hard fails were pure serialization, not logic. Both `\n` and `\\n` are valid JSON ⇒ no grammar can reject it.
+- **Fix (advisor cut): abandon JSON-wrapping for code.** code/repair/integrate output_schema=None (freeform ```python fence), de-fence with markdown-it (extract_code_block), validate with ast/compile. Removed extract_code_from_raw + CodeResult/IntegrateResult + json.dumps continuation re-wrap. Probe: freeform 3/3 compile vs JSON stochastically collapsing. 330 unit tests + mypy + ruff green.
+- **De-confound re-run:** 0 literal-`\n`, 0 phantom line-1 diag; int_to_roman FAIL→PASS; first-pass code pass@1 1/4→2/4. CAVEAT: steps=3 everywhere ⇒ repair loop never engaged (clean code → no diagnose trigger). "Repair" baseline still UNMEASURED; RL question needs a repair-triggering slice.
+- Commits pushed (issue52-bf16-body-contrastive): bench MLflow HPO; engine freeform codegen + graph; remove-before-merge probes/docs. Follow-up pre-merge: re-run stratified single-turn gate (freeform regression coverage is n=1).
+
+### [2026-06-04 21:35 UTC] Public-example oracle shipped; repair now engages
+- Root cause of "no repair": engine in-loop check = run_in_sandbox(strip_self_tests(code)) = bare def → exit 0 → code_passed; held-out tests only at scoring. decode_string crashes on PUBLIC case yet engine marked passed (crash in a test call never executed in-loop). diagnose→repair fired ONLY on module-load crashes ⇒ adapter-as-repair-memory never exercised on correctness.
+- Fix (rune/engine/oracle.py): extract_public_checks (stdlib doctest → equality asserts calling entry_point, WITH actual-vs-expected msg), defines_function (AST), build_probe → graph wires into sandbox + logs oracle_fired. No held-out leak (public example already in prompt; pass@1 gates on full held-out).
+- Validated (4 hard tasks): decode_string NOW repairs (real IndexError traceback → accurate diagnosis "ensure stack not empty before pop", vs prior phantom "unclosed quote"); merge_intervals/int_to_roman no spurious repair; calculate passes its lone public example but fails held-out 100/10/2 → motivates model-judge. 341 unit tests + mypy + ruff. Commit f08ef97 (production, not RBM).
+- NEXT: model-judge as SEPARATE arm (advisor: judge injects model content into the repair episode the adapter carries — keep out of deterministic baseline). Then re-test multi-turn thesis; slice = tasks failing public example on attempt 1.
+
+### [2026-06-04 21:50 UTC] OVERNIGHT PLAN (autonomous; user asleep)
+Goal: rerun earlier Goal-3 experiments on the CORRECTED runner (freeform codegen + public-example oracle + in-loop model-judge), reach conclusions, and complete an HPO run. Record + commit + push + PR-comment regularly for recoverability.
+
+Corrected runner now = (a) code emitted freeform (no JSON over-escape), (b) public-example oracle gives in-loop correctness signal so diagnose→repair engages on logic errors, (c) model-judge (always on) flips code→failing when it names a concrete failing input the public example misses.
+
+Steps:
+1. Validate model-judge on 4 hard tasks: does it flip `calculate` (100/10/2 int-div) WITHOUT false-positiving correct tasks (int_to_roman/merge_intervals)? [in progress]
+2. scale0 baseline (no-adapter floor) on goal3_ref_pool_24 (24 MBPP held-out, all have doctest+entry_point) with corrected runner → pass@1 floor.
+3. Launch flavor×adapter_scaling HPO (configs/goal3_flavor_hpo.yaml: prompt_mode ∈ {training_exact, reference_a/b/b1/c} × adapter_scaling[0.1,1.5], c3, 24 trials, 0.70 tuning split, metric=held-out pass@1) on the corrected runner. Resumable (sqlite, load_if_exists).
+4. Analyze HPO: best flavor+scaling, validation pass@1 vs scale0 floor = adapter value on corrected runner.
+5. Conclusions on the adapter-as-memory thesis (single-turn pass@1; repair now engages).
+Decisions: judge kept ON during HPO (user: "corrected runner"). If HPO too slow to finish overnight, reduce n_trials but keep ≥12; sqlite DB makes it resumable regardless. All runs logged to MLflow + sessions on disk.
