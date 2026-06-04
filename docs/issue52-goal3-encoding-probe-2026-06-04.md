@@ -129,16 +129,26 @@ over-escape class) is gone. Probe (`tools/_codegen_format_probe.py`) on the brok
 real engine (same c3, 4 hard tasks):
 
 - **0** code/repair outputs with literal `\n` (was 2/4); **0** phantom line-1 diagnose errors.
-- `int_to_roman` flipped **FAIL → PASS** — it was a pure over-escape phantom.
-- **Repair pass@1: 1/4 → 2/4.** The two remaining failures (`calculate`, `decode_string`) are now
-  *genuine* logic failures (real assertion/typo errors), not serialization artifacts — the repair
-  loop working honestly.
+  This — the over-escape elimination — is the robust proof of the fix, not the task count below.
+- **First-pass code pass@1: 1/4 → 2/4** (NOT "repair" pass@1 — see caveat). `int_to_roman` flipped
+  FAIL → PASS; note its earlier sample carried a missing-table logic bug *on top of* the
+  over-escape, so this is a fresh, different generation, not a pure phantom flip. n=4, single seed,
+  temp 0.7 — noisy; don't anchor the RL decision on it.
+- **Caveat — the repair loop did not engage.** Every task ran `steps=3` (decompose→plan→code); the
+  pre-fix failures ran 5–8 steps. Now that code compiles and runs (exit 0), nothing trips
+  diagnose→repair. The two remaining failures (`calculate`, `decode_string`) are runnable-but-wrong
+  code caught only at post-hoc scoring — repair contributed *zero* this run.
 
-**Net for the RL question.** With the confound removed, repair is *not* trivially broken (2/4 hard
-tasks repair cleanly) and the failures that remain are real. The RL question — does a contrastive /
-anti-recitation training signal improve repair beyond the de-confounded baseline — is now
-well-posed and can be measured on the clean path. Still **indicated, not yet justified**: the next
-step is to measure repair-pass@1 with vs without such training, not to assume it.
+**Net for the RL question.** The confound is removed and the over-escape class is gone. But baseline
+*repair* behavior is still **unmeasured** — clean first-pass code no longer triggers the loop, so
+this run compares two regimes in which repair does nothing. To pose the RL question (does a
+contrastive / anti-recitation signal improve *repair*) we need a slice where repair actually engages
+— tasks that produce a runtime error or a feedback signal the loop acts on. Status: **confound
+removed; repair baseline still unmeasured** — build a repair-triggering slice before any RL run.
+
+**Follow-up (pre-merge):** unit tests are mocked, so freeform generation was re-checked end-to-end
+on only one previously-passing real task (`merge_intervals`, still passes). Re-run the existing
+stratified single-turn gate before this leaves the research branch.
 
 ## Limits
 
