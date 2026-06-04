@@ -42,7 +42,7 @@ ARMS: dict[str, dict[str, Any]] = {
 _CODE_ACTIONS = {"code", "repair", "integrate"}
 
 
-def _build_cfg(arm: str, seed: int, max_iters: int) -> Any:
+def _build_cfg(arm: str, seed: int, max_iters: int, prompt_mode: str = "full") -> Any:
     from rune.config import load_rune_config  # noqa: PLC0415
 
     a = ARMS[arm]
@@ -52,6 +52,7 @@ def _build_cfg(arm: str, seed: int, max_iters: int) -> Any:
         adapter_scaling=a["adapter_scaling"],
         seed=seed,
         max_phase_iterations=max_iters,
+        prompt_mode=prompt_mode,
     )
 
 
@@ -112,7 +113,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         tracked_run,
     )
 
-    cfg = _build_cfg(args.arm, args.seed, args.max_iters)
+    cfg = _build_cfg(args.arm, args.seed, args.max_iters, args.prompt_mode)
     tasks = load_tasks(Path(args.tasks))
     if args.limit:
         tasks = tasks[: args.limit]
@@ -351,6 +352,7 @@ def main() -> None:
     p.add_argument("--max-iters", type=int, default=10, dest="max_iters")
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--experiment", default="issue52-goal3-multiturn")
+    p.add_argument("--prompt-mode", default="full", dest="prompt_mode")
     p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("score")

@@ -1378,3 +1378,242 @@ PUSHBACKS (all adopted):
      (1) extraction/diagnose (2) goal-3 observability (3) prompt/entry_point (4) model profile. <- flag owner.
 ACTION NOW: finish model profile (config.py done; wrapper dtype/attn; config.yaml; tests) -> degenerate
   rerun through ENGINE (verify ~0) -> then frozen-slice 3-arm smoke. Mark all earlier smoke verdicts stale.
+
+### [2026-06-04 21:10 UTC] COMMITTED + PUSHED (granular); GATE = fixed runner beats pre-fix
+COMMITS (PR #55, pushed 718a7ff..07dd6ae): 5 focused engine commits + 1 remove-before-merge durability:
+  930cbfc extraction (json-repair+pydantic+markdown-it-py)
+  7927ebf diagnose livelock fix
+  002a913 token-accounting hook
+  9592c8a entry_point + drop forced-tests prompt + full spec
+  a1b4a78 per-model generation profile (thinking_budget=0, presence=0.0, dtype/attn) = the FIX
+  07dd6ae goal-3 tooling/docs/journal [remove-before-merge]
+GATE (post-fix vs pre-fix promptfix; runner-quality, small-n, NOT thesis evidence per P1):
+  scale0: attempt1 2/5->6/6, degen 3/5->0/6, steps 3->1
+  c3    : attempt1 0/4->5/6, degen 2/4->0/6, final 3/4->5/6, steps 3->1
+  => fixed runner succeeds MORE + far more efficiently (1 step vs 3, degeneration eliminated). The exact
+     degenerate tasks (108/113/115) now pass attempt-1 in 1 step.
+CAVEATS: task counts differ (promptfix interrupted 5/4 vs postfix 6); small-n smokes. Per P1, the THESIS
+  gate is the clean no-HPO 3-arm run on a FROZEN 40-60 slice, reported by outcome stratum.
+NEXT (AI-engineer stricter gate): freeze B2 slice -> ONE clean 3-arm smoke (profile fix) -> full batch ->
+  B1 curves + paired CIs. THEN HPO (ranges updated: presence [0,0.3], gen_scaling [0.1,1.5] != probe 45.25,
+  thinking off, temp [0,0.4]). All earlier smoke verdicts marked STALE.
+
+### [2026-06-04 21:40 UTC] OWNER REDIRECT — spec-in-adapter / name-in-prompt (decisive runner test)
+KEY REALIZATION (owner): post-fix, scale0 ~= c3 because the SPEC IS IN THE PROMPT (project_label) on
+easy MBPP -> base solves single-turn -> adapter redundant. We engineered away the repair loop too.
+OWNER IDEA (implement): make the adapter LOAD-BEARING on the runner ->
+  - prompt_mode="reference": PROMPT references the mission by NAME only ("implement `merge_sorted_list`,
+    spec + DoD in your context"); the SPEC (+ signature, Phase-1 style) lives ONLY in the adapter
+    conditioning (render_training_format_trajectory task slot). scale0 then has the name only (no spec
+    anywhere) -> FLOOR; c3/warm succeed iff the adapter carries the spec. The GAP = adapter-as-memory ON
+    THE RUNNER (runner-native version of the capacity-probe k=1 +0.292). 
+  - embed signature ("def fn(...):") in the adapter context (Phase-1 conditioned on task+partial code).
+  - MULTI-TURN: use a harder real problem (SWE-bench / internet) where attempt-1 genuinely fails so the
+    repair loop runs (MBPP is too easy / single-turn after the fixes).
+PLAN: add prompt_mode (config + step_node override of project_label) [deliberate engine feature, owner-
+  requested]; build a reference pool w/ signature in description; run 3-arm (scale0/warm/c3) reference;
+  compare scale0(name-only floor) vs c3(spec-in-adapter). Then SWE-bench for multi-turn.
+
+### [2026-06-04 22:10 UTC] BUILT prompt_mode reference_a/b (spec-in-adapter); experiment launched
+ENGINE FEATURE (owner-requested, uncommitted): config.prompt_mode {full|reference_a|reference_b}.
+  reference_*: prompt refers to mission by NAME; spec lives ONLY in adapter conditioning; empty
+  sections omitted; prompt uses the EXACT section names in the adapter.
+  - reference_a: adapter = `## Task\n{spec}` (faithful to c3 training surface).
+  - reference_b: adapter = `## Mission / ## Specification / ## Definition of Done / ## Current Code`
+    (signature stub via _derive_signature, arity from doctest). Off-distribution for c3 (no retrain).
+  graph.py: _split_spec, _derive_signature, render_reference_adapter + step_node branch (code/repair).
+  templates prompt_reference_a.j2 / _b.j2. driver --prompt-mode. VERIFY: mypy+ruff clean, 331 tests.
+EXPERIMENT (issue52-goal3-specinadapter): A+B x {scale0(name-only FLOOR), warm, c3} x 8 tasks.
+  HYPOTHESIS: scale0 solves only name-leaking tasks (floor); c3/warm > scale0 => adapter CARRIES THE
+  SPEC on the runner (runner-native capacity-probe k=1). A (on-distribution) expected > B (off-dist for
+  current c3). If c3 ~= scale0 even here, the trained recall doesn't transfer to runner generation.
+
+### [2026-06-04 22:55 UTC] SPEC-IN-ADAPTER RESULT — adapter carries the spec ON THE RUNNER (positive)
+prompt_mode reference (prompt = mission NAME only; spec lives ONLY in adapter), 8 MBPP tasks:
+                  reference_a   reference_b
+  scale0 (name)     2/8           2/8
+  warm              2/8           2/8
+  c3                4/8           5/8
+=> scale0=warm=2/8 FLOOR (only name-leaking tasks: tuple_to_int, mbpp/118; warm adapter adds NOTHING).
+   c3 DOUBLES the floor with the spec ONLY in the adapter (per-task: c3 also solved check_integer,
+   empty_dit, merge_sorted_list, mbpp/120 — tasks the name can't carry). => the c3 adapter genuinely
+   CARRIES THE SPEC on the real rune runner (runner-native confirmation of Phase-1 +0.292 / capacity k=1).
+   c3's TRAINING is what matters (warm doesn't carry it).
+SURPRISE: reference_b (Mission/Spec/DoD + def signature stub) 5/8 > reference_a (plain ## Task) 4/8,
+   EVEN THOUGH B is OFF-DISTRIBUTION for c3 (never trained on it). The structured framing + signature
+   anchor HELPED generation -> retraining c3 on the B format is a promising lever.
+REGIME NOTE (keep separate, AI-eng P2): this is the SPEC-ABSENT-FROM-PROMPT regime (= Phase-1/capacity),
+   now on the runner. Distinct from the multi-step repair-memory test (spec in prompt, adapter carries
+   prior code across turns) running now.
+DECISION (owner): record findings (PR+scratchpad), then REVERT all prompt_mode/reference A/B code; keep
+   the branch ONE path (full mode), no modes/fallbacks. Findings persist; experimental code does not.
+
+### [2026-06-04 23:40 UTC] Variant C REFINED (owner) + reference_c run launched
+OWNER: mission name should appear in the adapter; generic arg names won't link; strengthen prompt<->context link.
+REFINED reference_c (closer to dist + precise + strong link):
+  ADAPTER = `## Mission\n{entry_point}` + `## Task\n{spec}` + `## Current Code\n{REAL signature}`.
+    Mission name explicit (links to prompt's "mission `X`"); real arg names from the recall reference
+    (num1,num2,num3 / test_list,test_tup / ...) via threaded BenchTask.signature (mirrors entry_point).
+  PROMPT references its Mission/Task/Current Code + names the mission. Output the complete function.
+THREADING: BenchTask.signature -> make_initial_state -> RunState.signature -> ctx -> render_reference_adapter.
+  ref pool benchmarks/goal3_ref_pool.json (8 MBPP, real sigs); multistep tasks given real sigs too.
+  VERIFY: 331 tests, ruff+mypy clean.
+RUN (issue52-goal3-refc): 1-turn reference_c (8 MBPP, scale0 floor vs c3) THEN multi-turn reference_c
+  (4 hard tasks, scale0 vs c3, budget 10). Compares to scale=0 for single + multi-turn benefit.
+  Prior: refa c3 4/8, refb c3 5/8, scale0/warm floor 2/8. C isolates: name-anchor+real-sig vs B's restructure.
+
+### [2026-06-05 00:30 UTC] MULTI-TURN reference_c CONFOUNDED (famous names) + reference_b1 built/launched
+TRAINING TEMPLATE (ground truth, byte-exact = render_training_format_trajectory(spec,"","")):
+  `## Task\n{spec docstring+doctest}\n\n## Current Code\n[EMPTY]\n\n## Review Feedback\n[EMPTY]`. Target=body.
+  => NONE of A/B/C match: A dropped the empty headers; B restructured; C added Mission+filled CurrentCode.
+1-TURN reference_c: scale0 2/8, c3 3/8 (A=4,B=5,C=3 c3 — all within noise at n=8; robust = c3 > 2/8 floor).
+MULTI-TURN reference_c (4 hard tasks): scale0 3/4 > c3 1/4 -> CONFOUNDED. EVIDENCE: scale0 (NAME-only
+  prompt, no adapter) produced REAL impls FROM THE NAME — decode_string=stack decode, int_to_roman=roman
+  map, merge_intervals=real merge (famous LeetCode, memorized by name). The c3 adapter (scale 45.25)
+  PERTURBS the memorized solutions -> worse. ONLY calculate (ambiguous name) shows the adapter helping:
+  scale0 wrong (x+y, didn't know it's expr-parsing); c3 right signature/approach (spec from adapter). =>
+  the "hard" tasks leak by name -> invalid adapter test. FIX = OPAQUE names.
+reference_b1 (owner spec): reference_b content on OUR training headers ->
+  ## Task: "Mission: {ep}\n{prose}"; ## Current Code: "{real sig}\n    # complete the implementation";
+  ## Review Feedback: "To be done: {assert}". Mission name in BOTH prompt and adapter (strongest linker).
+  prompt references Task/Current Code/Review Feedback. mypy/ruff clean, 331 tests.
+LAUNCHED refb1: 1-turn reference_b1 (8 MBPP, slot into A/B/C) + multi-turn reference_b1 on OPAQUE tasks
+  (solve_p1..p4 — name can't leak, spec only in adapter -> VALID c3-vs-scale0 test). bwexze7j2.
+
+### [2026-06-05 01:15 UTC] RESULTS + INTERPRETATION + PLANS (spec-in-adapter A/B/C/b1; over-perturbation)
+
+RESULTS — 1-turn reference variants, c3 pass@1 (8 MBPP, spec ONLY in adapter, name in prompt):
+  floor (scale0/warm, name-only): 2/8
+  reference_a (plain ## Task, empty sections DROPPED):            4/8
+  reference_b (Mission/Spec/DoD restructure + generic sig):       5/8
+  reference_c (## Mission + ## Task + real sig in Current Code):  3/8
+  reference_b1 (Mission-in-Task + real sig+comment in CurrentCode + "to-do:assert" in Feedback): 1/8 (!!)
+RESULTS — multi-turn (hard tasks):
+  reference_c on FAMOUS-named tasks: scale0 3/4 > c3 1/4 (CONFOUNDED — see below).
+  reference_b1 on OPAQUE tasks (solve_p1..p4): scale0 2/4, c3 PENDING. [NB scale0 2/4 on opaque is
+    suspicious — check whether the opaque rename truly removed leak, or base stumbles into solutions.]
+
+INTERPRETATION (key findings):
+1. TRAINING-SURFACE SENSITIVITY is real and dominant. The byte-exact distill surface =
+   `## Task\n{spec}` + EMPTY `## Current Code` + EMPTY `## Review Feedback` (target=body). b1 FILLS the
+   two sections that were empty in training -> c3 1/8, BELOW the 2/8 no-adapter floor. So filling the
+   empty training slots DEGRADES c3 below baseline. reference_a (closest, just dropped the empty headers)
+   = 4/8. => c3's recall is fragile to off-distribution conditioning; the enrichments (signature, DoD,
+   restructure) HURT more than help once they push off the trained surface. (AI-eng P2 + my 00:30 note.)
+   UNTESTED + likely-best = the TRAINING-EXACT variant: `## Task\n{spec}` + EMPTY Current Code + EMPTY
+   Review Feedback (headers KEPT) + name-only prompt. None of A/B/C/b1 is this.
+2. n=8 is DESCRIPTIVE ONLY (AI-eng P1): A4/B5/C3/b1·1 are within noise; paired CI spans zero. Robust
+   claim = c3 > 2/8 floor in the on-distribution variants (A/B/C) -> adapter IS load-bearing on the
+   runner for spec-absent-from-prompt (= on-engine Phase-1/capacity story; NOT repair-memory Goal-3).
+   Do NOT promote B>A or pick a winner without replication on the held-out 24 with bootstrap.
+3. OVER-PERTURBATION (owner hypothesis) — SUPPORTED, two mechanisms:
+   (a) MAGNITUDE: adapter applied at effective scaling 45.25 (un-divided Sakana alpha) is strong; on
+       tasks the base already solves (famous names, spec-in-prompt) it perturbs the base's own solution
+       -> c3 <= scale0. Scaling (gen_scaling multiplier <1) is the magnitude knob -> HPO.
+   (b) DIRECTION: c3 = body_recall_guarded -> trained to REPRODUCE the reference body. That direction
+       conflicts with the base's OWN (also-correct) solution, so even at lower magnitude it nudges away
+       from the base's answer toward a specific reference impl. Scaling reduces but doesn't remove this.
+   AI-eng P3: the famous-name multi-turn c3<scale0 is name-leak AND 45.25-perturbation entangled;
+   disentangle by an opaque-task arm c3@lower-scaling vs c3@45.25 (hold gen_scaling fixed across arms).
+
+DECISION on "is there something BESIDES optimizing scaling?": YES.
+  - FORMAT (free, structural, do FIRST): use the TRAINING-EXACT surface (empty Current Code/Review
+    Feedback kept) + name prompt. The b1<floor result says staying on-distribution matters MORE than
+    enrichments. Add as reference_d ("training_exact") and re-run A vs d.
+  - OBJECTIVE (Phase-2, deeper): the DIRECTION conflict won't yield to scaling. Retrain the adapter on
+    an OUTCOME/correctness signal (pass@1), not reference-body reproduction, + KL-anchor to the base so
+    it SUPPLIES the spec without overwriting the base's own correct code. This is the planned cooperative
+    outcome-RL; the over-perturbation finding is its motivation.
+  - SCALING (HPO): the magnitude lever; run after format. Search gen_scaling [0.1,1.5] distinct from the
+    FROZEN probe_scaling 45.25 (AI-eng P3).
+
+PLANS (ordered):
+  1. Add reference_d = TRAINING-EXACT (## Task + empty Current Code + empty Review Feedback, name prompt);
+     re-run 1-turn A vs d on the 8 MBPP. Expect d >= A (most on-distribution).
+  2. Replicate the best 1-2 variants on the held-out 24 with PAIRED BOOTSTRAP CIs (AI-eng P1) before any
+     durable doc claim.
+  3. Disentangle name-leak vs scaling on multi-turn: opaque tasks, arms c3@45.25 vs c3@gen_scaling (AI-eng P3).
+  4. THEN scaling HPO (gen_scaling) on the chosen surface.
+  5. If format+scaling leave a perturbation cost -> Phase-2 outcome-RL + KL-anchor (the structural fix).
+HYGIENE (AI-eng P4/P5): persist these numbers (docs+scratchpad done); after recording, REVERT the
+  experimental prompt_mode unless promoting ONE chosen surface (likely training-exact/A) as a reviewed
+  product feature. Keep regimes separate: post-fix gate (spec-in-prompt) = runner FIXED; spec-in-adapter
+  = adapter LOAD-BEARING; do not merge into one headline.
+REFLECTIONS: 5 AI-engineer pushbacks (P1 n=8 CI; P2 lead with b1/training-surface; P3 gen-scaling
+  confound; P4 revert prompt_mode; P5 keep gate vs adapter-memory separate) — all incorporated above.
+
+### [2026-06-05 01:25 UTC] b1 FINAL — WORST variant; over-perturbation confirmed via format deviation
+b1 c3: 1-turn 1/8 (BELOW the 2/8 no-adapter floor); multi-turn opaque 0/4. b1 is the WORST in everything.
+=> CONFIRMS training-surface sensitivity: b1 FILLS the ## Current Code + ## Review Feedback sections that
+   were EMPTY in distillation -> pushes c3 so far off-distribution it degrades BELOW baseline. "Don't
+   perturb so strongly you lose what the model trained on" (owner) = literally what b1 did via FORMAT,
+   not scaling. Ranking c3 1-turn: b(5) > a(4) > c(3) > floor(2) > b1(1). On-distribution-ness tracks it:
+   a/c keep plain ## Task; b restructures but its content is spec-faithful; b1 fills empty slots = worst.
+CAVEAT: scale0 opaque multi-turn 2/4 is SUSPICIOUS (attempt-1 outputs were stdin-reading stubs w/ no
+   spec; shouldn't pass solve_pN(args) tests) -> likely a scoring/repair artifact; do NOT trust scale0
+   opaque floor without checking. c3 0/4 is the clean signal (off-dist b1 on hard tasks -> total fail).
+NEXT (unchanged plan, sharper): reference_d = TRAINING-EXACT surface first; replicate on held-out 24 w/
+   bootstrap; then gen_scaling HPO; Phase-2 outcome-RL+KL if perturbation persists. REVERT prompt_mode
+   experiment after recording (keep at most ONE chosen surface as a reviewed feature).
+
+### [2026-06-05 01:50 UTC] LAUNCHED flavor x scaling HPO on bench (metric = held-out pass@1)
+DECISIONS (owner): metric = pass@1 (held-out validation); search = prompt/adapter FLAVOR (categorical)
+  x adapter_scaling (continuous). Rest pinned to clean profile (thinking 0, presence 0, temp 0.3,
+  max_tokens 768, budget 4).
+FLAVORS (spectrum training-faithful -> precise/prompt-coupled):
+  training_exact (## Task + EMPTY Current Code + EMPTY Review Feedback — byte-exact distill surface;
+    the missing most-faithful one) | reference_a (plain ## Task) | reference_c (## Mission+## Task+real
+    sig) | reference_b (Mission/Spec/DoD+sig) | reference_b1 (all filled + to-do + directive prompt).
+IMPL: added training_exact (graph.py render_reference_adapter + prompt_training_exact.j2 + gate);
+  extended src/rune/bench/hpo.py objective to suggest_categorical("prompt_mode") when configured
+  (opt-in, no default change). config configs/goal3_flavor_hpo.yaml. 24-task pool
+  benchmarks/goal3_ref_pool_24.json = heldout-24 (c3-disjoint) + real sigs. VERIFY 331 tests, ruff/mypy clean.
+RUN: `rune bench --hpo --config configs/goal3_flavor_hpo.yaml --tasks-file goal3_ref_pool_24.json --fresh`.
+  c3 checkpoint; 24 trials; tuning/val 0.70/0.30; MLflow rune-bench-hpo. ~2-3h. Optuna TPE over
+  (flavor x scale) -> best flavor+scale by held-out pass@1. Addresses n=8 noise (24-task held-out) +
+  over-perturbation (scale is searched) + format question (flavor is searched).
+HYPOTHESES going in: training_exact/reference_a (on-distribution) win on flavor; optimal scale < 1.0
+  (over-perturbation). If best pass@1 only ~= name-floor, the recall doesn't transfer -> RL needed.
+THEN (owner): proceed to RL training (Phase-2 outcome-RL + KL-anchor) informed by HPO — the structural
+  fix for the DIRECTION-conflict (c3 reproduces reference body) that scaling can't resolve.
+
+### [2026-06-05 02:25 UTC] HPO MLflow logging FIXED + restarted; multi-turn status
+LOGGING FIX (src/rune/bench/hpo.py): MLflowCallback metric_name="tuning_pass_at_1" (was generic "value")
+  + a progress callback logging best_tuning_pass_at_1 / trial_pass_at_1 / trials_completed as a metric
+  SERIES on the PARENT run (so the optimization curve is traceable without opening every nested trial).
+  Thread-safe via MlflowClient direct calls. Test updated; 6 hpo tests pass; ruff/mypy clean.
+  RESTARTED the flavor x scaling HPO with proper logging (b06c2ar6n); old run's signal (low scale wins,
+  reference_c/a lead) already captured. Interim (pre-restart, 9 trials): best reference_c@0.92 -> 0.41
+  tuning; HIGH scale (1.2-1.47) clustered at ~0.18 = OVER-PERTURBATION confirmed in HPO.
+MULTI-TURN status (owner Q): the HPO is 1-TURN MBPP (spec-in-adapter pass@1). Multi-turn results so far
+  are POOR + CONFOUNDED: reference_c on famous-named hard tasks scale0 3/4 > c3 1/4; reference_b1 on
+  OPAQUE hard tasks scale0 2/4, c3 0/4 (scale0 2/4 itself suspect). c3 worse than scale0 driven by
+  (a) famous-name leak, (b) over-perturbation across REPAIR turns (adapter fires every turn -> worse than
+  1-turn). PLAN: eval the 1-turn HPO winner (flavor, LOW scale) on the OPAQUE multi-turn set (cheap) —
+  low scale should perturb less per turn. Multi-turn is where the reproduction-objective adapter hurts
+  MOST -> strongest motivation for Phase-2 outcome-RL + KL-anchor. A dedicated multi-turn HPO is possible
+  but expensive (hard tasks x repair x trials); do the winner-eval first.
+
+### [2026-06-05 03:10 UTC] GRAPH REVISION (owner) — model-driven decompose + adapter carries the episode
+INVESTIGATION (summary): policy.py select_action ALREADY does decompose->plan->code->diagnose->repair
+  (per failing subtask)->integrate(only if >1). Three real problems found:
+  P1 `_is_simple_task` REGEX gate in step_node pre-empts decompose: matches phrases ("write a function")
+     + <200 words -> fabricates a synthetic _main subtask, skips decompose. So MBPP never decomposes; the
+     hard "Implement calculate..." tasks DO -> their plan step runs full-mode and LEAKS the spec into the
+     prompt (the multi-turn confound). The MODEL never decides.
+  P2 adapter conditioning carried only (task, LATEST code, LATEST feedback) — render_training_format_
+     trajectory ignored ctx.code_trajectory/repair_history. "What's been tried" was NOT in the adapter.
+  P3 ROOT: c3 distilled with EMPTY ## Current Code / ## Review Feedback -> never trained to USE non-empty
+     code/feedback; at repair the episode is recorded but the adapter can't leverage it. RL must fix.
+REVISIONS (graph.py, 333 tests, ruff/mypy clean):
+  R1 DELETED _is_simple_task + the synthetic-subtask gate + dead _SIMPLE_* consts; decompose ALWAYS runs,
+     the MODEL decides 1 vs N. Strengthened prompt_decompose_concise.j2 with an explicit decision rule
+     ("ONE subtask for a self-contained function; multiple only for separable components").
+  R2 render_training_format_trajectory now carries the EPISODE: appends "## Previous Attempts" (prior
+     failing code -> error, capped) when history exists; attempt-1 stays BYTE-IDENTICAL to the distill
+     surface (test-locked). step_node passes ctx.code_trajectory[:-1] (attempts before the current one).
+  R3 (next) = this enriched surface is the RL TRAINING surface: train c3/successor on episodes with
+     non-empty code/feedback/Previous-Attempts so the adapter LEARNS to use what's been tried (fixes P3).
+NB the running flavor HPO imported the OLD code (gate present, minimal conditioning) -> unaffected; it
+  still answers the 1-turn flavor x scaling question on single-subtask MBPP. Post-revision, MBPP will
+  decompose (model-decided) — slightly more steps; that's intended.
