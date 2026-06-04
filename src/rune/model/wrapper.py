@@ -160,6 +160,17 @@ class ModelWrapper:
         )
         return AdapterResult(adapter_id=uuid.uuid4().hex, state_dict=state_dict)
 
+    def count_tokens(self, text: str) -> int:
+        """Token count of ``text`` under the base tokenizer (content tokens only).
+
+        The engine step logs adapter-conditioning tokens vs prompt tokens per
+        turn (issue #52 GOAL-3 pre-reg g): the adapter-as-memory thesis
+        instrument — the prompt stays ~flat while the adapter's trajectory
+        conditioning grows. ``add_special_tokens=False`` so the count reflects
+        content, comparable across the two surfaces.
+        """
+        return len(self._tokenizer(text, add_special_tokens=False).input_ids)
+
     def hotswap_adapter(self, state_dict: dict[str, Any]) -> None:
         """Hot-swap LoRA weights into the base model in-place.
 

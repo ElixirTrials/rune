@@ -332,6 +332,19 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             mlflow.log_text(trajectory_text, f"{prefix}/trajectory.txt")
             mlflow.log_text(prompt_text, f"{prefix}/prompt.txt")
             mlflow.log_text(result.text, f"{prefix}/output.txt")
+            # GOAL-3 pre-reg (g): adapter-conditioning vs prompt token budget per
+            # turn — the adapter-as-memory thesis instrument (prompt ~flat, adapter
+            # trajectory grows across repair/continuation). Logged at the engine
+            # step, not a wrapper, so it reflects exactly what conditioned the
+            # adapter vs what the model read in the prompt.
+            mlflow.log_metric(
+                "adapter_cond_tokens", model.count_tokens(trajectory_text),
+                step=state["step"],
+            )
+            mlflow.log_metric(
+                "prompt_tokens", model.count_tokens(prompt_text),
+                step=state["step"],
+            )
 
     # extract_partial_code is the single code-extraction primitive (CodeResult
     # and IntegrateResult are both {code: str}). Computed once here and threaded
