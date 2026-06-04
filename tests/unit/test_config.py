@@ -18,7 +18,11 @@ class TestPipelineConfig:
         assert cfg.adapter_scaling == 1.0
         assert cfg.temperature == 0.3
         assert cfg.max_tokens == 2048
-        assert cfg.thinking_budget == 1024
+        # model generation profile: non-thinking instruct defaults (#52 fix)
+        assert cfg.thinking_budget == 0  # 0 = non-thinking path
+        assert cfg.presence_penalty == 0.0  # flat presence penalty harms codegen
+        assert cfg.dtype == "bfloat16"
+        assert cfg.attn_implementation == "flash_attention_2"
         assert cfg.max_phase_iterations == 10
 
     def test_frozen(self) -> None:

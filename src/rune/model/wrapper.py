@@ -118,10 +118,12 @@ class ModelWrapper:
         checkpoint_alpha = float(getattr(hc.lora_config, "lora_alpha", rank * 2))
         use_bias = bool(getattr(hc, "use_bias", False))
         r_peft, lora_alpha_peft = peft_scaling_params(checkpoint_alpha, rank, use_bias)
+        # dtype + attention impl come from the model profile (config), not
+        # hardcoded — different models need different generation contracts.
         _raw_model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
-            dtype=torch.bfloat16,
-            attn_implementation="flash_attention_2",
+            dtype=getattr(torch, config.dtype),
+            attn_implementation=config.attn_implementation,
         ).to(device)
         lora_config = LoraConfig(
             r=r_peft,

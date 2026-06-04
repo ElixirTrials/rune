@@ -18,18 +18,30 @@ class PipelineConfig:
     """Frozen configuration for the Rune inference and training pipeline."""
 
     model_id: str = DEFAULT_MODEL_ID
+    # --- Model generation profile (model-specific; set WITH the model id) ---
+    # These encode one model's generation contract. The defaults below are for
+    # Qwen3-4B-Instruct-2507 (a NON-thinking instruct model). Switching models
+    # means switching this profile — see config.yaml. Hardcoding any of these in
+    # the runner is what caused the thinking-phase degeneration (#52): the forced
+    # </think> thinking phase is wrong for a non-thinking model, and a flat
+    # presence_penalty on code tokens drives single-word collapses.
+    thinking_budget: int = 0  # 0 => non-thinking path (required for *-Instruct)
+    presence_penalty: float = 0.0  # flat presence penalty harms code; 0 for codegen
+    dtype: str = "bfloat16"  # torch dtype name; getattr(torch, dtype)
+    attn_implementation: str = "flash_attention_2"
+    # --- Inference / generation (task-level, not model-specific) ---
     adapter_scaling: float = 1.0
     temperature: float = 0.3
     max_tokens: int = 2048
     repetition_penalty: float = 1.1
     top_p: float = 0.9
-    thinking_budget: int = 1024
     max_phase_iterations: int = 10
     cont_multiplier: float = 1.53
     cont_budget: int = 5
     no_repeat_ngram_size: int = 12
-    presence_penalty: float = 1.5
-    checkpoint_path: str = ""
+    # --- Adapter (hypernetwork) profile ---
+    checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
+    warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance
     seed: int | None = None
     bench: dict[str, Any] = field(default_factory=dict)
     hpo: dict[str, Any] = field(default_factory=dict)

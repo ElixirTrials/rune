@@ -8,23 +8,35 @@
 # adapter (warm start for the hypernetwork) is trained against Qwen3-4B-Instruct.
 model_id: "Qwen/Qwen3-4B-Instruct-2507"
 
-# --- Inference / generation ---
+# --- Model generation profile (MODEL-SPECIFIC — set these WHEN you pick a model) ---
+# These encode one model's generation contract. The values below are for the
+# NON-thinking Qwen3-4B-Instruct-2507. Hardcoding any of them in the runner caused
+# the single-word degeneration (#52): the forced </think> thinking phase is wrong
+# for a non-thinking model (its turn-end is <|im_end|>, never </think>, so the
+# phase runs past the turn end and corrupts the structured phase), and a flat
+# presence_penalty on code tokens drives single-word collapses. Confirmed by
+# ablation: thinking_budget=0 + presence_penalty=0.0 => 0/18 degeneration.
+thinking_budget: 0      # 0 = non-thinking path (REQUIRED for *-Instruct variants)
+presence_penalty: 0.0   # flat presence penalty harms code repetition; 0 for codegen
+dtype: "bfloat16"       # torch dtype name
+attn_implementation: "flash_attention_2"
+
+# --- Inference / generation (task-level, not model-specific) ---
 adapter_scaling: 1.0
 temperature: 0.3
 max_tokens: 2048
 repetition_penalty: 1.1
 top_p: 0.9
-thinking_budget: 1024
 no_repeat_ngram_size: 12
-presence_penalty: 1.5
 
 # --- Engine loop ---
 max_phase_iterations: 10
 cont_multiplier: 1.53   # continuation-round adapter scaling over base adapter_scaling
 cont_budget: 5
 
-# --- Checkpoint / reproducibility ---
-checkpoint_path: ""
+# --- Adapter (hypernetwork) profile ---
+checkpoint_path: ""           # trained hypernet checkpoint driving the adapter
+warmstart_checkpoint: ""      # warm-start provenance (e.g. Sakana doc-to-lora .bin)
 seed: null
 
 # --- Nested config (benchmark runner, Optuna HPO) ---
