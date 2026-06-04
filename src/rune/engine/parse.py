@@ -6,13 +6,18 @@ import logging
 import re
 from typing import Any
 
+import json_repair
 from jinja2 import Environment, PackageLoader, StrictUndefined
+from markdown_it import MarkdownIt
 from pydantic import BaseModel
 
-from rune.engine.json_repair import extract_code_value
 from rune.engine.state import Action, Feedback, Subtask
 
 logger = logging.getLogger(__name__)
+
+# CommonMark parser for code-block extraction (markdown-it-py, the reference
+# parser used by rich/mkdocs/jupyter) — robust where regex is fragile.
+_MARKDOWN = MarkdownIt("commonmark")
 
 _env = Environment(
     loader=PackageLoader("rune", "templates"),
@@ -86,21 +91,67 @@ def _is_chore_subtask(s: SubtaskSchema) -> bool:
 _FIX_GUIDANCE_CAP = 150
 
 
+def _extract_code_block(value: str) -> str:
+    """Return the first fenced code block's content, else *value* unchanged.
+
+    Even under xgrammar-constrained structured output the instruct model wraps
+    its code in a ```lang ... ``` fence *inside* the JSON ``code`` string
+    (verified: ``result.text == '{"code": "```py\\n..."}'``); the leading fence
+    line then crashes the sandbox with ``SyntaxError`` on line 1, turning a
+    correct solution into a spurious failure (and a wasted repair loop).
+
+    Extraction uses the CommonMark tokenizer (``markdown-it-py``), not regex:
+    it handles ```lang info strings, an *unterminated* fence (truncated output
+    becomes a fence to EOF), and passes bare code (no fence) through unchanged.
+    Only explicit ``` fences match — *not* indented ``code_block`` tokens, which
+    would mis-extract a real Python body after a blank line.
+    """
+    for tok in _MARKDOWN.parse(value):
+        if tok.type == "fence":
+            return tok.content.rstrip("\n")
+    return value
+
+
 def extract_code_from_raw(
     raw: str, model: type[BaseModel], *, fallback_to_raw: bool = False
 ) -> str:
-    """Parse *raw* as *model* and return its ``code`` field.
+    """Parse *raw* as *model*'s ``code`` field, de-fenced.
 
-    On validation failure, fall back to lenient extraction; if that yields
-    nothing and ``fallback_to_raw`` is set, return *raw* unchanged.
+    Pipeline (maintained libraries, no fragile regex): ``json-repair`` robustly
+    parses the model's JSON (repairing truncation / prose-wrapping) → ``model``
+    (pydantic) validates the structure → ``markdown-it-py`` extracts the code
+    from the possibly-fenced ``code`` value. A non-pydantic path is logged
+    loudly — it is a signal, not silent behavior. ``fallback_to_raw`` de-fences
+    the raw text only when no structured ``code`` can be recovered at all.
     """
+    obj: Any = None
     try:
-        return model.model_validate_json(raw).code  # type: ignore[attr-defined,no-any-return]
-    except Exception:
-        extracted = extract_code_value(raw)
-        if not extracted and fallback_to_raw:
-            return raw
-        return extracted
+        obj = json_repair.loads(raw)
+    except Exception:  # pragma: no cover - json_repair is very tolerant
+        obj = None
+
+    if isinstance(obj, dict):
+        try:
+            code: str = model.model_validate(obj).code  # type: ignore[attr-defined]
+            return _extract_code_block(code)
+        except Exception:
+            recovered = obj.get("code")
+            if isinstance(recovered, str):
+                logger.warning(
+                    "%s: json-repair recovered a code field that failed full "
+                    "schema validation; using it",
+                    model.__name__,
+                )
+                return _extract_code_block(recovered)
+
+    if fallback_to_raw:
+        logger.warning(
+            "%s: could not parse structured output even with json-repair; "
+            "de-fencing raw text (pydantic bypassed)",
+            model.__name__,
+        )
+        return _extract_code_block(raw)
+    return ""
 
 
 def _parse_code_action(
