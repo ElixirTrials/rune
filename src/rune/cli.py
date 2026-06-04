@@ -85,7 +85,11 @@ def train(
     import asyncio  # noqa: PLC0415
     from pathlib import Path as _Path  # noqa: PLC0415
 
-    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
+    from rune.tracking import (  # noqa: PLC0415
+        configure_mlflow,
+        log_dataset,
+        tracked_run,
+    )
     from rune.training.d2l_train import D2LTrainConfig  # noqa: PLC0415
     from rune.training.orchestrator import run_training_pipeline  # noqa: PLC0415
 
@@ -98,6 +102,7 @@ def train(
 
     configure_mlflow("rune-train")
     with tracked_run("train", params=train_cfg.model_dump()):
+        log_dataset(corpus_dir, name=corpus_dir.name, context="training")
         exit_code = asyncio.run(
             run_training_pipeline(
                 train_cfg,
@@ -154,7 +159,11 @@ def bench(
 
     import mlflow as _mlflow  # noqa: PLC0415
 
-    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
+    from rune.tracking import (  # noqa: PLC0415
+        configure_mlflow,
+        log_dataset,
+        tracked_run,
+    )
 
     cfg = load_config(config) if config else PipelineConfig()
     tasks = load_tasks(tasks_file)
@@ -168,6 +177,7 @@ def bench(
         trials = n_trials or cfg.hpo["n_trials"]
         typer.echo(f"Running HPO: {trials} trials{' (fresh)' if fresh else ''}")
         with tracked_run("bench-hpo", params=cfg.to_dict()) as parent:
+            log_dataset(tasks_file, name=tasks_file.name, context="test")
             best = asyncio.run(
                 run_hpo(
                     tasks,
@@ -203,6 +213,7 @@ def bench(
     }
 
     with tracked_run("bench", params=cfg.to_dict()):
+        log_dataset(tasks_file, name=tasks_file.name, context="test")
         result = asyncio.run(run_benchmark(tasks, engine, bench_config))
         _mlflow.log_metric("pass_at_1", result.pass_at_1)
         _mlflow.log_metric("passed_tasks", result.passed_tasks)
