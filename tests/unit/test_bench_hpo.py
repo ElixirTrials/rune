@@ -107,7 +107,9 @@ class TestRunHpoMlflowCallback:
         ):
             asyncio.run(run_hpo([], MagicMock(), _cfg(), MagicMock(), n_trials=1))
 
-        mock_cls.assert_called_once_with(mlflow_kwargs={"nested": True})
+        mock_cls.assert_called_once_with(
+            mlflow_kwargs={"nested": True}, metric_name="tuning_pass_at_1"
+        )
         # Confirm the callback was passed as keyword arg to study.optimize via to_thread
         call_kwargs = mock_thread.call_args.kwargs
         callbacks_arg = call_kwargs.get("callbacks", [])

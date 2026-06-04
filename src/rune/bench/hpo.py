@@ -100,15 +100,21 @@ async def run_hpo(
     outer_loop = asyncio.get_running_loop()
 
     def objective(trial: optuna.Trial) -> float:
-        cfg = base_config.override(
-            adapter_scaling=_suggest(trial, "adapter_scaling"),
-            temperature=_suggest(trial, "temperature"),
-            presence_penalty=_suggest(trial, "presence_penalty"),
-            max_phase_iterations=_suggest(
+        overrides: dict[str, Any] = {
+            "adapter_scaling": _suggest(trial, "adapter_scaling"),
+            "temperature": _suggest(trial, "temperature"),
+            "presence_penalty": _suggest(trial, "presence_penalty"),
+            "max_phase_iterations": _suggest(
                 trial, "max_phase_iterations", int_param=True
             ),
-            cont_multiplier=_suggest(trial, "cont_multiplier"),
-        )
+            "cont_multiplier": _suggest(trial, "cont_multiplier"),
+        }
+        # Optional categorical: the prompt/adapter conditioning surface (#52).
+        if "prompt_mode" in hpo:
+            overrides["prompt_mode"] = trial.suggest_categorical(
+                "prompt_mode", hpo["prompt_mode"]["choices"]
+            )
+        cfg = base_config.override(**overrides)
         bench_config: dict[str, Any] = {
             "model": model,
             "run_config": cfg.to_dict(),
@@ -119,10 +125,37 @@ async def run_hpo(
         )
         return future.result().pass_at_1
 
+    from mlflow.tracking import MlflowClient  # noqa: PLC0415
+
     mlflow_kwargs: dict[str, Any] = {"nested": True}
     if parent_run_id:
         mlflow_kwargs["tags"] = {"mlflow.parentRunId": parent_run_id}
-    mlflow_callback = MLflowCallback(mlflow_kwargs=mlflow_kwargs)
+    # Name the per-trial objective metric clearly (was the generic "value") so
+    # each nested trial run is traceable by flavor + scale + tuning_pass_at_1.
+    mlflow_callback = MLflowCallback(
+        mlflow_kwargs=mlflow_kwargs, metric_name="tuning_pass_at_1"
+    )
+
+    # Progress curve: log the running best + completed-trial count to the PARENT
+    # run as a metric series, so HPO progress is visible without opening every
+    # nested trial. Direct client calls are thread-safe (the callback runs inside
+    # study.optimize's worker thread).
+    _client = MlflowClient()
+
+    def _log_progress(
+        study: optuna.Study, trial: optuna.trial.FrozenTrial
+    ) -> None:
+        if not parent_run_id:
+            return
+        step = trial.number
+        _client.log_metric(
+            parent_run_id, "best_tuning_pass_at_1", study.best_value, step=step
+        )
+        _client.log_metric(parent_run_id, "trials_completed", step + 1, step=step)
+        if trial.value is not None:
+            _client.log_metric(
+                parent_run_id, "trial_pass_at_1", trial.value, step=step
+            )
     if fresh and _BENCH_HPO_DB.exists():
         _BENCH_HPO_DB.unlink()
         logger.info("Deleted existing Optuna DB: %s", _BENCH_HPO_DB)
@@ -137,7 +170,7 @@ async def run_hpo(
         study.optimize,
         objective,
         n_trials,
-        callbacks=[mlflow_callback],
+        callbacks=[mlflow_callback, _log_progress],
     )
 
     result: dict[str, Any] = {
