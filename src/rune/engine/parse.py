@@ -47,14 +47,18 @@ class PlanResult(BaseModel):
 class JudgeResult(BaseModel):
     """Model correctness verdict on a candidate implementation.
 
-    ``correct=False`` must be grounded by a concrete failing input in
-    ``failing_input`` (and explained in ``reason``) — an ungrounded "looks wrong"
-    is treated as correct, to avoid false-positive repairs on already-correct code.
+    Field order matters: structured output is emitted in declaration order, so
+    ``reason`` (the analysis) comes BEFORE the ``correct`` verdict — committing to
+    a verdict first made the model guess then rationalise, producing false
+    positives on correct code (e.g. naming "4" for a correct int_to_roman while the
+    reasoning concluded it was fine). ``correct=False`` must be grounded by a
+    concrete ``failing_input``; an ungrounded "looks wrong" is treated as correct,
+    to avoid false-positive repairs on already-correct code.
     """
 
-    correct: bool
-    failing_input: str = ""
     reason: str = ""
+    failing_input: str = ""
+    correct: bool
 
 
 class DiagnosisEntry(BaseModel):
