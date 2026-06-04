@@ -229,6 +229,27 @@ class TestParseOutput:
         updates = parse_output(action, raw, None, {"diagnosis": {}})
         assert len(updates["diagnosis"]["a"]) == 150
 
+    def test_targeted_diagnose_hallucinated_name_attaches_to_target(self) -> None:
+        # The model invents subtask_name "write_function" for the real target
+        # "_main". Without the fallback, the diagnosis lands on the phantom key,
+        # select_action never routes "_main" to repair, and the engine livelocks
+        # on diagnose until the budget is spent. The fix attaches guidance to the
+        # target and reopens it regardless of the emitted name.
+        action = Action(
+            "diagnose",
+            "diagnose",
+            "prompt_diagnose",
+            "",
+            DiagnoseResult,
+            False,
+            "_main",
+        )
+        raw = '{"entries": [{"subtask_name": "write_function", "error_type": "syntax", "location": "line 1", "fix_guidance": "close the code block"}]}'
+        state_stub: dict = {"diagnosis": {}, "code_passed": {"_main": False}}
+        updates = parse_output(action, raw, None, state_stub)
+        assert "_main" in updates["diagnosis"]
+        assert "close the code block" in updates["diagnosis"]["_main"]
+
     def test_integrate_action(self) -> None:
         action = Action(
             "integrate",

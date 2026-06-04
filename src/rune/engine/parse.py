@@ -291,6 +291,24 @@ def parse_output(
                 if entry.subtask_name in code_passed:
                     code_passed[entry.subtask_name] = False
                     reopened = True
+            # Targeted diagnose: the model often invents a subtask_name (e.g.
+            # "write_function" for the real "_main"), so the per-entry write
+            # above lands on a phantom key and select_action never sees a
+            # diagnosis for the target — the engine re-diagnoses every step until
+            # the budget is spent, never reaching repair. There is exactly one
+            # target, so attach the model's guidance to it regardless of naming.
+            target = action.target_subtask
+            if target is not None and target not in diagnosis:
+                guidance = (
+                    "; ".join(e.fix_guidance for e in diag_result.entries).strip()[
+                        :_FIX_GUIDANCE_CAP
+                    ]
+                    or "revise this subtask"
+                )
+                diagnosis[target] = guidance
+                if target in code_passed:
+                    code_passed[target] = False
+
             # Untargeted (integration-failure) diagnose: the model often emits
             # subtask_name values that don't match any real subtask, so the
             # per-entry reopen above is a no-op and the engine livelocks. When
