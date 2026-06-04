@@ -25,6 +25,7 @@ import sys
 
 import torch
 
+from rune.config import load_rune_config
 from rune.model.hypernetwork import HypernetworkConfig, load_hypernetwork
 from rune.training.contrastive import edit_local_mask
 from rune.training.hypernet_distill import (
@@ -69,7 +70,7 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=24)
     ap.add_argument("--scalings", type=float, nargs="+", default=[0.5, 1.0])
     ap.add_argument("--max-seq-length", type=int, default=768)
-    ap.add_argument("--model-id", default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model-id", default=load_rune_config().model_id)
     a = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig

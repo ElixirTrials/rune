@@ -26,6 +26,7 @@ from typing import Any
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from rune.config import load_rune_config
 from rune.model.hypernetwork import (
     HypernetworkConfig,
     load_hypernetwork,
@@ -121,7 +122,7 @@ def main() -> int:
         type=str,
         default="s3://elixirtrials-949678234935-eu-west-2-artifacts/checkpoints/hypernet_hpo/checkpoint.pt",
     )
-    ap.add_argument("--model-id", type=str, default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model-id", type=str, default=load_rune_config().model_id)
     args = ap.parse_args()
 
     base = AutoModelForCausalLM.from_pretrained(

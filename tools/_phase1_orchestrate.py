@@ -18,6 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rune.config import load_rune_config
+
 WORK = Path("/tmp/phase1")
 WORK.mkdir(exist_ok=True)
 (WORK / "ckpt").mkdir(exist_ok=True)
@@ -53,7 +55,7 @@ def sh(cmd: list[str], logfile: Path) -> int:
 
 def write_yaml(cfg: dict, path: Path) -> None:
     path.write_text(
-        f"model_id: \"Qwen/Qwen3-4B-Instruct-2507\"\n"
+        f'model_id: "{load_rune_config().model_id}"\n'
         f"checkpoint_path: \"{WARM}\"\n"
         f"corpus_path: \"{TRAIN_CORPUS}\"\n"
         f"checkpoint_dir: \"./checkpoints/phase1-{cfg['name']}\"\n"

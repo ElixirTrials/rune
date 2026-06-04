@@ -27,6 +27,8 @@ import sys
 
 import torch
 
+from rune.config import load_rune_config
+
 RUNE = "/workspaces/rune-gpu"
 sys.path.insert(0, f"{RUNE}/tools")
 sys.path.insert(0, f"{RUNE}/tools/d2l_control")
@@ -38,7 +40,7 @@ CKPT = (
     f"{RUNE}/third_party/doc-to-lora/trained_d2l/"
     "qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
 )
-BASE = "Qwen/Qwen3-4B-Instruct-2507"
+BASE = load_rune_config().model_id
 CORPUS = "/tmp/rune-corpus/external_codereview.val.clean.jsonl"
 MAX_ANS_TOK = 48
 N_EPISODES = 12

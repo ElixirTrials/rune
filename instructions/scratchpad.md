@@ -442,3 +442,131 @@ mbpp_recall_train (40) -> eval held-out 24 accessibility (gated sig+recitation) 
 bench {scale=0, warm-start, best} on held-out -> retention. Honest outcome either way:
 generalizes => real lever; flat => objective memorizes regardless of corpus (deeper limit).
 Crash-safety: commit e98172a pushed; orchestrator writes incremental results + I commit per config.
+
+---
+
+### [2026-06-03 21:37 UTC] PHASE-1 COMPLETE — PASSES (generalizing). PR #55 finalized.
+Train-HPO (40-task split) -> held-out 24 eval. Best c3 (tau-0.7 lp2 lg1, MLflow run fe72f9ddd69c):
+- held-out accessibility Δlp_matched +0.105, CI [+0.033,+0.182] EXCLUDES 0 (17/24). GENERALIZES
+  (trained-on-10 was flat). lambda_p is the lever; guard (lambda_g=2) hurts.
+- functional pass@1 held-out (real MBPP 3-test), ABSENT/from-memory: scale0=0/24, warm=3/24,
+  c3=8/24. PRESENT (stability): 19/24=base (no regression).
+=> recall objective is a GENERALIZING lever (not memorization). c3 = Phase-2 retention baseline.
+LIMITS: 8/24 partial; n=24 binary; raw-greedy not xgrammar; single-shot absent = harshest proxy.
+REMAINING gate-1: retention scorecard (goal/file/diff/code-recall). Deeper: engine multi-step eval.
+NEXT: retention -> engine eval -> scale corpus -> Phase-2 cooperative RL (KL-anchored, canaries).
+Commits pushed through Phase-1 COMPLETE; PR #55 comment + docs/issue52-phase1-results-2026-06-04.md.
+
+---
+
+### [2026-06-04 07:56 UTC] Dataset logging wired + external_codereview corpus RECOVERED
+Context: gate-1 retention was blocked on `external_codereview.val.clean.jsonl` (only in /tmp,
+never logged). Investigated recoverability: NOT on disk, no restic, S3 ListBucket denied on the
+eu-west-2 MLflow artifact bucket, and `run.inputs.dataset_inputs == []` on every prior run
+(dataset tracking was never used). It was NOT lost — raw source survived on S3.
+
+RECOVERY (deterministic, reproducible):
+- Source: `s3://elixirtrials-949678234935-us-east-1-artifacts/training-data/github-pairs/external_codereview.unrolled.jsonl`
+  (7,670 rows, sha256 4931fe03). chain: `split_corpus.py` (family-keyed sha256 split, val5/test5)
+  -> `corpus_split_qc.py` (TF-IDF near-dup clean, cos>=0.9 dropped; sklearn 1.9.0).
+- Result: val.clean 323 rows sha256 7e3692df; test.clean 343 rows sha256 744715a6;
+  train 6930 / val 370 / test 370. Pushed durable to `.../github-pairs/splits/`.
+
+DATASET LOGGING (mergeable product code, commit 25dcbd2):
+- `src/rune/tracking.py::log_dataset(uri,*,name,context)` — thin wrapper over MLflow
+  `MetaDataset(resolve_dataset_source(uri))` + `log_input`; metadata-only (logs by reference, safe
+  for ~90MB), MLflow's built-in digest (no hand-rolled sha256). Tested (sqlite round-trip).
+- Wired: train (corpus_dir->training), bench + bench-hpo (tasks_file->test).
+- Backfill: MLflow exp `corpus-registry` run `register-external_codereview-2026-06-04` (ea4f3c43),
+  4 inputs logged by S3 URI. Gate-1 retention UNBLOCKED on the data side.
+
+INTERPRETATION/HYPOTHESES (carried for next session):
+- Single-turn (absent/from-memory) pass@1 UNDERSTATES the thesis (8/24 is a floor). The design's
+  real payoff is MULTI-TURN: prior work lives in the adapter, prompt stays flat. Must be measured
+  vs scale=0 control. This is the next decisive eval, before scaling the corpus.
+- Convention going forward: no run trains/evals on an unlogged dataset; pass the durable S3 URI
+  (not /tmp) to `log_dataset`. diag_*/gate_* `--val` should default to the S3 URI.
+NEXT: run diag_recoverability on the restored val.clean (only blocker now = base-model/4-bit
+default fix) -> retention scorecard -> multi-step engine eval (prompt fixed, adapter memory) vs
+scale=0 -> scale corpus 40->N -> Phase-2 cooperative RL (KL-anchored to c3, accessibility/sig canaries).
+
+---
+
+### [2026-06-04 08:15 UTC] GATE-1 RETENTION — QUALIFIED PASS (cross-domain, 3/4 targets). Closes gate-1.
+WHAT I RAN: `tools/run_guarded.sh tools/diag_recoverability.py` (defaults fixed first — see below).
+  ckpt c3 `/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt` (sha256 53e24af2…, MLflow run fe72f9ddd69c);
+  base **Qwen/Qwen3-4B-Instruct-2507 in bf16** (the recipe that produced +0.105 — orchestrator
+  `load_in_4bit: false`, `_specificity_probe` with no `--load-4bit`); val = recovered
+  external_codereview.val.clean (n=24, sha256 7e3692df…, durable
+  s3://elixirtrials-949678234935-us-east-1-artifacts/training-data/github-pairs/splits/external_codereview.val.clean.jsonl;
+  local /tmp copy bit-identical). scaling=45.25 (effective_scaling==lora_alpha). log
+  `/tmp/phase1/logs/recoverability_c3.log`.
+BLOCKER FIXED: `diag_recoverability.py` hardcoded a 4-bit nf4 load of `Qwen/Qwen3.5-9B` (wrong
+  model AND wrong dtype → adapter conditioned on mismatched activations). Changed defaults to
+  c3 ckpt + Qwen3-4B-Instruct-2507 bf16, made 4-bit opt-in (`--load-4bit`). This was the only
+  remaining gate-1 blocker.
+RESULTS (target | n | m-mismatch | m-zero; bet needs BOTH>0):
+  goal  | 24 | +0.539 | +0.297  ✓ both  (recovers the review request, episode-specifically)
+  diff  | 24 | +0.058 | -0.028  ✗ m-zero flat (exact edit-local tokens not lifted over no-adapter)
+  tail  | 24 | +0.108 | +0.224  ✓ both  (semi-Markov: last-N lines that DRIVE THE NEXT STEP)
+  avoid | 14 | +0.155 | +0.862  ✓ both  (logp(accepted)-logp(rejected) at edit hunk: avoids failed)
+INTERPRETATION: c3's episodic memory channel is OPEN and episode-specific cross-domain. goal/tail/
+  avoid all clear both bars on external_codereview — a DIFFERENT domain than c3's MBPP-recall
+  training, so this is generalization of the recoverability skill, not in-domain retention. The
+  two operationally important targets pass: `tail` (the state that drives the next engine step)
+  and `avoid` (don't-repeat-the-rejected-approach). `diff` flat on m-zero = the verbatim edit is
+  high-entropy and not lifted over base; it remains weakly episode-specific (m-mismatch +0.058).
+LIMITS (honest): point estimates, NO CI/bootstrap — this tool reports sign+magnitude only, weaker
+  than the Phase-1 "CI excludes 0" bar; per-target n varies (avoid n=14, rows silently skipped
+  when no feedback / <7 lines / no replace-hunk). Cross-domain by construction (sets the
+  pre-Phase-2 recoverability BASELINE the forgetting canaries compare against), not in-domain.
+HYPOTHESIS/EXPECTATION: Phase-2 RL must not erode goal/tail/avoid m-zero below these values; if a
+  canary drops, forgetting. diff being flat predicts edit-token recall is the weakest channel —
+  candidate for the corpus-scale / objective work, not a Phase-2 blocker.
+NEXT: gate-1 CLOSED (pass@1 half done Phase-1; retention half = this). Decisive eval = multi-step
+  engine vs scale=0 (prompt fixed, adapter memory growing). Also in flight: DRY config.yaml
+  refactor (all tools -> Qwen3-4B-Instruct-2507 instruct via single config; user directive).
+
+---
+
+### [2026-06-04 08:40 UTC] DRY config refactor — single source of truth for base model (mergeable)
+WHAT I DID (user directive: "everything uses the instruct model so the pre-warmed Sakana adapter
+  is compatible; one config.yaml with all settings"):
+- `config.yaml` (repo root): all PipelineConfig settings; model_id=Qwen/Qwen3-4B-Instruct-2507.
+- `rune.config`: added `DEFAULT_MODEL_ID` const (=instruct), `load_rune_config()` resolver
+  (defaults <- config.yaml/RUNE_CONFIG <- RUNE_* env, later wins), `RUNE_BASE_MODEL` env override,
+  refactored `from_env` via shared `_env_overrides()`. Default model_id flipped 9B->4B-instruct.
+- Swept all hardcoded `Qwen/...` literals -> `load_rune_config().model_id` across 19 tools +
+  `d2l_train.py` (-> DEFAULT_MODEL_ID). Only remaining literal = DEFAULT_MODEL_ID in config.py.
+  Fixes a latent bug: diag_*/gate_* tools defaulted to Qwen3.5-9B (wrong model for issue-52 ckpts).
+- Docs reconciled: CLAUDE.md base-model line + RAM figure (18GB->~8GB bf16 for 4B).
+- Tests: updated test_config/test_d2l_train defaults; added TestLoadRuneConfig (file read + env-
+  over-file precedence). VERIFY: ruff src+tests clean, mypy src clean, 329 unit pass.
+NOTE: tools are still REMOVE-BEFORE-MERGE scaffolding; config.py/config.yaml/tests are mergeable.
+NEXT (unchanged): multi-step engine eval vs scale=0 (the decisive one) -> scale corpus -> Phase-2.
+Not committed (awaiting user go).
+
+### [2026-06-04 08:48 UTC] config refactor — wired the PRODUCT entrypoints (advisor-caught gap)
+The 08:40 sweep wired tools but `rune run`/`rune bench` still built bare `PipelineConfig()` when no
+`--config` was passed — they never read repo-root config.yaml (values only coincidentally agreed).
+Fixed `src/rune/cli.py`: default path now `load_rune_config()` (config.yaml + RUNE_* env), so
+editing config.yaml actually drives the product. ruff/mypy clean, 329 unit pass, CLI import OK,
+`_specificity_probe --help` OK (reordered imports resolve). Open item for user: training
+hyperparameters (D2LTrainConfig) are a SEPARATE config surface — fold into config.yaml or keep two?
+
+### [2026-06-04 09:00 UTC] config refactor — UNIFIED to one surface (training reads config.yaml)
+Per user: one config.yaml for everything. Added nested `training:` section (D2LTrainConfig fields);
+`load_config`/`load_rune_config` ignore it; new `rune.training.d2l_train.load_train_config(path=None)`
+reads it and INHERITS model_id from top-level (single source; precedence RUNE_BASE_MODEL >
+training.model_id > top-level model_id > DEFAULT_MODEL_ID). `rune train --config` takes the
+config.yaml path, defaults to repo-root. Orchestrator/_distill_entry flat-YAML path untouched
+(separate scaffolding). VERIFY: ruff src+tests clean, mypy clean, 334 unit pass (5 new),
+rune train --help OK. Mergeable. Still not committed (awaiting user go).
+
+### [2026-06-04 09:10 UTC] config — env-override symmetry fix (advisor-caught)
+`rune run/bench --config X` previously used `load_config(X)` which skipped RUNE_* env overrides
+(only the no-arg path applied them) — so RUNE_BASE_MODEL silently no-op'd with an explicit config,
+contradicting the documented universal precedence. Fixed: `load_rune_config(path=None)` now takes an
+optional path and applies env overrides on either branch; both CLI commands call
+`load_rune_config(config)`. Verified: `RUNE_BASE_MODEL=Org/Z ... load_rune_config('config.yaml')`
+-> Org/Z. ruff/mypy clean, 335 unit pass (+1). Handoff headline corrected to "qualified pass".

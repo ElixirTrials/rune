@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from rune.config import load_rune_config
+
 OUT = Path("/tmp/probe_results.jsonl")
 
 TASK = (
@@ -40,7 +42,7 @@ async def main() -> None:
     from rune.model import inference  # noqa: PLC0415
 
     OUT.write_text("")  # truncate
-    model_id = "Qwen/Qwen3.5-9B"
+    model_id = load_rune_config().model_id
 
     t0 = time.monotonic()
     tok = AutoTokenizer.from_pretrained(model_id)

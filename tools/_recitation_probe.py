@@ -24,10 +24,12 @@ from pathlib import Path
 
 import torch
 
+from rune.config import load_rune_config
+
 RUNE = "/workspaces/rune-gpu"
 sys.path.insert(0, f"{RUNE}/tools")
 
-BASE = "Qwen/Qwen3-4B-Instruct-2507"
+BASE = load_rune_config().model_id
 CKPT = (
     f"{RUNE}/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
 )

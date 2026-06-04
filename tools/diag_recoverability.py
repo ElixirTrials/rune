@@ -27,6 +27,7 @@ import sys
 
 import torch
 
+from rune.config import load_rune_config
 from rune.model.adapter_contract import assemble_adapter, effective_scaling
 from rune.model.hypernetwork import HypernetworkConfig, load_hypernetwork
 from rune.training.contrastive import edit_local_mask, extract_review_feedback
@@ -122,7 +123,13 @@ def _avoid_failed_margin(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="/tmp/rune-ck-final/checkpoint_step600.pt")
+    # c3 (Phase-1 best / Phase-2 retention baseline): tau=-0.7 lp2 lg1,
+    # MLflow run fe72f9ddd69c, sha256 53e24af2…
+    ap.add_argument("--ckpt", default="/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt")
+    # Recovered external_codereview val split (cross-domain gate corpus).
+    # Durable: s3://elixirtrials-949678234935-us-east-1-artifacts/training-data/
+    #   github-pairs/splits/external_codereview.val.clean.jsonl (sha256 7e3692df…).
+    # Local copy below is bit-identical to that S3 artifact.
     ap.add_argument(
         "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
     )
@@ -136,24 +143,34 @@ def main() -> int:
     )
     ap.add_argument("--tail-lines", type=int, default=5)
     ap.add_argument("--max-seq-length", type=int, default=768)
-    ap.add_argument("--model-id", default="Qwen/Qwen3.5-9B")
+    # The adapter is conditioned on the base model's activations, so the eval
+    # base MUST match the one the ckpt was trained/evaluated against. c3 was
+    # produced with Qwen3-4B-Instruct-2507 in bf16 (orchestrator: load_in_4bit
+    # false, _specificity_probe with no --load-4bit). 4-bit is opt-in only.
+    ap.add_argument("--model-id", default=load_rune_config().model_id)
+    ap.add_argument(
+        "--load-4bit",
+        action="store_true",
+        help="load base in 4-bit nf4 (default bf16, matching the c3 recipe).",
+    )
     a = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-    q = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
-    base = AutoModelForCausalLM.from_pretrained(
-        a.model_id,
-        quantization_config=q,
+    load_kw = dict(
         dtype=torch.bfloat16,
         attn_implementation="flash_attention_2",
         device_map={"": "cuda"},
-    ).eval()
+    )
+    if a.load_4bit:
+        load_kw["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+    print(f"base={a.model_id}  dtype={'4bit-nf4' if a.load_4bit else 'bf16'}", flush=True)
+    base = AutoModelForCausalLM.from_pretrained(a.model_id, **load_kw).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
     hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda")
     hyp.eval()
