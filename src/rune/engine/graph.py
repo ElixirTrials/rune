@@ -19,6 +19,7 @@ from rune.engine.continuation import (
     strip_self_tests,
     validate_syntax,
 )
+from rune.engine.oracle import build_probe
 from rune.engine.parse import parse_output, render_template
 from rune.engine.policy import select_action
 from rune.engine.state import (
@@ -482,9 +483,19 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             code_map[name] = extract_partial_code(text)
             code_action_names.append(name)
 
+    # In-loop correctness signal: append the spec's PUBLIC doctest examples to the
+    # candidate so a wrong/crashing impl fails the sandbox and routes to repair
+    # (a bare def otherwise exits 0 — module-load only). Held-out task tests are
+    # never used here; pass@1 still gates on the full held-out set at scoring.
+    spec = state.get("task", "")
+    entry_point = state.get("entry_point", "")
+    probes: dict[str, tuple[str, bool]] = {
+        name: build_probe(strip_self_tests(code_map[name]), spec, entry_point)
+        for name in code_action_names
+    }
     sandbox_results = await asyncio.gather(
         *[
-            asyncio.to_thread(run_in_sandbox, strip_self_tests(code_map[name]))
+            asyncio.to_thread(run_in_sandbox, probes[name][0])
             for name in code_action_names
         ]
     )
@@ -492,6 +503,17 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         name: Feedback(stdout=fb.stdout, stderr=fb.stderr, exit_code=fb.exit_code)
         for name, fb in zip(code_action_names, sandbox_results, strict=True)
     }
+    for name in code_action_names:
+        _fired = probes[name][1]
+        logger.info(
+            "oracle for %s: %s",
+            name,
+            "fired (public examples)" if _fired else "fallback (module-load only)",
+        )
+        if mlflow.active_run() is not None:
+            mlflow.log_metric(
+                f"oracle_fired/{name}", int(_fired), step=state["step"]
+            )
 
     # Thread an accumulating running state through siblings so each parse_output
     # builds its full maps from the prior sibling's applied change. Reusing a
