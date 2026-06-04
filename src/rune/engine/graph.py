@@ -543,14 +543,17 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     }
     for name in code_action_names:
         _fired = probes[name][1]
+        # integrate's target is "" -> a trailing-slash metric name MLflow rejects;
+        # label it explicitly.
+        _label = name or "integrate"
         logger.info(
             "oracle for %s: %s",
-            name,
+            _label,
             "fired (public examples)" if _fired else "fallback (module-load only)",
         )
         if mlflow.active_run() is not None:
             mlflow.log_metric(
-                f"oracle_fired/{name}", int(_fired), step=state["step"]
+                f"oracle_fired/{_label}", int(_fired), step=state["step"]
             )
 
     # Model-judge (in-loop, always on): the public example is necessary but not
@@ -575,9 +578,15 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     ),
                     exit_code=1,
                 )
-                logger.info("judge flipped %s to failing: %s", name, verdict.reason)
+                logger.info(
+                    "judge flipped %s to failing: %s",
+                    name or "integrate",
+                    verdict.reason,
+                )
                 if mlflow.active_run() is not None:
-                    mlflow.log_metric(f"judge_flagged/{name}", 1, step=state["step"])
+                    mlflow.log_metric(
+                        f"judge_flagged/{name or 'integrate'}", 1, step=state["step"]
+                    )
 
     # Thread an accumulating running state through siblings so each parse_output
     # builds its full maps from the prior sibling's applied change. Reusing a
