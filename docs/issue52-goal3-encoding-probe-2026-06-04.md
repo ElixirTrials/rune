@@ -150,6 +150,47 @@ removed; repair baseline still unmeasured** — build a repair-triggering slice 
 on only one previously-passing real task (`merge_intervals`, still passes). Re-run the existing
 stratified single-turn gate before this leaves the research branch.
 
+## ROOT CAUSE — the repair loop has no in-loop correctness oracle
+
+Investigated *why* the two remaining tasks failed and why repair never fired. Two separate
+execution paths, and they don't share a signal:
+
+- **In-loop (engine):** `run_in_sandbox(strip_self_tests(code))` (graph.py:487). `strip_self_tests`
+  removes all module-level asserts / `test*` defs / `__main__`. What's left is a **bare function
+  definition** — and defining a function never raises, so `exit_code=0` → `code_passed=True` →
+  subtask integrated → loop ends at step 3. The only way to get `exit≠0` here is a **module-load
+  crash** (syntax/import/runtime-at-load).
+- **Scoring (bench):** `strip_self_tests(code) + task.test_code` (runner.py:165) — appends the
+  **held-out** tests and runs them. This is the only place correctness is measured, and it runs
+  *after* the engine has declared done. The engine never sees `task.test_code` (correctly — leaking
+  it in-loop would be train-on-test).
+
+So the loop's `code_passed` means "the module imports without crashing," not "the function is
+correct." Verified on the two failures (final code, `strip_self_tests` applied):
+
+| task | engine in-loop check | held-out tests |
+|---|---|---|
+| `calculate` | module load OK (exit 0) → PASSED | fails `100/10/2 == 5` (int-division-toward-zero edge); 4/8 pass |
+| `decode_string` | module load OK (exit 0) → PASSED | **crashes** `IndexError: pop from empty list` on the *public* case `3[a]2[bc]` |
+
+`decode_string` is the sharpest demonstration: its bug is a hard crash on the public example, yet the
+engine marked it passed — because the crash is in a *test call* that the loop never executes. Only
+the `def` was run.
+
+**This reframes the entire repair / multi-turn thesis.** `diagnose→repair` fires only on module-load
+crashes. That is exactly why the phantom `\n` SyntaxError used to drive the loop (5–8 steps), and why
+removing it made repair go silent (3 steps). The "adapter-as-repair-memory" thesis has **never been
+exercised on correctness** — the loop terminates at the first parseable implementation, so there is
+no failure episode for the adapter to carry across turns.
+
+**Fix direction (decision pending, not implemented):** give the loop a trustworthy in-loop oracle
+from the **public example(s) / doctest in the spec** (e.g. `>>> assert decode_string("3[a]2[bc]") ==
+"aaabcbc"`), executed against the candidate and *not* stripped — distinct from model-authored
+asserts (which `strip_self_tests` rightly drops to avoid the model gaming itself) and from the
+held-out tests (kept out for scoring integrity). That single change converts the loop from
+"does it parse" to "does it satisfy the public example," producing the real failure signal that
+diagnose→repair (and any RL on repair) needs.
+
 ## Limits
 
 - 2 toy + 3 hard scenarios, single seed, mean-token frozen-probe logprob (not sampled pass@1) — a
