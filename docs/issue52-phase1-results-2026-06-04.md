@@ -105,10 +105,13 @@ adapter memory) — is the next gate before scaling.
 Measured and **passing** on held-out 24: **signature** accessibility retained/improved
 (warm +3.56 → c3 +5.26), **generation-stability** held (present pass@1 19/24 = base, no
 in-context regression), **recitation** clean (pilot-2 cross-conditioned 0/10; the c3 stability
-arm corroborates). The `diag_recoverability` goal/diff/tail facets are **deferred — the session
-corpus (`external_codereview.val.clean.jsonl`) is not on disk** (gitignored, lost on recycle;
-needs the #49 mining data + a base-model/4-bit default fix). Not a skip: named as a data gap to
-restore before Phase 2.
+arm corroborates). The `diag_recoverability` goal/diff/tail facets were **deferred** because the
+session corpus (`external_codereview.val.clean.jsonl`) was only in ephemeral `/tmp` and never
+logged — **now RESTORED (2026-06-04):** regenerated deterministically from the S3 source
+(`external_codereview.unrolled.jsonl`) and made durable at `…/github-pairs/splits/` (`val.clean`
+= 323 rows, sha256 `7e3692df…`; see the Reflection above). The remaining blocker for these facets
+is just the base-model/4-bit default fix, not the data. Run `diag_recoverability` against the
+restored corpus to close this half of gate 1.
 
 ## Next (gated, per the two-stage research + AI-engineer review)
 1. Retention scorecard (the other half of gate 1).
@@ -117,6 +120,44 @@ restore before Phase 2.
 4. THEN Phase 2 (outcome RL): **cooperative** (distill + recall-replay + GRPO on pass@1/process),
    NOT strict-sequential, with KL-anchor to this checkpoint + accessibility/signature canaries
    every N RL steps (forgetting guard).
+
+## Reflection — single-turn understates the thesis; multi-turn is the real test
+The Phase-1 bench is **single-shot** (the "absent" regime = one turn, body generated from memory
+with nothing in the prompt). That is deliberately the **harshest** proxy, and it is also the
+regime where this architecture has the **least** to offer: with a single turn there is no prior
+work to evict, so the adapter is only doing one-shot recall. **Single-turn problems will show the
+smallest uplift** — 8/24 is a floor, not the headline.
+
+The thesis the hypernetwork-as-episodic-memory design actually targets is **multi-turn**: across
+engine iterations, what was decided and written previously (subtask bodies, plan, diffs) lives in
+the **adapter**, not the prompt. The win is a **flat context window** — the prompt does not grow
+with trajectory length, while the accumulated state stays accessible through the adapter. That is
+where the uplift should be largest and where the design either pays off or doesn't. The current
+single-shot number neither confirms nor refutes it; it only proves the substrate can hold *one*
+fact accessibly and generalizably. The decisive eval is the **memory-exercising engine run**
+(prompt fixed, adapter memory growing) already named in "Next" — that must come before scaling.
+
+Two requirements for that eval:
+1. **Keep scale=0 as the control.** The single-turn bench earned its weight precisely because
+   scale=0 (no adapter, no spec) = 0/24 — a clean zero baseline isolating the adapter's
+   contribution. The multi-turn eval must hold the same control: scale=0 vs warm-start vs trained,
+   same tasks. Without it we cannot attribute a freed context window / retained state to the
+   adapter rather than to prompt content. A "memory helped" claim is only as strong as its
+   scale=0 comparison.
+2. **Log every dataset to MLflow so runs are reproducible.** The retention gate was *blocked*
+   because the derived split `external_codereview.val.clean.jsonl` lived only in ephemeral
+   `/tmp/rune-corpus/` — never logged as an MLflow artifact or dataset input
+   (`run.inputs.dataset_inputs == []` on every run that used it). It was **not lost**: the raw
+   `external_codereview.unrolled.jsonl` source survived on S3
+   (`s3://…us-east-1…/training-data/github-pairs/`), though only because it was staged there by
+   hand, not through any logging discipline. **RECOVERED (2026-06-04):** regenerated
+   deterministically from that source (`split_corpus.py` family-keyed sha256 split →
+   `corpus_split_qc.py` near-dup clean, sklearn 1.9.0) — `val.clean` = **323 rows**, sha256
+   `7e3692df4ddbbf93…` — and the derived splits are now durable at
+   `…/training-data/github-pairs/splits/`. The lesson stands: wire `mlflow.log_input` into every
+   run (design: `docs/dataset-logging-design-2026-06-04.md`) so the next recycle can't repeat this
+   and the deferred `diag_recoverability` goal/diff/tail facets are reproducible on any fresh
+   instance. Gate-1 retention is now **unblocked** on the data side.
 
 ## Method caveats (carried)
 n is small (24 held-out); pass@1 is raw greedy + real tests, **not** xgrammar-constrained engine
