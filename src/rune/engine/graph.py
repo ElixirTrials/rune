@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import mlflow
@@ -35,6 +36,15 @@ from rune.sandbox.executor import run_in_sandbox
 logger = logging.getLogger(__name__)
 
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
+# Thin, focused prompts for episodic mode (the adapter carries the context).
+# decompose keeps its existing concise prompt (already spec-free).
+_EPISODIC_PROMPTS = {
+    "plan": "prompt_episodic_plan",
+    "code": "prompt_episodic_code",
+    "repair": "prompt_episodic_repair",
+    "integrate": "prompt_episodic_integrate",
+    "decompose": "prompt_decompose_concise",
+}
 _INTEGRATION_DOC_LINE_CAP = 200
 _PROJECT_CAP = 1200
 # Carries the task spec into the minimal generation prompt; must NOT truncate a
@@ -88,7 +98,7 @@ def render_training_format_trajectory(
 
 
 def render_episode_adapter(
-    action_name: str, target: str | None, state: dict[str, Any]
+    action_name: str, target: str | None, state: Mapping[str, Any]
 ) -> str:
     """Episodic adapter conditioning: the RIGHT context for the current step.
 
@@ -401,7 +411,16 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             "training_exact",
             "reference_a", "reference_b", "reference_b1", "reference_c",
         )
-        if prompt_mode in _ref_modes and action.name in ("code", "repair"):
+        if prompt_mode == "episodic":
+            # Episodic design (#52): adapter carries the right context per step;
+            # the prompt is a thin pointer to the immediate sub-goal (no spec leak).
+            trajectory_text = render_episode_adapter(
+                action.name, action.target_subtask, state
+            )
+            prompt_text = render_template(
+                _EPISODIC_PROMPTS.get(action.name, action.prompt_template), **ctx
+            )
+        elif prompt_mode in _ref_modes and action.name in ("code", "repair"):
             # spec-in-adapter (#52): the spec lives only in the conditioning; the
             # prompt refers to the mission by name.
             trajectory_text = render_reference_adapter(
