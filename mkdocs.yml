@@ -22,7 +22,6 @@ nav:
           - Policy: api/engine/policy.md
           - Parse: api/engine/parse.md
           - Continuation: api/engine/continuation.md
-          - JSON Repair: api/engine/json_repair.md
       - Model:
           - Wrapper: api/model/wrapper.md
           - Inference: api/model/inference.md

@@ -32,7 +32,9 @@ CAP = {
 
 def rows(p: str) -> list[dict]:
     fp = Path(p)
-    return [json.loads(l) for l in fp.read_text().splitlines() if l.strip()] if fp.exists() else []
+    if not fp.exists():
+        return []
+    return [json.loads(ln) for ln in fp.read_text().splitlines() if ln.strip()]
 
 
 def boot_mean_ci(xs: list[float], iters: int = 10000, seed: int = 0) -> tuple:

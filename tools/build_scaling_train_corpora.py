@@ -16,7 +16,10 @@ import argparse
 import json
 from pathlib import Path
 
-from build_heldout_mbpp_recall_corpus import CROSSOVER_IDS, _row  # type: ignore  # noqa: PLC2701
+from build_heldout_mbpp_recall_corpus import (  # type: ignore  # noqa: PLC2701
+    CROSSOVER_IDS,
+    _row,
+)
 
 OUT = Path("benchmarks")
 

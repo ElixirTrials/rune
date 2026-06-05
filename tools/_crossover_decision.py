@@ -43,7 +43,7 @@ def load(path: str, regime: str, span: str) -> dict[str, dict]:
 
 def sign_test_p(n_pos: int, n: int) -> float:
     """Two-sided exact binomial sign test p-value (p=0.5)."""
-    from math import comb
+    from math import comb  # noqa: PLC0415
 
     if n == 0:
         return 1.0

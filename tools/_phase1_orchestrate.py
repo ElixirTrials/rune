@@ -50,7 +50,9 @@ def log(msg: str) -> None:
 
 def sh(cmd: list[str], logfile: Path) -> int:
     with open(logfile, "w") as f:
-        return subprocess.run(cmd, env=ENV, stdout=f, stderr=subprocess.STDOUT).returncode
+        return subprocess.run(
+            cmd, env=ENV, stdout=f, stderr=subprocess.STDOUT, check=False
+        ).returncode
 
 
 def write_yaml(cfg: dict, path: Path) -> None:
