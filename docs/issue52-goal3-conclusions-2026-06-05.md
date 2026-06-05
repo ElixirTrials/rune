@@ -40,7 +40,33 @@ Three runner defects made multi-turn repair untestable; all fixed + validated:
   ~0.57–0.59. (`reference_a` = plain `## Task` spec-in-adapter, closest to c3's training
   format — the training-faithful encoding wins among the flavors.)
 
-## The decisive 3-way comparison (same tasks, corrected runner, judge off)
+## CORRECTION — the scale0-full baseline had the spec in the prompt (invalid floor)
+
+The owner flagged it: scale0 should not have the context to succeed, yet it scored 0.79.
+Inspecting the rendered prompts:
+
+- **`full` mode** (used by scale0-full and c3-full): the `code` prompt's `Project:` field =
+  the **entire spec + doctest** (`project_label` = `task[:1200]`). So scale0-full solves
+  straight from the prompt — **0.792 is a spec-in-PROMPT ceiling, not a no-context floor.**
+- **`reference` modes** (the HPO arms): the prompt is just *"implement mission `add_lists` —
+  the Task is in your context"*; **no spec in the prompt**, spec only in the adapter. This is
+  the proper memory test.
+
+**The valid memory comparison — both in reference_a (minimal prompt), differing only in the
+adapter:**
+
+| reference_a | adapter | pass@1 (n=24) |
+|---|---|---|
+| **scale0** (no spec anywhere — true floor) | off | **0.333 (8/24)** |
+| **c3** (spec in adapter) @ scaling 0.627 | on | **0.583 (14/24)** |
+
+**The hypernetwork adapter lifts pass@1 from 0.33 → 0.58 (+6/24, +0.25)** — it genuinely
+carries the task spec as memory. (Still below the 0.792 spec-in-prompt ceiling: the adapter
+is a real but *lossy* spec channel, ~5 tasks worse than the prompt.) This is the
+adapter-as-memory thesis working at the single-turn level, and it reverses the headline below
+— which had used the invalid spec-in-prompt floor.
+
+## The (now superseded) 3-way comparison vs the invalid spec-in-prompt floor
 
 To separate "spec **in** the adapter" from "adapter **as added** memory", three arms on the
 **same held-out 7** (`mbpp/115,133,118,119,106,113,135`) and on the full 24:
@@ -56,18 +82,20 @@ Paired (same tasks) c3-full vs scale0 on the 24: **+2** recovered (mbpp/115, 123
 
 ## Conclusions
 
-1. **Spec-in-adapter *instead of* the prompt costs accuracy** (0.583 vs 0.792 on 24; 4/7 vs
-   5/7 held-out). The hypernetwork does not carry the full task spec as reliably as the
-   prompt — consistent with the earlier single-turn findings. The reference/spec-in-adapter
-   flavors are the *wrong* way to use the adapter for these tasks. **This is the robust
-   result** (large gap, n=24).
-2. **The adapter *added* to the prompt is net neutral here, NOT a win.** On the full 24 it
-   is **slightly negative** (18 vs 19; +2 recovered, −3 lost — it perturbs the model both
-   ways and trades tasks at scaling 1.0). The n=7 held-out slice looked positive (0.857 vs
-   0.714) but that **reversed on n=24** — a concrete small-sample mirage. No clear additive
-   benefit at scaling 1.0 on this easy pool; a scaling sweep for full-mode is the obvious
-   next step (the HPO tuned scaling only for the spec-in-adapter flavors).
-3. **Repair now genuinely engages** (the oracle gives a real in-loop signal; e.g.
+1. **The hypernetwork adapter provides real memory value (the thesis works, single-turn).**
+   In the minimal-prompt regime, adapter-on (c3) vs adapter-off (scale0) is **0.583 vs 0.333
+   on 24 (+6 tasks, +0.25)** — the adapter carries the task spec the prompt no longer
+   supplies. This is the robust headline (n=24, large effect).
+2. **The adapter is a *lossy* spec channel — real but imperfect.** Spec-in-adapter (0.583)
+   trails spec-in-prompt (0.792) by ~5 tasks: the hypernetwork carries the spec, just not as
+   reliably as the prompt does. So the gain in (1) is "memory works," not "memory beats the
+   prompt."
+3. **Adapter *added on top of* the full spec-in-prompt is net neutral** (c3-full 18 vs
+   scale0-full 19 on 24; +2/−3, trades tasks at scaling 1.0). When the prompt already has the
+   spec, the adapter adds little — its value is as the spec *carrier* (1), not an extra boost
+   on top of a complete prompt. (The n=7 slice looked positive, 0.857 vs 0.714, but that
+   **reversed on n=24** — a small-sample mirage; the n=24 numbers are the firm ones.)
+4. **Repair now genuinely engages** (the oracle gives a real in-loop signal; e.g.
    decode_string repairs on its public example), but this **easy, high-floor pool
    (scale0 0.79) cannot exercise the multi-turn repair-memory thesis** — most tasks pass on
    attempt 1, so few repair episodes occur. Testing whether the adapter *helps repair across
