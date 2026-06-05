@@ -12,14 +12,27 @@ def _state() -> dict:
         "entry_point": "calculate",
         "overall_goal": "Evaluate an arithmetic expression string to an int.",
         "subtasks": [
-            Subtask("tokenize", "Split the expression into tokens", [],
-                    "assert tokenize('2+3')==['2','+','3']", "calculate"),
-            Subtask("evaluate", "Evaluate the token list", ["tokenize"],
-                    "assert evaluate(['2','+','3'])==5", "calculate"),
+            Subtask(
+                "tokenize",
+                "Split the expression into tokens",
+                [],
+                "assert tokenize('2+3')==['2','+','3']",
+                "calculate",
+            ),
+            Subtask(
+                "evaluate",
+                "Evaluate the token list",
+                ["tokenize"],
+                "assert evaluate(['2','+','3'])==5",
+                "calculate",
+            ),
         ],
         "code_results": {"tokenize": "def tokenize(s): return list(s)"},
-        "feedback": {"tokenize": Feedback(stdout="", stderr="AssertionError: bad split",
-                                          exit_code=1)},
+        "feedback": {
+            "tokenize": Feedback(
+                stdout="", stderr="AssertionError: bad split", exit_code=1
+            )
+        },
         "diagnosis": {},
         "integration_feedback": None,
     }

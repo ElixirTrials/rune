@@ -125,8 +125,13 @@ def cmd_run(args: argparse.Namespace) -> None:
         tracked_run,
     )
 
-    cfg = _build_cfg(args.arm, args.seed, args.max_iters, args.prompt_mode,
-                     adapter_scaling=args.adapter_scaling)
+    cfg = _build_cfg(
+        args.arm,
+        args.seed,
+        args.max_iters,
+        args.prompt_mode,
+        adapter_scaling=args.adapter_scaling,
+    )
     tasks = load_tasks(Path(args.tasks))
     if args.limit:
         tasks = tasks[: args.limit]
@@ -209,9 +214,7 @@ def cmd_score(args: argparse.Namespace) -> None:
             continue
         test_code = pool[tid]["test_code"]
         steps = [
-            json.loads(line)
-            for line in sess.read_text().splitlines()
-            if line.strip()
+            json.loads(line) for line in sess.read_text().splitlines() if line.strip()
         ]
         turns: list[dict[str, Any]] = []
         for s in steps:

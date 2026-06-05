@@ -43,13 +43,9 @@ RUNE = "/workspaces/rune-gpu"
 sys.path.insert(0, f"{RUNE}/tools")
 
 BASE = load_rune_config().model_id
-WARM = (
-    f"{RUNE}/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
-)
+WARM = f"{RUNE}/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
 DEFAULT_CKPT = "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
-NAME_CUE = (
-    "Write the Python function named `{name}` that you have just studied. Return only the code."
-)
+NAME_CUE = "Write the Python function named `{name}` that you have just studied. Return only the code."
 _FENCE = re.compile(r"```(?:python)?\n(.*?)```", re.DOTALL)
 _DEFNAME = re.compile(r"^\s*def\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
 
@@ -68,12 +64,17 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", type=str, default=DEFAULT_CKPT)
     ap.add_argument("--model-id", type=str, default=BASE)
-    ap.add_argument("--corpus", type=str, default=f"{RUNE}/benchmarks/mbpp_recall_heldout.jsonl")
+    ap.add_argument(
+        "--corpus", type=str, default=f"{RUNE}/benchmarks/mbpp_recall_heldout.jsonl"
+    )
     ap.add_argument("--k-values", type=str, default="1,2,4,8")
     ap.add_argument("--max-new-tokens", type=int, default=256)
     ap.add_argument("--max-seq-length", type=int, default=2048)
-    ap.add_argument("--scale0", action="store_true",
-                    help="base only, NO adapter — the floor; name cue still given")
+    ap.add_argument(
+        "--scale0",
+        action="store_true",
+        help="base only, NO adapter — the floor; name cue still given",
+    )
     ap.add_argument("--out", type=str, default=None)
     a = ap.parse_args()
 
@@ -93,14 +94,21 @@ def main() -> int:
     from rune.sandbox.executor import run_in_sandbox  # noqa: PLC0415
     from rune.training.hypernet_distill import _functional_lora  # noqa: PLC0415
 
-    episodes = [json.loads(ln) for ln in Path(a.corpus).read_text().splitlines() if ln.strip()]
+    episodes = [
+        json.loads(ln) for ln in Path(a.corpus).read_text().splitlines() if ln.strip()
+    ]
     tests = {e["task_id"]: e["test_code"] for e in episodes}
 
     tag = "scale=0 (base)" if a.scale0 else a.ckpt.split("/")[-1]
-    print(f"loading base{'' if a.scale0 else ' + hypernet'} ({tag}) "
-          f"| corpus={Path(a.corpus).name} n={len(episodes)} | k={k_values}", flush=True)
+    print(
+        f"loading base{'' if a.scale0 else ' + hypernet'} ({tag}) "
+        f"| corpus={Path(a.corpus).name} n={len(episodes)} | k={k_values}",
+        flush=True,
+    )
     base = AutoModelForCausalLM.from_pretrained(
-        a.model_id, dtype=torch.bfloat16, attn_implementation="flash_attention_2",
+        a.model_id,
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
         device_map={"": "cuda"},
     ).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
@@ -108,19 +116,27 @@ def main() -> int:
     n_qs = torch.tensor([1], device="cuda")
     hyp = scaling = li = n_chunks = head_bias = hd = ht = None
     if not a.scale0:
-        hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda")
+        hyp = load_hypernetwork(
+            HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda"
+        )
         hyp.eval()
         scaling = effective_scaling(hyp)
         li = [int(x) for x in hyp.config.layer_indices]
         n_chunks = torch.tensor([1], device="cuda")
-        head_bias = hyp.get_head_bias() if getattr(hyp.config, "use_bias", False) else None
+        head_bias = (
+            hyp.get_head_bias() if getattr(hyp.config, "use_bias", False) else None
+        )
         hd, ht = next(hyp.parameters()).device, next(hyp.parameters()).dtype
 
     def adapter_for_block(descs: list[str]):
         """Condition ONE adapter on the concatenation of k task descriptions."""
         study = "\n\n".join(descs)
         feats, am = extract_activations_with_model(
-            render_training_format_trajectory(task=study), base, tok, li, a.max_seq_length
+            render_training_format_trajectory(task=study),
+            base,
+            tok,
+            li,
+            a.max_seq_length,
         )
         with torch.no_grad():
             ld, _ = hyp.generate_weights(feats.to(device=hd, dtype=ht), am.to(hd), None)
@@ -131,8 +147,10 @@ def main() -> int:
         import contextlib  # noqa: PLC0415
 
         enc = tok.apply_chat_template(
-            [{"role": "user", "content": prompt}], add_special_tokens=False,
-            add_generation_prompt=True, return_tensors="pt",
+            [{"role": "user", "content": prompt}],
+            add_special_tokens=False,
+            add_generation_prompt=True,
+            return_tensors="pt",
         )
         pids = (enc["input_ids"] if hasattr(enc, "keys") else enc).to(device)
         ctx = (
@@ -142,10 +160,14 @@ def main() -> int:
         )
         with torch.no_grad(), ctx:
             out = base.generate(
-                pids, max_new_tokens=a.max_new_tokens, do_sample=False,
+                pids,
+                max_new_tokens=a.max_new_tokens,
+                do_sample=False,
                 pad_token_id=tok.eos_token_id,
             )
-        return tok.decode(out[0][pids.shape[1]:], skip_special_tokens=True), int(pids.shape[1])
+        return tok.decode(out[0][pids.shape[1] :], skip_special_tokens=True), int(
+            pids.shape[1]
+        )
 
     def passes(code: str, test_code: str) -> bool:
         full = strip_self_tests(extract_code(code)) + "\n\n" + test_code
@@ -182,16 +204,31 @@ def main() -> int:
                 other_names = {x["entry_point"] for x in block} - {name}
                 if emitted_name in other_names:
                     interference += 1
-                rows.append({
-                    "k": k, "block": bi, "pos": pos, "task_id": tid, "entry_point": name,
-                    "pass": bool(ok), "emitted_def": emitted_name,
-                    "prompt_tokens": ptoks, "study_tokens": study_tokens,
-                })
+                rows.append(
+                    {
+                        "k": k,
+                        "block": bi,
+                        "pos": pos,
+                        "task_id": tid,
+                        "entry_point": name,
+                        "pass": bool(ok),
+                        "emitted_def": emitted_name,
+                        "prompt_tokens": ptoks,
+                        "study_tokens": study_tokens,
+                    }
+                )
         rate = kp / kn if kn else 0.0
-        summary[k] = {"pass1": f"{kp}/{kn}", "rate": round(rate, 3),
-                      "interference": interference, "blocks": len(blocks)}
-        print(f"  k={k:2d}: pass@1={kp}/{kn} ({rate:.3f})  interference={interference}  "
-              f"blocks={len(blocks)}", flush=True)
+        summary[k] = {
+            "pass1": f"{kp}/{kn}",
+            "rate": round(rate, 3),
+            "interference": interference,
+            "blocks": len(blocks),
+        }
+        print(
+            f"  k={k:2d}: pass@1={kp}/{kn} ({rate:.3f})  interference={interference}  "
+            f"blocks={len(blocks)}",
+            flush=True,
+        )
 
     print("\n=== SUMMARY ===", flush=True)
     print(json.dumps({"arm": tag, "summary": summary}, indent=2), flush=True)

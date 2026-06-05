@@ -316,8 +316,15 @@ def run_hypernet_distillation(config: Any) -> None:
         logger.info("precomputed %d recall baselines", len(recall_baselines))
         if cfg.snapshot_steps:  # step-0 warm-start reference for post-hoc deltas
             snap0 = _recall_snapshot(
-                records, recall_baselines, hypernet, base_model, tokenizer,
-                layer_indices, eff_scaling, n_chunks, cfg.snapshot_episodes,
+                records,
+                recall_baselines,
+                hypernet,
+                base_model,
+                tokenizer,
+                layer_indices,
+                eff_scaling,
+                n_chunks,
+                cfg.snapshot_episodes,
             )
             if mlflow is not None and snap0:
                 mlflow.log_metrics(snap0, step=0)
@@ -589,9 +596,10 @@ def run_hypernet_distillation(config: Any) -> None:
                     g_lp_n = _gold_logprobs(
                         g_neg_logits[:-1], guard_pending["gold"], guard_pending["em"]
                     )
-                    loss_guard: Any = cfg.guard_weight * torch.clamp(
-                        g_lp_n - guard_pending["lp_n0"], min=0.0
-                    ).mean()
+                    loss_guard: Any = (
+                        cfg.guard_weight
+                        * torch.clamp(g_lp_n - guard_pending["lp_n0"], min=0.0).mean()
+                    )
                     (loss_guard / cfg.grad_accum_steps).backward()
                     del g_neg_ld, g_neg_logits, g_lp_n
                 accum += 1
@@ -676,8 +684,15 @@ def run_hypernet_distillation(config: Any) -> None:
                     and step % cfg.snapshot_steps == 0
                 ):
                     snap = _recall_snapshot(
-                        records, recall_baselines, hypernet, base_model, tokenizer,
-                        layer_indices, eff_scaling, n_chunks, cfg.snapshot_episodes,
+                        records,
+                        recall_baselines,
+                        hypernet,
+                        base_model,
+                        tokenizer,
+                        layer_indices,
+                        eff_scaling,
+                        n_chunks,
+                        cfg.snapshot_episodes,
                     )
                     if mlflow is not None and snap:
                         mlflow.log_metrics(snap, step=step)
@@ -1461,13 +1476,20 @@ def _precompute_recall_baselines(
         gold = torch.tensor(ans_ids[1:], device=device)
         with torch.no_grad():
             neg_ld = _generate_lora_dict(
-                hypernet, partner["context"], base_model, tokenizer, layer_indices,
+                hypernet,
+                partner["context"],
+                base_model,
+                tokenizer,
+                layer_indices,
                 max_seq_length,
             )
             neg_logits = _student_logits(
-                base_model, tokenizer, ans_ids,
+                base_model,
+                tokenizer,
+                ans_ids,
                 assemble_adapter(hypernet, neg_ld, n_chunks),
-                layer_indices, eff_scaling,
+                layer_indices,
+                eff_scaling,
             )
             lp_n0 = _gold_logprobs(neg_logits[:-1], gold, em).detach()
             del neg_ld, neg_logits
@@ -1510,7 +1532,10 @@ def _recall_guarded_term(
         return loss, _empty_recall_metrics(), None
     try:
         em = _body_span_mask(
-            tokenizer, answer, mapped.get("entry_point", ""), ans_ids,
+            tokenizer,
+            answer,
+            mapped.get("entry_point", ""),
+            ans_ids,
             device=student_logits.device,
         )
     except ValueError:
@@ -1529,8 +1554,12 @@ def _recall_guarded_term(
             hypernet, neg_ctx, base_model, tokenizer, layer_indices, cfg.max_seq_length
         )
         neg_logits0 = _student_logits(
-            base_model, tokenizer, ans_ids,
-            assemble_adapter(hypernet, neg_ld0, n_chunks), layer_indices, eff_scaling,
+            base_model,
+            tokenizer,
+            ans_ids,
+            assemble_adapter(hypernet, neg_ld0, n_chunks),
+            layer_indices,
+            eff_scaling,
         )
         lp_n_det = _gold_logprobs(neg_logits0[:-1], gold, em)
         lp_z = _gold_logprobs(base_logits[:-1], gold, em)
@@ -1654,9 +1683,9 @@ def _recall_snapshot(
             line_end = answer.find("\n", j)
             line_end = len(answer) if line_end < 0 else line_end
             body_start = len(
-                tokenizer(
-                    answer[: line_end + 1], add_special_tokens=False
-                ).input_ids[:_SNAP_MAX_ANS_TOK]
+                tokenizer(answer[: line_end + 1], add_special_tokens=False).input_ids[
+                    :_SNAP_MAX_ANS_TOK
+                ]
             )
             desc = _snap_desc(rec["context"])
             traj = render_training_format_trajectory(task=desc)
@@ -1665,16 +1694,24 @@ def _recall_snapshot(
             )
             m_ad = assemble_adapter(hypernet, m_ld, n_chunks)
             n_ld = _generate_lora_dict(
-                hypernet, baseline["partner_ctx"], base_model, tokenizer,
-                layer_indices, 2048,
+                hypernet,
+                baseline["partner_ctx"],
+                base_model,
+                tokenizer,
+                layer_indices,
+                2048,
             )
             n_ad = assemble_adapter(hypernet, n_ld, n_chunks)
             for regime, tmpl in (("absent", _SNAP_ABSENT), ("present", _SNAP_PRESENT)):
                 prompt = tmpl.format(desc=desc) if "{desc}" in tmpl else tmpl
                 full, start, al = _snap_full(tokenizer, device, prompt, answer)
                 ids = full[0]
-                acc[f"{regime}_matched"].append(_lp(m_ad,full,ids,start,body_start,al))
-                acc[f"{regime}_mismatch"].append(_lp(n_ad,full,ids,start,body_start,al))
+                acc[f"{regime}_matched"].append(
+                    _lp(m_ad, full, ids, start, body_start, al)
+                )
+                acc[f"{regime}_mismatch"].append(
+                    _lp(n_ad, full, ids, start, body_start, al)
+                )
                 lz = base_model(full, use_cache=False).logits[0]  # zero = no adapter
                 acc[f"{regime}_zero"].append(
                     _snap_body_lp(lz, ids, start, body_start, al)
@@ -1686,7 +1723,9 @@ def _recall_snapshot(
                     base_model, layer_indices, m_ad, eff_scaling, n_qs
                 ):
                     gen_out = base_model.generate(
-                        full[:, :start], max_new_tokens=64, do_sample=False,
+                        full[:, :start],
+                        max_new_tokens=64,
+                        do_sample=False,
                         pad_token_id=tokenizer.eos_token_id,
                     )
                 text = tokenizer.decode(gen_out[0][start:], skip_special_tokens=True)

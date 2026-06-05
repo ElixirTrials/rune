@@ -51,9 +51,7 @@ class TestD2LTrainConfig:
 
 
 class TestLoadTrainConfig:
-    def test_reads_training_section_and_inherits_model_id(
-        self, tmp_path: Path
-    ) -> None:
+    def test_reads_training_section_and_inherits_model_id(self, tmp_path: Path) -> None:
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text(
             'model_id: "Org/Top-Level"\n'

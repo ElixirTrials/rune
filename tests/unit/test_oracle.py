@@ -61,10 +61,7 @@ class TestExtractPublicChecks:
         assert extract_public_checks('"""no examples here"""', "foo") == ""
 
     def test_only_examples_calling_entry_point(self) -> None:
-        spec = (
-            '"""f\n>>> assert helper(1) == 2\n'
-            '>>> assert target(3) == 9\n"""'
-        )
+        spec = '"""f\n>>> assert helper(1) == 2\n>>> assert target(3) == 9\n"""'
         checks = extract_public_checks(spec, "target")
         assert "target(3)" in checks
         assert "helper" not in checks
@@ -76,7 +73,9 @@ class TestDefinesFunction:
 
     def test_substring_in_comment_not_matched(self) -> None:
         # 'calculate' appears only in a comment / helper, not as a top-level def
-        assert not defines_function("# calculate something\ndef other():\n    pass", "calculate")
+        assert not defines_function(
+            "# calculate something\ndef other():\n    pass", "calculate"
+        )
 
     def test_syntax_error_is_false(self) -> None:
         assert not defines_function("def broken(:", "broken")

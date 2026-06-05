@@ -76,12 +76,17 @@ def main() -> None:
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
     rows = [json.loads(line) for line in Path(LCB_JSONL).read_text().splitlines()]
-    rows = [r for r in rows if args.start_date <= r["contest_date"][:10] < args.end_date]
+    rows = [
+        r for r in rows if args.start_date <= r["contest_date"][:10] < args.end_date
+    ]
     if args.functional_only:
         rows = [r for r in rows if r.get("starter_code")]
     if args.limit:
         rows = rows[: args.limit]
-    print(f"LCB problems: {len(rows)} (functional_only={args.functional_only})", flush=True)
+    print(
+        f"LCB problems: {len(rows)} (functional_only={args.functional_only})",
+        flush=True,
+    )
 
     a = ARMS[args.arm]
     cfg = load_rune_config(None).override(
@@ -107,8 +112,7 @@ def main() -> None:
     config: dict[str, Any] = {"model": model, "run_config": cfg.to_dict()}
     result = asyncio.run(run_benchmark(tasks, engine, config))
     gens = [
-        {"question_id": r.task_id, "code_list": [r.code or ""]}
-        for r in result.per_task
+        {"question_id": r.task_id, "code_list": [r.code or ""]} for r in result.per_task
     ]
     Path(args.out).write_text(json.dumps(gens, indent=1))
     print(

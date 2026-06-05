@@ -169,7 +169,9 @@ def main() -> int:
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
         )
-    print(f"base={a.model_id}  dtype={'4bit-nf4' if a.load_4bit else 'bf16'}", flush=True)
+    print(
+        f"base={a.model_id}  dtype={'4bit-nf4' if a.load_4bit else 'bf16'}", flush=True
+    )
     base = AutoModelForCausalLM.from_pretrained(a.model_id, **load_kw).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
     hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda")

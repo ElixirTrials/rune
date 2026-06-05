@@ -65,8 +65,7 @@ class TestPipelineConfig:
         # One config.yaml holds both surfaces; PipelineConfig ignores `training:`.
         path = tmp_path / "config.yaml"
         path.write_text(
-            'model_id: "Org/M"\ntemperature: 0.5\n'
-            "training:\n  learning_rate: 1.0e-3\n"
+            'model_id: "Org/M"\ntemperature: 0.5\ntraining:\n  learning_rate: 1.0e-3\n'
         )
         cfg = load_config(path)  # must not crash on the unknown `training` key
         assert cfg.model_id == "Org/M"
@@ -86,6 +85,7 @@ class TestPipelineConfig:
             assert PipelineConfig.from_env().model_id == "Org/Custom-Model"
         finally:
             del os.environ["RUNE_BASE_MODEL"]
+
 
 class TestLoadRuneConfig:
     def test_reads_yaml_file(self, tmp_path: Path) -> None:

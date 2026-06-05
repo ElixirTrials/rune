@@ -313,9 +313,7 @@ def parse_output(
         case "diagnose":
             diag_result = _loads_structured(raw, DiagnoseResult)
             if diag_result is None:
-                logger.warning(
-                    "diagnose output unparseable; no diagnosis recorded"
-                )
+                logger.warning("diagnose output unparseable; no diagnosis recorded")
                 return {}
             diagnosis = dict(state.get("diagnosis", {}))
             code_passed = dict(state.get("code_passed", {}))

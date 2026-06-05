@@ -40,7 +40,11 @@ def boot_ci(pairs: list[tuple[int, int]], iters: int = 10000, seed: int = 0) -> 
         s = sum((p := pairs[rng.randrange(n)])[0] - p[1] for _ in range(n)) / n  # noqa: F841
         means.append(s)
     means.sort()
-    return (round(point, 3), round(means[int(0.025 * iters)], 3), round(means[int(0.975 * iters)], 3))
+    return (
+        round(point, 3),
+        round(means[int(0.025 * iters)], 3),
+        round(means[int(0.975 * iters)], 3),
+    )
 
 
 def main() -> int:
@@ -74,7 +78,9 @@ def main() -> int:
             pairs = [(da[t], db[t]) for t in common]
             pt, lo, hi = boot_ci(pairs)
             flag = "  <-- CI excludes 0" if (lo > 0 or hi < 0) else ""
-            print(f"  k={k:2d}: delta={pt:+.3f} CI[{lo:+.3f},{hi:+.3f}] n={len(pairs)}{flag}")
+            print(
+                f"  k={k:2d}: delta={pt:+.3f} CI[{lo:+.3f},{hi:+.3f}] n={len(pairs)}{flag}"
+            )
 
     paired("c3", "scale0")
     paired("c3", "warm")
@@ -108,8 +114,10 @@ def main() -> int:
     pt = [r["prompt_tokens"] for r in data["c3"]]
     st = [r["study_tokens"] for r in data["c3"] if r.get("study_tokens") is not None]
     if pt:
-        print(f"\n=== budget: prompt_tokens min/max = {min(pt)}/{max(pt)} (flat) ; "
-              f"study_tokens min/max = {min(st)}/{max(st)} (grows with k)")
+        print(
+            f"\n=== budget: prompt_tokens min/max = {min(pt)}/{max(pt)} (flat) ; "
+            f"study_tokens min/max = {min(st)}/{max(st)} (grows with k)"
+        )
     return 0
 
 

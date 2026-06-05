@@ -25,7 +25,9 @@ def main() -> int:
     if exp is None:
         print(f"no experiment {EXP}", flush=True)
         return 1
-    runs = mlflow.search_runs([exp.experiment_id], order_by=["start_time DESC"], max_results=20)
+    runs = mlflow.search_runs(
+        [exp.experiment_id], order_by=["start_time DESC"], max_results=20
+    )
     seen: set[str] = set()
     for _, row in runs.iterrows():
         rid = row["run_id"]
@@ -34,7 +36,11 @@ def main() -> int:
         # corpus_path param tells us the size; find mbpp_recall_train_{N} or the base 40.
         corpus = None
         for col in row.index:
-            if col.startswith("params.") and isinstance(row[col], str) and "mbpp_recall_train" in row[col]:
+            if (
+                col.startswith("params.")
+                and isinstance(row[col], str)
+                and "mbpp_recall_train" in row[col]
+            ):
                 corpus = row[col]
                 break
         if corpus is None:
@@ -46,17 +52,24 @@ def main() -> int:
         for name in ("checkpoint_step48.pt", "checkpoint.pt", "checkpoint_best.pt"):
             try:
                 p = mlflow.artifacts.download_artifacts(
-                    run_id=rid, artifact_path=f"checkpoints/{name}", dst_path=str(DST / f"_dl_{n}")
+                    run_id=rid,
+                    artifact_path=f"checkpoints/{name}",
+                    dst_path=str(DST / f"_dl_{n}"),
                 )
                 out = DST / f"c3_n{n}.pt"
                 Path(p).replace(out)
-                print(f"[OK] N={n} run={rid[:8]} {name} -> {out} ({out.stat().st_size} B)", flush=True)
+                print(
+                    f"[OK] N={n} run={rid[:8]} {name} -> {out} ({out.stat().st_size} B)",
+                    flush=True,
+                )
                 seen.add(n)
                 break
             except Exception as exc:  # noqa: BLE001
                 last = exc
         else:
-            print(f"[MISS] N={n} run={rid[:8]} no checkpoint artifact: {last}", flush=True)
+            print(
+                f"[MISS] N={n} run={rid[:8]} no checkpoint artifact: {last}", flush=True
+            )
     print(f"fetched sizes: {sorted(seen)}", flush=True)
     return 0
 

@@ -33,7 +33,9 @@ def _decode_private(s: str) -> list:
 
 
 def _sample(row: dict) -> dict:
-    tc = json.loads(row["public_test_cases"]) + _decode_private(row["private_test_cases"])
+    tc = json.loads(row["public_test_cases"]) + _decode_private(
+        row["private_test_cases"]
+    )
     meta = json.loads(row["metadata"]) if row["metadata"] else {}
     return {
         "input_output": json.dumps(
@@ -61,7 +63,10 @@ def main() -> None:
     samples_list = [_sample(rows[g["question_id"]]) for g in gens]
     generations_list = [g["code_list"] for g in gens]
     metrics, _results, _ = codegen_metrics(
-        samples_list, generations_list, k_list=[1], num_process_evaluate=8,
+        samples_list,
+        generations_list,
+        k_list=[1],
+        num_process_evaluate=8,
         timeout=args.timeout,
     )
     print(f"LCB pass@1 = {metrics.get('pass@1')}  (n={len(gens)})")

@@ -21,8 +21,13 @@ from rune.engine.state import Action
 
 def _decompose_action() -> Action:
     return Action(
-        "decompose", "decompose", "prompt_decompose_concise", "", DecomposeResult,
-        False, None,
+        "decompose",
+        "decompose",
+        "prompt_decompose_concise",
+        "",
+        DecomposeResult,
+        False,
+        None,
     )
 
 
@@ -56,8 +61,10 @@ class TestEpisodicSchema:
 
     def test_subtask_accepts_episodic_fields(self) -> None:
         s = SubtaskSchema(
-            name="tok", description="tokenizer",
-            acceptance_check="assert tokenize('1+2') == ['1','+','2']", builds="calculate",
+            name="tok",
+            description="tokenizer",
+            acceptance_check="assert tokenize('1+2') == ['1','+','2']",
+            builds="calculate",
         )
         assert s.acceptance_check.startswith("assert")
         assert s.builds == "calculate"

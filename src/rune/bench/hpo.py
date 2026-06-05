@@ -142,9 +142,7 @@ async def run_hpo(
     # study.optimize's worker thread).
     _client = MlflowClient()
 
-    def _log_progress(
-        study: optuna.Study, trial: optuna.trial.FrozenTrial
-    ) -> None:
+    def _log_progress(study: optuna.Study, trial: optuna.trial.FrozenTrial) -> None:
         if not parent_run_id:
             return
         step = trial.number
@@ -153,9 +151,8 @@ async def run_hpo(
         )
         _client.log_metric(parent_run_id, "trials_completed", step + 1, step=step)
         if trial.value is not None:
-            _client.log_metric(
-                parent_run_id, "trial_pass_at_1", trial.value, step=step
-            )
+            _client.log_metric(parent_run_id, "trial_pass_at_1", trial.value, step=step)
+
     if fresh and _BENCH_HPO_DB.exists():
         _BENCH_HPO_DB.unlink()
         logger.info("Deleted existing Optuna DB: %s", _BENCH_HPO_DB)

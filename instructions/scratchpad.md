@@ -1643,3 +1643,168 @@ Steps:
 4. Analyze HPO: best flavor+scaling, validation pass@1 vs scale0 floor = adapter value on corrected runner.
 5. Conclusions on the adapter-as-memory thesis (single-turn pass@1; repair now engages).
 Decisions: judge kept ON during HPO (user: "corrected runner"). If HPO too slow to finish overnight, reduce n_trials but keep ≥12; sqlite DB makes it resumable regardless. All runs logged to MLflow + sessions on disk.
+
+### [2026-06-04 22:40 UTC] Judge validated → FALSE-POSITIVES; HPO will run oracle-only
+Re-ran judge validation (4 hard tasks) after fixing the integrate metric-name crash (oracle_fired/"" trailing slash → MLflow reject; would have crashed every HPO trial; fixed commit 492693d).
+Result pass@1 2/4: int_to_roman PASS, merge_intervals PASS, calculate FAIL, decode_string FAIL.
+Behaviours:
+- decode_string: oracle flips (IndexError on public 3[a]2[bc]) → 4 repair rounds → still FAIL (genuinely hard).
+- calculate: JUDGE flips (held-out 100/10/2 gap the public example misses) → 4 repair rounds → still FAIL. Judge DID engage on a real gap (good) but couldn't fix in 4.
+- int_to_roman: JUDGE FALSE-POSITIVE — flagged correct code "wrong on input 4"; its own `reason` chain-of-thought concluded the code is CORRECT ("✅ No failing input found"), but the parsed verdict was correct=false. Root cause: JudgeResult emitted `correct` BEFORE `reason` ⇒ verdict-before-reasoning. Spurious repair ran but happened to keep it correct (no regression this time, but risk + ~35min/4tasks slow).
+Decisions:
+- Judge root-cause fix: reorder JudgeResult → (reason, failing_input, correct) so verdict follows analysis; prompt asks brief-reason-first. Commit 9d16a66. STILL UNVALIDATED as in-loop signal.
+- OVERNIGHT HPO runs on the deterministic public-example ORACLE with model_judge=OFF (configs/goal3_flavor_hpo.yaml model_judge:false; probe _build_cfg model_judge=False). Rationale: judge false-positives correct code → corrupts pass@1 (HPO metric) + 4x slower; advisor recommended judge as a SEPARATE arm not baked into baseline. This follows "once that [judge] works, test the rest" — judge does NOT work yet, oracle does.
+Sequence now: scale0 baseline (oracle, full mode, adapter off) on ref_pool_24 → floor + HPO timing; then flavor×scaling HPO (c3, oracle, --fresh) on ref_pool_24 → best validation pass@1 vs floor.
+
+### [2026-06-04 22:58 UTC] scale0 floor + HPO launched
+- scale0 baseline (corrected runner, oracle, judge OFF, prompt_mode=full/spec-in-prompt, adapter OFF) on goal3_ref_pool_24: **pass@1 0.792 (19/24)** in 23 min (~58s/task). High floor — base model solves most simple MBPP unaided; limited headroom. This is the no-adapter reference.
+- Launched flavor×adapter_scaling HPO: configs/goal3_flavor_hpo.yaml (model_judge:false), goal3_ref_pool_24, c3 ckpt, **n_trials=16** (reduced from 24 to guarantee overnight completion), --fresh (old buggy-runner study discarded). Tunes prompt_mode∈{training_exact,reference_a/b/b1/c} (spec-in-adapter) × adapter_scaling[0.1,1.5]; 0.70 tuning split → 17 tuning / 7 held-out val; metric=tuning pass@1, reported val_pass@1. Resumable (sqlite optuna_bench_hpo.db). Launcher tools/_run_goal3_hpo.py writes /tmp/goal3/hpo_result.json.
+- Conclusion frame: best val_pass@1 (spec-in-adapter) vs 0.792 floor (spec-in-prompt) = whether the adapter carries the spec as well as the prompt (adapter-as-memory). NOTE high floor compresses the signal.
+
+### [2026-06-05 03:40 UTC] HPO COMPLETE (16 trials, 4.3h)
+flavor×adapter_scaling HPO (c3, corrected runner, oracle, judge OFF) on goal3_ref_pool_24:
+- BEST: prompt_mode=**reference_a** @ adapter_scaling **0.627** (max_phase_iter 4, temp 0.3, presence 0).
+- tuning pass@1 = **0.588** (10/17); held-out **validation pass@1 = 0.571 (4/7)**.
+- best held since trial 2; other flavors (reference_c/b/b1, training_exact) and high scaling did not beat it → spec-in-adapter plateaus ~0.57–0.59.
+- vs scale0 spec-in-prompt floor 0.792 (on 24). Running apples-to-apples scale0 on the SAME 7 held-out (val7: mbpp/115,133,118,119,106,113,135), then c3 prompt_mode=full on val7 (adapter as ADDED memory on top of prompt) for a 3-way: spec-in-adapter (HPO) vs spec-in-prompt-no-adapter (scale0) vs spec-in-prompt+adapter (c3-full).
+PRELIM CONCLUSION: on this easy pool, moving the spec OUT of the prompt INTO the adapter (reference modes) costs accuracy — the hypernet doesn't carry the full task spec as reliably as the prompt. Consistent with earlier single-turn findings. Repair now genuinely engages (oracle) but the pool is too easy/high-floor to show multi-turn repair value; need a harder, repair-triggering slice for the repair-memory thesis.
+
+### [2026-06-05 04:55 UTC] CORRECTION (owner caught it): scale0-full had spec in prompt → invalid floor
+- prompt_mode=full: code prompt's `Project:` = task[:1200] = FULL spec+doctest. So scale0-full (0.792) is a spec-in-PROMPT ceiling, NOT a no-context floor. The adapter is irrelevant when the prompt has the answer.
+- reference_a mode: prompt = mission name only, spec ONLY in adapter (proper memory test).
+- TRUE memory comparison (both reference_a, minimal prompt): scale0 (adapter OFF, no spec) = **0.333 (8/24)** vs c3 (adapter ON, spec in adapter) = **0.583 (14/24)** ⇒ **adapter lifts +6/24 (+0.25)**. THE ADAPTER CARRIES THE SPEC AS MEMORY — thesis works single-turn. (Still < 0.792 prompt ceiling ⇒ lossy channel.)
+- Reverses earlier (flawed) "spec-in-adapter worse" headline. c3-full-on-top-of-prompt remains ~neutral (18 vs 19/24) — adapter's value is as spec CARRIER, not extra boost on a complete prompt.
+- NEXT (owner ask): HPO on HARDER/LONGER tasks for multi-turn gains. Only hard tasks on disk = 8 multistep (4 unique algos + 4 opaque). Need to curate ~24 harder pool (MBPP attempt-1-fail slice) or expand multistep. Floor will be lower on hard tasks → memory gain should be larger + repair engages.
+
+### [2026-06-05 05:15 UTC] Per-flavor best + harder-task plan (owner-directed)
+- Verified ALL reference flavor prompts contain ONLY the mission name (entry_point) — no spec leak (unlike full mode). reference_c/b1 say "spec/Specification" only as prose pointing to the adapter context. So flavor HPO = clean spec-in-adapter, minimal prompt. ✓ (owner check)
+- Per-flavor best (clean 16-trial HPO, tuning pass@1): reference_a / reference_c / reference_b1 TIED at 0.588; reference_b 0.471; training_exact (exact c3 training fmt) WORST 0.294. → best templates = reference_a/b1/c (precise/structured beat training-faithful).
+- HARDER-TASK PLAN (owner: curate attempt-1-fail slice; HPO where ADAPTER contains context; floor is just reference):
+  1. multistep memory test (8 hard tasks, reference_a): scale0 floor [running] vs c3 [next] → memory gain on hard tasks.
+  2. Discovery: reference_a c3, max-iters=1 (attempt-1 only), candidate_pool 144 → tasks failing attempt-1 = hard slice (repair engages).
+  3. Hard slice = candidate-pool attempt-1 fails + 8 multistep.
+  4. HPO: prompt_mode∈{reference_a,reference_b1,reference_c} × adapter_scaling, c3 (spec in adapter), on hard slice; scale0 reference floor for reference. Metric pass@1 + per-turn curve (multi-turn gain).
+
+### [2026-06-05 05:25 UTC] Published-benchmark calibration (owner ask: MBPP for this model)
+Qwen3-4B-Instruct-2507 model card reports NO MBPP/HumanEval (Qwen3 drops saturated benchmarks). Reported coding: MultiPL-E 76.8, LiveCodeBench v6 35.1, Aider-Polyglot 12.9.
+- Our scale0-full (spec-in-prompt) 0.792 on easy MBPP subset ≈ native MultiPL-E 76.8 → runner is SANE, not broken; high floor is the model being genuinely good at easy MBPP (saturated).
+- LiveCodeBench 35.1 (harder/contest) shows ~2x headroom → confirms harder-task direction. For item-4 multi-benchmark, LiveCodeBench/MultiPL-E/EvalPlus are the comparables (need harder task sets).
+PLAN (owner-consolidated): (1) full HPO ✓ done; (2) curate hard slice [next]; (3) multi-turn experimentation on hard; (4) then RL / more training / multi-benchmark run.
+
+### [2026-06-05 06:00 UTC] Hard-task memory NULL result + LiveCodeBench pipeline built
+- HARD-TASK MEMORY (8 multistep, reference_a, minimal prompt): scale0 floor 0.25 (2/8) vs c3 @0.627 ALSO 0.25 (2/8). On genuinely hard tasks the adapter did NOT lift pass@1 (vs +0.25 on easy pool). ⇒ hypernet carries SIMPLE specs but not complex algorithmic specs. (n=8, caveat.) c3 passed decode_string+merge_intervals.
+- LIVECODEBENCH v6 (owner: bench on LCB, use existing packages, minimal impl):
+  - benchmarking_tools.md confirms LCB for contamination-resistant evals (medium-high glue).
+  - Approach: rune GENERATES, official LCB harness GRADES (zero grading code from us). Isolated /tmp/lcbenv (numpy+tqdm; datasets NOT needed — build eval sample manually).
+  - GRADER VALIDATED: codegen_metrics on hand-written sols → stdin correct 1.0/wrong 0.0; functional correct 1.0/wrong 0.0. ✓ (test properly)
+  - test6.jsonl = v6 delta (175 problems); Feb-Apr 2025 window = 131 (Qwen 35.1 slice); 63/175 functional, rest stdin.
+  - tools/_lcb_run.py (rune env: LCB→BenchTask→engine→generations json) + tools/_lcb_grade.py (lcbenv: official codegen_metrics). PROBING generation on 4 problems now before any full run (owner: probe first).
+
+### [2026-06-05 06:40 UTC] LCB pipeline VALIDATED + generation failure on hard problems
+- LCB grader (official codegen_metrics, isolated lcbenv) end-to-end: probe 4 problems → pass@1 0.25 (1/4). Grader trustworthy. ✓ pipeline READY.
+- BUT rune generates EMPTY code on 3/4 hard problems (abc391_d/e/f). abc391_a (easy) → valid stdin script, passes.
+- rune-internal pass@1 (0.75) is BOGUS: stdin problems get empty test_code in my converter → engine sandbox runs empty code → exit 0 → false pass. Only LCB grade real.
+- CAUSE (same class as codegen JSON bug): plan/decompose/diagnose still emit JSON structured output → on hard problems the long plan JSON TRUNCATES → PlanResult validation fails → "re-planning" loop → budget exhausted before code → EMPTY. The freeform fix was code-only; plan/decompose/diagnose remain fragile on long outputs.
+- Ties to hard-task diagnosis: the agentic engine (decompose→plan→...) breaks on hard tasks (over-decompose, re-plan loops, oracle-stops-early, easy-tuned scaling over-perturbs). Hard tasks need: robust plan (json_repair/freeform/higher max_tokens), stronger in-loop signal (all public examples), scaling re-tune, decompose guard.
+
+### [2026-06-05 07:00 UTC] SESSION SUMMARY — everything tried (consolidated, owner-requested)
+**A. Runner correctness fixes (committed, validated):**
+1. Freeform codegen — code was JSON-wrapped; model over-escaped \n→\\n → 1-line phantom SyntaxError poisoning repair. Fixed: emit freeform ```python, de-fence (markdown-it) + ast. Probe: freeform 3/3 compile vs JSON stochastic collapse.
+2. Public-example oracle (rune/engine/oracle.py) — engine in-loop check was bare-def→exit0 (no logic signal). Now runs spec doctest in-loop. decode_string now repairs with real traceback→accurate diagnosis.
+3. In-loop model-judge — FALSE-POSITIVES correct code (flagged correct int_to_roman; verdict-before-reasoning). Reorder fix (reason→verdict) committed but UNVALIDATED + slow. KEPT OFF.
+4. Fixed integrate MLflow metric crash (oracle_fired/"" trailing slash).
+
+**B. HPO (16 trials, corrected runner, judge OFF, easy ref_pool_24):** best reference_a @ scaling 0.627, tuning 0.588, val 0.571. Per-flavor: reference_a/b1/c tied 0.588, training_exact WORST 0.294.
+
+**C. Memory results (the core thesis):**
+- WRONG first: scale0-full 0.792 vs spec-in-adapter 0.583 — INVALID (full mode leaks full spec into prompt via project_label[:1200]).
+- CORRECTED (both reference_a, minimal prompt): scale0 (adapter OFF, no spec) 0.333 vs c3 (spec in adapter) 0.583 = **adapter +0.25 (+6/24). Thesis works single-turn (easy).** Lossy channel (<0.79 prompt ceiling).
+- c3-full-on-top-of-prompt: ~neutral (18 vs 19/24; n=7 looked +, reversed n=24).
+- HARD (8 multistep, reference_a): scale0 0.25 == c3 0.25 (2/8). NO gain on hard.
+
+**D. Benchmark calibration:** Qwen3-4B-Instruct-2507 card: NO MBPP/HumanEval; MultiPL-E 76.8, LiveCodeBench v6 35.1, Aider 12.9. Our scale0-full 0.79≈MultiPL-E → runner sane; LCB 35.1 = harder, 2x headroom.
+
+**E. Hard-task failure diagnosis (docs/issue52-goal3-hardtask-failure-2026-06-05.md):**
+- Adapter carries full spec (no truncation) — capacity NOT the issue.
+- Oracle stops at SINGLE public example: c3 reaches public attempt-1 5/8 (vs scale0 1/8) but held-out only 2/8 — ships wrong code. Public≪held-out on hard.
+- Scaling 0.627 (easy-tuned) OVER-PERTURBS: trades tasks (gains merge_intervals, BREAKS int_to_roman which scale0 solved 7/7).
+- Plan step LEAKS full spec into prompt (project_label) in both arms — muddies floor.
+- Over-decomposition: calculate→2 subtasks, never completes/defines entry_point.
+
+**F. LiveCodeBench v6 (owner: bench it, minimal impl):**
+- Pipeline READY: rune GENERATES → official LCB codegen_metrics GRADES (isolated /tmp/lcbenv, no rune changes). Grader VALIDATED (stdin+functional correct 1.0/wrong 0.0). tools/_lcb_run.py + _lcb_grade.py.
+- Probe 4 problems: LCB pass@1 0.25 (1/4) BUT 3/4 EMPTY code. rune-internal 0.75 BOGUS (stdin empty test_code→false pass).
+- Empty cause: plan/decompose/diagnose STILL JSON → long hard outputs TRUNCATE → PlanResult validation fail → re-plan loop → budget exhausted → empty. (Freeform fix was code-only.)
+
+**G. NOW BRAINSTORMING (owner hypothesis):** focused per-step prompt + EPISODIC adapter carrying the RIGHT context per step (local sub-goal state for code/repair; ALL subtasks' results for integration). Overall goal in adapter, NOT full spec every prompt. Each subtask = full dev cycle around its sub-goal. (Adapter MUTATION vs hotswap = later.) Checking this hypothesis first.
+
+### [2026-06-05 07:15 UTC] BRAINSTORM design decisions (episodic conditioning) + roadmap
+Owner hypothesis converged via Q&A:
+- EPISODIC ADAPTER carries the RIGHT context per step (not full spec every prompt):
+  - code/repair: condensed overall goal + CURRENT sub-goal (desc + its check) + current code + error (local episode).
+  - integration: overall goal + ALL subtasks' results/code + integration error.
+- PROMPT: thin, focused on the current step's sub-goal ("implement <sub-goal>"/"repair"). No full spec leak.
+- PER-SUBTASK SIGNAL = BOTH: (1) executable acceptance check emitted by decompose (example I/O/assert for the sub-goal) AND (3) fixed reason-first model-judge vs sub-goal desc. Either fails → repair (adapter carries failure episode). Each subtask = full dev cycle.
+- DECOMPOSE = model-decides, BOUNDED+VERIFIED: cap ≤3; default 1 for single-function; each subtask maps to a named piece of the entry_point; verify integration DEFINES entry_point. Single-function → 1 subtask, check=public example.
+- Adapter MUTATION vs hotswap: LATER (after this hypothesis).
+ROADMAP (owner, after episodic): 1) robust plan/decompose/diagnose (json_repair/freeform/higher max_tokens) — fixes empty-code/re-plan truncation loop (COUPLED to episodic decompose which emits more structured output → more truncation risk). 2) stronger in-loop signal = feed ALL public examples (LCB has several). 3) re-tune adapter_scaling for hard (sweep <0.627). 4) decompose guard via AGENT INSTRUCTION not fragile regex.
+METHOD (owner): smoke/probe test each change + report; record findings to scratchpad.
+
+### [2026-06-05 07:25 UTC] CONSOLIDATED RESULTS TABLE (all pass@1, for the record)
+All corrected runner (freeform codegen + public-example oracle), model_judge OFF, c3 ckpt, seed 0.
+
+EASY POOL (goal3_ref_pool_24, 24 simple MBPP):
+| config | spec location | adapter | pass@1 |
+| scale0 full | prompt | off | 0.792 (19/24) |  <- spec-in-PROMPT ceiling (NOT a floor; full mode leaks spec)
+| reference_a scale0 | nowhere (mission only) | off | 0.333 (8/24) |  <- TRUE no-context floor
+| reference_a c3 @0.627 (HPO best) | adapter | on | 0.583 (14/24) |  <- ADAPTER MEMORY +0.25 over floor
+| c3 full @1.0 | prompt+adapter | on | 0.750 (18/24) |  <- adapter on top of prompt: ~neutral (vs 19)
+
+HELD-OUT 7 (val7 = mbpp/115,133,118,119,106,113,135):
+| scale0 full | 0.714 (5/7) | ; reference_a c3 (HPO val) 0.571 (4/7) ; c3 full @1.0 0.857 (6/7, REVERSED on 24 — n=7 mirage)
+
+HPO (16 trials): best reference_a@0.627 tuning 0.588/val 0.571. Per-flavor best tuning: reference_a/b1/c=0.588 (tied), reference_b=0.471, training_exact=0.294 (worst).
+
+HARD (8 multistep, reference_a, minimal-ish prompt):
+| scale0 0.25 (2/8: decode_string,int_to_roman) ; c3 @0.627 0.25 (2/8: decode_string,merge_intervals)
+| c3 reaches PUBLIC example attempt-1 5/8 vs scale0 1/8 (adapter helps reach oracle) but held-out 2/8 both.
+| c3 BROKE int_to_roman (scale0 7/7 held-out → c3 fails 1st). Over-perturbation @0.627.
+
+LIVECODEBENCH v6 (test6.jsonl, Feb-Apr2025=131 problems, 63 functional/112 stdin):
+| Grader (official codegen_metrics, isolated lcbenv) VALIDATED: stdin/functional correct 1.0, wrong 0.0.
+| Probe 4 problems scale0 full: LCB pass@1 0.25 (1/4); 3/4 EMPTY code (plan JSON truncation re-plan loop). rune-internal 0.75 BOGUS (stdin empty test_code).
+
+PUBLISHED BASELINE (Qwen3-4B-Instruct-2507 card): MultiPL-E 76.8, LiveCodeBench v6 35.1, Aider 12.9 (NO MBPP/HumanEval). Our scale0-full 0.79≈MultiPL-E → runner sane.
+
+BRAINSTORM APPROVED: episodic conditioning + bounded-verified decompose + per-subtask (executable check AND fixed judge) + fold robustness #1 in. Validate: unit/smoke probes THEN tiny live slice. Next: write spec.
+
+### [2026-06-05 07:35 UTC] All experiments recorded; STARTING IMPLEMENTATION (episodic design)
+Spec: docs/superpowers/specs/2026-06-05-episodic-conditioning-design.md (committed e8b2bd1).
+Confirmed all results recorded (session summary 07:00 + results table 07:25). Implementation phases (TDD, unit/smoke probes first per owner):
+- Phase A: robust structured parsing (json_repair for decompose/plan/diagnose + graceful degrade to N=1) + decompose schema (overall_goal, acceptance_check, builds) + bound ≤3. [#1 folded in; fixes empty-code/re-plan loop]
+- Phase B: render_episode_adapter (context-per-step: local for code/repair, all-subtasks for integrate) + thin focused prompts (no spec leak).
+- Phase C: per-subtask signal — executable acceptance_check (oracle) AND fixed reason-first judge; integration runs ALL public examples.
+- Phase D: wire graph/policy; AST-verify entry_point at integration (no regex).
+- Phase E: unit/smoke probes report → tiny live slice (2 single-fn + 1 multi-component).
+
+### [2026-06-05 08:10 UTC] Episodic design IMPLEMENTED (Phases A-D committed); E (live slice) running
+- Phase A (95a9928): robust _loads_structured (json_repair) for decompose/plan/diagnose; schema overall_goal/acceptance_check/builds; cap <=3; degrade to N=1.
+- Phase B (0e7e98d,4804f24): render_episode_adapter (context-per-step) + prompt_mode='episodic' + thin prompt_episodic_* templates.
+- Phase C (7526a13): build_subtask_probe — per-subtask acceptance_check is the in-loop signal.
+- Phase D (add334d): integration AST-verify entry_point defined; decompose prompt instructs new schema + <=3 bound (agent instruction).
+- 360 unit tests + mypy + ruff clean throughout.
+- Phase E: live smoke slice (2 single-fn + calculate, episodic c3 @0.627) running. Checking: non-empty code (no re-plan loop), N=1 for single-fn, calculate decomposes <=3 with acceptance_checks, focused conditioning.
+
+### [2026-06-05 08:25 UTC] Episodic Phase E live-slice VALIDATION ✓ (mechanism works)
+Smoke (3 tasks, episodic c3 @0.627, 8 min):
+- mbpp/106 single-fn: N=1, 1 acceptance_check, repair cycle ran, code non-empty → FAIL (check-repair didn't fix).
+- mbpp/108 single-fn: N=1, clean 3 steps → PASS.
+- multistep/calculate: N=3 (capped), 3 acceptance_checks (one per subtask), per-subtask dev cycles (plan/code/diagnose/repair each), code non-empty → FAIL.
+VALIDATED:
+- ✓ NO empty code / re-plan loops (robust parsing Phase A works — the LCB 3/4-empty cause is fixed).
+- ✓ Bounded decompose: single-fn→N=1, calculate→N=3 capped.
+- ✓ Each subtask emits + uses its own acceptance_check (model-authored: e.g. calculate's evaluate subtask check = assert calculate("2+3*4")==14).
+- ✓ THIN prompt ("Implement `evaluate_arithmetic_expression`... goal+check in your context") + FOCUSED episodic adapter (## Task = current sub-goal + Acceptance, NOT full spec). The conditioning inversion works.
+- ✓ Per-subtask dev cycles with repair engaging on the per-subtask check.
+OBSERVATIONS (tuning, not mechanism): calculate decomposed to 3 but FAILED — budget=8 likely too low for 3 per-subtask cycles + integrate (no integrate step reached). Multi-subtask needs more budget.
+NEXT (roadmap): budget tuning for multi-subtask; then larger comparison episodic vs reference_a vs scale0 on hard slice to see if episodic IMPROVES held-out pass@1.

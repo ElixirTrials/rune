@@ -77,7 +77,10 @@ def main() -> None:
         ex_think = ""
         for spec, entry in PROMPTS:
             prompt = render_template(
-                "prompt_code", subtask_name="_main", project_label=spec, entry_point=entry
+                "prompt_code",
+                subtask_name="_main",
+                project_label=spec,
+                entry_point=entry,
             )
             for i in range(N):
                 set_adapter(adapter, spec)

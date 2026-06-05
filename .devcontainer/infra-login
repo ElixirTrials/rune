@@ -1,0 +1,58 @@
+#!/bin/bash
+# infra-login: one-shot devbox login bootstrap.
+# First run: gh device-flow auth → clone ElixirTrials/infra → `make login`.
+# Later runs: `git pull --ff-only` → `make login`.
+set -euo pipefail
+
+PROJECT_NAME="elixirtrials"
+ENVIRONMENT="dev"
+AWS_REGION="us-east-1"
+INFRA_DIR="/opt/workspace/infra"
+TFVARS_DIR="$INFRA_DIR/providers/aws/environments"
+TFVARS_FILE="$TFVARS_DIR/dev.tfvars"
+
+log() { printf '\033[0;36m[infra-login]\033[0m %s\n' "$*"; }
+
+write_tfvars() {
+  # dev.tfvars is gitignored; synthesize it from boot-time values so
+  # shared/scripts/login.sh can read project_name/environment/aws_region.
+  mkdir -p "$TFVARS_DIR"
+  cat > "$TFVARS_FILE" <<TFV
+project_name = "$PROJECT_NAME"
+environment  = "$ENVIRONMENT"
+aws_region   = "$AWS_REGION"
+TFV
+}
+
+clone_infra() {
+  if ! gh auth status >/dev/null 2>&1; then
+    log "First run — authenticating with GitHub (device flow)..."
+    gh auth login --hostname github.com --git-protocol https --web
+  fi
+  local token
+  token="$(gh auth token)"
+  [ -n "$token" ] || { echo "[infra-login] gh auth token empty" >&2; exit 1; }
+  log "Cloning ElixirTrials/infra to $INFRA_DIR ..."
+  mkdir -p "$(dirname "$INFRA_DIR")"
+  git clone --depth=1 \
+    "https://x-access-token:$token@github.com/ElixirTrials/infra.git" \
+    "$INFRA_DIR"
+  # Strip the embedded token from the stored remote URL — future pulls rely
+  # on gh's credential helper instead (configured via gh auth setup-git).
+  git -C "$INFRA_DIR" remote set-url origin \
+    "https://github.com/ElixirTrials/infra.git"
+  if [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
+    mkdir -p "$HOME/workspace"
+    ln -sfn "$INFRA_DIR" "$HOME/workspace/infra" 2>/dev/null || true
+  fi
+}
+
+if [ ! -d "$INFRA_DIR/.git" ]; then
+  clone_infra
+else
+  git -C "$INFRA_DIR" pull --ff-only >/dev/null 2>&1 || true
+fi
+
+write_tfvars
+gh auth setup-git >/dev/null 2>&1 || true
+exec make -C "$INFRA_DIR" login

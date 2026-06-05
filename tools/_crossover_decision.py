@@ -106,7 +106,9 @@ def main() -> int:
     ws_sig = load(ws_path, "absent", "sig")
     if ws_sig:
         ws_sig_mean = sum(r["m_mismatch"] for r in ws_sig.values()) / len(ws_sig)
-        print(f"  warm-start signature m-mismatch = {ws_sig_mean:+.4f}  (historical +3.8..+4.09)")
+        print(
+            f"  warm-start signature m-mismatch = {ws_sig_mean:+.4f}  (historical +3.8..+4.09)"
+        )
 
     print("\n=== RETENTION: signature not traded away (absent/sig) ===")
     tr_sig = load(tr_path, "absent", "sig")

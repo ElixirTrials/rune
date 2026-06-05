@@ -38,7 +38,9 @@ def main() -> int:
 
     import datasets  # noqa: PLC0415
 
-    ds = datasets.load_dataset("google-research-datasets/mbpp", "sanitized", split="test")
+    ds = datasets.load_dataset(
+        "google-research-datasets/mbpp", "sanitized", split="test"
+    )
     rows = []
     for rec in ds:
         if rec["task_id"] in CROSSOVER_IDS:
@@ -47,7 +49,10 @@ def main() -> int:
         if r is not None and r["task_id"] not in eval_ids:
             rows.append(r)
     rows.sort(key=lambda r: int(r["task_id"].split("/")[-1]))
-    print(f"[pool] usable train rows (disjoint from {len(eval_ids)} eval): {len(rows)}", flush=True)
+    print(
+        f"[pool] usable train rows (disjoint from {len(eval_ids)} eval): {len(rows)}",
+        flush=True,
+    )
 
     for n in sizes:
         if len(rows) < n:

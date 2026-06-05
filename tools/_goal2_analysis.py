@@ -46,10 +46,16 @@ def boot_mean_ci(xs: list[float], iters: int = 10000, seed: int = 0) -> tuple:
     n = len(xs)
     pt = sum(xs) / n
     ms = sorted(sum(xs[rng.randrange(n)] for _ in range(n)) / n for _ in range(iters))
-    return (round(pt, 4), round(ms[int(0.025 * iters)], 4), round(ms[int(0.975 * iters)], 4))
+    return (
+        round(pt, 4),
+        round(ms[int(0.025 * iters)], 4),
+        round(ms[int(0.975 * iters)], 4),
+    )
 
 
-def boot_diff_ci(pairs: list[tuple[int, int]], iters: int = 10000, seed: int = 0) -> tuple:
+def boot_diff_ci(
+    pairs: list[tuple[int, int]], iters: int = 10000, seed: int = 0
+) -> tuple:
     import random  # noqa: PLC0415
 
     if not pairs:
@@ -57,15 +63,28 @@ def boot_diff_ci(pairs: list[tuple[int, int]], iters: int = 10000, seed: int = 0
     rng = random.Random(seed)
     n = len(pairs)
     pt = sum(a - b for a, b in pairs) / n
-    ms = sorted(sum((p := pairs[rng.randrange(n)])[0] - p[1] for _ in range(n)) / n for _ in range(iters))  # noqa: E501,F841
-    return (round(pt, 3), round(ms[int(0.025 * iters)], 3), round(ms[int(0.975 * iters)], 3))
+    ms = sorted(
+        sum((p := pairs[rng.randrange(n)])[0] - p[1] for _ in range(n)) / n
+        for _ in range(iters)
+    )  # noqa: E501,F841
+    return (
+        round(pt, 3),
+        round(ms[int(0.025 * iters)], 3),
+        round(ms[int(0.975 * iters)], 3),
+    )
 
 
 def main() -> int:
-    print("=== (A) accessibility: absent/body m_zero (matched - base), fixed 24 heldout ===")
+    print(
+        "=== (A) accessibility: absent/body m_zero (matched - base), fixed 24 heldout ==="
+    )
     print("  arm  |   mean  [   95% CI       ]  n   lp_m")
     for tag, p in SPEC.items():
-        rs = [r for r in rows(p) if r.get("regime") == "absent" and r.get("span") == "body"]
+        rs = [
+            r
+            for r in rows(p)
+            if r.get("regime") == "absent" and r.get("span") == "body"
+        ]
         mz = [r["m_zero"] for r in rs]
         lpm = [r["lp_m"] for r in rs]
         pt, lo, hi = boot_mean_ci(mz)
@@ -90,7 +109,9 @@ def main() -> int:
         else:
             dpt, dlo, dhi = boot_diff_ci(pairs)
             flag = "  <-- excl 0" if (dlo > 0 or dhi < 0) else ""
-            print(f"  {tag:>4s} | {pa:2d}/{n:2d}   {pa / n:.2f}   {dpt:+.3f} [{dlo:+.3f},{dhi:+.3f}]{flag}")
+            print(
+                f"  {tag:>4s} | {pa:2d}/{n:2d}   {pa / n:.2f}   {dpt:+.3f} [{dlo:+.3f},{dhi:+.3f}]{flag}"
+            )
     return 0
 
 

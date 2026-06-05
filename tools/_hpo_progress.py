@@ -29,8 +29,7 @@ def main() -> None:
         return
     best = study.best_trial
     bp = {
-        k: (round(v, 3) if isinstance(v, float) else v)
-        for k, v in best.params.items()
+        k: (round(v, 3) if isinstance(v, float) else v) for k, v in best.params.items()
     }
     print(
         f"HPO: {len(done)} complete / {len(running)} running | "

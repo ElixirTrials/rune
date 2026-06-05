@@ -409,7 +409,10 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         prompt_mode = run_config.get("prompt_mode", "full")
         _ref_modes = (
             "training_exact",
-            "reference_a", "reference_b", "reference_b1", "reference_c",
+            "reference_a",
+            "reference_b",
+            "reference_b1",
+            "reference_c",
         )
         if prompt_mode == "episodic":
             # Episodic design (#52): adapter carries the right context per step;
@@ -578,11 +581,13 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             # step, not a wrapper, so it reflects exactly what conditioned the
             # adapter vs what the model read in the prompt.
             mlflow.log_metric(
-                "adapter_cond_tokens", model.count_tokens(trajectory_text),
+                "adapter_cond_tokens",
+                model.count_tokens(trajectory_text),
                 step=state["step"],
             )
             mlflow.log_metric(
-                "prompt_tokens", model.count_tokens(prompt_text),
+                "prompt_tokens",
+                model.count_tokens(prompt_text),
                 step=state["step"],
             )
 
@@ -606,9 +611,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # Episodic design: a subtask's own model-authored acceptance_check is its
     # in-loop signal; fall back to the spec's public examples (whole-task / N=1 /
     # integrate) when the subtask has none.
-    _subtask_check = {
-        s.name: s.acceptance_check for s in state.get("subtasks", [])
-    }
+    _subtask_check = {s.name: s.acceptance_check for s in state.get("subtasks", [])}
     probes: dict[str, tuple[str, bool]] = {}
     for name in code_action_names:
         stripped = strip_self_tests(code_map[name])
@@ -639,9 +642,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             "fired (public examples)" if _fired else "fallback (module-load only)",
         )
         if mlflow.active_run() is not None:
-            mlflow.log_metric(
-                f"oracle_fired/{_label}", int(_fired), step=state["step"]
-            )
+            mlflow.log_metric(f"oracle_fired/{_label}", int(_fired), step=state["step"])
 
     # Model-judge (in-loop, always on): the public example is necessary but not
     # sufficient — code can pass its one public case yet be wrong on a held-out

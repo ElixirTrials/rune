@@ -108,8 +108,15 @@ def test_recall_terms_guard_penalizes_only_rise_no_suppression_reward() -> None:
 
 def test_empty_recall_metrics_has_accessibility_keys() -> None:
     m = _empty_recall_metrics()
-    for key in ("lp_matched", "lp_mismatch", "lp_n0_baseline", "primary_loss",
-                "guard_loss", "primary_active_frac", "guard_active_frac"):
+    for key in (
+        "lp_matched",
+        "lp_mismatch",
+        "lp_n0_baseline",
+        "primary_loss",
+        "guard_loss",
+        "primary_active_frac",
+        "guard_active_frac",
+    ):
         assert key in m and m[key] == 0.0
 
 

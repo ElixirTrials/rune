@@ -31,9 +31,7 @@ RUNE = "/workspaces/rune-gpu"
 sys.path.insert(0, f"{RUNE}/tools")
 
 BASE = load_rune_config().model_id
-CKPT = (
-    f"{RUNE}/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
-)
+CKPT = f"{RUNE}/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
 TASKS_FILE = f"{RUNE}/benchmarks/mbpp_phase0_iter.json"
 PRESENT = "Write the following Python function.\n\n{desc}\n\nReturn only the code."
 ABSENT = "Write the Python function you have just studied. Return only the code."
@@ -52,11 +50,18 @@ def main() -> int:
     ap.add_argument("--max-new-tokens", type=int, default=256)
     ap.add_argument("--max-seq-length", type=int, default=2048)
     ap.add_argument("--out", type=str, default=None)
-    ap.add_argument("--corpus", type=str, default=None,
-                    help="held-out jsonl (task_id/description/entry_point/test_code); "
-                         "overrides the frozen 10")
-    ap.add_argument("--scale0", action="store_true",
-                    help="base only, NO adapter (the scale=0 floor); skips hypernet load")
+    ap.add_argument(
+        "--corpus",
+        type=str,
+        default=None,
+        help="held-out jsonl (task_id/description/entry_point/test_code); "
+        "overrides the frozen 10",
+    )
+    ap.add_argument(
+        "--scale0",
+        action="store_true",
+        help="base only, NO adapter (the scale=0 floor); skips hypernet load",
+    )
     a = ap.parse_args()
 
     from ctx_to_lora.modeling.lora_merger import combine_lora  # noqa: PLC0415
@@ -76,7 +81,11 @@ def main() -> int:
 
     if a.corpus:
         # held-out corpus carries test_code inline (no load_mbpp_tasks needed).
-        episodes = [json.loads(ln) for ln in Path(a.corpus).read_text().splitlines() if ln.strip()]
+        episodes = [
+            json.loads(ln)
+            for ln in Path(a.corpus).read_text().splitlines()
+            if ln.strip()
+        ]
         tests = {e["task_id"]: e["test_code"] for e in episodes}
     else:
         episodes = json.loads(Path(TASKS_FILE).read_text())
@@ -85,12 +94,16 @@ def main() -> int:
         tasks = {t.task_id: t for t in load_mbpp_tasks(ids=ids)}
         tests = {tid: t.test_code for tid, t in tasks.items()}
         if ids - set(tests):
-            print(f"[WARN] no MBPP test suite for: {sorted(ids - set(tests))}", flush=True)
+            print(
+                f"[WARN] no MBPP test suite for: {sorted(ids - set(tests))}", flush=True
+            )
 
     tag = "scale=0 (base)" if a.scale0 else a.ckpt.split("/")[-1]
     print(f"loading base{'' if a.scale0 else ' + hypernet'} ({tag}) ...", flush=True)
     base = AutoModelForCausalLM.from_pretrained(
-        a.model_id, dtype=torch.bfloat16, attn_implementation="flash_attention_2",
+        a.model_id,
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
         device_map={"": "cuda"},
     ).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
@@ -98,7 +111,9 @@ def main() -> int:
     n_qs = torch.tensor([1], device="cuda")
     hyp = scaling = li = n_chunks = head_bias = hd = ht = None
     if not a.scale0:
-        hyp = load_hypernetwork(HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda")
+        hyp = load_hypernetwork(
+            HypernetworkConfig(checkpoint_path=a.ckpt), device="cuda"
+        )
         hyp.eval()
         scaling = effective_scaling(hyp)
         li = [int(x) for x in hyp.config.layer_indices]
@@ -110,7 +125,11 @@ def main() -> int:
 
     def adapter_for(desc: str):
         feats, am = extract_activations_with_model(
-            render_training_format_trajectory(task=desc), base, tok, li, a.max_seq_length
+            render_training_format_trajectory(task=desc),
+            base,
+            tok,
+            li,
+            a.max_seq_length,
         )
         with torch.no_grad():
             ld, _ = hyp.generate_weights(feats.to(device=hd, dtype=ht), am.to(hd), None)
@@ -120,8 +139,10 @@ def main() -> int:
         import contextlib  # noqa: PLC0415
 
         enc = tok.apply_chat_template(
-            [{"role": "user", "content": prompt}], add_special_tokens=False,
-            add_generation_prompt=True, return_tensors="pt",
+            [{"role": "user", "content": prompt}],
+            add_special_tokens=False,
+            add_generation_prompt=True,
+            return_tensors="pt",
         )
         pids = (enc["input_ids"] if hasattr(enc, "keys") else enc).to(device)
         # scale=0 -> no adapter context (plain base); else apply the functional LoRA.
@@ -132,10 +153,12 @@ def main() -> int:
         )
         with torch.no_grad(), ctx:
             out = base.generate(
-                pids, max_new_tokens=a.max_new_tokens, do_sample=False,
+                pids,
+                max_new_tokens=a.max_new_tokens,
+                do_sample=False,
                 pad_token_id=tok.eos_token_id,
             )
-        return tok.decode(out[0][pids.shape[1]:], skip_special_tokens=True)
+        return tok.decode(out[0][pids.shape[1] :], skip_special_tokens=True)
 
     def passes(code: str, test_code: str) -> bool:
         full = strip_self_tests(extract_code(code)) + "\n\n" + test_code
@@ -146,7 +169,10 @@ def main() -> int:
 
     rows = []
     pres_pass = abs_pass = n = 0
-    print("\n=== pass@1 (REAL MBPP tests) — present=stability, absent=capability ===", flush=True)
+    print(
+        "\n=== pass@1 (REAL MBPP tests) — present=stability, absent=capability ===",
+        flush=True,
+    )
     for e in episodes:
         tid = e["task_id"]
         if tid not in tests:
@@ -159,13 +185,18 @@ def main() -> int:
         pres_pass += p_ok
         abs_pass += a_ok
         rows.append({"task_id": tid, "present_pass": p_ok, "absent_pass": a_ok})
-        print(f"  {tid:8s} present={'PASS' if p_ok else 'fail'}  "
-              f"absent={'PASS' if a_ok else 'fail'}", flush=True)
+        print(
+            f"  {tid:8s} present={'PASS' if p_ok else 'fail'}  "
+            f"absent={'PASS' if a_ok else 'fail'}",
+            flush=True,
+        )
 
     print(f"\n  PRESENT pass@1 (stability) = {pres_pass}/{n}", flush=True)
     print(f"  ABSENT  pass@1 (capability) = {abs_pass}/{n}", flush=True)
-    print(f"  n={n}, binary: descriptive only — pair per-episode vs baseline, not a sig test.",
-          flush=True)
+    print(
+        f"  n={n}, binary: descriptive only — pair per-episode vs baseline, not a sig test.",
+        flush=True,
+    )
     if a.out:
         Path(a.out).write_text("\n".join(json.dumps(r) for r in rows) + "\n")
         print(f"  [dump] -> {a.out}", flush=True)

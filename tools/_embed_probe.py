@@ -52,9 +52,7 @@ def _templates(s: dict) -> dict[str, str]:
             f"-- error: {err}"
         ),
         # summarize the failure MODE (no raw failing code to recite)
-        "failure_summary": (
-            f"## Task\n{spec}\n\n## Failure Modes to Avoid\n- {summ}"
-        ),
+        "failure_summary": (f"## Task\n{spec}\n\n## Failure Modes to Avoid\n- {summ}"),
         # keep Current Code EMPTY + failure in an avoid section
         "empty_plus_avoid": (
             f"## Task\n{spec}\n\n## Current Code\n\n\n"
@@ -119,9 +117,7 @@ def main() -> None:
             lpf = _lp(bm, tok, prompt, s["fix"], device)
             lpx = _lp(bm, tok, prompt, s["fail"], device)
             pm = "avoid" if prompt is P_AVOID else "default"
-            print(
-                f"{tpl_name:18} {pm:8} {lpf:+8.3f} {lpx:+9.3f} {lpf - lpx:+7.3f}"
-            )
+            print(f"{tpl_name:18} {pm:8} {lpf:+8.3f} {lpx:+9.3f} {lpf - lpx:+7.3f}")
 
 
 if __name__ == "__main__":

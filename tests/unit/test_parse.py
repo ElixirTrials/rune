@@ -261,8 +261,7 @@ class TestParseOutput:
         raw = "```python\nimport os\ndef main():\n    print('hello')\n```"
         updates = parse_output(action, raw, fb, state_stub)
         assert (
-            updates["integrated_code"]
-            == "import os\ndef main():\n    print('hello')"
+            updates["integrated_code"] == "import os\ndef main():\n    print('hello')"
         )
         assert updates["integration_feedback"].exit_code == 0
 
@@ -319,7 +318,9 @@ class TestParseOutput:
         # Unparseable decompose degrades to ONE whole-task subtask (named for the
         # entry_point) instead of returning {} and re-decompose-looping to empty.
         updates = parse_output(
-            action, "??? not json ???", None,
+            action,
+            "??? not json ???",
+            None,
             {"subtasks": [], "task": "build X", "entry_point": "x"},
         )
         assert len(updates["subtasks"]) == 1

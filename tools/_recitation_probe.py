@@ -30,9 +30,7 @@ RUNE = "/workspaces/rune-gpu"
 sys.path.insert(0, f"{RUNE}/tools")
 
 BASE = load_rune_config().model_id
-CKPT = (
-    f"{RUNE}/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
-)
+CKPT = f"{RUNE}/third_party/doc-to-lora/trained_d2l/qwen_4b_d2l/checkpoint-20000/pytorch_model.bin"
 TASKS_FILE = f"{RUNE}/benchmarks/mbpp_phase0_iter.json"
 PRESENT = "Write the following Python function.\n\n{desc}\n\nReturn only the code."
 
@@ -71,7 +69,9 @@ def main() -> int:
 
     print(f"loading base + hypernet ({a.ckpt.split('/')[-1]}) ...", flush=True)
     base = AutoModelForCausalLM.from_pretrained(
-        a.model_id, dtype=torch.bfloat16, attn_implementation="flash_attention_2",
+        a.model_id,
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
         device_map={"": "cuda"},
     ).eval()
     tok = AutoTokenizer.from_pretrained(a.model_id)
@@ -88,7 +88,10 @@ def main() -> int:
 
     def adapter_for(desc: str):
         feats, am = extract_activations_with_model(
-            render_training_format_trajectory(task=desc), base, tok, li,
+            render_training_format_trajectory(task=desc),
+            base,
+            tok,
+            li,
             a.max_seq_length,
         )
         hd, ht = next(hyp.parameters()).device, next(hyp.parameters()).dtype
@@ -105,32 +108,51 @@ def main() -> int:
         adapter_i = adapter_for(t["description"])  # condition on episode i
         prompt = PRESENT.format(desc=tasks[j]["description"])  # j's spec in the prompt
         enc = tok.apply_chat_template(
-            [{"role": "user", "content": prompt}], add_special_tokens=False,
-            add_generation_prompt=True, return_tensors="pt",
+            [{"role": "user", "content": prompt}],
+            add_special_tokens=False,
+            add_generation_prompt=True,
+            return_tensors="pt",
         )
         pids = (enc["input_ids"] if hasattr(enc, "keys") else enc).to(device)
         with torch.no_grad(), _functional_lora(base, li, adapter_i, scaling, n_qs):
             out = base.generate(
-                pids, max_new_tokens=a.max_new_tokens, do_sample=False,
+                pids,
+                max_new_tokens=a.max_new_tokens,
+                do_sample=False,
                 pad_token_id=tok.eos_token_id,
             )
-        text = tok.decode(out[0][pids.shape[1]:], skip_special_tokens=True)
+        text = tok.decode(out[0][pids.shape[1] :], skip_special_tokens=True)
         ep_i, ep_j = t["entry_point"], tasks[j]["entry_point"]
         has_i = f"def {ep_i}(" in text or f"{ep_i}(" in text
         has_j = f"def {ep_j}(" in text or f"{ep_j}(" in text
-        tag = ("BOTH" if has_i and has_j else "FOLLOW(j)" if has_j else
-               "RECITE(i)" if has_i else "neither")
+        tag = (
+            "BOTH"
+            if has_i and has_j
+            else "FOLLOW(j)"
+            if has_j
+            else "RECITE(i)"
+            if has_i
+            else "neither"
+        )
         follow += has_j and not has_i
         recite += has_i and not has_j
         both += has_i and has_j
         neither += not has_i and not has_j
-        print(f"  adapter={t['task_id']:8s} prompt={tasks[j]['task_id']:8s} "
-              f"-> {tag:10s} (wants def {ep_j}; stored def {ep_i})", flush=True)
+        print(
+            f"  adapter={t['task_id']:8s} prompt={tasks[j]['task_id']:8s} "
+            f"-> {tag:10s} (wants def {ep_j}; stored def {ep_i})",
+            flush=True,
+        )
 
-    print(f"\n  SPEC-FOLLOW (j only) = {follow}/{n}   RECITE (i only) = {recite}/{n}   "
-          f"both = {both}   neither = {neither}", flush=True)
-    print("  HEALTHY if spec-follow dominates and recite is low (vs warm-start).",
-          flush=True)
+    print(
+        f"\n  SPEC-FOLLOW (j only) = {follow}/{n}   RECITE (i only) = {recite}/{n}   "
+        f"both = {both}   neither = {neither}",
+        flush=True,
+    )
+    print(
+        "  HEALTHY if spec-follow dominates and recite is low (vs warm-start).",
+        flush=True,
+    )
     return 0
 
 

@@ -36,7 +36,9 @@ def recover_description(context: str) -> str:
 
 
 def main() -> int:
-    rows = [json.loads(line) for line in CORPUS.read_text().splitlines() if line.strip()]
+    rows = [
+        json.loads(line) for line in CORPUS.read_text().splitlines() if line.strip()
+    ]
     out = []
     for r in rows:
         desc = recover_description(r["context"])

@@ -24,16 +24,25 @@ from rune.model.wrapper import ModelWrapper
 C3 = "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
 
 TASKS = [
-    ("int_to_roman", '"""\nImplement int_to_roman(num: int) -> str converting an '
-     "integer in 1..3999 to its Roman numeral, using subtractive notation "
-     '(IV, IX, XL, XC, CD, CM).\n\n>>> assert int_to_roman(9) == "IX"\n"""'),
-    ("decode_string", '"""\nImplement decode_string(s: str) -> str. The encoding rule '
-     "is k[encoded], where the substring inside the brackets is repeated exactly k "
-     "times. Input may be nested, e.g. '3[a2[c]]'.\n\n"
-     '>>> assert decode_string("3[a]2[bc]") == "aaabcbc"\n"""'),
-    ("calculate", '"""\nImplement calculate(expression: str) -> int that evaluates an '
-     "arithmetic expression of non-negative integers with +, -, *, / and "
-     'parentheses.\n\n>>> assert calculate("2+3*4") == 14\n"""'),
+    (
+        "int_to_roman",
+        '"""\nImplement int_to_roman(num: int) -> str converting an '
+        "integer in 1..3999 to its Roman numeral, using subtractive notation "
+        '(IV, IX, XL, XC, CD, CM).\n\n>>> assert int_to_roman(9) == "IX"\n"""',
+    ),
+    (
+        "decode_string",
+        '"""\nImplement decode_string(s: str) -> str. The encoding rule '
+        "is k[encoded], where the substring inside the brackets is repeated exactly k "
+        "times. Input may be nested, e.g. '3[a2[c]]'.\n\n"
+        '>>> assert decode_string("3[a]2[bc]") == "aaabcbc"\n"""',
+    ),
+    (
+        "calculate",
+        '"""\nImplement calculate(expression: str) -> int that evaluates an '
+        "arithmetic expression of non-negative integers with +, -, *, / and "
+        'parentheses.\n\n>>> assert calculate("2+3*4") == 14\n"""',
+    ),
 ]
 
 

@@ -33,14 +33,30 @@ STEPS = 48
 ENV = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
 
 GRID = [
-    {"name": "c1_t07_lp1_lg1", "matched_target_lp": -0.7,
-     "primary_weight": 1.0, "guard_weight": 1.0},
-    {"name": "c2_t05_lp1_lg1", "matched_target_lp": -0.5,
-     "primary_weight": 1.0, "guard_weight": 1.0},
-    {"name": "c3_t07_lp2_lg1", "matched_target_lp": -0.7,
-     "primary_weight": 2.0, "guard_weight": 1.0},
-    {"name": "c4_t05_lp2_lg2", "matched_target_lp": -0.5,
-     "primary_weight": 2.0, "guard_weight": 2.0},
+    {
+        "name": "c1_t07_lp1_lg1",
+        "matched_target_lp": -0.7,
+        "primary_weight": 1.0,
+        "guard_weight": 1.0,
+    },
+    {
+        "name": "c2_t05_lp1_lg1",
+        "matched_target_lp": -0.5,
+        "primary_weight": 1.0,
+        "guard_weight": 1.0,
+    },
+    {
+        "name": "c3_t07_lp2_lg1",
+        "matched_target_lp": -0.7,
+        "primary_weight": 2.0,
+        "guard_weight": 1.0,
+    },
+    {
+        "name": "c4_t05_lp2_lg2",
+        "matched_target_lp": -0.5,
+        "primary_weight": 2.0,
+        "guard_weight": 2.0,
+    },
 ]
 
 
@@ -58,15 +74,15 @@ def sh(cmd: list[str], logfile: Path) -> int:
 def write_yaml(cfg: dict, path: Path) -> None:
     path.write_text(
         f'model_id: "{load_rune_config().model_id}"\n'
-        f"checkpoint_path: \"{WARM}\"\n"
-        f"corpus_path: \"{TRAIN_CORPUS}\"\n"
-        f"checkpoint_dir: \"./checkpoints/phase1-{cfg['name']}\"\n"
-        f"experiment_name: \"{EXP}\"\n"
+        f'checkpoint_path: "{WARM}"\n'
+        f'corpus_path: "{TRAIN_CORPUS}"\n'
+        f'checkpoint_dir: "./checkpoints/phase1-{cfg["name"]}"\n'
+        f'experiment_name: "{EXP}"\n'
         f"learning_rate: 2.0e-5\nnum_epochs: 8\nmax_seq_length: 768\n"
         f"load_in_4bit: false\ngrad_accum_steps: 5\ngradient_accumulation_steps: 5\n"
         f"skip_zero_diff: false\nmax_steps: {STEPS}\nearly_stop_warmup: 100\n"
         f"log_steps: 5\nsave_steps: {STEPS}\nsnapshot_steps: 0\n"
-        f"contrastive: true\ncontrastive_mode: \"body_recall_guarded\"\n"
+        f'contrastive: true\ncontrastive_mode: "body_recall_guarded"\n'
         f"matched_target_lp: {cfg['matched_target_lp']}\n"
         f"primary_weight: {cfg['primary_weight']}\nguard_weight: {cfg['guard_weight']}\n"
     )
@@ -79,11 +95,18 @@ def latest_ckpt(dst: Path) -> str | None:
 
         mlflow.set_tracking_uri("http://localhost:5000")
         exp = mlflow.get_experiment_by_name(EXP)
-        runs = mlflow.search_runs([exp.experiment_id], order_by=["start_time DESC"], max_results=1)
+        runs = mlflow.search_runs(
+            [exp.experiment_id], order_by=["start_time DESC"], max_results=1
+        )
         rid = runs.iloc[0]["run_id"]
-        for name in (f"checkpoints/checkpoint_step{STEPS}.pt", "checkpoints/checkpoint.pt"):
+        for name in (
+            f"checkpoints/checkpoint_step{STEPS}.pt",
+            "checkpoints/checkpoint.pt",
+        ):
             try:
-                p = mlflow.artifacts.download_artifacts(run_id=rid, artifact_path=name, dst_path=str(dst))
+                p = mlflow.artifacts.download_artifacts(
+                    run_id=rid, artifact_path=name, dst_path=str(dst)
+                )
                 return p
             except Exception:  # noqa: BLE001
                 continue
@@ -133,8 +156,19 @@ def main() -> int:
         log(f"=== TRAIN {name} {cfg} ===")
         yml = WORK / f"{name}.yaml"
         write_yaml(cfg, yml)
-        rc = sh(["uv", "run", "python", entry, "--config", str(yml), "--max-steps", str(STEPS)],
-                WORK / f"train_{name}.log")
+        rc = sh(
+            [
+                "uv",
+                "run",
+                "python",
+                entry,
+                "--config",
+                str(yml),
+                "--max-steps",
+                str(STEPS),
+            ],
+            WORK / f"train_{name}.log",
+        )
         if rc != 0:
             log(f"train {name} rc={rc} — skipping")
             continue
@@ -146,8 +180,21 @@ def main() -> int:
         os.replace(ckpt, named)
         log(f"=== EVAL {name} held-out accessibility ===")
         out = WORK / f"heldout_{name}.jsonl"
-        rc = sh(["uv", "run", "python", probe, "--ckpt", str(named),
-                 "--corpus", HELDOUT, "--out", str(out)], WORK / f"probe_{name}.log")
+        rc = sh(
+            [
+                "uv",
+                "run",
+                "python",
+                probe,
+                "--ckpt",
+                str(named),
+                "--corpus",
+                HELDOUT,
+                "--out",
+                str(out),
+            ],
+            WORK / f"probe_{name}.log",
+        )
         if rc != 0 or not out.exists():
             log(f"probe {name} rc={rc} — skipping")
             continue
@@ -166,17 +213,34 @@ def main() -> int:
     sig_floor = (warm_acc or {}).get("absent_sig_mm", 0.0)
     eligible = [t for t in trials if t["absent_sig_mm"] >= sig_floor - 0.5] or trials
     best = max(eligible, key=lambda t: t["absent_body_mz"])
-    log(f"=== BEST: {best['name']} (held-out absent/body m-zero={best['absent_body_mz']}) ===")
+    log(
+        f"=== BEST: {best['name']} (held-out absent/body m-zero={best['absent_body_mz']}) ==="
+    )
 
     # Bench pass@1 on held-out: scale=0, warm-start, best.
     bench = {}
-    arms = [("scale0", ["--scale0"]), ("warmstart", ["--ckpt", WARM]),
-            ("best", ["--ckpt", best["ckpt"]])]
+    arms = [
+        ("scale0", ["--scale0"]),
+        ("warmstart", ["--ckpt", WARM]),
+        ("best", ["--ckpt", best["ckpt"]]),
+    ]
     for arm, extra in arms:
         log(f"=== BENCH pass@1 {arm} (held-out) ===")
         lf = WORK / f"pass1_{arm}.log"
-        rc = sh(["uv", "run", "python", pass1, "--corpus", HELDOUT,
-                 "--out", str(WORK / f"pass1_{arm}.jsonl"), *extra], lf)
+        rc = sh(
+            [
+                "uv",
+                "run",
+                "python",
+                pass1,
+                "--corpus",
+                HELDOUT,
+                "--out",
+                str(WORK / f"pass1_{arm}.jsonl"),
+                *extra,
+            ],
+            lf,
+        )
         bench[arm] = parse_pass1(lf) if rc == 0 else {"error": rc}
         log(f"BENCH {arm}: {bench[arm]}")
         with open(WORK / "bench.json", "w") as f:
