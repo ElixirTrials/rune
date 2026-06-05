@@ -306,7 +306,7 @@ class TestParseOutput:
         assert deps["a"] == []  # self-ref and phantom 'ghost' dropped
         assert deps["b"] == ["a"]  # real dependency kept
 
-    def test_decompose_malformed_json_returns_empty(self) -> None:
+    def test_decompose_malformed_degrades_to_single_subtask(self) -> None:
         action = Action(
             "decompose",
             "decompose",
@@ -316,8 +316,14 @@ class TestParseOutput:
             False,
             None,
         )
-        updates = parse_output(action, '{"subtasks": [trunc', None, {"subtasks": []})
-        assert updates == {}  # graceful: no crash, engine re-decomposes
+        # Unparseable decompose degrades to ONE whole-task subtask (named for the
+        # entry_point) instead of returning {} and re-decompose-looping to empty.
+        updates = parse_output(
+            action, "??? not json ???", None,
+            {"subtasks": [], "task": "build X", "entry_point": "x"},
+        )
+        assert len(updates["subtasks"]) == 1
+        assert updates["subtasks"][0].name == "x"
 
     def test_first_code_attempt_not_counted_as_retry(self) -> None:
         action = Action("code", "code", "prompt_code", "", None, True, "task_a")

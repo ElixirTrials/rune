@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, TypeVar
 
+import json_repair
 from jinja2 import Environment, PackageLoader, StrictUndefined
 from markdown_it import MarkdownIt
 from pydantic import BaseModel
@@ -34,10 +35,72 @@ class SubtaskSchema(BaseModel):
     name: str
     description: str
     depends_on: list[str] = []
+    # Episodic design: each subtask carries a concrete acceptance check (an
+    # example I/O or assert for THIS sub-goal) and names the piece of the final
+    # entry_point it builds — so each subtask runs a real dev cycle and
+    # integration can be AST-verified.
+    acceptance_check: str = ""
+    builds: str = ""
 
 
 class DecomposeResult(BaseModel):
     subtasks: list[SubtaskSchema]
+    # Condensed overall goal for the episodic adapter (NOT the full spec at every
+    # step). For a single-function task the lone subtask carries the full task.
+    overall_goal: str = ""
+
+
+_DECOMPOSE_MAX_SUBTASKS = 3
+
+_M = TypeVar("_M", bound=BaseModel)
+
+
+def _loads_structured(raw: str, model: type[_M]) -> _M | None:
+    """Parse *raw* as *model* JSON, recovering from truncation/prose-wrapping.
+
+    Plain ``model_validate_json`` fails hard on a truncated or lightly-malformed
+    JSON object (long hard-task output) — which previously caused a re-plan /
+    re-decompose loop. ``json_repair`` repairs the JSON first; on unrecoverable
+    input returns ``None`` so callers can degrade gracefully instead of looping.
+    """
+    try:
+        return model.model_validate_json(raw)
+    except Exception:  # noqa: BLE001 - any malformed JSON; try repair next
+        pass
+    try:
+        obj = json_repair.loads(raw)
+    except Exception:  # pragma: no cover - json_repair is very tolerant
+        return None
+    if isinstance(obj, dict):
+        try:
+            return model.model_validate(obj)
+        except Exception:  # noqa: BLE001 - repaired but still not the schema
+            return None
+    return None
+
+
+def _single_subtask_fallback(state: dict[str, Any]) -> dict[str, Any]:
+    """One whole-task subtask (used when decompose is unparseable).
+
+    Keeps the engine moving instead of re-decompose-looping: the sole subtask is
+    the full task, named for the entry_point so integration verification can find
+    it. Its acceptance check is the task's public example(s), surfaced by the
+    oracle from the spec — so it still gets a real in-loop signal.
+    """
+    task = str(state.get("task", ""))
+    entry = str(state.get("entry_point", "")) or "main"
+    return {
+        "overall_goal": task[:200],
+        "subtasks": [
+            Subtask(
+                name=entry,
+                description=task,
+                depends_on=[],
+                acceptance_check="",
+                builds=entry,
+            )
+        ],
+    }
 
 
 class PlanResult(BaseModel):
@@ -172,18 +235,21 @@ def parse_output(
     # to what executed instead of re-parsing raw with a divergent fallback.
     match action.name:
         case "decompose":
-            try:
-                result = DecomposeResult.model_validate_json(raw)
-            except Exception:
-                logger.warning("decompose output failed validation; re-decomposing")
-                return {}
+            result = _loads_structured(raw, DecomposeResult)
+            if result is None or not result.subtasks:
+                # Degrade to ONE whole-task subtask rather than returning {} (which
+                # re-decompose-loops and burns budget to empty code).
+                logger.warning("decompose unparseable; degrading to single subtask")
+                return _single_subtask_fallback(state)
             # Drop pure-chore subtasks (docs/tests/edge-cases/signatures) — but
             # never empty the plan; degrade to keeping everything if all are chores.
             kept = [s for s in result.subtasks if not _is_chore_subtask(s)]
             if not kept:
                 kept = list(result.subtasks)
+            kept = kept[:_DECOMPOSE_MAX_SUBTASKS]  # bound (owner: cap <=3)
             names = {s.name for s in kept}
             return {
+                "overall_goal": result.overall_goal,
                 "subtasks": [
                     Subtask(
                         name=s.name,
@@ -193,19 +259,21 @@ def parse_output(
                         depends_on=[
                             d for d in s.depends_on if d in names and d != s.name
                         ],
+                        acceptance_check=s.acceptance_check,
+                        builds=s.builds,
                     )
                     for s in kept
-                ]
+                ],
             }
         case "plan":
             target = action.target_subtask
-            try:
-                plan_text = PlanResult.model_validate_json(raw).plan
-            except Exception:
-                logger.warning(
-                    "plan output failed validation for %s; re-planning", target
-                )
-                return {}
+            res = _loads_structured(raw, PlanResult)
+            if res is None:
+                # Degrade to a minimal plan rather than re-planning to empty.
+                logger.warning("plan unparseable for %s; using minimal plan", target)
+                plan_text = "Implement the function directly to satisfy the task."
+            else:
+                plan_text = res.plan
             return {"plans": {**state.get("plans", {}), target: plan_text}}
         case "code":
             target = action.target_subtask
@@ -239,11 +307,10 @@ def parse_output(
                 "diagnosis": {},
             }
         case "diagnose":
-            try:
-                diag_result = DiagnoseResult.model_validate_json(raw)
-            except Exception:
+            diag_result = _loads_structured(raw, DiagnoseResult)
+            if diag_result is None:
                 logger.warning(
-                    "diagnose output failed validation; no diagnosis recorded"
+                    "diagnose output unparseable; no diagnosis recorded"
                 )
                 return {}
             diagnosis = dict(state.get("diagnosis", {}))

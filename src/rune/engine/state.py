@@ -14,11 +14,17 @@ class Subtask:
         name: Unique identifier for the subtask.
         description: Human-readable description of what to implement.
         depends_on: Names of subtasks that must complete before this one.
+        acceptance_check: A concrete example I/O or assert for THIS sub-goal —
+            the in-loop correctness signal for the subtask's dev cycle.
+        builds: The piece of the final entry_point this subtask contributes
+            (used to AST-verify integration defines the entry_point).
     """
 
     name: str
     description: str
     depends_on: list[str]
+    acceptance_check: str = ""
+    builds: str = ""
 
 
 @dataclass(frozen=True)
@@ -99,6 +105,7 @@ class RunState(TypedDict):
     task: str
     entry_point: str
     signature: str
+    overall_goal: str
     subtasks: list[Subtask]
     plans: dict[str, str]
     code_results: dict[str, str]
@@ -122,6 +129,7 @@ def make_initial_state(
         "task": task,
         "entry_point": entry_point,
         "signature": signature,
+        "overall_goal": "",
         "subtasks": [],
         "plans": {},
         "code_results": {},
