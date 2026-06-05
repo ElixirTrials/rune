@@ -352,6 +352,10 @@ def parse_output(
             # only it (drops redundant helpers / duplicate entry_point subtasks).
             if entry_pt and any(s.name == entry_pt for s in kept):
                 kept = [s for s in kept if s.name == entry_pt][:1]
+            # Collapse duplicate names (the model sometimes emits the same subtask
+            # N times -> N× the work and a guaranteed exhaust). Keep first of each.
+            _seen: set[str] = set()
+            kept = [s for s in kept if not (s.name in _seen or _seen.add(s.name))]
             kept = kept[:_DECOMPOSE_MAX_SUBTASKS]  # bound (owner: cap <=3)
             # Single-function task: the entry_point is the authoritative name (the
             # held-out test calls it), so the lone subtask must define exactly it.
