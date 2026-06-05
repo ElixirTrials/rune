@@ -123,17 +123,32 @@ def build_probe(code: str, spec: str, entry_point: str) -> tuple[str, bool]:
 
 
 def build_subtask_probe(code: str, acceptance_check: str) -> tuple[str, bool]:
-    """Append a subtask's model-authored ``acceptance_check`` to its candidate code.
+    """Append a subtask's ``acceptance_check`` to its candidate, with an
+    actual-vs-expected failure message so repair gets a usable signal.
 
-    The episodic design gives each subtask its own in-loop signal (the check the
-    decompose step authored for that sub-goal). Appended only when the candidate is
-    non-empty and the check parses as Python (a malformed check must not crash the
-    sandbox into a spurious repair); otherwise falls back to module-load only.
+    The episodic per-subtask check is the in-loop signal. A *bare* ``assert f(x)
+    == y`` only yields "AssertionError @ line", which repair cannot act on (e.g.
+    a correct algorithm that returns a tuple where a list is expected). So an
+    equality check is rewritten to run the call and report ``f(x) -> <actual>,
+    want <expected>``. Non-equality / unparseable checks fall through unchanged
+    (or skip, so a malformed check never crashes the sandbox into spurious repair).
     """
     if not code.strip() or not acceptance_check.strip():
         return code, False
     try:
-        ast.parse(acceptance_check)
+        tree = ast.parse(acceptance_check.strip())
     except (SyntaxError, ValueError):
         return code, False
-    return f"{code}\n\n{acceptance_check}", True
+    check = acceptance_check
+    if (
+        len(tree.body) == 1
+        and isinstance(tree.body[0], ast.Assert)
+        and isinstance(tree.body[0].test, ast.Compare)
+        and len(tree.body[0].test.ops) == 1
+        and isinstance(tree.body[0].test.ops[0], ast.Eq)
+    ):
+        cmp = tree.body[0].test
+        check = _augmented_assert(
+            ast.unparse(cmp.left), ast.unparse(cmp.comparators[0]), 0
+        )
+    return f"{code}\n\n{check}", True

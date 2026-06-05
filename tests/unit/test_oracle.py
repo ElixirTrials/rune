@@ -107,7 +107,21 @@ class TestBuildSubtaskProbe:
         code = "def tokenize(s):\n    return list(s)"
         probe, fired = build_subtask_probe(code, "assert tokenize('ab') == ['a','b']")
         assert fired is True
-        assert "assert tokenize" in probe
+        assert "tokenize" in probe
+
+    def test_augmented_check_reports_actual_vs_expected(self) -> None:
+        # a correct-but-wrong-type impl must yield a usable message, not bare
+        # AssertionError: returns a tuple where a list is expected.
+        code = "def f(x):\n    return tuple(x)"
+        probe, fired = build_subtask_probe(code, "assert f([1, 2]) == [1, 2]")
+        assert fired is True
+        try:
+            exec(compile(probe, "<p>", "exec"), {})  # noqa: S102 - test fixture
+        except AssertionError as e:
+            msg = str(e)
+            assert "(1, 2)" in msg and "want" in msg and "[1, 2]" in msg
+        else:
+            raise AssertionError("augmented check did not fail on tuple-vs-list")
 
     def test_skips_malformed_check(self) -> None:
         probe, fired = build_subtask_probe("def f(): pass", "assert (((")
