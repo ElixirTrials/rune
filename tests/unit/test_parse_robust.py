@@ -90,3 +90,20 @@ class TestDecomposeBoundAndDegrade:
         # it degrades to ONE subtask = the whole task.
         updates = parse_output(_decompose_action(), "??? not json ???", None, _state())
         assert len(updates.get("subtasks", [])) == 1
+
+
+class TestDecomposeNameConsistency:
+    def test_single_subtask_name_forced_to_entry_point(self) -> None:
+        # The lone subtask of a single-function task MUST be named for the
+        # entry_point, so the prompt/check/held-out test all call the same name
+        # (the model otherwise names it after the descriptive subtask -> NameError).
+        raw = (
+            '{"overall_goal":"roman","subtasks":[{"name":'
+            '"Convert integer to Roman numeral","description":"d",'
+            '"acceptance_check":"assert solve_p3(9)==\'IX\'","builds":"solve_p3"}]}'
+        )
+        st = {"subtasks": [], "task": "spec", "entry_point": "solve_p3"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        assert len(updates["subtasks"]) == 1
+        assert updates["subtasks"][0].name == "solve_p3"
+        assert updates["subtasks"][0].builds == "solve_p3"

@@ -11,16 +11,18 @@ Output a JSON object:
 {
   "overall_goal": "<one concise sentence stating the overall goal>",
   "subtasks": [
-    {"name": "...",
+    {"name": "<a VALID PYTHON IDENTIFIER — the exact name of the function this subtask DEFINES, e.g. tokenize>",
      "description": "<what THIS sub-goal must implement>",
-     "acceptance_check": "<one concrete Python assert that tests THIS sub-goal, e.g. assert tokenize('2+3') == ['2','+','3']>",
-     "builds": "<the entry_point or named piece this subtask contributes>",
+     "acceptance_check": "<one concrete Python assert that calls THIS subtask's function BY ITS name, e.g. assert tokenize('2+3') == ['2','+','3']>",
+     "builds": "<the entry_point this subtask contributes to>",
      "depends_on": [...]}
   ]
 }
+CRITICAL: `name` MUST be a valid Python identifier (no spaces) and MUST be the
+function the subtask defines; the `acceptance_check` MUST call that same `name`.
 Use depends_on: [] when a subtask has no prerequisites. For a single-subtask task,
-the lone subtask `builds` the entry_point and its `acceptance_check` is the task's
-own example. No preamble, no analysis, no reasoning outside the JSON.
+`name` is the entry_point and `acceptance_check` is the task's own example. No
+preamble, no analysis, no reasoning outside the JSON.
 
 A subtask is a unit of IMPLEMENTATION, not a project chore. NEVER emit:
 - "Analyze the request" / "Define the signature" / "Add type hints" — reasoning.

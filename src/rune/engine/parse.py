@@ -246,6 +246,16 @@ def parse_output(
             if not kept:
                 kept = list(result.subtasks)
             kept = kept[:_DECOMPOSE_MAX_SUBTASKS]  # bound (owner: cap <=3)
+            # Single-function task: force the lone subtask's name to the
+            # entry_point so the prompt ("implement <name>"), the model-authored
+            # acceptance_check, and the held-out test all call the SAME function.
+            # The model otherwise names it after the descriptive subtask
+            # ("Convert integer to Roman numeral...") -> permanent NameError that
+            # repair cannot fix.
+            entry_pt = str(state.get("entry_point", ""))
+            if len(kept) == 1 and entry_pt:
+                kept[0].name = entry_pt
+                kept[0].builds = entry_pt
             names = {s.name for s in kept}
             return {
                 "overall_goal": result.overall_goal,
