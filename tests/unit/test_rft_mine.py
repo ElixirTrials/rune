@@ -28,7 +28,7 @@ def _step(action, exit_code, code, target="f"):
     return {
         "action": action,
         "target": target,
-        "trajectory": f"## Mission `f`\nsolve it\n## `f` — what you learned was wrong\nboom",
+        "trajectory": "## Mission `f`\nsolve it\n## `f` — what you learned was wrong\nboom",
         "output": f"```python\n{code}\n```",
         "feedback": {"exit_code": exit_code, "stdout": "", "stderr": ""},
     }

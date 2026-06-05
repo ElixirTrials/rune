@@ -21,15 +21,26 @@ import difflib
 from typing import Any
 
 _FEEDBACK_HEADER = "## Review Feedback"
+_RECALL_FEEDBACK_MARKER = "— what you learned was wrong with it"
 _NEUTRAL_FEEDBACK = "Please review the code and apply the necessary corrections."
 
 
 def extract_review_feedback(activation_text: str) -> str:
-    """The Review Feedback body (everything after the header), stripped. '' if none."""
+    """The failure-feedback body (everything after the header), stripped. '' if none.
+
+    Recognises the old ``## Review Feedback`` header and the new recall format's
+    ``## `name` — what you learned was wrong with it`` section (issue #52) so the
+    contrastive hard-negative still fires when training on the new format.
+    """
     idx = activation_text.find(_FEEDBACK_HEADER)
-    if idx == -1:
-        return ""
-    return activation_text[idx + len(_FEEDBACK_HEADER) :].strip()
+    if idx != -1:
+        return activation_text[idx + len(_FEEDBACK_HEADER) :].strip()
+    midx = activation_text.find(_RECALL_FEEDBACK_MARKER)
+    if midx != -1:
+        nl = activation_text.find("\n", midx)
+        if nl != -1:
+            return activation_text[nl + 1 :].strip()
+    return ""
 
 
 def has_feedback(activation_text: str) -> bool:
