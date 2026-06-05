@@ -42,14 +42,22 @@ ARMS: dict[str, dict[str, Any]] = {
 _CODE_ACTIONS = {"code", "repair", "integrate"}
 
 
-def _build_cfg(arm: str, seed: int, max_iters: int, prompt_mode: str = "full") -> Any:
+def _build_cfg(
+    arm: str,
+    seed: int,
+    max_iters: int,
+    prompt_mode: str = "full",
+    adapter_scaling: float | None = None,
+) -> Any:
     from rune.config import load_rune_config  # noqa: PLC0415
 
     a = ARMS[arm]
     cfg = load_rune_config(None)
     return cfg.override(
         checkpoint_path=a["checkpoint"],
-        adapter_scaling=a["adapter_scaling"],
+        adapter_scaling=(
+            a["adapter_scaling"] if adapter_scaling is None else adapter_scaling
+        ),
         seed=seed,
         max_phase_iterations=max_iters,
         prompt_mode=prompt_mode,
@@ -117,7 +125,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         tracked_run,
     )
 
-    cfg = _build_cfg(args.arm, args.seed, args.max_iters, args.prompt_mode)
+    cfg = _build_cfg(args.arm, args.seed, args.max_iters, args.prompt_mode,
+                     adapter_scaling=args.adapter_scaling)
     tasks = load_tasks(Path(args.tasks))
     if args.limit:
         tasks = tasks[: args.limit]
@@ -357,6 +366,9 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--experiment", default="issue52-goal3-multiturn")
     p.add_argument("--prompt-mode", default="full", dest="prompt_mode")
+    p.add_argument(
+        "--adapter-scaling", type=float, default=None, dest="adapter_scaling"
+    )
     p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("score")
