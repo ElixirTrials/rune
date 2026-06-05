@@ -110,6 +110,12 @@ class RunState(TypedDict):
     plans: dict[str, str]
     code_results: dict[str, str]
     code_passed: dict[str, bool]
+    # Best candidate seen per subtask, ranked by sandbox quality (pass > assertion
+    # mismatch > runtime crash > syntax/empty). The engine ships THIS, never a
+    # later worse attempt, so a re-code/repair can't regress a near-miss into a
+    # crash and throw away a would-be success (issue #52 RC-C).
+    best_code: dict[str, str]
+    best_quality: dict[str, int]
     retries: dict[str, int]
     integrated_code: str
     current_adapter: str | None
@@ -134,6 +140,8 @@ def make_initial_state(
         "plans": {},
         "code_results": {},
         "code_passed": {},
+        "best_code": {},
+        "best_quality": {},
         "retries": {},
         "integrated_code": "",
         "current_adapter": None,

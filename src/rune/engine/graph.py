@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -20,7 +21,11 @@ from rune.engine.continuation import (
     strip_self_tests,
     validate_syntax,
 )
-from rune.engine.oracle import build_probe, build_subtask_probe
+from rune.engine.oracle import (
+    build_probe,
+    build_subtask_probe,
+    split_acceptance_checks,
+)
 from rune.engine.parse import JudgeResult, parse_output, render_template
 from rune.engine.policy import select_action
 from rune.engine.state import (
@@ -140,18 +145,36 @@ def render_episode_adapter(
         return render_training_format_trajectory(
             task=overall or str(state.get("task", ""))
         )
-    task = f"{overall}\n\nSubtask `{sub.name}`: {sub.description}"
+    # SPECIFIC, function-named headers (not generic "## Task / ## Review
+    # Feedback"): the hypernetwork bakes this episode into the adapter WEIGHTS, so
+    # to the model it is learned knowledge, not text in its context. Distinctive
+    # per-function headers give the recall-phrased prompt ("recall what you
+    # learned about `name`...") a sharp anchor to cue (issue #52 (1)).
+    name = sub.name
+    goal = overall
+    if sub.description:
+        goal = f"{goal}\n{sub.description}" if goal else sub.description
     if sub.acceptance_check:
-        task += f"\nAcceptance: {sub.acceptance_check}"
+        goal += f"\nAcceptance: {sub.acceptance_check}"
+    # Seed the FIRST code attempt with the real bare signature so the adapter
+    # conveys the call contract (R2); once code exists, condition on that instead.
+    current_code = state.get("code_results", {}).get(target, "")
+    if not current_code and name == str(state.get("entry_point", "") or ""):
+        current_code = _bare_signature_stub(
+            name, str(state.get("signature", "") or ""), str(state.get("task", ""))
+        )
+    # What went wrong AND the diagnosis, co-located, named for THIS function.
     fb = state.get("feedback", {}).get(target)
     err = fb.stderr if (fb is not None and fb.exit_code != 0) else ""
-    if not err:
-        err = state.get("diagnosis", {}).get(target, "")
-    return render_training_format_trajectory(
-        task=task,
-        current_code=state.get("code_results", {}).get(target, ""),
-        feedback=err,
-    )
+    diag = state.get("diagnosis", {}).get(target, "")
+    if diag:
+        err = f"{err}\nDiagnosis: {diag}".strip() if err else f"Diagnosis: {diag}"
+    sections = [f"## Mission `{name}`\n{goal}"]
+    if current_code:
+        sections.append(f"## `{name}` — your last attempt\n{current_code}")
+    if err:
+        sections.append(f"## `{name}` — what you learned was wrong with it\n{err}")
+    return "\n\n".join(sections)
 
 
 def _split_spec(spec: str) -> tuple[str, str]:
@@ -168,6 +191,33 @@ def _split_spec(spec: str) -> tuple[str, str]:
         else:
             prose.append(line)
     return "\n".join(prose).strip(), "\n".join(asserts).strip()
+
+
+def _bare_signature_stub(entry_point: str, signature: str, spec: str) -> str:
+    """Bare ``def name(params):`` stub for episodic conditioning.
+
+    LCB (and `rune run`) ship a ``class Solution: def name(self, a: T) -> R:``
+    starter, but the engine emits a TOP-LEVEL function, so the episodic adapter
+    must carry the bare signature (params minus ``self``) — issue #52 R2: the
+    per-subtask context had dropped it, so the model invented parameter names
+    (e.g. wrote ``(n, s)`` for a ``(s, k)`` contract, ignoring an argument).
+    Falls back to doctest-derived arity when there is no usable starter.
+    """
+    src = signature.strip()
+    if src:
+        parse_src = f"{src} pass" if src.endswith(":") else src
+        try:
+            tree: ast.Module | None = ast.parse(parse_src)
+        except (SyntaxError, ValueError):
+            tree = None
+        if tree is not None:
+            for node in ast.walk(tree):
+                if isinstance(
+                    node, (ast.FunctionDef, ast.AsyncFunctionDef)
+                ) and (not entry_point or node.name == entry_point):
+                    params = re.sub(r"^self\s*,?\s*", "", ast.unparse(node.args))
+                    return f"def {node.name}({params}):"
+    return _derive_signature(entry_point, spec)
 
 
 def _derive_signature(entry_point: str, spec: str) -> str:
@@ -460,6 +510,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             temperature=temperature,
             repetition_penalty=repetition_penalty,
             top_p=top_p,
+            no_repeat_ngram_size=run_config.get("no_repeat_ngram_size", 0),
             presence_penalty=presence_penalty,
             thinking_budget=thinking_budget,
         )
@@ -636,13 +687,26 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         # integrate's target is "" -> a trailing-slash metric name MLflow rejects;
         # label it explicitly.
         _label = name or "integrate"
+        _fb = feedback_map[name]
+        _check = _subtask_check.get(name, "")
+        _n_checks = (
+            len(split_acceptance_checks(_check)) if _check.strip() else 0
+        )
         logger.info(
-            "oracle for %s: %s",
+            "oracle for %s: %s (%d check(s))",
             _label,
             "fired (public examples)" if _fired else "fallback (module-load only)",
+            _n_checks,
         )
+        if _fired and _fb.exit_code != 0:
+            _detail = (_fb.stderr or _fb.stdout or "").strip()[:500]
+            logger.info("oracle check failed for %s: %s", _label, _detail)
         if mlflow.active_run() is not None:
             mlflow.log_metric(f"oracle_fired/{_label}", int(_fired), step=state["step"])
+            if _n_checks:
+                mlflow.log_metric(
+                    f"oracle_n_checks/{_label}", _n_checks, step=state["step"]
+                )
 
     # Model-judge (in-loop, always on): the public example is necessary but not
     # sufficient — code can pass its one public case yet be wrong on a held-out

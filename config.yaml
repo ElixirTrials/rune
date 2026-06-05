@@ -27,7 +27,9 @@ temperature: 0.3
 max_tokens: 2048
 repetition_penalty: 1.1
 top_p: 0.9
-no_repeat_ngram_size: 12
+no_repeat_ngram_size: 0   # 0 = no n-gram blocking; it fights legitimate code
+                          # repetition (indentation, `return`). Forcing 12 on the
+                          # main codegen pass regressed the hard slice 4/8->2/8 (#52).
 
 # --- Engine loop ---
 max_phase_iterations: 10

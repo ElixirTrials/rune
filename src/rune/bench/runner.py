@@ -157,7 +157,13 @@ async def run_benchmark(
 
         generated_code = final_state.get("integrated_code") or ""
         if not generated_code:
-            generated_code = "\n".join(final_state.get("code_results", {}).values())
+            # Ship the BEST candidate per subtask (no-regress), not the last
+            # attempt — a re-code/repair can leave a crash in code_results that
+            # is worse than an earlier near-miss (issue #52 RC-C).
+            shipped = final_state.get("best_code") or final_state.get(
+                "code_results", {}
+            )
+            generated_code = "\n".join(shipped.values())
 
         # Strip the model's own self-tests (incl. __main__ asserts) before
         # appending the held-out tests: otherwise a wrong self-test fails a

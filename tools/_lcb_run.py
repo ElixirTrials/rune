@@ -64,6 +64,12 @@ def main() -> None:
     ap.add_argument("--functional-only", action="store_true")
     ap.add_argument("--max-iters", type=int, default=4)
     ap.add_argument("--prompt-mode", default="full", dest="prompt_mode")
+    ap.add_argument(
+        "--adapter-scaling",
+        type=float,
+        default=None,
+        help="Override the arm's adapter_scaling (sweep/HPO best is 0.627).",
+    )
     ap.add_argument("--start-date", default="2025-02-01")
     ap.add_argument("--end-date", default="2025-05-01")
     args = ap.parse_args()
@@ -89,9 +95,10 @@ def main() -> None:
     )
 
     a = ARMS[args.arm]
+    scaling = a["adapter_scaling"] if args.adapter_scaling is None else args.adapter_scaling
     cfg = load_rune_config(None).override(
         checkpoint_path=a["checkpoint"],
-        adapter_scaling=a["adapter_scaling"],
+        adapter_scaling=scaling,
         seed=0,
         max_phase_iterations=args.max_iters,
         prompt_mode=args.prompt_mode,

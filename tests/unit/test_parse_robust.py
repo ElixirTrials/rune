@@ -69,6 +69,20 @@ class TestEpisodicSchema:
         assert s.acceptance_check.startswith("assert")
         assert s.builds == "calculate"
 
+    def test_subtask_normalizes_list_of_checks(self) -> None:
+        s = SubtaskSchema(
+            name="solve_p3",
+            description="roman",
+            acceptance_check=[
+                "assert solve_p3(9) == 'IX'",
+                "assert solve_p3(3) == 'III'",
+            ],
+        )
+        lines = s.acceptance_check.splitlines()
+        assert len(lines) == 2
+        assert "solve_p3(9)" in lines[0]
+        assert "solve_p3(3)" in lines[1]
+
     def test_decompose_overall_goal_default(self) -> None:
         d = DecomposeResult(subtasks=[SubtaskSchema(name="a", description="d")])
         assert d.overall_goal == ""
@@ -160,3 +174,41 @@ class TestNameFromCheck:
         st = {"subtasks": [], "task": "t", "entry_point": "solve_p3"}
         updates = parse_output(_decompose_action(), raw, None, st)
         assert updates["subtasks"][0].name == "solve_p3"
+
+    def test_decompose_accepts_list_acceptance_check(self) -> None:
+        raw = (
+            '{"overall_goal":"g","subtasks":[{"name":"solve_p3","description":"d",'
+            '"acceptance_check":["assert solve_p3(9)==\'IX\'",'
+            '"assert solve_p3(3)==\'III\'"],"builds":"solve_p3"}]}'
+        )
+        st = {"subtasks": [], "task": "t", "entry_point": "solve_p3"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        check = updates["subtasks"][0].acceptance_check
+        assert "solve_p3(9)" in check and "solve_p3(3)" in check
+
+    def test_check_rewritten_to_call_the_forced_name(self) -> None:
+        # The latent bug: forcing name->entry_point but leaving the check calling
+        # the OLD name makes the in-loop probe run a call to an undefined function
+        # -> spurious NameError. The check must be rewritten to call the final name.
+        raw = (
+            '{"overall_goal":"g","subtasks":[{"name":"foo","description":"d",'
+            '"acceptance_check":"assert foo(9)==\'IX\'","builds":"foo"}]}'
+        )
+        st = {"subtasks": [], "task": "t", "entry_point": "maxDistance"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        sub = updates["subtasks"][0]
+        assert sub.name == "maxDistance"
+        assert "maxDistance(9)" in sub.acceptance_check  # check now calls the name
+        assert "foo(" not in sub.acceptance_check  # old name gone
+
+    def test_check_rewrite_preserves_builtins(self) -> None:
+        # only the function-under-test is renamed; builtins in the check stay.
+        raw = (
+            '{"overall_goal":"g","subtasks":[{"name":"old","description":"d",'
+            '"acceptance_check":"assert old([1,2]) == sorted([2,1])","builds":"old"}]}'
+        )
+        st = {"subtasks": [], "task": "t", "entry_point": "mySort"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        check = updates["subtasks"][0].acceptance_check
+        assert "mySort([1, 2])" in check
+        assert "sorted([2, 1])" in check  # builtin untouched

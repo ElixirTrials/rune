@@ -77,7 +77,7 @@ async def generate(
     temperature: float = 0.3,
     top_p: float = 0.9,
     repetition_penalty: float = 1.1,
-    thinking_budget: int = 1024,
+    thinking_budget: int = 0,  # 0 = non-thinking; config drives the real value
     no_repeat_ngram_size: int = 0,
     presence_penalty: float = 0.0,
     skip_completion_retry: bool = False,

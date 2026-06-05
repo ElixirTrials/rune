@@ -122,33 +122,65 @@ def build_probe(code: str, spec: str, entry_point: str) -> tuple[str, bool]:
     return f"{code}\n\n{checks}", True
 
 
-def build_subtask_probe(code: str, acceptance_check: str) -> tuple[str, bool]:
-    """Append a subtask's ``acceptance_check`` to its candidate, with an
-    actual-vs-expected failure message so repair gets a usable signal.
+def split_acceptance_checks(check: str) -> list[str]:
+    """Split a subtask ``acceptance_check`` into individual assert statements.
 
-    The episodic per-subtask check is the in-loop signal. A *bare* ``assert f(x)
-    == y`` only yields "AssertionError @ line", which repair cannot act on (e.g.
-    a correct algorithm that returns a tuple where a list is expected). So an
-    equality check is rewritten to run the call and report ``f(x) -> <actual>,
-    want <expected>``. Non-equality / unparseable checks fall through unchanged
-    (or skip, so a malformed check never crashes the sandbox into spurious repair).
+    Supports newline-separated and semicolon-separated multi-assert strings
+    (the decompose schema may also emit a JSON list, normalized to newlines
+    before this is called).
     """
-    if not code.strip() or not acceptance_check.strip():
-        return code, False
+    parts: list[str] = []
+    for raw_line in check.strip().splitlines():
+        stripped_line = raw_line.strip()
+        if not stripped_line:
+            continue
+        for raw_piece in stripped_line.split(";"):
+            stripped_piece = raw_piece.strip()
+            if stripped_piece:
+                parts.append(stripped_piece)
+    return parts
+
+
+def _augment_equality_check(check: str, index: int) -> str | None:
+    """Rewrite one equality assert with an actual-vs-expected message, or None."""
     try:
-        tree = ast.parse(acceptance_check.strip())
+        tree = ast.parse(check.strip())
     except (SyntaxError, ValueError):
-        return code, False
-    check = acceptance_check
-    if (
+        return None
+    if not (
         len(tree.body) == 1
         and isinstance(tree.body[0], ast.Assert)
         and isinstance(tree.body[0].test, ast.Compare)
         and len(tree.body[0].test.ops) == 1
         and isinstance(tree.body[0].test.ops[0], ast.Eq)
     ):
-        cmp = tree.body[0].test
-        check = _augmented_assert(
-            ast.unparse(cmp.left), ast.unparse(cmp.comparators[0]), 0
-        )
-    return f"{code}\n\n{check}", True
+        return None
+    cmp = tree.body[0].test
+    return _augmented_assert(
+        ast.unparse(cmp.left), ast.unparse(cmp.comparators[0]), index
+    )
+
+
+def build_subtask_probe(code: str, acceptance_check: str) -> tuple[str, bool]:
+    """Append a subtask's ``acceptance_check`` asserts to its candidate.
+
+    Each assert is augmented when it is a simple equality so repair gets
+    ``f(x) -> <actual>, want <expected>`` instead of a bare AssertionError.
+    Multiple asserts run in order; the first failure stops execution and
+    surfaces that check's message. Malformed individual checks are skipped.
+    """
+    if not code.strip() or not acceptance_check.strip():
+        return code, False
+
+    augmented: list[str] = []
+    for i, raw in enumerate(split_acceptance_checks(acceptance_check)):
+        piece = _augment_equality_check(raw, i) or raw.strip()
+        try:
+            ast.parse(piece)
+        except (SyntaxError, ValueError):
+            continue
+        augmented.append(piece)
+
+    if not augmented:
+        return code, False
+    return f"{code}\n\n" + "\n".join(augmented), True

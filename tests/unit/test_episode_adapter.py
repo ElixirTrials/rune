@@ -3,7 +3,40 @@
 from __future__ import annotations
 
 from rune.engine.graph import render_episode_adapter
+from rune.engine.parse import render_template
 from rune.engine.state import Feedback, Subtask
+
+
+class TestEpisodicPromptReferences:
+    def test_repair_prompt_cues_recall_not_reading(self) -> None:
+        # (1): the adapter episode is in the WEIGHTS, not the model's context.
+        # The prompt must cue RECALL of learned knowledge about the specific
+        # function, never tell the model to "read" a generic section.
+        p = render_template("prompt_episodic_repair", subtask_name="decode_string")
+        low = p.lower()
+        assert "decode_string" in p  # specific function, not generic
+        assert "recall" in low  # recall-of-learned-knowledge framing
+        assert "## review feedback" not in low  # no generic header references
+        assert "## current code" not in low
+        assert "in your context" not in low  # adapter is NOT in the context
+        assert "read `##" not in low
+
+    def test_code_prompt_cues_recall(self) -> None:
+        p = render_template("prompt_episodic_code", subtask_name="decode_string")
+        assert "decode_string" in p
+        assert "recall" in p.lower()
+        assert "in your context" not in p.lower()
+
+    def test_repair_adapter_uses_specific_named_headers(self) -> None:
+        # The adapter conditioning must use distinctive, function-named headers
+        # (a sharp recall anchor) rather than generic "## Review Feedback".
+        st = _state()
+        st["diagnosis"] = {"tokenize": "drop the delimiter"}
+        adp = render_episode_adapter("code", "tokenize", st)
+        assert "## Mission `tokenize`" in adp
+        assert "`tokenize` — what you learned was wrong with it" in adp
+        assert "## Review Feedback" not in adp  # generic header gone
+        assert "## Current Code" not in adp
 
 
 def _state() -> dict:
@@ -69,3 +102,42 @@ class TestEpisodeAdapter:
     def test_decompose_step_sees_the_full_spec(self) -> None:
         adp = render_episode_adapter("decompose", None, _state())
         assert ">>> assert calculate" in adp  # decompose needs the full task
+
+    def test_entry_subtask_first_attempt_seeds_bare_signature(self) -> None:
+        # R2: the adapter must carry the real call contract (params minus self)
+        # on the FIRST code attempt, or the model invents parameter names.
+        st = _state()
+        st["entry_point"] = "maxDistance"
+        st["signature"] = (
+            "class Solution:\n    def maxDistance(self, s: str, k: int) -> int:\n        "
+        )
+        st["subtasks"] = [
+            Subtask("maxDistance", "Max distance", [], "assert maxDistance('NS', 1)==2", "maxDistance")
+        ]
+        st["code_results"] = {}
+        st["feedback"] = {}
+        adp = render_episode_adapter("code", "maxDistance", st)
+        assert "def maxDistance(s: str, k: int)" in adp  # real params, no self
+        assert "self" not in adp
+
+    def test_repair_adapter_colocates_error_and_diagnosis(self) -> None:
+        # (1): the repair episode must carry BOTH what went wrong (traceback) AND
+        # the diagnosis together in ## Review Feedback (within-distribution).
+        st = _state()
+        st["diagnosis"] = {"tokenize": "the split keeps the delimiter; drop it"}
+        adp = render_episode_adapter("code", "tokenize", st)
+        assert "AssertionError: bad split" in adp  # the error
+        assert "Diagnosis: the split keeps the delimiter" in adp  # the diagnosis
+
+    def test_existing_code_overrides_signature_seed(self) -> None:
+        # once code exists, condition on it (not the bare stub).
+        st = _state()
+        st["entry_point"] = "maxDistance"
+        st["signature"] = "class Solution:\n    def maxDistance(self, s, k):\n        "
+        st["subtasks"] = [
+            Subtask("maxDistance", "Max distance", [], "assert maxDistance('NS', 1)==2", "maxDistance")
+        ]
+        st["code_results"] = {"maxDistance": "def maxDistance(s, k): return 0"}
+        st["feedback"] = {}
+        adp = render_episode_adapter("code", "maxDistance", st)
+        assert "return 0" in adp

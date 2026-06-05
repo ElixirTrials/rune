@@ -192,7 +192,7 @@ class ModelWrapper:
         top_p: float = 0.9,
         no_repeat_ngram_size: int = 0,
         presence_penalty: float = 0.0,
-        thinking_budget: int = 1024,
+        thinking_budget: int = 0,  # 0 = non-thinking; config drives the real value
         skip_completion_retry: bool = False,
     ) -> GenerationResult:
         return await inference_generate(

@@ -14,6 +14,7 @@ from rune.engine.oracle import (
     build_subtask_probe,
     defines_function,
     extract_public_checks,
+    split_acceptance_checks,
 )
 
 SPEC = (
@@ -131,3 +132,43 @@ class TestBuildSubtaskProbe:
     def test_skips_empty(self) -> None:
         assert build_subtask_probe("def f(): pass", "") == ("def f(): pass", False)
         assert build_subtask_probe("", "assert True") == ("", False)
+
+    def test_split_multiline_and_semicolon_checks(self) -> None:
+        raw = (
+            "assert f(1) == 1\n"
+            "assert f(2) == 2; assert f(3) == 3"
+        )
+        assert split_acceptance_checks(raw) == [
+            "assert f(1) == 1",
+            "assert f(2) == 2",
+            "assert f(3) == 3",
+        ]
+
+    def test_multi_assert_runs_all_and_fails_on_second(self) -> None:
+        # first check passes; second exposes held-out-style bug with message
+        code = "def calc(s):\n    return eval(s.replace('(', '').replace(')', ''))"
+        checks = (
+            "assert calc('2+3') == 5\n"
+            "assert calc('(2+3)*4') == 20"
+        )
+        probe, fired = build_subtask_probe(code, checks)
+        assert fired is True
+        try:
+            exec(compile(probe, "<p>", "exec"), {})  # noqa: S102 - test fixture
+        except AssertionError as e:
+            msg = str(e)
+            assert "(2+3)*4" in msg and "want" in msg and "20" in msg
+        else:
+            raise AssertionError("second check should fail with actual-vs-expected")
+
+    def test_multi_assert_first_failure_wins(self) -> None:
+        code = "def f(x):\n    return x"
+        checks = "assert f(1) == 99\nassert f(2) == 2"
+        probe, fired = build_subtask_probe(code, checks)
+        assert fired is True
+        try:
+            exec(compile(probe, "<p>", "exec"), {})  # noqa: S102 - test fixture
+        except AssertionError as e:
+            assert "want" in str(e) and "99" in str(e)
+        else:
+            raise AssertionError("first failing check should surface its message")

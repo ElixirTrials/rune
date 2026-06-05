@@ -10,7 +10,7 @@ from typing import Any
 import json_repair
 from jinja2 import Environment, PackageLoader, StrictUndefined
 from markdown_it import MarkdownIt
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from rune.engine.oracle import defines_function
 from rune.engine.state import Action, Feedback, Subtask
@@ -37,12 +37,21 @@ class SubtaskSchema(BaseModel):
     name: str
     description: str
     depends_on: list[str] = []
-    # Episodic design: each subtask carries a concrete acceptance check (an
-    # example I/O or assert for THIS sub-goal) and names the piece of the final
-    # entry_point it builds — so each subtask runs a real dev cycle and
+    # Episodic design: each subtask carries concrete acceptance checks (2–4
+    # distinct asserts covering different behaviors) and names the piece of the
+    # final entry_point it builds — so each subtask runs a real dev cycle and
     # integration can be AST-verified.
     acceptance_check: str = ""
     builds: str = ""
+
+    @field_validator("acceptance_check", mode="before")
+    @classmethod
+    def _normalize_acceptance_check(cls, value: object) -> str:
+        if isinstance(value, list):
+            return "\n".join(
+                str(item).strip() for item in value if str(item).strip()
+            )
+        return str(value) if value is not None else ""
 
 
 class DecomposeResult(BaseModel):
@@ -96,6 +105,36 @@ def _fn_from_check(check: str) -> str:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             return node.func.id
     return ""
+
+
+def _force_check_calls(check: str, old_name: str, new_name: str) -> str:
+    """Rewrite calls to ``old_name`` in *check* so they call ``new_name`` instead.
+
+    Holds the subtask name and its ``acceptance_check`` deterministically
+    consistent: after a subtask is (re)named (e.g. forced to the entry_point),
+    its check must call that SAME name — otherwise the in-loop probe runs a call
+    to a function the code never defines and manufactures a spurious NameError
+    (issue #52). Only the function under test (``old_name``) is rewritten; builtins
+    and other helpers in the check are left untouched.
+    """
+    if not new_name or old_name == new_name or not check.strip():
+        return check
+    try:
+        tree = ast.parse(check.strip())
+    except (SyntaxError, ValueError):
+        return check
+
+    class _Rename(ast.NodeTransformer):
+        def visit_Call(self, node: ast.Call) -> ast.Call:
+            self.generic_visit(node)
+            if isinstance(node.func, ast.Name) and node.func.id == old_name:
+                node.func.id = new_name
+            return node
+
+    try:
+        return ast.unparse(_Rename().visit(tree))
+    except (ValueError, AttributeError):
+        return check
 
 
 def _single_subtask_fallback(state: dict[str, Any]) -> dict[str, Any]:
@@ -203,6 +242,27 @@ def extract_code_block(value: str) -> str:
     return value
 
 
+def candidate_quality(code: str, feedback: Feedback | None) -> int:
+    """Rank a code candidate by its sandbox outcome (higher = better to ship).
+
+    3 = passed the in-loop check; 2 = ran but mismatched (AssertionError — a
+    near-miss that still executes, likely to pass held-out where a one-example
+    oracle is too weak); 1 = compiled but crashed at runtime; 0 = empty or a
+    syntax error. Used to keep the BEST candidate per subtask so a later worse
+    attempt can't be the one shipped (issue #52 RC-C).
+    """
+    if not (code or "").strip():
+        return 0
+    if feedback is not None and feedback.exit_code == 0:
+        return 3
+    stderr = feedback.stderr if feedback is not None else ""
+    if "SyntaxError" in stderr:
+        return 0
+    if "AssertionError" in stderr:
+        return 2
+    return 1
+
+
 def _parse_code_action(
     target: str | None,
     raw: str,
@@ -222,6 +282,14 @@ def _parse_code_action(
     fb_map = dict(state.get("feedback", {}))
     if feedback:
         fb_map[target] = feedback
+    # No-regress: retain the highest-quality candidate seen for this subtask so a
+    # later re-code/repair can't throw away a near-miss by shipping a crash.
+    quality = candidate_quality(code, feedback)
+    best_code = dict(state.get("best_code", {}))
+    best_quality = dict(state.get("best_quality", {}))
+    if quality >= best_quality.get(target, -1):
+        best_code[target] = code
+        best_quality[target] = quality
     result: dict[str, Any] = {
         "code_results": {
             **state.get("code_results", {}),
@@ -231,6 +299,8 @@ def _parse_code_action(
             **state.get("code_passed", {}),
             target: passed,
         },
+        "best_code": best_code,
+        "best_quality": best_quality,
         "retries": retries,
         "feedback": fb_map,
         "diagnosis": diagnosis,
@@ -287,6 +357,14 @@ def parse_output(
             if len(kept) == 1 and entry_pt:
                 kept[0].name = entry_pt
                 kept[0].builds = entry_pt
+            # Deterministic name<->check consistency: every kept subtask's
+            # acceptance_check must call its own (now-final) name, so the thin
+            # prompt, the generated code, the in-loop check, and the held-out test
+            # all reference the SAME function and the name issue can't recur (#52).
+            for s in kept:
+                s.acceptance_check = _force_check_calls(
+                    s.acceptance_check, _fn_from_check(s.acceptance_check), s.name
+                )
             names = {s.name for s in kept}
             return {
                 "overall_goal": result.overall_goal,
