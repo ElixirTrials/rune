@@ -87,6 +87,63 @@ def render_training_format_trajectory(
     return out
 
 
+def render_episode_adapter(
+    action_name: str, target: str | None, state: dict[str, Any]
+) -> str:
+    """Episodic adapter conditioning: the RIGHT context for the current step.
+
+    Keeps c3's trained ``## Task / ## Current Code / ## Review Feedback`` surface,
+    but fills it with context-appropriate, FOCUSED content instead of the full spec
+    at every step (#52 episodic design):
+
+    - ``decompose``: the full task (it must see everything to split it).
+    - ``code``/``repair``/``plan`` for a subtask: condensed overall goal + THIS
+      sub-goal (description + acceptance check) + the subtask's current code + error
+      — the local episode, so the model is focused on the immediate step.
+    - ``integrate``: overall goal + ALL subtasks' accepted code + integration error.
+    """
+    overall = str(state.get("overall_goal", "") or "")
+    subtasks = state.get("subtasks", [])
+    by_name = {s.name: s for s in subtasks}
+    entry = str(state.get("entry_point", "") or "the function")
+
+    if action_name == "decompose":
+        return render_training_format_trajectory(task=str(state.get("task", "")))
+
+    if action_name == "integrate" or not target:
+        code_results = state.get("code_results", {})
+        parts = [
+            f"# {s.name} (builds {s.builds or entry})\n{code_results[s.name]}"
+            for s in subtasks
+            if code_results.get(s.name)
+        ]
+        int_fb = state.get("integration_feedback")
+        task = f"{overall}\n\nIntegrate the completed subtasks into `{entry}`."
+        return render_training_format_trajectory(
+            task=task,
+            current_code="\n\n".join(parts),
+            feedback=int_fb.stderr if int_fb else "",
+        )
+
+    sub = by_name.get(target)
+    if sub is None:
+        return render_training_format_trajectory(
+            task=overall or str(state.get("task", ""))
+        )
+    task = f"{overall}\n\nSubtask `{sub.name}`: {sub.description}"
+    if sub.acceptance_check:
+        task += f"\nAcceptance: {sub.acceptance_check}"
+    fb = state.get("feedback", {}).get(target)
+    err = fb.stderr if (fb is not None and fb.exit_code != 0) else ""
+    if not err:
+        err = state.get("diagnosis", {}).get(target, "")
+    return render_training_format_trajectory(
+        task=task,
+        current_code=state.get("code_results", {}).get(target, ""),
+        feedback=err,
+    )
+
+
 def _split_spec(spec: str) -> tuple[str, str]:
     """Split an MBPP-style spec into (prose, doctest asserts), dropping ``\"\"\"``."""
     prose: list[str] = []
