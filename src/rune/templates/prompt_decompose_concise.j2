@@ -1,33 +1,34 @@
-Decide how many subtasks this task needs (default to ONE; at most THREE), then
-output them.
+Output the subtasks for this task as JSON. DEFAULT TO EXACTLY ONE SUBTASK.
 
-DECISION RULE (decide first):
-- If the task is ONE self-contained function or class, output exactly ONE subtask.
-  Most function-writing tasks are a single subtask.
-- Only output MULTIPLE subtasks (at most 3) when the task genuinely has separable
-  components with dependencies (e.g. a parser + an evaluator + a formatter).
+DECISION RULE (read carefully):
+- A task that implements ONE function (returns a value from its inputs) is ALWAYS
+  exactly ONE subtask — no matter how many internal steps it needs. Tokenizing,
+  looping, parsing, handling cases, helper logic ALL live INSIDE that one function.
+  Do NOT make internal steps or helpers into separate subtasks.
+- Do NOT emit the entry_point as a subtask AND its internal pieces — that is one
+  subtask (the entry_point), full stop.
+- Output MULTIPLE subtasks (at most 3) ONLY when the task explicitly asks for
+  several SEPARATE top-level functions/classes that are independently usable.
+- When in doubt: ONE subtask.
 
 Output a JSON object:
 {
   "overall_goal": "<one concise sentence stating the overall goal>",
   "subtasks": [
-    {"name": "<a VALID PYTHON IDENTIFIER — the exact name of the function this subtask DEFINES, e.g. tokenize>",
-     "description": "<what THIS sub-goal must implement>",
-     "acceptance_check": "<one concrete Python assert that calls THIS subtask's function BY ITS name, e.g. assert tokenize('2+3') == ['2','+','3']>",
-     "builds": "<the entry_point this subtask contributes to>",
+    {"name": "<a VALID PYTHON IDENTIFIER — the exact function name to define; for a single-function task this is the entry_point>",
+     "description": "<what this function must implement, including its internal steps>",
+     "acceptance_check": "<one concrete Python assert that calls THIS function BY ITS name, e.g. assert <name>(...) == ...>",
+     "builds": "<the entry_point>",
      "depends_on": [...]}
   ]
 }
-CRITICAL: `name` MUST be a valid Python identifier (no spaces) and MUST be the
-function the subtask defines; the `acceptance_check` MUST call that same `name`.
-Use depends_on: [] when a subtask has no prerequisites. For a single-subtask task,
-`name` is the entry_point and `acceptance_check` is the task's own example. No
-preamble, no analysis, no reasoning outside the JSON.
+CRITICAL: `name` MUST be a valid Python identifier and MUST be the function defined;
+`acceptance_check` MUST call that same `name`. For a single-function task, `name` is
+the entry_point and `acceptance_check` is the task's own example. depends_on: [] when
+none. No preamble, no analysis, no reasoning outside the JSON.
 
-A subtask is a unit of IMPLEMENTATION, not a project chore. NEVER emit:
-- "Analyze the request" / "Define the signature" / "Add type hints" — reasoning.
-- "Add documentation" / "Write docstrings" — part of the implementation.
-- "Write unit tests" / "Handle edge cases" — part of the implementation.
+NEVER emit subtasks for: reasoning ("analyze", "define signature"), documentation,
+tests, edge cases, or internal helpers — those are part of implementing the function.
 
 [USER TASK]
 {{ task_description }}
