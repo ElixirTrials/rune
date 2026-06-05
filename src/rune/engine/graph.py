@@ -101,6 +101,28 @@ def render_training_format_trajectory(
     return out
 
 
+def _effective_scaling(
+    prompt_mode: str,
+    action: Action,
+    code_results: Mapping[str, str],
+    base_scaling: float,
+) -> float:
+    """Adapter scaling for this attempt under the escalation floor (issue #52).
+
+    In ``escalate`` mode the FIRST code attempt for a subtask runs the base model
+    (scaling 0, spec in the prompt) — a zero-shot candidate — and only repairs /
+    re-codes engage the adapter. With keep-best shipping the strongest candidate,
+    the engine can never do worse than base. Other modes are unaffected.
+    """
+    if (
+        prompt_mode == "escalate"
+        and action.name == "code"
+        and (action.target_subtask or "") not in code_results
+    ):
+        return 0.0
+    return base_scaling
+
+
 def render_episode_adapter(
     action_name: str, target: str | None, state: Mapping[str, Any]
 ) -> str:
@@ -500,8 +522,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             )
             prompt_text = render_template(action.prompt_template, **ctx)
 
+        eff_scaling = _effective_scaling(
+            prompt_mode, action, state.get("code_results", {}), adapter_scaling
+        )
         adapter = model.generate_adapter(trajectory_text)
-        scaled_sd = scale_lora_b(adapter.state_dict, adapter_scaling)
+        scaled_sd = scale_lora_b(adapter.state_dict, eff_scaling)
         model.hotswap_adapter(scaled_sd)
         adapter_id = adapter.adapter_id
         del adapter, scaled_sd
