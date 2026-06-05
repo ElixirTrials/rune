@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import asyncio
 import logging
-import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -215,8 +214,12 @@ def _bare_signature_stub(entry_point: str, signature: str, spec: str) -> str:
                 if isinstance(
                     node, (ast.FunctionDef, ast.AsyncFunctionDef)
                 ) and (not entry_point or node.name == entry_point):
-                    params = re.sub(r"^self\s*,?\s*", "", ast.unparse(node.args))
-                    return f"def {node.name}({params}):"
+                    # Drop the `self`/`cls` receiver at the AST level (not by
+                    # string surgery on the unparsed args).
+                    node.args.args = [
+                        a for a in node.args.args if a.arg not in ("self", "cls")
+                    ]
+                    return f"def {node.name}({ast.unparse(node.args)}):"
     return _derive_signature(entry_point, spec)
 
 
