@@ -1,0 +1,170 @@
+[
+ {
+  "task_id": "mbpp/106",
+  "entry_point": "add_lists",
+  "description": "\"\"\"\nWrite a function to append the given list to the given tuples.\n\n>>> assert add_lists([5, 6, 7], (9, 10)) == (9, 10, 5, 6, 7)\n\"\"\"\n",
+  "test_code": "assert add_lists([5, 6, 7], (9, 10)) == (9, 10, 5, 6, 7)\nassert add_lists([6, 7, 8], (10, 11)) == (10, 11, 6, 7, 8)\nassert add_lists([7, 8, 9], (11, 12)) == (11, 12, 7, 8, 9)",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/108",
+  "entry_point": "merge_sorted_list",
+  "description": "\"\"\"\nWrite a function to merge three lists into a single sorted list.\n\n>>> assert merge_sorted_list([25, 24, 15, 4, 5, 29, 110],[19, 20, 11, 56, 25, 233, 154],[24, 26, 54, 48])==[4, 5, 11, 15, 19, 20, 24, 24, 25, 25, 26, 29, 48, 54, 56, 110, 154, 233]\n\"\"\"\n",
+  "test_code": "assert merge_sorted_list([25, 24, 15, 4, 5, 29, 110],[19, 20, 11, 56, 25, 233, 154],[24, 26, 54, 48])==[4, 5, 11, 15, 19, 20, 24, 24, 25, 25, 26, 29, 48, 54, 56, 110, 154, 233]\nassert merge_sorted_list([1, 3, 5, 6, 8, 9], [2, 5, 7, 11], [1, 4, 7, 8, 12])==[1, 1, 2, 3, 4, 5, 5, 6, 7, 7, 8, 8, 9, 11, 12]\nassert merge_sorted_list([18, 14, 10, 9, 8, 7, 9, 3, 2, 4, 1],[25, 35, 22, 85, 14, 65, 75, 25, 58],[12, 74, 9, 50, 61, 41])==[1, 2, 3, 4, 7, 8, 9, 9, 9, 10, 12, 14, 14, 18, 22, 25, 25, 35, 41, 50, 58, 61, 65, 74, 75, 85]",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/109",
+  "entry_point": "odd_Equivalent",
+  "description": "\"\"\"\nWrite a python function to find the number of numbers with an odd value when rotating a binary string the given number of times.\n\n>>> assert odd_Equivalent(\"011001\",6) == 3\n\"\"\"\n",
+  "test_code": "assert odd_Equivalent(\"011001\",6) == 3\nassert odd_Equivalent(\"11011\",5) == 4\nassert odd_Equivalent(\"1010\",4) == 2",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/113",
+  "entry_point": "check_integer",
+  "description": "\"\"\"\nWrite a function to check if a string represents an integer or not.\n\n>>> assert check_integer(\"python\")==False\n\"\"\"\n",
+  "test_code": "assert check_integer(\"python\")==False\nassert check_integer(\"1\")==True\nassert check_integer(\"12345\")==True",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/115",
+  "entry_point": "empty_dit",
+  "description": "\"\"\"\nWrite a function to check whether all dictionaries in a list are empty or not.\n\n>>> assert empty_dit([{},{},{}])==True\n\"\"\"\n",
+  "test_code": "assert empty_dit([{},{},{}])==True\nassert empty_dit([{1,2},{},{}])==False\nassert empty_dit({})==True",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/116",
+  "entry_point": "tuple_to_int",
+  "description": "\"\"\"\nWrite a function to convert a given tuple of positive integers into a single integer.\n\n>>> assert tuple_to_int((1,2,3))==123\n\"\"\"\n",
+  "test_code": "assert tuple_to_int((1,2,3))==123\nassert tuple_to_int((4,5,6))==456\nassert tuple_to_int((5,6,7))==567",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/117",
+  "entry_point": "list_to_float",
+  "description": "\"\"\"\nWrite a function to convert all possible convertible elements in a list of lists to floats.\n\n>>> assert list_to_float( [(\"3\", \"4\"), (\"1\", \"26.45\"), (\"7.32\", \"8\"), (\"4\", \"8\")] ) == [(3.0, 4.0), (1.0, 26.45), (7.32, 8.0), (4.0, 8.0)]\n\"\"\"\n",
+  "test_code": "assert list_to_float( [(\"3\", \"4\"), (\"1\", \"26.45\"), (\"7.32\", \"8\"), (\"4\", \"8\")] ) == [(3.0, 4.0), (1.0, 26.45), (7.32, 8.0), (4.0, 8.0)]\nassert list_to_float( [(\"4\", \"4\"), (\"2\", \"27\"), (\"4.12\", \"9\"), (\"7\", \"11\")] ) == [(4.0, 4.0), (2.0, 27.0), (4.12, 9.0), (7.0, 11.0)]\nassert list_to_float( [(\"6\", \"78\"), (\"5\", \"26.45\"), (\"1.33\", \"4\"), (\"82\", \"13\")] ) == [(6.0, 78.0), (5.0, 26.45), (1.33, 4.0), (82.0, 13.0)]",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/118",
+  "entry_point": "string_to_list",
+  "description": "\"\"\"\nWrite a function to convert a string to a list of strings split on the space character.\n\n>>> assert string_to_list(\"python programming\")==['python','programming']\n\"\"\"\n",
+  "test_code": "assert string_to_list(\"python programming\")==['python','programming']\nassert string_to_list(\"lists tuples strings\")==['lists','tuples','strings']\nassert string_to_list(\"write a program\")==['write','a','program']",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/119",
+  "entry_point": "search",
+  "description": "\"\"\"\nWrite a python function to find the element that appears only once in a sorted array.\n\n>>> assert search([1,1,2,2,3]) == 3\n\"\"\"\n",
+  "test_code": "assert search([1,1,2,2,3]) == 3\nassert search([1,1,3,3,4,4,5,5,7,7,8]) == 8\nassert search([1,2,2,3,3,4,4]) == 1",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/120",
+  "entry_point": "max_product_tuple",
+  "description": "\"\"\"\nWrite a function to find the maximum absolute product between numbers in pairs of tuples within a given list.\n\n>>> assert max_product_tuple([(2, 7), (2, 6), (1, 8), (4, 9)] )==36\n\"\"\"\n",
+  "test_code": "assert max_product_tuple([(2, 7), (2, 6), (1, 8), (4, 9)] )==36\nassert max_product_tuple([(10,20), (15,2), (5,10)] )==200\nassert max_product_tuple([(11,44), (10,15), (20,5), (12, 9)] )==484",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/123",
+  "entry_point": "amicable_numbers_sum",
+  "description": "\"\"\"\nWrite a function to sum all amicable numbers from 1 to a specified number.\n\n>>> assert amicable_numbers_sum(999)==504\n\"\"\"\n",
+  "test_code": "assert amicable_numbers_sum(999)==504\nassert amicable_numbers_sum(9999)==31626\nassert amicable_numbers_sum(99)==0",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/125",
+  "entry_point": "find_length",
+  "description": "\"\"\"\nWrite a function to find the maximum difference between the number of 0s and number of 1s in any sub-string of the given binary string.\n\n>>> assert find_length(\"11000010001\") == 6\n\"\"\"\n",
+  "test_code": "assert find_length(\"11000010001\") == 6\nassert find_length(\"10111\") == 1\nassert find_length(\"11011101100101\") == 2",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/126",
+  "entry_point": "sum",
+  "description": "\"\"\"\nWrite a python function to find the sum of common divisors of two given numbers.\n\n>>> assert sum(10,15) == 6\n\"\"\"\n",
+  "test_code": "assert sum(10,15) == 6\nassert sum(100,150) == 93\nassert sum(4,6) == 3",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/127",
+  "entry_point": "multiply_int",
+  "description": "\"\"\"\nWrite a function to multiply two integers.\n\n>>> assert multiply_int(10,20)==200\n\"\"\"\n",
+  "test_code": "assert multiply_int(10,20)==200\nassert multiply_int(5,10)==50\nassert multiply_int(4,8)==32",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/128",
+  "entry_point": "long_words",
+  "description": "\"\"\"\nWrite a function to find words that are longer than n characters from a given list of words.\n\n>>> assert long_words(3,\"python is a programming language\")==['python','programming','language']\n\"\"\"\n",
+  "test_code": "assert long_words(3,\"python is a programming language\")==['python','programming','language']\nassert long_words(2,\"writing a program\")==['writing','program']\nassert long_words(5,\"sorting list\")==['sorting']",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/129",
+  "entry_point": "magic_square_test",
+  "description": "\"\"\"\nWrite a function to calculate whether the matrix is a magic square.\n\n>>> assert magic_square_test([[7, 12, 1, 14], [2, 13, 8, 11], [16, 3, 10, 5], [9, 6, 15, 4]])==True\n\"\"\"\n",
+  "test_code": "assert magic_square_test([[7, 12, 1, 14], [2, 13, 8, 11], [16, 3, 10, 5], [9, 6, 15, 4]])==True\nassert magic_square_test([[2, 7, 6], [9, 5, 1], [4, 3, 8]])==True\nassert magic_square_test([[2, 7, 6], [9, 5, 1], [4, 3, 7]])==False",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/130",
+  "entry_point": "max_occurrences",
+  "description": "\"\"\"\nWrite a function to find the item with maximum frequency in a given list.\n\n>>> assert max_occurrences([2,3,8,4,7,9,8,2,6,5,1,6,1,2,3,2,4,6,9,1,2])==2\n\"\"\"\n",
+  "test_code": "assert max_occurrences([2,3,8,4,7,9,8,2,6,5,1,6,1,2,3,2,4,6,9,1,2])==2\nassert max_occurrences([2,3,8,4,7,9,8,7,9,15,14,10,12,13,16,18])==8\nassert max_occurrences([10,20,20,30,40,90,80,50,30,20,50,10])==20",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/131",
+  "entry_point": "reverse_vowels",
+  "description": "\"\"\"\nWrite a python function to reverse only the vowels of a given string (where y is not a vowel).\n\n>>> assert reverse_vowels(\"Python\") == \"Python\"\n\"\"\"\n",
+  "test_code": "assert reverse_vowels(\"Python\") == \"Python\"\nassert reverse_vowels(\"USA\") == \"ASU\"\nassert reverse_vowels(\"ab\") == \"ab\"",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/132",
+  "entry_point": "tup_string",
+  "description": "\"\"\"\nWrite a function to convert a tuple to a string.\n\n>>> assert tup_string(('e', 'x', 'e', 'r', 'c', 'i', 's', 'e', 's'))==(\"exercises\")\n\"\"\"\n",
+  "test_code": "assert tup_string(('e', 'x', 'e', 'r', 'c', 'i', 's', 'e', 's'))==(\"exercises\")\nassert tup_string(('p','y','t','h','o','n'))==(\"python\")\nassert tup_string(('p','r','o','g','r','a','m'))==(\"program\")",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/133",
+  "entry_point": "sum_negativenum",
+  "description": "\"\"\"\nWrite a function to calculate the sum of the negative numbers of a given list of numbers.\n\n>>> assert sum_negativenum([2, 4, -6, -9, 11, -12, 14, -5, 17])==-32\n\"\"\"\n",
+  "test_code": "assert sum_negativenum([2, 4, -6, -9, 11, -12, 14, -5, 17])==-32\nassert sum_negativenum([10,15,-14,13,-18,12,-20])==-52\nassert sum_negativenum([19, -65, 57, 39, 152,-639, 121, 44, 90, -190])==-894",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/135",
+  "entry_point": "hexagonal_num",
+  "description": "\"\"\"\nWrite a function to find the nth hexagonal number.\n\n>>> assert hexagonal_num(10) == 190\n\"\"\"\n",
+  "test_code": "assert hexagonal_num(10) == 190\nassert hexagonal_num(5) == 45\nassert hexagonal_num(7) == 91",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/138",
+  "entry_point": "is_Sum_Of_Powers_Of_Two",
+  "description": "\"\"\"\nWrite a python function to check whether the given number can be represented as sum of non-zero powers of 2 or not.\n\n>>> assert is_Sum_Of_Powers_Of_Two(10) == True\n\"\"\"\n",
+  "test_code": "assert is_Sum_Of_Powers_Of_Two(10) == True\nassert is_Sum_Of_Powers_Of_Two(7) == False\nassert is_Sum_Of_Powers_Of_Two(14) == True",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/141",
+  "entry_point": "pancake_sort",
+  "description": "\"\"\"\nWrite a function to sort a list of elements.\n\n>>> assert pancake_sort([15, 79, 25, 38, 69]) == [15, 25, 38, 69, 79]\n\"\"\"\n",
+  "test_code": "assert pancake_sort([15, 79, 25, 38, 69]) == [15, 25, 38, 69, 79]\nassert pancake_sort([98, 12, 54, 36, 85]) == [12, 36, 54, 85, 98]\nassert pancake_sort([41, 42, 32, 12, 23]) == [12, 23, 32, 41, 42]",
+  "signature": ""
+ },
+ {
+  "task_id": "mbpp/142",
+  "entry_point": "count_samepair",
+  "description": "\"\"\"\nWrite a function to count number items that are identical in the same position of three given lists.\n\n>>> assert count_samepair([1,2,3,4,5,6,7,8],[2,2,3,1,2,6,7,9],[2,1,3,1,2,6,7,9])==3\n\"\"\"\n",
+  "test_code": "assert count_samepair([1,2,3,4,5,6,7,8],[2,2,3,1,2,6,7,9],[2,1,3,1,2,6,7,9])==3\nassert count_samepair([1,2,3,4,5,6,7,8],[2,2,3,1,2,6,7,8],[2,1,3,1,2,6,7,8])==4\nassert count_samepair([1,2,3,4,2,6,7,8],[2,2,3,1,2,6,7,8],[2,1,3,1,2,6,7,8])==5",
+  "signature": ""
+ }
+]
