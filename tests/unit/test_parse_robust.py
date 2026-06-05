@@ -10,6 +10,7 @@ empty re-decompose loop.
 
 from __future__ import annotations
 
+from rune.engine.oracle import build_subtask_probe, split_acceptance_checks
 from rune.engine.parse import (
     DecomposeResult,
     SubtaskSchema,
@@ -200,6 +201,26 @@ class TestNameFromCheck:
         assert sub.name == "maxDistance"
         assert "maxDistance(9)" in sub.acceptance_check  # check now calls the name
         assert "foo(" not in sub.acceptance_check  # old name gone
+
+    def test_overescaped_newline_check_splits_and_fires(self) -> None:
+        # The model over-escapes a multi-assert check as ONE JSON string with
+        # literal backslash-n between asserts. The AST parser decodes the escapes
+        # and recovers both asserts, so the oracle FIRES instead of silently
+        # no-opping to a code-only false pass (issue #52).
+        s = SubtaskSchema(
+            name="f",
+            description="d",
+            acceptance_check="assert f(1) == 1\\nassert f(2) == 2",  # literal \n
+        )
+        assert len(split_acceptance_checks(s.acceptance_check)) == 2
+        _probe, fired = build_subtask_probe("def f(x):\n    return x", s.acceptance_check)
+        assert fired  # checks actually run -- NOT a code-only fallback false-pass
+
+    def test_separator_inside_string_literal_is_not_split(self) -> None:
+        # AST-based splitting (not textual) keeps a ';' / newline inside a string
+        # literal as part of the one assert -- where regex/text splitting breaks.
+        checks = split_acceptance_checks("assert parse('a;b\\nc') == ['a', 'b', 'c']")
+        assert len(checks) == 1
 
     def test_check_rewrite_preserves_builtins(self) -> None:
         # only the function-under-test is renamed; builtins in the check stay.

@@ -15,6 +15,8 @@ held-out set at scoring, so the oracle cannot inflate it.
 from __future__ import annotations
 
 import ast
+import codecs
+import contextlib
 import doctest
 import logging
 
@@ -122,23 +124,41 @@ def build_probe(code: str, spec: str, entry_point: str) -> tuple[str, bool]:
     return f"{code}\n\n{checks}", True
 
 
-def split_acceptance_checks(check: str) -> list[str]:
-    """Split a subtask ``acceptance_check`` into individual assert statements.
+def _parse_checks_module(check: str) -> ast.Module | None:
+    """Parse a subtask ``acceptance_check`` (Python asserts) into an AST module.
 
-    Supports newline-separated and semicolon-separated multi-assert strings
-    (the decompose schema may also emit a JSON list, normalized to newlines
-    before this is called).
+    The check is Python, so we parse it rather than splitting text — the AST
+    handles newlines, semicolons, multi-line statements, and ``;`` or newlines
+    *inside string literals* correctly, where textual splitting would not. Models
+    sometimes over-escape the check as one JSON string with literal ``\\n``
+    between asserts; if the raw text is not valid Python, decode one level of
+    string escapes and retry before giving up. Returns ``None`` if nothing parses.
     """
-    parts: list[str] = []
-    for raw_line in check.strip().splitlines():
-        stripped_line = raw_line.strip()
-        if not stripped_line:
+    src = check.strip()
+    if not src:
+        return None
+    candidates = [src]
+    with contextlib.suppress(UnicodeDecodeError, ValueError):
+        candidates.append(codecs.decode(src, "unicode_escape"))
+    for candidate in candidates:
+        try:
+            return ast.parse(candidate)
+        except (SyntaxError, ValueError):
             continue
-        for raw_piece in stripped_line.split(";"):
-            stripped_piece = raw_piece.strip()
-            if stripped_piece:
-                parts.append(stripped_piece)
-    return parts
+    return None
+
+
+def split_acceptance_checks(check: str) -> list[str]:
+    """Individual top-level statements of a subtask ``acceptance_check``.
+
+    One source string per parsed statement (via the AST — not textual splitting),
+    so newline-, semicolon-, and JSON-list-derived multi-assert forms all yield
+    the same result, and the common over-escaped form is recovered.
+    """
+    tree = _parse_checks_module(check)
+    if tree is None:
+        return []
+    return [ast.unparse(stmt) for stmt in tree.body]
 
 
 def _augment_equality_check(check: str, index: int) -> str | None:

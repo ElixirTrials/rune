@@ -47,10 +47,11 @@ class SubtaskSchema(BaseModel):
     @field_validator("acceptance_check", mode="before")
     @classmethod
     def _normalize_acceptance_check(cls, value: object) -> str:
+        # Accept a JSON list of asserts or a single string. The oracle parses the
+        # result via the AST (tolerant of the over-escaped form), so no textual
+        # fix-ups here.
         if isinstance(value, list):
-            return "\n".join(
-                str(item).strip() for item in value if str(item).strip()
-            )
+            return "\n".join(str(item).strip() for item in value if str(item).strip())
         return str(value) if value is not None else ""
 
 
