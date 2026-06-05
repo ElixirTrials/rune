@@ -107,3 +107,56 @@ class TestDecomposeNameConsistency:
         assert len(updates["subtasks"]) == 1
         assert updates["subtasks"][0].name == "solve_p3"
         assert updates["subtasks"][0].builds == "solve_p3"
+
+
+class TestDecomposeNormalization:
+    def test_duplicate_names_deduped_to_single(self) -> None:
+        # model emits the entry_point name 3x -> collapse to ONE subtask
+        raw = (
+            '{"overall_goal":"g","subtasks":['
+            '{"name":"decode_string","description":"d","builds":"decode_string"},'
+            '{"name":"decode_string","description":"d","builds":"decode_string"},'
+            '{"name":"decode_string","description":"d","builds":"decode_string"}]}'
+        )
+        st = {"subtasks": [], "task": "t", "entry_point": "decode_string"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        assert len(updates["subtasks"]) == 1
+        assert updates["subtasks"][0].name == "decode_string"
+
+    def test_entry_point_among_helpers_collapses_to_entry_point(self) -> None:
+        # entry_point listed AS a subtask alongside helpers -> it IS the whole task
+        raw = (
+            '{"overall_goal":"g","subtasks":['
+            '{"name":"calc","description":"whole","builds":"calc"},'
+            '{"name":"tokenize","description":"helper","builds":"calc"}]}'
+        )
+        st = {"subtasks": [], "task": "t", "entry_point": "calc"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        assert [s.name for s in updates["subtasks"]] == ["calc"]
+
+
+class TestNameFromCheck:
+    def test_helper_name_derived_from_its_check(self) -> None:
+        # multi-subtask: a helper's name comes from the function its check calls,
+        # NOT the descriptive phrase the model wrote in `name`.
+        raw = (
+            '{"overall_goal":"g","subtasks":['
+            '{"name":"Split the expression into tokens","description":"d",'
+            '"acceptance_check":"assert tokenize(\'2+3\')==[\'2\',\'+\',\'3\']","builds":"calc"},'
+            '{"name":"Evaluate the token list","description":"d",'
+            '"acceptance_check":"assert evaluate([\'2\',\'+\',\'3\'])==5","builds":"calc"}]}'
+        )
+        st = {"subtasks": [], "task": "t", "entry_point": "calc"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        names = sorted(s.name for s in updates["subtasks"])
+        assert names == ["evaluate", "tokenize"]  # identifiers from the checks
+
+    def test_descriptive_name_with_entrypoint_check_becomes_entrypoint(self) -> None:
+        raw = (
+            '{"overall_goal":"g","subtasks":[{"name":"Convert to Roman",'
+            '"description":"d","acceptance_check":"assert solve_p3(9)==\'IX\'",'
+            '"builds":"solve_p3"}]}'
+        )
+        st = {"subtasks": [], "task": "t", "entry_point": "solve_p3"}
+        updates = parse_output(_decompose_action(), raw, None, st)
+        assert updates["subtasks"][0].name == "solve_p3"

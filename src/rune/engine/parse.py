@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import logging
 import re
 from typing import Any
@@ -76,6 +77,25 @@ def _loads_structured[M: BaseModel](raw: str, model: type[M]) -> M | None:
         except Exception:  # noqa: BLE001 - repaired but still not the schema
             return None
     return None
+
+
+def _fn_from_check(check: str) -> str:
+    """The function name a subtask's ``acceptance_check`` calls — the authoritative
+    name for the function the subtask must define (so prompt/code/check/test agree).
+
+    Returns the first ``Name``-callee in the check (e.g. ``assert tokenize('2+3')
+    == [...]`` -> ``"tokenize"``), or ``""`` if the check is empty/unparseable.
+    """
+    if not check.strip():
+        return ""
+    try:
+        tree = ast.parse(check.strip())
+    except (SyntaxError, ValueError):
+        return ""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            return node.func.id
+    return ""
 
 
 def _single_subtask_fallback(state: dict[str, Any]) -> dict[str, Any]:
@@ -245,14 +265,25 @@ def parse_output(
             kept = [s for s in result.subtasks if not _is_chore_subtask(s)]
             if not kept:
                 kept = list(result.subtasks)
-            kept = kept[:_DECOMPOSE_MAX_SUBTASKS]  # bound (owner: cap <=3)
-            # Single-function task: force the lone subtask's name to the
-            # entry_point so the prompt ("implement <name>"), the model-authored
-            # acceptance_check, and the held-out test all call the SAME function.
-            # The model otherwise names it after the descriptive subtask
-            # ("Convert integer to Roman numeral...") -> permanent NameError that
-            # repair cannot fix.
             entry_pt = str(state.get("entry_point", ""))
+            # Authoritative name transmission: a subtask's function name is the
+            # function its acceptance_check CALLS (what the model committed to
+            # testing) — never a descriptive phrase. This keeps the thin prompt
+            # ("implement <name>"), the generated code, the acceptance_check, and
+            # the held-out test (which calls the entry_point) all naming the SAME
+            # function — the source of the earlier NameError / duplicate-name churn.
+            for s in kept:
+                fn = _fn_from_check(s.acceptance_check)
+                if fn:
+                    s.name = fn
+                    s.builds = s.builds or fn
+            # A subtask whose function IS the entry_point is the whole task -> keep
+            # only it (drops redundant helpers / duplicate entry_point subtasks).
+            if entry_pt and any(s.name == entry_pt for s in kept):
+                kept = [s for s in kept if s.name == entry_pt][:1]
+            kept = kept[:_DECOMPOSE_MAX_SUBTASKS]  # bound (owner: cap <=3)
+            # Single-function task: the entry_point is the authoritative name (the
+            # held-out test calls it), so the lone subtask must define exactly it.
             if len(kept) == 1 and entry_pt:
                 kept[0].name = entry_pt
                 kept[0].builds = entry_pt
