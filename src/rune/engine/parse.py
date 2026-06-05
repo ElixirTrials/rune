@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, TypeVar
+from typing import Any
 
 import json_repair
 from jinja2 import Environment, PackageLoader, StrictUndefined
 from markdown_it import MarkdownIt
 from pydantic import BaseModel
 
+from rune.engine.oracle import defines_function
 from rune.engine.state import Action, Feedback, Subtask
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,8 @@ class DecomposeResult(BaseModel):
 
 _DECOMPOSE_MAX_SUBTASKS = 3
 
-_M = TypeVar("_M", bound=BaseModel)
 
-
-def _loads_structured(raw: str, model: type[_M]) -> _M | None:
+def _loads_structured[M: BaseModel](raw: str, model: type[M]) -> M | None:
     """Parse *raw* as *model* JSON, recovering from truncation/prose-wrapping.
 
     Plain ``model_validate_json`` fails hard on a truncated or lightly-malformed
@@ -300,7 +299,12 @@ def parse_output(
         case "integrate":
             if code is None:
                 code = extract_code_block(raw)
-            passed = feedback is not None and feedback.exit_code == 0
+            entry_pt = str(state.get("entry_point", ""))
+            sandbox_ok = feedback is not None and feedback.exit_code == 0
+            # Verified (owner: "bounded + verified"): integration must actually
+            # DEFINE the entry_point (AST), not merely run without crashing.
+            defines = (not entry_pt) or defines_function(code, entry_pt)
+            passed = sandbox_ok and defines
             return {
                 "integrated_code": code if passed else "",
                 "integration_feedback": feedback,

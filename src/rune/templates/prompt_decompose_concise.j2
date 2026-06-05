@@ -1,15 +1,26 @@
-Decide how many subtasks this task needs, then output them.
+Decide how many subtasks this task needs (default to ONE; at most THREE), then
+output them.
 
 DECISION RULE (decide first):
-- If the task is ONE self-contained function or class, output exactly ONE
-  subtask. Most function-writing tasks are a single subtask.
-- Only output MULTIPLE subtasks when the task genuinely has separable
-  components with dependencies (e.g. a data model + logic + interface).
+- If the task is ONE self-contained function or class, output exactly ONE subtask.
+  Most function-writing tasks are a single subtask.
+- Only output MULTIPLE subtasks (at most 3) when the task genuinely has separable
+  components with dependencies (e.g. a parser + an evaluator + a formatter).
 
 Output a JSON object:
-{"subtasks": [{"name": ..., "description": ..., "depends_on": [...]}]}
-Use depends_on: [] when a subtask has no prerequisites.
-No preamble, no analysis, no reasoning outside the JSON.
+{
+  "overall_goal": "<one concise sentence stating the overall goal>",
+  "subtasks": [
+    {"name": "...",
+     "description": "<what THIS sub-goal must implement>",
+     "acceptance_check": "<one concrete Python assert that tests THIS sub-goal, e.g. assert tokenize('2+3') == ['2','+','3']>",
+     "builds": "<the entry_point or named piece this subtask contributes>",
+     "depends_on": [...]}
+  ]
+}
+Use depends_on: [] when a subtask has no prerequisites. For a single-subtask task,
+the lone subtask `builds` the entry_point and its `acceptance_check` is the task's
+own example. No preamble, no analysis, no reasoning outside the JSON.
 
 A subtask is a unit of IMPLEMENTATION, not a project chore. NEVER emit:
 - "Analyze the request" / "Define the signature" / "Add type hints" — reasoning.
