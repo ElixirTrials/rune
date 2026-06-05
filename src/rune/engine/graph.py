@@ -101,24 +101,29 @@ def render_training_format_trajectory(
     return out
 
 
+def _is_zeroshot_attempt(
+    prompt_mode: str, action: Action, code_results: Mapping[str, str]
+) -> bool:
+    """The escalation floor's zero-shot base candidate: the FIRST code attempt for
+    a subtask in ``escalate`` mode (no prior code). It runs the base model on a
+    clean single-shot prompt (== the capability ceiling); repairs/re-codes escalate
+    to the adapter, and keep-best floors the engine at base (issue #52)."""
+    return (
+        prompt_mode == "escalate"
+        and action.name == "code"
+        and (action.target_subtask or "") not in code_results
+    )
+
+
 def _effective_scaling(
     prompt_mode: str,
     action: Action,
     code_results: Mapping[str, str],
     base_scaling: float,
 ) -> float:
-    """Adapter scaling for this attempt under the escalation floor (issue #52).
-
-    In ``escalate`` mode the FIRST code attempt for a subtask runs the base model
-    (scaling 0, spec in the prompt) — a zero-shot candidate — and only repairs /
-    re-codes engage the adapter. With keep-best shipping the strongest candidate,
-    the engine can never do worse than base. Other modes are unaffected.
-    """
-    if (
-        prompt_mode == "escalate"
-        and action.name == "code"
-        and (action.target_subtask or "") not in code_results
-    ):
+    """Adapter scaling for this attempt: 0 (base) for the zero-shot candidate, the
+    configured scaling otherwise. Modes other than ``escalate`` are unaffected."""
+    if _is_zeroshot_attempt(prompt_mode, action, code_results):
         return 0.0
     return base_scaling
 
@@ -489,7 +494,17 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             "reference_b1",
             "reference_c",
         )
-        if prompt_mode == "episodic":
+        if _is_zeroshot_attempt(prompt_mode, action, state.get("code_results", {})):
+            # Escalation floor (#52): the zero-shot base candidate uses the CLEAN
+            # single-shot prompt (== capability ceiling), NOT the plan/subtask
+            # framing — so the floor candidate matches base instead of being
+            # degraded by "follow the architecture plan" contamination. Adapter is
+            # off (scaling 0), so the trajectory is immaterial.
+            trajectory_text = render_training_format_trajectory(
+                task=ctx["task_description"]
+            )
+            prompt_text = render_template("prompt_zeroshot", **ctx)
+        elif prompt_mode == "episodic":
             # Episodic design (#52): adapter carries the right context per step;
             # the prompt is a thin pointer to the immediate sub-goal (no spec leak).
             trajectory_text = render_episode_adapter(

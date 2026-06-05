@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from rune.engine.graph import _effective_scaling
+from rune.engine.graph import _effective_scaling, _is_zeroshot_attempt
+from rune.engine.parse import render_template
 from rune.engine.policy import ACTIONS
 
 
@@ -38,3 +39,22 @@ class TestEffectiveScaling:
         # full / episodic keep their configured scaling on the first attempt
         assert _effective_scaling("full", _code("f"), {}, 0.627) == 0.627
         assert _effective_scaling("episodic", _code("f"), {}, 0.627) == 0.627
+
+
+class TestZeroShotCandidate:
+    def test_predicate_first_code_only(self) -> None:
+        assert _is_zeroshot_attempt("escalate", _code("f"), {})
+        assert not _is_zeroshot_attempt("escalate", _code("f"), {"f": "x"})
+        assert not _is_zeroshot_attempt("escalate", _repair("f"), {})
+        assert not _is_zeroshot_attempt("full", _code("f"), {})
+
+    def test_clean_prompt_has_no_plan_contamination(self) -> None:
+        # The zero-shot prompt must be the clean single-shot form (== ceiling),
+        # NOT the plan/subtask framing that degraded the base candidate (#52).
+        p = render_template(
+            "prompt_zeroshot", task_description="spec here", entry_point="solve_p2"
+        )
+        assert "solve_p2" in p
+        assert "spec here" in p
+        assert "architecture plan" not in p.lower()
+        assert "subtask" not in p.lower()
