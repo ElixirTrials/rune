@@ -504,9 +504,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 task=ctx["task_description"]
             )
             prompt_text = render_template("prompt_zeroshot", **ctx)
-        elif prompt_mode == "episodic":
-            # Episodic design (#52): adapter carries the right context per step;
-            # the prompt is a thin pointer to the immediate sub-goal (no spec leak).
+        elif prompt_mode in ("episodic", "escalate"):
+            # Episodic recall format (#52): adapter carries the right context per
+            # step. In `escalate` this is the adapter-on repair/re-code path (the
+            # zero-shot base already returned above) — so the winning architecture
+            # conditions and trains on the new recall format.
             trajectory_text = render_episode_adapter(
                 action.name, action.target_subtask, state
             )
