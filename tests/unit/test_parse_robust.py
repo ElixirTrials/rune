@@ -139,17 +139,19 @@ class TestDecomposeNormalization:
         assert updates["subtasks"][0].name == "decode_string"
 
     def test_duplicate_non_entrypoint_names_deduped(self) -> None:
-        # model emits the SAME (non-entry_point) subtask 3x -> collapse to one,
-        # else the engine does 3x the work and exhausts (overnight MBPP bug).
+        # model emits a duplicate (non-entry_point) subtask -> collapse to one,
+        # else the engine does N× the work and exhausts (overnight MBPP bug). Keep
+        # a distinct second subtask so the single-subtask entry_point rename (which
+        # would mask the dedup) does not fire.
         raw = (
             '{"overall_goal":"g","subtasks":['
             '{"name":"helper","description":"d","builds":"top"},'
             '{"name":"helper","description":"d","builds":"top"},'
-            '{"name":"helper","description":"d","builds":"top"}]}'
+            '{"name":"other","description":"d","builds":"top"}]}'
         )
         st = {"subtasks": [], "task": "t", "entry_point": "top"}
         updates = parse_output(_decompose_action(), raw, None, st)
-        assert [s.name for s in updates["subtasks"]] == ["helper"]
+        assert [s.name for s in updates["subtasks"]] == ["helper", "other"]
 
     def test_entry_point_among_helpers_collapses_to_entry_point(self) -> None:
         # entry_point listed AS a subtask alongside helpers -> it IS the whole task
