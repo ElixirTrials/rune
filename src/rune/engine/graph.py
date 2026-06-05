@@ -20,7 +20,7 @@ from rune.engine.continuation import (
     strip_self_tests,
     validate_syntax,
 )
-from rune.engine.oracle import build_probe
+from rune.engine.oracle import build_probe, build_subtask_probe
 from rune.engine.parse import JudgeResult, parse_output, render_template
 from rune.engine.policy import select_action
 from rune.engine.state import (
@@ -603,10 +603,21 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # never used here; pass@1 still gates on the full held-out set at scoring.
     spec = state.get("task", "")
     entry_point = state.get("entry_point", "")
-    probes: dict[str, tuple[str, bool]] = {
-        name: build_probe(strip_self_tests(code_map[name]), spec, entry_point)
-        for name in code_action_names
+    # Episodic design: a subtask's own model-authored acceptance_check is its
+    # in-loop signal; fall back to the spec's public examples (whole-task / N=1 /
+    # integrate) when the subtask has none.
+    _subtask_check = {
+        s.name: s.acceptance_check for s in state.get("subtasks", [])
     }
+    probes: dict[str, tuple[str, bool]] = {}
+    for name in code_action_names:
+        stripped = strip_self_tests(code_map[name])
+        check = _subtask_check.get(name, "")
+        probes[name] = (
+            build_subtask_probe(stripped, check)
+            if check.strip()
+            else build_probe(stripped, spec, entry_point)
+        )
     sandbox_results = await asyncio.gather(
         *[
             asyncio.to_thread(run_in_sandbox, probes[name][0])

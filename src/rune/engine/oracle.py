@@ -120,3 +120,20 @@ def build_probe(code: str, spec: str, entry_point: str) -> tuple[str, bool]:
     if not checks or not defines_function(code, entry_point):
         return code, False
     return f"{code}\n\n{checks}", True
+
+
+def build_subtask_probe(code: str, acceptance_check: str) -> tuple[str, bool]:
+    """Append a subtask's model-authored ``acceptance_check`` to its candidate code.
+
+    The episodic design gives each subtask its own in-loop signal (the check the
+    decompose step authored for that sub-goal). Appended only when the candidate is
+    non-empty and the check parses as Python (a malformed check must not crash the
+    sandbox into a spurious repair); otherwise falls back to module-load only.
+    """
+    if not code.strip() or not acceptance_check.strip():
+        return code, False
+    try:
+        ast.parse(acceptance_check)
+    except (SyntaxError, ValueError):
+        return code, False
+    return f"{code}\n\n{acceptance_check}", True

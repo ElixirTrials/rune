@@ -9,7 +9,12 @@ to diagnose->repair with an actual-vs-expected message.
 
 from __future__ import annotations
 
-from rune.engine.oracle import build_probe, defines_function, extract_public_checks
+from rune.engine.oracle import (
+    build_probe,
+    build_subtask_probe,
+    defines_function,
+    extract_public_checks,
+)
 
 SPEC = (
     '"""\nImplement decode_string(s: str) -> str. k[encoded] repeats k times.\n\n'
@@ -96,3 +101,20 @@ class TestBuildProbe:
         probe, fired = build_probe(code, '"""no examples"""', "foo")
         assert fired is False
         assert probe == code
+
+
+class TestBuildSubtaskProbe:
+    def test_appends_valid_check(self) -> None:
+        code = "def tokenize(s):\n    return list(s)"
+        probe, fired = build_subtask_probe(code, "assert tokenize('ab') == ['a','b']")
+        assert fired is True
+        assert "assert tokenize" in probe
+
+    def test_skips_malformed_check(self) -> None:
+        probe, fired = build_subtask_probe("def f(): pass", "assert (((")
+        assert fired is False
+        assert probe == "def f(): pass"
+
+    def test_skips_empty(self) -> None:
+        assert build_subtask_probe("def f(): pass", "") == ("def f(): pass", False)
+        assert build_subtask_probe("", "assert True") == ("", False)
