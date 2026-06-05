@@ -1,50 +1,45 @@
 #!/usr/bin/env bash
-# Overnight full benchmarking (REMOVE-BEFORE-MERGE). Runs arms SERIALLY (GPU is
-# serial) under the RAM watchdog; each arm logs + appends a one-line result to
-# the summary. Continues to the next arm if one fails. Published Qwen3-4B
-# LiveCodeBench v6 = 35.1 is the base reference, so escalate is prioritized there.
+# Overnight full benchmarking (REMOVE-BEFORE-MERGE). Arms run SERIALLY (GPU is
+# serial) under the RAM watchdog; each appends a one-line result to SUMMARY and
+# continues if one fails.
+#   base  = single-shot, no engine, no adapter (the true "model alone") via the
+#           capability-ceiling tool -- FAST and clean (the full-engine base was
+#           pathologically slow on over-decomposed tasks).
+#   escalate = the engine (zero-shot base first, adapter on repair).
+# Published Qwen3-4B LiveCodeBench v6 = 35.1 is the base reference for LCB.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-OUT=/tmp/goal3/overnight
-mkdir -p "$OUT"
-SUMMARY="$OUT/SUMMARY.txt"
-CKPT=/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt
+OUT=/tmp/goal3/overnight; mkdir -p "$OUT"
+SUMMARY="$OUT/SUMMARY.txt"; : > "$SUMMARY"
+C3=/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt
 MBPP=benchmarks/mbpp160_tasks.json
-echo "=== overnight bench started $(cat /proc/uptime | cut -d. -f1)s uptime ===" >> "$SUMMARY"
+echo "=== overnight bench started ===" >> "$SUMMARY"
+wait_for () { while pgrep -f "$1" >/dev/null; do sleep 20; done; }
+report () { python3 -c "import json;d=json.load(open('$1'));print(f'$2: {d[\"passed_tasks\"]}/{d[\"total_tasks\"]} = {d[\"pass_at_1\"]:.3f}')" >> "$SUMMARY" 2>>"$SUMMARY"; }
 
-run_mbpp () {  # arm out mode scaling
-  local arm=$1 out=$2 mode=$3 scal=$4
-  echo ">>> MBPP-160 $arm ($mode @${scal})" | tee -a "$SUMMARY"
-  tools/run_guarded.sh "$OUT/mbpp_${arm}.log" \
-    tools/_goal3_multiturn_probe.py run \
-    --arm "$( [ "$scal" = 0.0 ] && echo scale0 || echo c3 )" --tasks "$MBPP" \
-    --sessions "$OUT/mbpp_${arm}_sessions" --out "$out" \
-    --seed 0 --max-iters 12 --prompt-mode "$mode" --adapter-scaling "$scal"
-  # the guarded wrapper backgrounds; wait for completion
-  while pgrep -f "_goal3_multiturn_probe.*$out" >/dev/null; do sleep 20; done
-  python3 -c "import json;d=json.load(open('$out'));print(f'MBPP-160 $arm: pass@1 {d[\"passed_tasks\"]}/{d[\"total_tasks\"]} = {d[\"pass_at_1\"]:.3f}')" >> "$SUMMARY" 2>>"$SUMMARY"
-}
+# --- MBPP-160 base (single-shot, no engine, no adapter) ---
+echo ">>> MBPP-160 base (single-shot ceiling)" | tee -a "$SUMMARY"
+tools/run_guarded.sh "$OUT/mbpp_base.log" tools/_capability_ceiling.py \
+  --tasks "$MBPP" --out "$OUT/mbpp_base.json" --checkpoint "$C3"
+wait_for "_capability_ceiling.*$OUT/mbpp_base.json"
+report "$OUT/mbpp_base.json" "MBPP-160 base (single-shot)"
 
-run_lcb () {  # arm mode scaling
-  local arm=$1 mode=$2 scal=$3 gens="$OUT/lcb_${arm}.json"
-  # functional-only: the engine is function-oriented; LCB stdin problems have no
-  # entry_point and are not meaningfully supported (separate work).
-  echo ">>> LCB v6 functional (49) $arm ($mode @${scal})" | tee -a "$SUMMARY"
-  tools/run_guarded.sh "$OUT/lcb_${arm}.log" \
-    tools/_lcb_run.py --arm "$( [ "$scal" = 0.0 ] && echo scale0 || echo c3 )" \
-    --prompt-mode "$mode" --adapter-scaling "$scal" --out "$gens" --max-iters 12 \
-    --functional-only
-  while pgrep -f "_lcb_run.*$gens" >/dev/null; do sleep 20; done
-  # official grade in the isolated lcbenv
-  PYTHONPATH=/tmp/LiveCodeBench /tmp/lcbenv/bin/python tools/_lcb_grade.py --gens "$gens" \
-    >> "$SUMMARY" 2>>"$OUT/lcb_${arm}_grade.log"
-}
+# --- MBPP-160 escalate (engine) ---
+echo ">>> MBPP-160 escalate (engine)" | tee -a "$SUMMARY"
+tools/run_guarded.sh "$OUT/mbpp_escalate.log" tools/_goal3_multiturn_probe.py run \
+  --arm c3 --tasks "$MBPP" --sessions "$OUT/mbpp_escalate_sessions" \
+  --out "$OUT/mbpp_escalate.json" --seed 0 --max-iters 12 \
+  --prompt-mode escalate --adapter-scaling 0.627
+wait_for "_goal3_multiturn_probe.*mbpp_escalate.json"
+report "$OUT/mbpp_escalate.json" "MBPP-160 escalate (engine)"
 
-# Priority order (most decision-relevant first):
-run_mbpp base     "$OUT/mbpp_base.json"     full     0.0
-run_mbpp escalate "$OUT/mbpp_escalate.json" escalate 0.627
-run_lcb  escalate escalate 0.627
-run_lcb  base     full     0.0
+# --- LiveCodeBench v6 functional (49) escalate -> official grade vs published 35.1 ---
+echo ">>> LCB v6 functional escalate (vs published 35.1)" | tee -a "$SUMMARY"
+tools/run_guarded.sh "$OUT/lcb_escalate.log" tools/_lcb_run.py \
+  --arm c3 --prompt-mode escalate --adapter-scaling 0.627 \
+  --out "$OUT/lcb_escalate.json" --max-iters 12 --functional-only
+wait_for "_lcb_run.*lcb_escalate.json"
+PYTHONPATH=/tmp/LiveCodeBench /tmp/lcbenv/bin/python tools/_lcb_grade.py \
+  --gens "$OUT/lcb_escalate.json" >> "$SUMMARY" 2>>"$OUT/lcb_escalate_grade.log"
 
 echo "=== overnight bench DONE ===" | tee -a "$SUMMARY"
-echo "AGENT_LOOP_WAKE_overnight_done {\"prompt\":\"Overnight bench done. Read /tmp/goal3/overnight/SUMMARY.txt and record findings (MBPP base vs escalate, LCB escalate vs published 35.1) in PR #55.\"}"
