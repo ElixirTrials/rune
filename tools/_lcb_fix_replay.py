@@ -117,7 +117,9 @@ def replay_qid(qid: str) -> dict[str, Any]:
         task.description, 12, fn, task.signature, task.public_checks
     )
     dec = parse_output(
-        Action("decompose", "decompose", "prompt_decompose_concise", "", None, False, None),
+        Action(
+            "decompose", "decompose", "prompt_decompose_concise", "", None, False, None
+        ),
         raw,
         None,
         state,
@@ -152,7 +154,9 @@ def replay_qid(qid: str) -> dict[str, Any]:
         if g["question_id"] == qid
     )
     old_norm = normalize_lcb_submission(old_ship, fn)
-    old_bench = run_in_sandbox(old_norm + "\n\n" + task.test_code, timeout=10).exit_code == 0
+    old_bench = (
+        run_in_sandbox(old_norm + "\n\n" + task.test_code, timeout=10).exit_code == 0
+    )
 
     return {
         "qid": qid,
@@ -171,7 +175,11 @@ def official_grade(qids: list[str], codes: dict[str, str]) -> dict[str, float]:
     payload = [
         {
             "question_id": q,
-            "code_list": [normalize_lcb_submission(codes[q], json.loads(_row(q)["metadata"])["func_name"])],
+            "code_list": [
+                normalize_lcb_submission(
+                    codes[q], json.loads(_row(q)["metadata"])["func_name"]
+                )
+            ],
         }
         for q in qids
         if q in codes and codes[q].strip()

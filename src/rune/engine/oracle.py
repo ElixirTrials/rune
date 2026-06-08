@@ -209,9 +209,7 @@ def _literal_args_from_call(call: ast.Call) -> list[Any] | None:
     return args
 
 
-def parse_public_call_arglists(
-    public_checks: str, entry_point: str
-) -> list[list[Any]]:
+def parse_public_call_arglists(public_checks: str, entry_point: str) -> list[list[Any]]:
     """Literal argument lists from public ``assert entry_point(...) == ...`` lines."""
     calls: list[list[Any]] = []
     for raw in split_acceptance_checks(public_checks):

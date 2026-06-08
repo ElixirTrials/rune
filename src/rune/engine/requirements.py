@@ -76,9 +76,7 @@ def _entry_function(code: str, entry_point: str) -> ast.FunctionDef | None:
     except SyntaxError:
         return None
     funcs = [
-        n
-        for n in tree.body
-        if isinstance(n, ast.FunctionDef) and n.name == entry_point
+        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == entry_point
     ]
     if funcs:
         return funcs[-1]
@@ -103,9 +101,7 @@ def _expected_param_names(signature: str, entry_point: str) -> list[str] | None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
             not entry_point or node.name == entry_point
         ):
-            return [
-                a.arg for a in node.args.args if a.arg not in ("self", "cls")
-            ]
+            return [a.arg for a in node.args.args if a.arg not in ("self", "cls")]
     return None
 
 

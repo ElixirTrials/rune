@@ -15,7 +15,10 @@ def test_reset_adapter_zeroes_lora_b() -> None:
     with (
         patch("peft.get_peft_model_state_dict", return_value=fake_sd),
         patch("rune.model.wrapper.hotswap_adapter_fn") as swap,
-        patch("rune.model.wrapper.scale_lora_b", side_effect=lambda sd, f: {k: f for k in sd}),
+        patch(
+            "rune.model.wrapper.scale_lora_b",
+            side_effect=lambda sd, f: {k: f for k in sd},
+        ),
     ):
         wrapper.reset_adapter()
         swap.assert_called_once()

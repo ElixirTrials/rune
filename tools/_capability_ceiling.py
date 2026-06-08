@@ -89,8 +89,7 @@ def main() -> None:
             }
         )
         print(
-            f"{'PASS' if passed else 'fail'} {t['task_id']} "
-            f"(code {len(code)} chars)",
+            f"{'PASS' if passed else 'fail'} {t['task_id']} (code {len(code)} chars)",
             flush=True,
         )
 
@@ -103,7 +102,9 @@ def main() -> None:
         "per_task": results,
     }
     Path(args.out).write_text(json.dumps(out, indent=1))
-    print(f"\nCAPABILITY CEILING (base, no adapter): {n_pass}/{len(results)}", flush=True)
+    print(
+        f"\nCAPABILITY CEILING (base, no adapter): {n_pass}/{len(results)}", flush=True
+    )
 
 
 if __name__ == "__main__":

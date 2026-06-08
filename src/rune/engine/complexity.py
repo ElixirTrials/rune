@@ -101,9 +101,7 @@ def _param_names(signature: str, entry_point: str) -> list[str]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
             not entry_point or node.name == entry_point
         ):
-            return [
-                a.arg for a in node.args.args if a.arg not in ("self", "cls")
-            ]
+            return [a.arg for a in node.args.args if a.arg not in ("self", "cls")]
     return []
 
 

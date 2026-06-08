@@ -193,9 +193,7 @@ def eval_merge_hygiene_3753() -> dict[str, Any]:
         plan=plan,
     )
     assert brief is not None
-    llm = (
-        "identifying the highest and lowest frequencies in the character count map"
-    )
+    llm = "identifying the highest and lowest frequencies in the character count map"
     merged = merge_guidance_with_brief(brief.format_block(), llm)
     filtered = "highest and lowest" not in merged
     return {"fix": "merge_hygiene_3753", "misleading_guidance_filtered": filtered}

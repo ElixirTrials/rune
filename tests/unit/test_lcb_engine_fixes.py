@@ -52,9 +52,11 @@ def _overnight_decompose_raw(qid: str) -> str:
 
 
 def _overnight_step_code(qid: str, step: int, target: str | None = None) -> str:
-    for line in Path(
-        f"/tmp/goal3/overnight/lcb_escalate_sessions/{qid}/session.jsonl"
-    ).read_text().splitlines():
+    for line in (
+        Path(f"/tmp/goal3/overnight/lcb_escalate_sessions/{qid}/session.jsonl")
+        .read_text()
+        .splitlines()
+    ):
         o = json.loads(line)
         if (
             o.get("step") == step
@@ -78,7 +80,9 @@ def test_decompose_collapses_to_entry_point(qid: str) -> None:
         task.public_checks,
     )
     out = parse_output(
-        Action("decompose", "decompose", "prompt_decompose_concise", "", None, False, None),
+        Action(
+            "decompose", "decompose", "prompt_decompose_concise", "", None, False, None
+        ),
         raw,
         None,
         state,
@@ -127,7 +131,9 @@ def test_q3754_replay_subtask_name_is_maxdistance() -> None:
         task.description, 12, fn, task.signature, task.public_checks
     )
     out = parse_output(
-        Action("decompose", "decompose", "prompt_decompose_concise", "", None, False, None),
+        Action(
+            "decompose", "decompose", "prompt_decompose_concise", "", None, False, None
+        ),
         raw,
         None,
         state,
@@ -238,7 +244,9 @@ def test_single_subtask_controls_still_one_subtask(qid: str) -> None:
     desc = row["question_content"]
     state = make_initial_state(desc, 12, fn, row.get("starter_code", ""), public)
     out = parse_output(
-        Action("decompose", "decompose", "prompt_decompose_concise", "", None, False, None),
+        Action(
+            "decompose", "decompose", "prompt_decompose_concise", "", None, False, None
+        ),
         raw,
         None,
         state,

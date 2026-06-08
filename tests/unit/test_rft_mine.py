@@ -65,9 +65,7 @@ class TestMine:
 
     def test_held_out_only_filters_failed_tasks(self, tmp_path: Path) -> None:
         d = tmp_path / "s"
-        _write_session(
-            d, [_step("repair", 0, "def f(x): return x")], pass_at_1=False
-        )
+        _write_session(d, [_step("repair", 0, "def f(x): return x")], pass_at_1=False)
         assert _rft._mine_session(d, repairs_only=False, held_out_only=True) == []
 
     def test_failing_steps_not_mined(self, tmp_path: Path) -> None:

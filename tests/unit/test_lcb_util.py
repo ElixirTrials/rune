@@ -27,13 +27,10 @@ class TestBuildPublicAssertChecks:
 
 class TestExtractEntryFunction:
     def test_returns_matching_top_level_function(self) -> None:
-        code = (
-            "def helper():\n"
-            "    return 1\n\n"
-            "def solve(x):\n"
-            "    return x + 1\n"
+        code = "def helper():\n    return 1\n\ndef solve(x):\n    return x + 1\n"
+        assert (
+            extract_entry_function(code, "solve") == "def solve(x):\n    return x + 1"
         )
-        assert extract_entry_function(code, "solve") == "def solve(x):\n    return x + 1"
 
     def test_last_definition_wins(self) -> None:
         code = "def solve():\n    return 0\n\ndef solve():\n    return 1\n"

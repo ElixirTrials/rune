@@ -28,6 +28,7 @@ def _max_repairs(state: dict[str, Any]) -> int:
 def _max_retries(state: dict[str, Any]) -> int:
     return _max_repairs(state) * 2
 
+
 ACTIONS: dict[str, Action] = {
     "decompose": Action(
         "decompose",

@@ -50,7 +50,9 @@ def _mine_session(
     if held_out_only and not meta.get("pass_at_1"):
         return []
 
-    steps = [json.loads(line) for line in sess_path.read_text().splitlines() if line.strip()]
+    steps = [
+        json.loads(line) for line in sess_path.read_text().splitlines() if line.strip()
+    ]
     # a step is a positive if its code passed the oracle (exit 0). A repair that
     # followed a failing attempt is the iterative-logic signal.
     prior_failed = False

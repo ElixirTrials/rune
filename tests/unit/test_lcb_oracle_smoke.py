@@ -30,13 +30,11 @@ _LCB_ROW: dict[str, Any] = {
         "Return the maximum difference, calculated as the frequency of the "
         "character with an odd frequency minus the frequency of the character "
         "with an even frequency.\n"
-        "Example 1:\n\nInput: s = \"aaaaabbc\"\nOutput: 3\n\n"
-        "Example 2:\n\nInput: s = \"abcabcab\"\nOutput: 1\n"
+        'Example 1:\n\nInput: s = "aaaaabbc"\nOutput: 3\n\n'
+        'Example 2:\n\nInput: s = "abcabcab"\nOutput: 1\n'
     ),
     "starter_code": (
-        "class Solution:\n"
-        "    def maxDifference(self, s: str) -> int:\n"
-        "        \n"
+        "class Solution:\n    def maxDifference(self, s: str) -> int:\n        \n"
     ),
     "public_test_cases": json.dumps(
         [
@@ -106,7 +104,9 @@ class _FakeEngine:
     def __init__(self, integrated_code: str) -> None:
         self._code = integrated_code
 
-    async def ainvoke(self, state: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    async def ainvoke(
+        self, state: dict[str, Any], config: dict[str, Any]
+    ) -> dict[str, Any]:
         return {"integrated_code": self._code, "code_results": {}}
 
 
@@ -120,7 +120,11 @@ def test_smoke_bench_scoring_bare_def_passes() -> None:
         entry_point="maxDifference",
     )
     result = asyncio.run(
-        run_benchmark([task], _FakeEngine(CORRECT_MAXDIFF), {"run_config": {"max_phase_iterations": 3}})
+        run_benchmark(
+            [task],
+            _FakeEngine(CORRECT_MAXDIFF),
+            {"run_config": {"max_phase_iterations": 3}},
+        )
     )
     assert result.passed_tasks == 1
 

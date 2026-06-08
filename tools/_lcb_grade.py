@@ -157,10 +157,7 @@ def main() -> None:
         counts = _summarize_outcomes(
             samples_list, generations_list, timeout=args.timeout
         )
-        print(
-            "breakdown: "
-            + ", ".join(f"{k}={counts[k]}" for k in sorted(counts))
-        )
+        print("breakdown: " + ", ".join(f"{k}={counts[k]}" for k in sorted(counts)))
 
 
 if __name__ == "__main__":

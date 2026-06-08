@@ -81,11 +81,7 @@ def build_code_probe(
     subtask_check = ""
     if name:
         subtask_check = next(
-            (
-                s.acceptance_check
-                for s in state.get("subtasks", [])
-                if s.name == name
-            ),
+            (s.acceptance_check for s in state.get("subtasks", []) if s.name == name),
             "",
         )
     check = resolve_in_loop_check(name, subtask_check, state)
@@ -393,9 +389,9 @@ def _bare_signature_stub(entry_point: str, signature: str, spec: str) -> str:
             tree = None
         if tree is not None:
             for node in ast.walk(tree):
-                if isinstance(
-                    node, (ast.FunctionDef, ast.AsyncFunctionDef)
-                ) and (not entry_point or node.name == entry_point):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                    not entry_point or node.name == entry_point
+                ):
                     # Drop the `self`/`cls` receiver at the AST level (not by
                     # string surgery on the unparsed args).
                     node.args.args = [
@@ -727,9 +723,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         eff_scaling = _effective_scaling(
             prompt_mode, action, state.get("code_results", {}), adapter_scaling
         )
-        adapter_id = apply_episodic_adapter(
-            model, trajectory_text, scaling=eff_scaling
-        )
+        adapter_id = apply_episodic_adapter(model, trajectory_text, scaling=eff_scaling)
         result = await model.generate(
             prompt=prompt_text,
             system_prompt=action.system_prompt,

@@ -30,7 +30,10 @@ class TestEffectiveScaling:
 
     def test_re_code_after_prior_attempt_uses_adapter(self) -> None:
         # "f" already has code -> escalated, adapter on
-        assert _effective_scaling("escalate", _code("f"), {"f": "def f(): ..."}, 0.627) == 0.627
+        assert (
+            _effective_scaling("escalate", _code("f"), {"f": "def f(): ..."}, 0.627)
+            == 0.627
+        )
 
     def test_repair_always_uses_adapter(self) -> None:
         assert _effective_scaling("escalate", _repair("f"), {}, 0.627) == 0.627

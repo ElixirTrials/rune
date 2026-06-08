@@ -188,16 +188,12 @@ class TestStepNodeAdapterSwap:
 
     def test_model_judge_does_not_regenerate_adapter(self) -> None:
         """Judge intentionally reuses the code-step adapter; not an extra episode."""
-        state = make_initial_state(
-            "task", 5, "fn", "", "assert fn() == 1"
-        )
+        state = make_initial_state("task", 5, "fn", "", "assert fn() == 1")
         state["subtasks"] = [Subtask("fn", "d", [], "assert fn() == 1", "fn")]
         state["plans"] = {"fn": "p"}
         state["actions"] = []
         model = self._model(text="def fn(): return 1")
-        code_action = Action(
-            "code", "code", "prompt_code", "", None, True, "fn"
-        )
+        code_action = Action("code", "code", "prompt_code", "", None, True, "fn")
         judge_result = GenerationResult(
             text='{"reason":"","failing_input":"","correct":true}',
             thinking="",

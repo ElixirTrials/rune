@@ -116,7 +116,13 @@ class TestEpisodeAdapter:
             "class Solution:\n    def maxDistance(self, s: str, k: int) -> int:\n        "
         )
         st["subtasks"] = [
-            Subtask("maxDistance", "Max distance", [], "assert maxDistance('NS', 1)==2", "maxDistance")
+            Subtask(
+                "maxDistance",
+                "Max distance",
+                [],
+                "assert maxDistance('NS', 1)==2",
+                "maxDistance",
+            )
         ]
         st["code_results"] = {}
         st["feedback"] = {}
@@ -139,7 +145,13 @@ class TestEpisodeAdapter:
         st["entry_point"] = "maxDistance"
         st["signature"] = "class Solution:\n    def maxDistance(self, s, k):\n        "
         st["subtasks"] = [
-            Subtask("maxDistance", "Max distance", [], "assert maxDistance('NS', 1)==2", "maxDistance")
+            Subtask(
+                "maxDistance",
+                "Max distance",
+                [],
+                "assert maxDistance('NS', 1)==2",
+                "maxDistance",
+            )
         ]
         st["code_results"] = {"maxDistance": "def maxDistance(s, k): return 0"}
         st["feedback"] = {}

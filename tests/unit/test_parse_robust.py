@@ -172,7 +172,7 @@ class TestNameFromCheck:
         raw = (
             '{"overall_goal":"g","subtasks":['
             '{"name":"Split the expression into tokens","description":"d",'
-            '"acceptance_check":"assert tokenize(\'2+3\')==[\'2\',\'+\',\'3\']","builds":"calc"},'
+            "\"acceptance_check\":\"assert tokenize('2+3')==['2','+','3']\",\"builds\":\"calc\"},"
             '{"name":"Evaluate the token list","description":"d",'
             '"acceptance_check":"assert evaluate([\'2\',\'+\',\'3\'])==5","builds":"calc"}]}'
         )
@@ -228,7 +228,9 @@ class TestNameFromCheck:
             acceptance_check="assert f(1) == 1\\nassert f(2) == 2",  # literal \n
         )
         assert len(split_acceptance_checks(s.acceptance_check)) == 2
-        _probe, fired = build_subtask_probe("def f(x):\n    return x", s.acceptance_check)
+        _probe, fired = build_subtask_probe(
+            "def f(x):\n    return x", s.acceptance_check
+        )
         assert fired  # checks actually run -- NOT a code-only fallback false-pass
 
     def test_separator_inside_string_literal_is_not_split(self) -> None:

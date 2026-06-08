@@ -8,9 +8,7 @@ from rune.engine.parse import render_template
 from rune.engine.repair_brief import _enrich_assertion_invariant
 from rune.engine.state import Action, Subtask, make_initial_state
 
-_SIG_3748 = (
-    "class Solution:\n    def sortMatrix(self, grid: List[List[int]]) -> List[List[int]]:\n        "
-)
+_SIG_3748 = "class Solution:\n    def sortMatrix(self, grid: List[List[int]]) -> List[List[int]]:\n        "
 _PUBLIC_3748 = (
     "assert sortMatrix(*[[[1, 7, 3], [9, 8, 2], [4, 5, 6]]]) == "
     "[[8, 2, 3], [9, 6, 7], [4, 5, 1]]"
@@ -83,12 +81,8 @@ def test_enrich_invariant_applied_to_max_difference() -> None:
 
 
 def test_state_to_ctx_sets_delivery_contract() -> None:
-    state = make_initial_state(
-        "task", 12, "sortMatrix", _SIG_3748, _PUBLIC_3748
-    )
-    state["subtasks"] = [
-        Subtask("sortMatrix", "d", [], _PUBLIC_3748, "sortMatrix")
-    ]
+    state = make_initial_state("task", 12, "sortMatrix", _SIG_3748, _PUBLIC_3748)
+    state["subtasks"] = [Subtask("sortMatrix", "d", [], _PUBLIC_3748, "sortMatrix")]
     action = Action(
         "repair",
         "code_repair",

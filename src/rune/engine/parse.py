@@ -567,9 +567,8 @@ def parse_output(
                 # repair. Without this an integration-failure diagnose (which
                 # leaves every code_passed True) never triggers a repair and the
                 # engine livelocks integrate<->diagnose until budget is spent.
-                if (
-                    entry.subtask_name in code_passed
-                    and not code_solved.get(entry.subtask_name)
+                if entry.subtask_name in code_passed and not code_solved.get(
+                    entry.subtask_name
                 ):
                     code_passed[entry.subtask_name] = False
                     reopened = True

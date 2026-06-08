@@ -42,9 +42,7 @@ _WRONG_TOTAL = """def totalNumbers(n):
 _WRONG_TOTAL_PUBLIC = "assert totalNumbers([2, 4, 6, 8]) == 3"
 
 
-def _ctx(
-    entry: str, signature: str, public: str, spec: str = ""
-) -> RequirementContext:
+def _ctx(entry: str, signature: str, public: str, spec: str = "") -> RequirementContext:
     return RequirementContext(
         entry_point=entry,
         signature=signature,
@@ -102,7 +100,9 @@ def test_decompose_does_not_inject_goal_extras() -> None:
         .splitlines()[0]
     )["output"]
     out = parse_output(
-        Action("decompose", "decompose", "prompt_decompose_concise", "", None, False, None),
+        Action(
+            "decompose", "decompose", "prompt_decompose_concise", "", None, False, None
+        ),
         raw,
         None,
         state,

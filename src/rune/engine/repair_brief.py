@@ -49,14 +49,10 @@ _ARITY_RE = re.compile(
 _ASSERT_WANT = re.compile(
     r"AssertionError:\s*(.+?)\s*->\s*(.+?),\s*want\s*(.+?)(?:\n|$)", re.DOTALL
 )
-_ASSERT_SIMPLE = re.compile(
-    r"AssertionError:\s*(.+?)(?:\n|$)", re.DOTALL
-)
+_ASSERT_SIMPLE = re.compile(r"AssertionError:\s*(.+?)(?:\n|$)", re.DOTALL)
 
 
-def _signature_brief(
-    message: str, entry_point: str, signature: str
-) -> RepairBrief:
+def _signature_brief(message: str, entry_point: str, signature: str) -> RepairBrief:
     expected_sig = _format_expected_signature(entry_point, signature)
     return RepairBrief(
         failure_class="signature",
@@ -98,9 +94,7 @@ def _complexity_brief(message: str) -> RepairBrief:
     )
 
 
-def _arity_brief(
-    stderr: str, entry_point: str, signature: str
-) -> RepairBrief | None:
+def _arity_brief(stderr: str, entry_point: str, signature: str) -> RepairBrief | None:
     m = _ARITY_RE.search(stderr)
     if not m:
         return None
@@ -140,9 +134,7 @@ def _enrich_assertion_invariant(
     subtask_description: str = "",
 ) -> str:
     """Pull algorithmic invariant from plan/goal when stderr lacks semantics."""
-    context = " ".join(
-        [plan, overall_goal, acceptance_check, subtask_description]
-    )
+    context = " ".join([plan, overall_goal, acceptance_check, subtask_description])
     has_freq_parity = entry_point == "maxDifference" or (
         _ODD_FREQ_RE.search(context) and _EVEN_FREQ_RE.search(context)
     )
@@ -167,9 +159,7 @@ def _assertion_brief(
     m = _ASSERT_WANT.search(stderr)
     if m:
         call, got, want = m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
-        invariant = (
-            f"`{entry_point}` must return correct results for public examples"
-        )
+        invariant = f"`{entry_point}` must return correct results for public examples"
         if "[" in want or "grid" in call.lower() or "matrix" in call.lower():
             invariant = (
                 "Each anti-diagonal (constant i+j) must be sorted independently; "

@@ -169,7 +169,9 @@ def main() -> None:
     )
 
     a = ARMS[args.arm]
-    scaling = a["adapter_scaling"] if args.adapter_scaling is None else args.adapter_scaling
+    scaling = (
+        a["adapter_scaling"] if args.adapter_scaling is None else args.adapter_scaling
+    )
     overrides: dict[str, Any] = {
         "checkpoint_path": a["checkpoint"],
         "adapter_scaling": scaling,

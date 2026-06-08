@@ -140,10 +140,7 @@ class TestBuildSubtaskProbe:
         assert build_subtask_probe("", "assert True") == ("", False)
 
     def test_split_multiline_and_semicolon_checks(self) -> None:
-        raw = (
-            "assert f(1) == 1\n"
-            "assert f(2) == 2; assert f(3) == 3"
-        )
+        raw = "assert f(1) == 1\nassert f(2) == 2; assert f(3) == 3"
         assert split_acceptance_checks(raw) == [
             "assert f(1) == 1",
             "assert f(2) == 2",
@@ -153,10 +150,7 @@ class TestBuildSubtaskProbe:
     def test_multi_assert_runs_all_and_fails_on_second(self) -> None:
         # first check passes; second exposes held-out-style bug with message
         code = "def calc(s):\n    return eval(s.replace('(', '').replace(')', ''))"
-        checks = (
-            "assert calc('2+3') == 5\n"
-            "assert calc('(2+3)*4') == 20"
-        )
+        checks = "assert calc('2+3') == 5\nassert calc('(2+3)*4') == 20"
         probe, fired = build_subtask_probe(code, checks)
         assert fired is True
         try:

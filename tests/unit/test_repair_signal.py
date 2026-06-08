@@ -23,9 +23,7 @@ from rune.engine.repair_brief import build_repair_brief, merge_guidance_with_bri
 from rune.engine.state import Feedback, StepRecord, Subtask, make_initial_state
 
 B4_SESSION = Path("/tmp/goal3/ab/b4_v2_sessions/3753/session.jsonl")
-SIG_3753 = (
-    "class Solution:\n    def maxDifference(self, s: str) -> int:\n        "
-)
+SIG_3753 = "class Solution:\n    def maxDifference(self, s: str) -> int:\n        "
 PLAN_3753 = (
     "Count the frequency of each character in the string. Identify all characters "
     "with odd frequencies and all with even frequencies. Find the maximum difference "
@@ -112,7 +110,10 @@ class TestAssertionBriefEnrichment:
             plan=PLAN_3753,
         )
         assert brief is not None
-        assert "max" not in brief.fix_directive.lower() or "odd" in brief.fix_directive.lower()
+        assert (
+            "max" not in brief.fix_directive.lower()
+            or "odd" in brief.fix_directive.lower()
+        )
 
 
 class TestMergeGuidanceHygiene:
