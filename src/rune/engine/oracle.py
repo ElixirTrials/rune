@@ -131,6 +131,26 @@ def extract_public_checks(spec: str, entry_point: str) -> str:
     return "\n".join(checks)
 
 
+_PROBE_IMPORT_PREAMBLE = (
+    "from typing import (List, Dict, Set, Tuple, Optional, Union, Any, "
+    "Iterable, Sequence, Mapping, Callable, Deque)\n"
+    "import collections, math, heapq, bisect, itertools, functools, re\n"
+    "from collections import defaultdict, deque, Counter, OrderedDict\n"
+)
+
+
+def with_probe_imports(code: str) -> str:
+    """Prepend the typing/stdlib names the official LCB starter code imports.
+
+    The in-loop probe must define the same names the grader provides (e.g.
+    ``List``); otherwise an idiomatic ``def f(x: List[int])`` annotation
+    NameErrors and a logically-correct solution is rejected without ever being
+    graded (issue #52: 3748/3777/3799 burned half their repair budget on
+    ``name 'List' is not defined``). Mirrors the grader, not a behaviour change.
+    """
+    return _PROBE_IMPORT_PREAMBLE + code
+
+
 def build_probe(code: str, spec: str, entry_point: str) -> tuple[str, bool]:
     """Return ``(probe_code, oracle_fired)`` for sandbox execution.
 
@@ -144,7 +164,7 @@ def build_probe(code: str, spec: str, entry_point: str) -> tuple[str, bool]:
     checks = extract_public_checks(spec, entry_point)
     if not checks or not defines_entry_point(code, entry_point):
         return code, False
-    return f"{code}\n\n{checks}", True
+    return with_probe_imports(f"{code}\n\n{checks}"), True
 
 
 def _parse_checks_module(check: str) -> ast.Module | None:
@@ -271,4 +291,4 @@ def build_subtask_probe(code: str, acceptance_check: str) -> tuple[str, bool]:
 
     if not augmented:
         return code, False
-    return f"{code}\n\n" + "\n".join(augmented), True
+    return with_probe_imports(f"{code}\n\n" + "\n".join(augmented)), True

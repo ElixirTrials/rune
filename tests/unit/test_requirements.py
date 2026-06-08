@@ -54,13 +54,28 @@ def test_requirement_registry_is_extensible() -> None:
     }
 
 
-def test_executable_catches_stripped_imports() -> None:
+def test_executable_allows_typing_and_collections_names() -> None:
+    # The probe injects the same names the official LCB starter code imports, so
+    # idiomatic `List`/`Counter` usage must NOT be flagged (issue #52: this used
+    # to NameError and burn repair budget on 3748/3777/3799).
     ctx = _ctx("3799")
-    broken = """def totalNumbers(digits: List[int]) -> int:
-    from itertools import permutations
+    typed = """def totalNumbers(digits: List[int]) -> int:
     count = Counter(digits)
-    return 0
+    return len(count)
 """
+    ok, defs = evaluate_task_requirements(
+        typed,
+        ctx,
+        requirements=(EntryPointRequirement(), ExecutableRequirement()),
+    )
+    assert ok, f"typing/collections names wrongly flagged: {defs}"
+
+
+def test_executable_catches_genuine_load_failure() -> None:
+    # A name genuinely absent from the standard preamble must still fail at
+    # def-time (annotation evaluation), so real load errors are not masked.
+    ctx = _ctx("3799")
+    broken = "def totalNumbers(digits: NDArray) -> int:\n    return 0\n"
     ok, defs = evaluate_task_requirements(
         broken,
         ctx,

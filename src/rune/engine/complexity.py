@@ -261,7 +261,9 @@ def build_constraint_scale_probe(
     lines = [code.strip(), ""]
     for i, args in enumerate(stressed_calls):
         lines.append(f"_constraint_scale_{i} = {entry_point}(*{args!r})")
-    return "\n".join(lines)
+    from rune.engine.oracle import with_probe_imports  # noqa: PLC0415
+
+    return with_probe_imports("\n".join(lines))
 
 
 def check_constraint_scale(

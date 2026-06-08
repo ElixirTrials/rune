@@ -173,6 +173,51 @@ def test_p2_resolve_empty_on_failed_public() -> None:
 # --- P3: repair history must surface distinct code approaches ---------------
 
 
+# --- P4: in-loop probe must define the typing names the grader provides -----
+
+# Correct, self-consistent solution that uses an idiomatic `List` annotation
+# (3748/3777/3799 all emitted such annotations and NameError'd in the probe).
+LIST_ANNOTATED_CORRECT = """def sumEvens(nums: List[int]) -> int:
+    return sum(n for n in nums if n % 2 == 0)
+"""
+LIST_SIG = "def sumEvens(nums: List[int]) -> int:"
+LIST_CHECK = "assert sumEvens([1, 2, 3, 4]) == 6"
+
+
+def test_p4_probe_allows_typing_annotations() -> None:
+    from rune.engine.oracle import build_subtask_probe  # noqa: PLC0415
+    from rune.sandbox.executor import run_in_sandbox  # noqa: PLC0415
+
+    code = "def f(x: List[int]) -> int:\n    return sum(x)\n"
+    probe, fired = build_subtask_probe(code, "assert f([1, 2, 3]) == 6")
+    assert fired
+    assert run_in_sandbox(probe, timeout=5).exit_code == 0
+
+
+def test_p4_requirements_accept_list_annotation() -> None:
+    # The executable + signature + contract chain must not NameError on `List`.
+    ctx = RequirementContext(
+        entry_point="sumEvens",
+        signature=LIST_SIG,
+        spec="",
+        public_checks=LIST_CHECK,
+    )
+    ok, deficiencies = evaluate_task_requirements(LIST_ANNOTATED_CORRECT, ctx)
+    assert ok, f"List-annotated correct solution rejected: {deficiencies}"
+
+
+def test_p4_shippable_accepts_list_annotation() -> None:
+    task = BenchTask(
+        task_id="sumEvens",
+        description="sum the even numbers",
+        test_code="",
+        entry_point="sumEvens",
+        signature=LIST_SIG,
+        public_checks=LIST_CHECK,
+    )
+    assert _benchmark_shippable(task, LIST_ANNOTATED_CORRECT, task.description)
+
+
 def test_p3_tried_and_failed_surfaces_distinct_approaches() -> None:
     # Two attempts whose ERROR line is identical but whose CODE differs: the
     # summary must show the distinct approaches so the model stops repeating.

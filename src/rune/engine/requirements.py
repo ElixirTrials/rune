@@ -140,7 +140,9 @@ class ExecutableRequirement:
             return RequirementOutcome(
                 kind=self.kind, required=True, ok=False, message="empty code"
             )
-        result = run_in_sandbox(code.strip() + "\n", timeout=5)
+        from rune.engine.oracle import with_probe_imports  # noqa: PLC0415
+
+        result = run_in_sandbox(with_probe_imports(code.strip() + "\n"), timeout=5)
         if result.exit_code == 0:
             return RequirementOutcome(kind=self.kind, required=True, ok=True)
         err = (result.stderr or result.stdout or "load failed").strip()
