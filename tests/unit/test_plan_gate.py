@@ -31,7 +31,7 @@ ENTRY = {
 def _plan(qid: str) -> str:
     path = SESSIONS / qid / "session.jsonl"
     if not path.exists():
-        pytest.skip(f"missing {path}")
+        raise pytest.skip.Exception(f"missing {path}")
     for line in path.read_text().splitlines():
         rec = json.loads(line)
         if rec["action"] == "plan":
@@ -40,7 +40,7 @@ def _plan(qid: str) -> str:
                 data = json.loads(out)
                 return str(data.get("plan", out))
             return out
-    pytest.skip(f"no plan in {qid}")
+    raise pytest.skip.Exception(f"no plan in {qid}")
 
 
 def _task_snippet(qid: str) -> str:

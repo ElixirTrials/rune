@@ -50,12 +50,12 @@ ODD_EVEN_CODE = """class Solution:
 
 def _b4_stderr(step: int) -> str:
     if not B4_SESSION.exists():
-        pytest.skip(f"missing {B4_SESSION}")
+        raise pytest.skip.Exception(f"missing {B4_SESSION}")
     for line in B4_SESSION.read_text().splitlines():
         rec = json.loads(line)
         if rec["step"] == step:
             return str((rec.get("feedback") or {}).get("stderr", ""))
-    pytest.skip(f"step {step} missing in B4 session")
+    raise pytest.skip.Exception(f"step {step} missing in B4 session")
 
 
 def _3753_state(*, with_passing_code: bool = False) -> dict:

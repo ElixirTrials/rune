@@ -31,13 +31,13 @@ ENTRY = {
 def _stderr(qid: str, step: int) -> str:
     path = SESSIONS / qid / "session.jsonl"
     if not path.exists():
-        pytest.skip(f"missing session {path}")
+        raise pytest.skip.Exception(f"missing session {path}")
     for line in path.read_text().splitlines():
         rec = json.loads(line)
         if rec["step"] == step:
             fb = rec.get("feedback") or {}
             return str(fb.get("stderr", ""))
-    pytest.skip(f"step {step} not in {qid}")
+    raise pytest.skip.Exception(f"step {step} not in {qid}")
 
 
 @pytest.mark.parametrize(

@@ -250,6 +250,7 @@ class PublicContractRequirement:
                     ),
                 )
             except Exception:
+                # Runtime probe errors are OK; only TypeError means bad contract.
                 pass
         return RequirementOutcome(kind=self.kind, required=True, ok=True)
 
