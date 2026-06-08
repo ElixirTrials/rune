@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from rune.bench.lcb import build_public_assert_checks
 from rune.engine.complexity import constraint_scale_required
 from rune.engine.requirements import (
@@ -19,6 +21,11 @@ from rune.engine.requirements import (
 )
 
 _LCB = Path("/tmp/lcb/test6.jsonl")
+
+pytestmark = pytest.mark.skipif(
+    not _LCB.exists(),
+    reason="requires /tmp/lcb/test6.jsonl (LCB v6 data, not available in CI)",
+)
 
 
 def _row(qid: str) -> dict:

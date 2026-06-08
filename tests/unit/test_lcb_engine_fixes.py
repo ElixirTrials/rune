@@ -18,6 +18,11 @@ from rune.sandbox.executor import run_in_sandbox
 
 _LCB_JSONL = Path("/tmp/lcb/test6.jsonl")
 
+pytestmark = pytest.mark.skipif(
+    not _LCB_JSONL.exists(),
+    reason="requires /tmp/lcb/test6.jsonl + /tmp/goal3 session data (not in CI)",
+)
+
 
 def _lcb_row(qid: str) -> dict:
     for line in _LCB_JSONL.read_text().splitlines():

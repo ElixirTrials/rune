@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from rune.bench.lcb import build_public_assert_checks
 from rune.engine.parse import parse_output
 from rune.engine.requirements import (
@@ -14,6 +16,11 @@ from rune.engine.requirements import (
 )
 from rune.engine.state import Action, make_initial_state
 from rune.engine.validity import format_validity_feedback, validate_solution
+
+pytestmark = pytest.mark.skipif(
+    not Path("/tmp/lcb/test6.jsonl").exists(),
+    reason="requires /tmp/lcb/test6.jsonl + /tmp/goal3 session data (not in CI)",
+)
 
 _Q3754_SIG = (
     "class Solution:\n    def maxDistance(self, s: str, k: int) -> int:\n        \n"
