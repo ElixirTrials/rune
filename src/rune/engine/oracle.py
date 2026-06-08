@@ -131,6 +131,58 @@ def extract_public_checks(spec: str, entry_point: str) -> str:
     return "\n".join(checks)
 
 
+def _call_arg_key(piece: str, entry_point: str) -> tuple[Any, ...] | None:
+    """Literal argument tuple for one public check, including augmented oracle form."""
+    for args in parse_public_call_arglists(piece, entry_point):
+        return tuple(args)
+    for line in piece.splitlines():
+        stripped = line.strip()
+        prefix = "_oracle_got_"
+        if not stripped.startswith(prefix) or f" = {entry_point}(" not in stripped:
+            continue
+        _, rhs = stripped.split(" = ", 1)
+        try:
+            call = ast.parse(rhs, mode="eval").body
+        except SyntaxError:
+            continue
+        if not isinstance(call, ast.Call):
+            continue
+        call_args = _literal_args_from_call(call)
+        if call_args is not None:
+            return tuple(call_args)
+    return None
+
+
+def merge_public_checks(spec: str, public_checks: str, entry_point: str) -> str:
+    """Union doctest examples from *spec* with wired benchmark *public_checks*.
+
+    LCB ``public_test_cases`` often ship a single case; the problem statement may
+    carry additional doctest examples that surface correctness gaps (issue #52).
+    """
+    wired = (public_checks or "").strip()
+    from_spec = extract_public_checks(spec, entry_point).strip()
+    if not from_spec:
+        return wired
+    if not wired:
+        return from_spec
+    existing: set[tuple[Any, ...]] = set()
+    for raw in split_acceptance_checks(wired):
+        key = _call_arg_key(raw, entry_point)
+        if key is not None:
+            existing.add(key)
+    extra: list[str] = []
+    for raw in split_acceptance_checks(from_spec):
+        piece = raw.strip()
+        key = _call_arg_key(piece, entry_point)
+        if key is None or key in existing:
+            continue
+        extra.append(piece)
+        existing.add(key)
+    if not extra:
+        return wired
+    return wired + "\n" + "\n".join(extra)
+
+
 _PROBE_IMPORT_PREAMBLE = (
     "from typing import (List, Dict, Set, Tuple, Optional, Union, Any, "
     "Iterable, Sequence, Mapping, Callable, Deque)\n"

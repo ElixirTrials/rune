@@ -11,7 +11,8 @@ from typing import Any
 
 from rune.bench.lcb import extract_entry_function
 from rune.engine.continuation import strip_self_tests
-from rune.engine.state import make_initial_state
+from rune.engine.oracle import merge_public_checks
+from rune.engine.state import advisory_kinds_from_state, make_initial_state
 from rune.engine.validity import validate_solution
 from rune.mining.session_log import write_session
 from rune.sandbox.executor import run_in_sandbox
@@ -113,6 +114,34 @@ def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
     return path
 
 
+def _default_advisory_kinds() -> frozenset[str]:
+    from rune.config import PipelineConfig  # noqa: PLC0415
+
+    return frozenset(PipelineConfig().advisory_requirement_kinds)
+
+
+def _passes_hard_requirements(
+    task: BenchTask,
+    code: str,
+    spec: str,
+    *,
+    skip_kinds: frozenset[str] | None = None,
+) -> bool:
+    """Structural requirements only; advisory kinds are ignored at ship."""
+    if skip_kinds is None:
+        skip_kinds = _default_advisory_kinds()
+    if not task.public_checks.strip():
+        return True
+    return validate_solution(
+        code,
+        entry_point=task.entry_point,
+        signature=task.signature,
+        spec=spec,
+        public_checks=task.public_checks,
+        skip_kinds=skip_kinds,
+    ).ok
+
+
 def _passes_public_checks(task: BenchTask, code: str) -> bool:
     """True only if *code* actually passes the public checks (quality 3).
 
@@ -135,19 +164,33 @@ def _passes_public_checks(task: BenchTask, code: str) -> bool:
     return run_in_sandbox(probe, timeout=5).exit_code == 0
 
 
-def _benchmark_shippable(task: BenchTask, code: str, spec: str) -> bool:
+def _benchmark_shippable(
+    task: BenchTask,
+    code: str,
+    spec: str,
+    *,
+    skip_kinds: frozenset[str] | None = None,
+) -> bool:
     if not task.public_checks.strip():
         return True
-    structurally_valid = validate_solution(
-        code,
-        entry_point=task.entry_point,
-        signature=task.signature,
-        spec=spec,
-        public_checks=task.public_checks,
-    ).ok
-    if not structurally_valid:
+    if not _passes_hard_requirements(task, code, spec, skip_kinds=skip_kinds):
         return False
     return _passes_public_checks(task, code)
+
+
+def _runnable_ship_fallback(
+    task: BenchTask,
+    code: str,
+    spec: str,
+    *,
+    skip_kinds: frozenset[str] | None = None,
+) -> bool:
+    """True when *code* is structurally shippable even if public checks fail."""
+    if not code.strip():
+        return False
+    if not task.public_checks.strip():
+        return True
+    return _passes_hard_requirements(task, code, spec, skip_kinds=skip_kinds)
 
 
 def _write_task_session(
@@ -176,18 +219,31 @@ def resolve_shipped_code(
     final_state: dict[str, Any], task: BenchTask, *, spec: str = ""
 ) -> str:
     """Pick the code to score: integrated, best per entry, or AST-extracted entry."""
+    from rune.config import PipelineConfig  # noqa: PLC0415
+
+    defaults = PipelineConfig()
     entry = task.entry_point
     best = final_state.get("best_code") or {}
     best_entry = str(best.get(entry, "")) if entry else ""
     integrated = final_state.get("integrated_code") or ""
     task_spec = spec or task.description
-
+    skip_kinds = advisory_kinds_from_state(final_state)
+    ship_best_on_exhaustion = bool(
+        final_state.get("ship_best_on_exhaustion", defaults.ship_best_on_exhaustion)
+    )
+    ship_best_min_quality = int(
+        final_state.get("ship_best_min_quality", defaults.ship_best_min_quality)
+    )
     if integrated.strip() and entry and best_entry.strip():
         from rune.engine.oracle import defines_entry_point  # noqa: PLC0415
 
         bq = int(final_state.get("best_quality", {}).get(entry, -1))
-        best_valid = _benchmark_shippable(task, best_entry, task_spec)
-        int_valid = _benchmark_shippable(task, integrated, task_spec)
+        best_valid = _benchmark_shippable(
+            task, best_entry, task_spec, skip_kinds=skip_kinds
+        )
+        int_valid = _benchmark_shippable(
+            task, integrated, task_spec, skip_kinds=skip_kinds
+        )
         if (
             task.public_checks
             and bq >= 2
@@ -197,13 +253,15 @@ def resolve_shipped_code(
         ):
             return best_entry
 
-    if integrated.strip() and _benchmark_shippable(task, integrated, task_spec):
+    if integrated.strip() and _benchmark_shippable(
+        task, integrated, task_spec, skip_kinds=skip_kinds
+    ):
         return integrated
 
     shipped = best or final_state.get("code_results", {})
     if entry and entry in shipped:
         candidate = str(shipped[entry])
-        if _benchmark_shippable(task, candidate, task_spec):
+        if _benchmark_shippable(task, candidate, task_spec, skip_kinds=skip_kinds):
             return candidate
 
     blob = "\n\n".join(str(v) for v in shipped.values() if v)
@@ -214,9 +272,33 @@ def resolve_shipped_code(
         if (
             extracted.strip()
             and defines_entry_point(extracted, entry)
-            and _benchmark_shippable(task, extracted, task_spec)
+            and _benchmark_shippable(task, extracted, task_spec, skip_kinds=skip_kinds)
         ):
             return extracted
+
+    if not ship_best_on_exhaustion:
+        return ""
+
+    # Budget exhausted with no public-passing answer — ship the best attempt we
+    # retained rather than submitting blank (issue #52).
+    if entry and best_entry.strip():
+        from rune.engine.oracle import defines_entry_point  # noqa: PLC0415
+
+        normalized = (
+            extract_entry_function(best_entry, entry)
+            if task.entry_point
+            else best_entry
+        )
+        bq = int(final_state.get("best_quality", {}).get(entry, -1))
+        if (
+            bq >= ship_best_min_quality
+            and normalized.strip()
+            and defines_entry_point(normalized, entry)
+            and _runnable_ship_fallback(
+                task, normalized, task_spec, skip_kinds=skip_kinds
+            )
+        ):
+            return normalized
 
     return ""
 
@@ -251,17 +333,26 @@ async def run_benchmark(
         if seed is not None:
             _seed_rng(seed + i)
         rc = config.get("run_config", {})
+        public_checks = task.public_checks
+        from rune.config import PipelineConfig  # noqa: PLC0415
+
+        merge_spec = bool(
+            rc.get(
+                "merge_spec_public_checks",
+                PipelineConfig().merge_spec_public_checks,
+            )
+        )
+        if merge_spec and public_checks.strip() and task.entry_point:
+            public_checks = merge_public_checks(
+                task.description, public_checks, task.entry_point
+            )
         initial_state = make_initial_state(
             task.description,
             budget,
             task.entry_point,
             task.signature,
-            task.public_checks,
-            max_repairs=int(rc.get("max_repairs") or 0),
-            repair_brief_enabled=bool(rc.get("repair_brief_enabled", True)),
-            plan_gate_enabled=bool(rc.get("plan_gate_enabled", True)),
-            replan_on_complexity=bool(rc.get("replan_on_complexity", True)),
-            plan_gate_max_attempts=int(rc.get("plan_gate_max_attempts", 2)),
+            public_checks,
+            run_config=rc,
         )
 
         try:

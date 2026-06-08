@@ -2,7 +2,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from rune.bench.runner import BenchTask, run_benchmark
+from rune.bench.runner import BenchTask, resolve_shipped_code, run_benchmark
 from rune.engine.state import Feedback, StepRecord
 
 
@@ -60,6 +60,34 @@ class _NoShipEngine:
                 )
             ],
         }
+
+
+def test_resolve_shipped_code_falls_back_to_best_attempt() -> None:
+    task = BenchTask(
+        task_id="t3",
+        description="return 1",
+        test_code="assert f() == 1",
+        entry_point="f",
+        public_checks="assert f() == 1",
+    )
+    wrong = "def f():\n    return 0\n"
+    state = {
+        "integrated_code": "",
+        "code_results": {"f": wrong},
+        "best_code": {"f": wrong},
+        "best_quality": {"f": 2},
+        "ship_best_on_exhaustion": True,
+        "ship_best_min_quality": 1,
+        "advisory_requirement_kinds": ("constraint_scale",),
+        "complexity_probe_min_n": 8,
+        "complexity_probe_max_n": 400,
+        "complexity_probe_n_repeats": 3,
+        "complexity_probe_per_run_timeout_s": 5.0,
+    }
+    assert resolve_shipped_code(state, task).strip() == wrong.strip()
+
+    state["ship_best_on_exhaustion"] = False
+    assert resolve_shipped_code(state, task) == ""
 
 
 def test_run_benchmark_writes_session_when_nothing_ships(tmp_path: Path) -> None:

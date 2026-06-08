@@ -158,16 +158,23 @@ def test_p2_resolve_ships_correct_class_form() -> None:
     assert _benchmark_shippable(_task(), shipped, _task().description)
 
 
-def test_p2_resolve_empty_on_failed_public() -> None:
-    # A wrong near-miss kept as best_code must ship empty, not the wrong code.
+def test_p2_resolve_ships_best_attempt_when_public_fails() -> None:
+    # Budget exhausted with no public-passing answer — ship best retained attempt.
     state = {
         "best_code": {ENTRY: WRONG_BARE},
         "best_quality": {ENTRY: 2},
         "integrated_code": "",
         "code_results": {ENTRY: WRONG_BARE},
+        "ship_best_on_exhaustion": True,
+        "ship_best_min_quality": 1,
+        "advisory_requirement_kinds": ("constraint_scale",),
+        "complexity_probe_min_n": 8,
+        "complexity_probe_max_n": 400,
+        "complexity_probe_n_repeats": 3,
+        "complexity_probe_per_run_timeout_s": 5.0,
     }
     shipped = resolve_shipped_code(state, _task(), spec=_task().description)
-    assert shipped == "", f"shipped a known-wrong near-miss: {shipped!r}"
+    assert shipped.strip() == WRONG_BARE.strip()
 
 
 # --- P3: repair history must surface distinct code approaches ---------------

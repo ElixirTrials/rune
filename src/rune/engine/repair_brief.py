@@ -77,7 +77,26 @@ def _format_expected_signature(entry_point: str, signature: str) -> str:
     return f"def {entry_point}(...)"
 
 
-def _complexity_brief(message: str) -> RepairBrief:
+def _complexity_brief(message: str, *, preserve_logic: bool) -> RepairBrief:
+    if preserve_logic:
+        return RepairBrief(
+            failure_class="complexity",
+            violated_invariant=(
+                "Implementation passes public examples but exceeds constraint-scale "
+                "performance limits stated in the Constraints block"
+            ),
+            observed=message[:300],
+            expected=(
+                "Same outputs on all public examples, with polynomial or better "
+                "runtime on constraint-scale inputs"
+            ),
+            fix_directive=(
+                "Your logic is correct on public examples — keep the same outputs "
+                "and optimize this implementation for constraint-scale inputs. "
+                "Do NOT replace the algorithm with a structurally different approach."
+            ),
+            replan_recommended=False,
+        )
     return RepairBrief(
         failure_class="complexity",
         violated_invariant=(
@@ -206,7 +225,11 @@ def _assertion_brief(
 
 
 def _requirements_brief(
-    stderr: str, entry_point: str, signature: str
+    stderr: str,
+    entry_point: str,
+    signature: str,
+    *,
+    complexity_repair_preserve_logic: bool = True,
 ) -> RepairBrief | None:
     if "Task requirements failed" not in stderr:
         return None
@@ -218,7 +241,10 @@ def _requirements_brief(
     if not kinds:
         return None
     if any(k == "constraint_scale" for k in kinds):
-        return _complexity_brief(messages[kinds.index("constraint_scale")])
+        return _complexity_brief(
+            messages[kinds.index("constraint_scale")],
+            preserve_logic=complexity_repair_preserve_logic,
+        )
     if any(k == "signature" for k in kinds):
         idx = kinds.index("signature")
         return _signature_brief(messages[idx], entry_point, signature)
@@ -262,6 +288,7 @@ def build_repair_brief(
     overall_goal: str = "",
     acceptance_check: str = "",
     subtask_description: str = "",
+    complexity_repair_preserve_logic: bool = True,
 ) -> RepairBrief | None:
     """Classify sandbox stderr into a structured repair brief.
 
@@ -271,7 +298,12 @@ def build_repair_brief(
     if not text:
         return None
 
-    req = _requirements_brief(text, entry_point, signature)
+    req = _requirements_brief(
+        text,
+        entry_point,
+        signature,
+        complexity_repair_preserve_logic=complexity_repair_preserve_logic,
+    )
     if req is not None:
         return req
 

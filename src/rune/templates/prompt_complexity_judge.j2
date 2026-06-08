@@ -1,0 +1,26 @@
+You are analyzing the asymptotic TIME complexity of `{{ entry_point }}` against the
+task Constraints. Public examples already pass — determine whether this implementation
+is fast enough for the stated input bounds.
+
+## Constraints (from specification)
+{{ constraints_block }}
+
+## Required complexity for these bounds
+At most {{ required_complexity }} (n ≤ {{ max_n }} per competitive-programming feasibility).
+
+## Static analysis rubric (apply systematically)
+{{ complexity_rubric }}
+
+## Static signals detected in the code (deterministic pre-scan)
+{{ static_signals }}
+
+## Candidate implementation
+{{ candidate_code }}
+
+Analyze using the rubric: identify the dominant operation, how it scales with the
+constraint dimension, nested-loop products, combinatorial enumeration, and range scans.
+Reason FIRST (2–4 sentences citing concrete code structure), then commit.
+
+Set `sufficient=false` ONLY when your assessed `measured_complexity` is strictly worse
+than {{ required_complexity }} for n≤{{ max_n }}. Otherwise `sufficient=true`.
+{"reason": "<analysis citing loops/ops>", "measured_complexity": "O(...)", "sufficient": true|false}

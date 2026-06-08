@@ -65,7 +65,9 @@ def test_brute_range_fails_for_billion_bound() -> None:
     return count
 """
     public = "assert beautifulNumbers(1, 5) == 1"
-    cfg = ComplexityProbeConfig(min_n=20, max_n=300, n_repeats=2, per_run_timeout_s=10.0)
+    cfg = ComplexityProbeConfig(
+        min_n=20, max_n=300, n_repeats=2, per_run_timeout_s=10.0
+    )
     outcome = check_constraint_scale(
         brute,
         entry_point="beautifulNumbers",
@@ -88,7 +90,9 @@ def test_linear_code_passes_modest_bound() -> None:
     return sum(nums)
 """
     public = "assert sumNums([1, 2]) == 3"
-    cfg = ComplexityProbeConfig(min_n=10, max_n=200, n_repeats=2, per_run_timeout_s=10.0)
+    cfg = ComplexityProbeConfig(
+        min_n=10, max_n=200, n_repeats=2, per_run_timeout_s=10.0
+    )
     outcome = check_constraint_scale(
         linear,
         entry_point="sumNums",

@@ -13,6 +13,7 @@ from markdown_it import MarkdownIt
 from pydantic import BaseModel, field_validator
 
 from rune.engine.oracle import defines_entry_point
+from rune.engine.requirements import is_constraint_scale_only_failure
 from rune.engine.state import Action, Feedback, Subtask
 from rune.engine.validity import validate_state_code
 
@@ -202,6 +203,17 @@ class PlanResult(BaseModel):
     plan: str
 
 
+class ComplexityJudgeResult(BaseModel):
+    """Adapter-backed static complexity assessment when empirical big_o times out.
+
+    Field order matches :class:`JudgeResult`: analysis before the verdict commit.
+    """
+
+    reason: str = ""
+    measured_complexity: str = ""
+    sufficient: bool = True
+
+
 class JudgeResult(BaseModel):
     """Model correctness verdict on a candidate implementation.
 
@@ -281,20 +293,27 @@ def extract_code_block(value: str) -> str:
     return value
 
 
-def candidate_quality(code: str, feedback: Feedback | None) -> int:
+def candidate_quality(
+    code: str,
+    feedback: Feedback | None,
+    *,
+    constraint_scale_pass_quality: bool = True,
+) -> int:
     """Rank a code candidate by its sandbox outcome (higher = better to ship).
 
-    3 = passed the in-loop check; 2 = ran but mismatched (AssertionError — a
-    near-miss that still executes, likely to pass held-out where a one-example
-    oracle is too weak); 1 = compiled but crashed at runtime; 0 = empty or a
-    syntax error. Used to keep the BEST candidate per subtask so a later worse
-    attempt can't be the one shipped (issue #52 RC-C).
+    3 = passed the in-loop check (or visible-correct but advisory slow);
+    2 = ran but mismatched (AssertionError — a near-miss that still executes);
+    1 = compiled but crashed at runtime; 0 = empty or a syntax error. Used to
+    keep the BEST candidate per subtask so a later worse attempt can't be the
+    one shipped (issue #52 RC-C).
     """
     if not (code or "").strip():
         return 0
     if feedback is not None and feedback.exit_code == 0:
         return 3
     stderr = feedback.stderr if feedback is not None else ""
+    if constraint_scale_pass_quality and is_constraint_scale_only_failure(stderr):
+        return 3
     if "SyntaxError" in stderr:
         return 0
     if "AssertionError" in stderr:
@@ -323,7 +342,13 @@ def _parse_code_action(
         fb_map[target] = feedback
     # No-regress: retain the highest-quality candidate seen for this subtask so a
     # later re-code/repair can't throw away a near-miss by shipping a crash.
-    quality = candidate_quality(code, feedback)
+    quality = candidate_quality(
+        code,
+        feedback,
+        constraint_scale_pass_quality=bool(
+            state.get("constraint_scale_pass_quality", True)
+        ),
+    )
     best_code = dict(state.get("best_code", {}))
     best_quality = dict(state.get("best_quality", {}))
     ship_ok = True

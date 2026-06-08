@@ -24,6 +24,15 @@ class TestPipelineConfig:
         assert cfg.dtype == "bfloat16"
         assert cfg.attn_implementation == "flash_attention_2"
         assert cfg.max_phase_iterations == 10
+        assert cfg.advisory_requirement_kinds == ("constraint_scale",)
+        assert cfg.constraint_scale_pass_quality is True
+        assert cfg.ship_best_on_exhaustion is True
+        assert cfg.merge_spec_public_checks is True
+        assert cfg.complexity_probe_max_n == 1200
+        assert cfg.complexity_probe_n_repeats == 3
+        assert cfg.complexity_empirical_timeout_s == 15.0
+        assert cfg.complexity_judge_enabled is True
+        assert cfg.complexity_judge_max_tokens == 384
 
     def test_frozen(self) -> None:
         cfg = PipelineConfig()
@@ -60,6 +69,14 @@ class TestPipelineConfig:
         path.write_text("- just\n- a\n- list\n")
         with pytest.raises(ValueError, match="YAML mapping"):
             load_config(path)
+
+    def test_load_normalizes_advisory_kinds_list(self, tmp_path: Path) -> None:
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            "advisory_requirement_kinds:\n  - constraint_scale\n  - custom_probe\n"
+        )
+        cfg = load_config(path)
+        assert cfg.advisory_requirement_kinds == ("constraint_scale", "custom_probe")
 
     def test_load_ignores_training_section(self, tmp_path: Path) -> None:
         # One config.yaml holds both surfaces; PipelineConfig ignores `training:`.

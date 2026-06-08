@@ -7,7 +7,11 @@ import json
 from typing import Any
 
 
-def build_public_assert_checks(row: dict[str, Any]) -> str:
+def build_public_assert_checks(
+    row: dict[str, Any],
+    *,
+    merge_spec_public_checks: bool = False,
+) -> str:
     """Bare ``assert fn(*args) == expected`` lines from LCB public test cases.
 
     Matches the engine's top-level ``def entry_point`` contract (not ``Solution()``).
@@ -25,7 +29,12 @@ def build_public_assert_checks(row: dict[str, Any]) -> str:
             continue
         call = f"{fn}(*{args!r})"
         lines.append(f"assert {call} == {out!r}, {t['input']!r}")
-    return "\n".join(lines)
+    wired = "\n".join(lines)
+    if not merge_spec_public_checks:
+        return wired
+    from rune.engine.oracle import merge_public_checks  # noqa: PLC0415
+
+    return merge_public_checks(row.get("question_content", ""), wired, fn)
 
 
 def extract_entry_function(code: str, entry_point: str) -> str:

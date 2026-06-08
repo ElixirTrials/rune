@@ -15,6 +15,7 @@ from rune.engine.oracle import (
     defines_entry_point,
     defines_function,
     extract_public_checks,
+    merge_public_checks,
     split_acceptance_checks,
 )
 
@@ -67,6 +68,20 @@ class TestExtractPublicChecks:
         checks = extract_public_checks(spec, "target")
         assert "target(3)" in checks
         assert "helper" not in checks
+
+
+class TestMergePublicChecks:
+    def test_adds_spec_examples_missing_from_wired_checks(self) -> None:
+        spec = '"""\n>>> assert target("a") == 1\n>>> assert target("b") == 2\n"""'
+        wired = "assert target('a') == 1"
+        merged = merge_public_checks(spec, wired, "target")
+        assert "target('a')" in merged
+        assert "target('b')" in merged
+
+    def test_dedupes_identical_argument_lists(self) -> None:
+        spec = ">>> assert target(1) == 9\n"
+        wired = "assert target(1) == 9"
+        assert merge_public_checks(spec, wired, "target") == wired
 
 
 class TestDefinesFunction:

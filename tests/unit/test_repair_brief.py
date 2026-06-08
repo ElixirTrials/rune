@@ -54,8 +54,8 @@ def _stderr(qid: str, step: int) -> str:
             "3777",
             2,
             "complexity",
-            True,
-            "constraint-scale",
+            False,
+            "public examples",
         ),
         (
             "3801",

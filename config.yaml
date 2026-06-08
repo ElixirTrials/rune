@@ -36,6 +36,32 @@ max_phase_iterations: 10
 cont_multiplier: 1.53   # continuation-round adapter scaling over base adapter_scaling
 cont_budget: 5
 
+# --- Engine oracle / retention / ship gate ---
+repair_brief_enabled: true
+plan_gate_enabled: true
+replan_on_complexity: true
+max_repairs: 4
+plan_gate_max_attempts: 2
+# Performance probes listed here route repair but do not demote best_code or block ship.
+advisory_requirement_kinds:
+  - constraint_scale
+constraint_scale_pass_quality: true   # slow-but-correct ranks as quality 3
+complexity_probe_min_n: 8             # smallest n for big_o sampling
+complexity_probe_max_n: 1200           # largest n for big_o sampling (capped per constraint)
+complexity_probe_n_repeats: 3          # repeats per size (limits total iterations)
+complexity_probe_per_run_timeout_s: 5  # safety cap per sample only, not the gate criterion
+complexity_empirical_timeout_s: 15   # keep big_o when it finishes within this budget
+complexity_judge_enabled: true       # adapter fallback when empirical times out
+complexity_judge_temperature: 0.1
+complexity_judge_max_tokens: 384
+merge_spec_public_checks: true        # add spec doctest examples to public_checks
+ship_best_on_exhaustion: true         # never submit blank when budget is spent
+ship_best_min_quality: 1              # minimum best_quality to ship on exhaustion
+complexity_repair_preserve_logic: true  # "optimize, don't replace" complexity brief
+model_judge: true
+judge_temperature: 0.2
+judge_max_tokens: 256
+
 # --- Adapter (hypernetwork) profile ---
 checkpoint_path: ""           # trained hypernet checkpoint driving the adapter
 warmstart_checkpoint: ""      # warm-start provenance (e.g. Sakana doc-to-lora .bin)

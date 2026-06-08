@@ -632,15 +632,12 @@ def render_complexity_assessment_adapter(
     spec = str(state.get("task", "") or "")
     entry_point = str(state.get("entry_point", "") or "")
     signature = str(state.get("signature", "") or "")
-    task = build_complexity_assessment_task(
-        spec, entry_point, signature=signature
-    )
+    task = build_complexity_assessment_task(spec, entry_point, signature=signature)
     signals = static_complexity_signals(code)
     feedback = (
         "Public examples pass. Assess whether this implementation is fast enough "
         "for the stated Constraints at scale.\n\n"
-        "Static signals:\n"
-        + "\n".join(f"- {s}" for s in signals)
+        "Static signals:\n" + "\n".join(f"- {s}" for s in signals)
     )
     return render_training_format_trajectory(
         task=task,
@@ -663,9 +660,9 @@ async def _run_complexity_judge(
         return None
     max_n = constraint_max_n(constraints)
     required_label, _ = allowed_complexity_for_max_n(max_n)
-    static_signals = "\n".join(
-        f"- {s}" for s in static_complexity_signals(code)
-    ) or "- (none)"
+    static_signals = (
+        "\n".join(f"- {s}" for s in static_complexity_signals(code)) or "- (none)"
+    )
     prompt = render_template(
         "prompt_complexity_judge",
         entry_point=entry_point,

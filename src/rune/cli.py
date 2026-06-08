@@ -45,7 +45,11 @@ def run(
 
     model = ModelWrapper.from_config(cfg)
 
-    initial_state = make_initial_state(task, cfg.max_phase_iterations)
+    initial_state = make_initial_state(
+        task,
+        cfg.max_phase_iterations,
+        run_config=cfg.to_dict(),
+    )
 
     engine = create_engine()
     with tracked_run("run", params=cfg.to_dict()):

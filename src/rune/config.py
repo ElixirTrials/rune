@@ -58,6 +58,28 @@ class PipelineConfig:
     replan_on_complexity: bool = True
     max_repairs: int = 4
     plan_gate_max_attempts: int = 2
+    # --- Engine oracle / retention / ship gate (issue #52) ---
+    # Requirement kinds that route repair but do not demote best_code or block ship.
+    advisory_requirement_kinds: tuple[str, ...] = ("constraint_scale",)
+    # Rank visible-correct-but-slow (constraint_scale-only) as quality 3.
+    constraint_scale_pass_quality: bool = True
+    # Empirical complexity probe (big_o) when Constraints imply large inputs.
+    complexity_probe_min_n: int = 8
+    complexity_probe_max_n: int = 1200
+    complexity_probe_n_repeats: int = 3
+    complexity_probe_per_run_timeout_s: float = 5.0
+    # Wall-clock budget for empirical big_o; on timeout, hotswap complexity adapter.
+    complexity_empirical_timeout_s: float = 15.0
+    complexity_judge_enabled: bool = True
+    complexity_judge_temperature: float = 0.1
+    complexity_judge_max_tokens: int = 384
+    # Union doctest examples from the task spec into wired public_checks.
+    merge_spec_public_checks: bool = True
+    # When no candidate passes public checks, ship best retained attempt anyway.
+    ship_best_on_exhaustion: bool = True
+    ship_best_min_quality: int = 1
+    # Complexity repair brief: preserve algorithm, optimize in place (vs replan).
+    complexity_repair_preserve_logic: bool = True
     # --- Adapter (hypernetwork) profile ---
     checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
     warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance
@@ -71,7 +93,9 @@ class PipelineConfig:
         Returns:
             All config fields as a JSON-serialisable dict.
         """
-        return asdict(self)
+        d = asdict(self)
+        d["advisory_requirement_kinds"] = list(d["advisory_requirement_kinds"])
+        return d
 
     def save(self, path: Path) -> Path:
         """Write config as YAML to disk.
@@ -187,5 +211,8 @@ def load_config(path: Path) -> PipelineConfig:
         # the inference/engine PipelineConfig ignores it so one config.yaml can
         # hold both.
         d = {k: v for k, v in d.items() if k != "training"}
+        kinds = d.get("advisory_requirement_kinds")
+        if isinstance(kinds, list):
+            d["advisory_requirement_kinds"] = tuple(kinds)
         return PipelineConfig(**d)
     return PipelineConfig()

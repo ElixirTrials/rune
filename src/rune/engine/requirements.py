@@ -11,12 +11,13 @@ Add new requirement types by implementing ``TaskRequirement`` and appending to
 from __future__ import annotations
 
 import ast
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Protocol
 
-from rune.engine.complexity import check_constraint_scale
+from rune.engine.complexity import ComplexityProbeConfig, check_constraint_scale
 from rune.engine.oracle import defines_entry_point, parse_public_call_arglists
 from rune.sandbox.executor import run_in_sandbox
 
@@ -29,14 +30,38 @@ class RequirementContext:
     signature: str
     spec: str
     public_checks: str
+    complexity_probe: ComplexityProbeConfig | None = None
 
     @classmethod
     def from_state(cls, state: Mapping[str, Any]) -> RequirementContext:
+        from rune.config import PipelineConfig  # noqa: PLC0415
+
+        defaults = PipelineConfig()
         return cls(
             entry_point=str(state.get("entry_point", "") or ""),
             signature=str(state.get("signature", "") or ""),
             spec=str(state.get("task", "") or ""),
             public_checks=str(state.get("public_checks", "") or ""),
+            complexity_probe=ComplexityProbeConfig(
+                min_n=int(
+                    state.get("complexity_probe_min_n", defaults.complexity_probe_min_n)
+                ),
+                max_n=int(
+                    state.get("complexity_probe_max_n", defaults.complexity_probe_max_n)
+                ),
+                n_repeats=int(
+                    state.get(
+                        "complexity_probe_n_repeats",
+                        defaults.complexity_probe_n_repeats,
+                    )
+                ),
+                per_run_timeout_s=float(
+                    state.get(
+                        "complexity_probe_per_run_timeout_s",
+                        defaults.complexity_probe_per_run_timeout_s,
+                    )
+                ),
+            ),
         )
 
     @cached_property
@@ -270,6 +295,7 @@ class ConstraintScaleRequirement:
             spec=ctx.spec,
             public_checks=ctx.public_checks,
             signature=ctx.signature,
+            probe_config=ctx.complexity_probe,
         )
         return RequirementOutcome(
             kind=self.kind,
@@ -307,11 +333,25 @@ def _normalize_entry_code(code: str, entry_point: str) -> str:
     return normalized if normalized.strip() else code
 
 
+def is_constraint_scale_only_failure(stderr: str) -> bool:
+    """True when stderr is only an advisory constraint-scale timeout."""
+    text = (stderr or "").strip()
+    if "constraint_scale:" not in text:
+        return False
+    if "AssertionError" in text:
+        return False
+    if "Task requirements failed" not in text:
+        return False
+    kinds = [m.group(1) for m in re.finditer(r"^-\s*(\w+):", text, re.MULTILINE)]
+    return kinds == ["constraint_scale"]
+
+
 def evaluate_task_requirements(
     code: str,
     ctx: RequirementContext,
     *,
     requirements: Sequence[TaskRequirement] = TASK_REQUIREMENTS,
+    skip_kinds: frozenset[str] = frozenset(),
 ) -> tuple[bool, tuple[str, ...]]:
     """Run all requirements that apply to this task; return (ok, deficiencies)."""
     if not ctx.public_checks.strip():
@@ -319,6 +359,8 @@ def evaluate_task_requirements(
     code = _normalize_entry_code(code, ctx.entry_point)
     deficiencies: list[str] = []
     for req in requirements:
+        if req.kind in skip_kinds:
+            continue
         if not req.applies(ctx):
             continue
         outcome = req.check(code, ctx)
@@ -331,9 +373,15 @@ def evaluate_task_requirements(
 def evaluate_state_requirements(
     state: Mapping[str, Any],
     code: str,
+    *,
+    skip_kinds: frozenset[str] = frozenset(),
 ) -> tuple[bool, tuple[str, ...]]:
     """Evaluate requirements using fields from RunState."""
-    return evaluate_task_requirements(code, RequirementContext.from_state(state))
+    return evaluate_task_requirements(
+        code,
+        RequirementContext.from_state(state),
+        skip_kinds=skip_kinds,
+    )
 
 
 def format_requirements_feedback(deficiencies: tuple[str, ...]) -> str:

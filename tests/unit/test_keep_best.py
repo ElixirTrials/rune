@@ -14,6 +14,12 @@ from rune.engine.parse import candidate_quality, parse_output
 from rune.engine.policy import ACTIONS
 from rune.engine.state import Feedback
 
+_CONSTRAINT_SCALE_STDERR = (
+    "Task requirements failed — fix exactly:\n"
+    "- constraint_scale: measured O(n²) (Quadratic); Constraints allow n≤100000 "
+    "— need O(n log n) or better"
+)
+
 
 def _passed() -> Feedback:
     return Feedback(stdout="", stderr="", exit_code=0)
@@ -38,6 +44,14 @@ class TestCandidateQuality:
         assert candidate_quality("def f(): ...", _crash()) == 1
         assert candidate_quality("def f(:", _syntax()) == 0
         assert candidate_quality("", _passed()) == 0  # empty never ships
+
+    def test_constraint_scale_only_ranks_as_visible_correct(self) -> None:
+        fb = Feedback(stdout="", stderr=_CONSTRAINT_SCALE_STDERR, exit_code=1)
+        assert candidate_quality("def f(): pass", fb) == 3
+        assert (
+            candidate_quality("def f(): pass", fb, constraint_scale_pass_quality=False)
+            == 1
+        )
 
 
 class TestNoRegress:
@@ -68,4 +82,20 @@ class TestNoRegress:
         state.update(self._code_step("f", "def f(x): return q", _crash(), state))
         state.update(self._code_step("f", "def f(x): return 2", _passed(), state))
         assert state["best_code"]["f"] == "def f(x): return 2"
+        assert state["best_quality"]["f"] == 3
+
+    def test_slow_but_correct_beats_later_assertion_fail(self) -> None:
+        state: dict = {"subtasks": [], "code_results": {}, "code_passed": {}}
+        slow = "def f(x): return 3"
+        wrong = "def f(x): return 0"
+        state.update(
+            self._code_step(
+                "f",
+                slow,
+                Feedback(stdout="", stderr=_CONSTRAINT_SCALE_STDERR, exit_code=1),
+                state,
+            )
+        )
+        state.update(self._code_step("f", wrong, _mismatch(), state))
+        assert state["best_code"]["f"] == slow
         assert state["best_quality"]["f"] == 3

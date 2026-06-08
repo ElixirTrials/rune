@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from rune.bench.lcb import build_public_assert_checks
-from rune.engine.complexity import constraint_scale_required
+from rune.engine.complexity import ComplexityProbeConfig, constraint_scale_required
 from rune.engine.requirements import (
     TASK_REQUIREMENTS,
     ConstraintScaleRequirement,
@@ -123,9 +123,18 @@ def test_constraint_scale_fails_exponential_code() -> None:
             pass
     return -1
 """
+    ctx_fast = RequirementContext(
+        entry_point=ctx_big.entry_point,
+        signature=ctx_big.signature,
+        spec=ctx_big.spec,
+        public_checks=ctx_big.public_checks,
+        complexity_probe=ComplexityProbeConfig(
+            min_n=3, max_n=32, n_repeats=2, per_run_timeout_s=5.0
+        ),
+    )
     ok, defs = evaluate_task_requirements(
         comb,
-        ctx_big,
+        ctx_fast,
         requirements=(ConstraintScaleRequirement(),),
     )
     assert not ok

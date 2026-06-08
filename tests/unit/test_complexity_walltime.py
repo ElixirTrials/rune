@@ -36,7 +36,11 @@ def test_static_floor_short_circuits_without_running_big_o() -> None:
 """
     t0 = time.monotonic()
     out = check_constraint_scale(
-        comb, entry_point="f", spec=_SPEC, public_checks=_PUBLIC, signature=_SIG,
+        comb,
+        entry_point="f",
+        spec=_SPEC,
+        public_checks=_PUBLIC,
+        signature=_SIG,
         probe_config=_FAST,
     )
     elapsed = time.monotonic() - t0
@@ -59,8 +63,13 @@ def test_guarded_hard_kills_runaway_probe() -> None:
 """
     t0 = time.monotonic()
     out = check_constraint_scale_guarded(
-        slow, entry_point="f", spec=_SPEC, public_checks="assert f([1, 2]) == 0",
-        signature=_SIG, probe_config=_FAST, wall_timeout_s=3.0,
+        slow,
+        entry_point="f",
+        spec=_SPEC,
+        public_checks="assert f([1, 2]) == 0",
+        signature=_SIG,
+        probe_config=_FAST,
+        wall_timeout_s=3.0,
     )
     elapsed = time.monotonic() - t0
     assert out is None
@@ -70,8 +79,13 @@ def test_guarded_hard_kills_runaway_probe() -> None:
 def test_guarded_returns_outcome_for_fast_linear() -> None:
     linear = "def f(nums):\n    return sum(nums)\n"
     out = check_constraint_scale_guarded(
-        linear, entry_point="f", spec=_SPEC, public_checks=_PUBLIC, signature=_SIG,
-        probe_config=_FAST, wall_timeout_s=30.0,
+        linear,
+        entry_point="f",
+        spec=_SPEC,
+        public_checks=_PUBLIC,
+        signature=_SIG,
+        probe_config=_FAST,
+        wall_timeout_s=30.0,
     )
     assert out is not None
     assert out.ok  # O(n) is feasible for n<=1e5

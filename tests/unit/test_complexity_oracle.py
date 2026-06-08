@@ -9,9 +9,17 @@ import pytest
 
 from rune.bench.lcb import build_public_assert_checks
 from rune.engine.complexity import (
+    ComplexityProbeConfig,
     check_constraint_complexity,
     complexity_probe_required,
     parse_task_constraints,
+)
+
+_FAST_PROBE = ComplexityProbeConfig(
+    min_n=3,
+    max_n=32,
+    n_repeats=2,
+    per_run_timeout_s=5.0,
 )
 
 _LCB = Path("/tmp/lcb/test6.jsonl")
@@ -85,6 +93,7 @@ def test_combinations_fail_constraint_complexity() -> None:
         spec=_desc("3777"),
         public_checks=public,
         signature=r.get("starter_code", ""),
+        probe_config=_FAST_PROBE,
     )
     assert cx.required
     assert not cx.ok
@@ -112,6 +121,7 @@ def test_brute_range_fail_constraint_complexity() -> None:
         spec=_desc("3801"),
         public_checks=public,
         signature=r.get("starter_code", ""),
+        probe_config=_FAST_PROBE,
     )
     assert cx.required
     assert not cx.ok

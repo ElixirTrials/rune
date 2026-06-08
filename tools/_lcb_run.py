@@ -28,7 +28,9 @@ ARMS = {
 }
 
 
-def _to_task(row: dict[str, Any]) -> dict[str, Any]:
+def _to_task(
+    row: dict[str, Any], *, merge_spec_public_checks: bool = False
+) -> dict[str, Any]:
     from rune.bench.lcb import build_public_assert_checks  # noqa: PLC0415
 
     meta = json.loads(row["metadata"]) if row["metadata"] else {}
@@ -36,7 +38,9 @@ def _to_task(row: dict[str, Any]) -> dict[str, Any]:
     desc = row["question_content"]
     if row.get("starter_code"):
         desc += "\n\nComplete this starter code:\n" + row["starter_code"]
-    public = build_public_assert_checks(row)
+    public = build_public_assert_checks(
+        row, merge_spec_public_checks=merge_spec_public_checks
+    )
     return {
         "task_id": row["question_id"],
         "description": desc,
@@ -200,7 +204,10 @@ def main() -> None:
             entry_point=t["entry_point"],
             signature=t["signature"],
         )
-        for t in (_to_task(r) for r in rows)
+        for t in (
+            _to_task(r, merge_spec_public_checks=cfg.merge_spec_public_checks)
+            for r in rows
+        )
     ]
     config: dict[str, Any] = {
         "model": model,

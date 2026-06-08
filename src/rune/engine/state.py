@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
@@ -139,10 +140,120 @@ class RunState(TypedDict):
     plan_gate_enabled: bool
     replan_on_complexity: bool
     plan_gate_max_attempts: int
+    advisory_requirement_kinds: tuple[str, ...]
+    constraint_scale_pass_quality: bool
+    complexity_probe_min_n: int
+    complexity_probe_max_n: int
+    complexity_probe_n_repeats: int
+    complexity_probe_per_run_timeout_s: float
+    complexity_empirical_timeout_s: float
+    complexity_judge_enabled: bool
+    complexity_judge_temperature: float
+    complexity_judge_max_tokens: int
+    merge_spec_public_checks: bool
+    ship_best_on_exhaustion: bool
+    ship_best_min_quality: int
+    complexity_repair_preserve_logic: bool
     actions: list[Action]
     trajectory: list[StepRecord]
     step: int
     budget_remaining: int
+
+
+def engine_kwargs_from_run_config(
+    run_config: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Engine flags from ``run_config`` / :class:`~rune.config.PipelineConfig`.
+
+    Defaults come from :func:`rune.config.load_rune_config` so config.yaml is the
+    single source of truth; explicit ``run_config`` keys override.
+    """
+    from rune.config import PipelineConfig  # noqa: PLC0415
+
+    defaults = PipelineConfig()
+    rc = run_config or {}
+    kinds = rc.get("advisory_requirement_kinds", defaults.advisory_requirement_kinds)
+    return {
+        "max_repairs": int(rc.get("max_repairs", defaults.max_repairs) or 0),
+        "repair_brief_enabled": bool(
+            rc.get("repair_brief_enabled", defaults.repair_brief_enabled)
+        ),
+        "plan_gate_enabled": bool(
+            rc.get("plan_gate_enabled", defaults.plan_gate_enabled)
+        ),
+        "replan_on_complexity": bool(
+            rc.get("replan_on_complexity", defaults.replan_on_complexity)
+        ),
+        "plan_gate_max_attempts": int(
+            rc.get("plan_gate_max_attempts", defaults.plan_gate_max_attempts)
+        ),
+        "advisory_requirement_kinds": tuple(kinds),
+        "constraint_scale_pass_quality": bool(
+            rc.get(
+                "constraint_scale_pass_quality",
+                defaults.constraint_scale_pass_quality,
+            )
+        ),
+        "complexity_probe_min_n": int(
+            rc.get("complexity_probe_min_n", defaults.complexity_probe_min_n)
+        ),
+        "complexity_probe_max_n": int(
+            rc.get("complexity_probe_max_n", defaults.complexity_probe_max_n)
+        ),
+        "complexity_probe_n_repeats": int(
+            rc.get("complexity_probe_n_repeats", defaults.complexity_probe_n_repeats)
+        ),
+        "complexity_probe_per_run_timeout_s": float(
+            rc.get(
+                "complexity_probe_per_run_timeout_s",
+                defaults.complexity_probe_per_run_timeout_s,
+            )
+        ),
+        "complexity_empirical_timeout_s": float(
+            rc.get(
+                "complexity_empirical_timeout_s",
+                defaults.complexity_empirical_timeout_s,
+            )
+        ),
+        "complexity_judge_enabled": bool(
+            rc.get("complexity_judge_enabled", defaults.complexity_judge_enabled)
+        ),
+        "complexity_judge_temperature": float(
+            rc.get(
+                "complexity_judge_temperature",
+                defaults.complexity_judge_temperature,
+            )
+        ),
+        "complexity_judge_max_tokens": int(
+            rc.get(
+                "complexity_judge_max_tokens",
+                defaults.complexity_judge_max_tokens,
+            )
+        ),
+        "merge_spec_public_checks": bool(
+            rc.get("merge_spec_public_checks", defaults.merge_spec_public_checks)
+        ),
+        "ship_best_on_exhaustion": bool(
+            rc.get("ship_best_on_exhaustion", defaults.ship_best_on_exhaustion)
+        ),
+        "ship_best_min_quality": int(
+            rc.get("ship_best_min_quality", defaults.ship_best_min_quality)
+        ),
+        "complexity_repair_preserve_logic": bool(
+            rc.get(
+                "complexity_repair_preserve_logic",
+                defaults.complexity_repair_preserve_logic,
+            )
+        ),
+    }
+
+
+def advisory_kinds_from_state(state: Mapping[str, Any]) -> frozenset[str]:
+    """Advisory requirement kinds configured for this run."""
+    from rune.config import PipelineConfig  # noqa: PLC0415
+
+    default = PipelineConfig().advisory_requirement_kinds
+    return frozenset(state.get("advisory_requirement_kinds", default))
 
 
 def make_initial_state(
@@ -152,12 +263,24 @@ def make_initial_state(
     signature: str = "",
     public_checks: str = "",
     *,
-    max_repairs: int = 0,
-    repair_brief_enabled: bool = True,
-    plan_gate_enabled: bool = True,
-    replan_on_complexity: bool = True,
-    plan_gate_max_attempts: int = 2,
+    run_config: Mapping[str, Any] | None = None,
+    max_repairs: int | None = None,
+    repair_brief_enabled: bool | None = None,
+    plan_gate_enabled: bool | None = None,
+    replan_on_complexity: bool | None = None,
+    plan_gate_max_attempts: int | None = None,
 ) -> RunState:
+    engine = engine_kwargs_from_run_config(run_config)
+    if max_repairs is not None:
+        engine["max_repairs"] = max_repairs
+    if repair_brief_enabled is not None:
+        engine["repair_brief_enabled"] = repair_brief_enabled
+    if plan_gate_enabled is not None:
+        engine["plan_gate_enabled"] = plan_gate_enabled
+    if replan_on_complexity is not None:
+        engine["replan_on_complexity"] = replan_on_complexity
+    if plan_gate_max_attempts is not None:
+        engine["plan_gate_max_attempts"] = plan_gate_max_attempts
     return {
         "task": task,
         "entry_point": entry_point,
@@ -180,14 +303,34 @@ def make_initial_state(
         "plan_attempts": {},
         "plan_rejections": {},
         "replan_targets": {},
-        "max_repairs": max_repairs,
-        "repair_brief_enabled": repair_brief_enabled,
-        "plan_gate_enabled": plan_gate_enabled,
-        "replan_on_complexity": replan_on_complexity,
-        "plan_gate_max_attempts": plan_gate_max_attempts,
         "integration_feedback": None,
         "actions": [],
         "trajectory": [],
         "step": 0,
         "budget_remaining": budget,
+        "max_repairs": int(engine["max_repairs"]),
+        "repair_brief_enabled": bool(engine["repair_brief_enabled"]),
+        "plan_gate_enabled": bool(engine["plan_gate_enabled"]),
+        "replan_on_complexity": bool(engine["replan_on_complexity"]),
+        "plan_gate_max_attempts": int(engine["plan_gate_max_attempts"]),
+        "advisory_requirement_kinds": tuple(engine["advisory_requirement_kinds"]),
+        "constraint_scale_pass_quality": bool(engine["constraint_scale_pass_quality"]),
+        "complexity_probe_min_n": int(engine["complexity_probe_min_n"]),
+        "complexity_probe_max_n": int(engine["complexity_probe_max_n"]),
+        "complexity_probe_n_repeats": int(engine["complexity_probe_n_repeats"]),
+        "complexity_probe_per_run_timeout_s": float(
+            engine["complexity_probe_per_run_timeout_s"]
+        ),
+        "complexity_empirical_timeout_s": float(
+            engine["complexity_empirical_timeout_s"]
+        ),
+        "complexity_judge_enabled": bool(engine["complexity_judge_enabled"]),
+        "complexity_judge_temperature": float(engine["complexity_judge_temperature"]),
+        "complexity_judge_max_tokens": int(engine["complexity_judge_max_tokens"]),
+        "merge_spec_public_checks": bool(engine["merge_spec_public_checks"]),
+        "ship_best_on_exhaustion": bool(engine["ship_best_on_exhaustion"]),
+        "ship_best_min_quality": int(engine["ship_best_min_quality"]),
+        "complexity_repair_preserve_logic": bool(
+            engine["complexity_repair_preserve_logic"]
+        ),
     }
