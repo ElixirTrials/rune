@@ -135,6 +135,23 @@ _ATTEMPT_CODE_CAP = 400
 _ATTEMPT_ERR_CAP = 300
 
 
+def _approach_signature(code: str) -> str:
+    """Distinguishing line of an attempt (its return expression) for repair recall.
+
+    The raw stderr is often identical across rounds (same single public assert),
+    so listing it alone hides that the model is re-submitting equivalent code
+    (issue #52, q3753 steps 6/8/10). Surfacing the return expression lets the
+    model see which approaches it already tried.
+    """
+    returns = [
+        ln.strip() for ln in code.splitlines() if ln.strip().startswith("return ")
+    ]
+    if returns:
+        return returns[-1][:80]
+    body = [ln.strip() for ln in code.splitlines() if ln.strip()]
+    return body[-1][:80] if body else ""
+
+
 def _format_tried_and_failed(trajectory: list[dict[str, Any]]) -> str:
     """Compact summary of failed repair attempts for episodic recall."""
     lines: list[str] = []
@@ -147,7 +164,9 @@ def _format_tried_and_failed(trajectory: list[dict[str, Any]]) -> str:
         step = entry.get("step", "?")
         action = entry.get("action", "attempt")
         snippet = err.splitlines()[-1][:120]
-        lines.append(f"- step {step} ({action}): {snippet}")
+        approach = _approach_signature(entry.get("code") or "")
+        detail = f"`{approach}` -> {snippet}" if approach else snippet
+        lines.append(f"- step {step} ({action}): {detail}")
     if not lines:
         return ""
     header = (

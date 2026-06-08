@@ -289,6 +289,25 @@ TASK_REQUIREMENTS: list[TaskRequirement] = [
 ]
 
 
+def _normalize_entry_code(code: str, entry_point: str) -> str:
+    """Reduce to the gradeable entry form (``class Solution`` -> bare ``def``).
+
+    The in-loop probe (`_normalize_probe_code`) and the LCB grader
+    (`normalize_lcb_submission`) both grade the bare entry function; only this
+    oracle used to see the raw class form, so the canonical
+    ``class Solution: def m(self, ...)`` shape failed signature/contract on the
+    spurious ``self`` parameter and flipped a passing solution to failing
+    (issue #52, q3753). Normalizing here keeps all three stages consistent while
+    still catching a genuinely wrong bare signature.
+    """
+    if not entry_point or not code.strip():
+        return code
+    from rune.bench.lcb import extract_entry_function  # noqa: PLC0415
+
+    normalized = extract_entry_function(code, entry_point)
+    return normalized if normalized.strip() else code
+
+
 def evaluate_task_requirements(
     code: str,
     ctx: RequirementContext,
@@ -298,6 +317,7 @@ def evaluate_task_requirements(
     """Run all requirements that apply to this task; return (ok, deficiencies)."""
     if not ctx.public_checks.strip():
         return True, ()
+    code = _normalize_entry_code(code, ctx.entry_point)
     deficiencies: list[str] = []
     for req in requirements:
         if not req.applies(ctx):

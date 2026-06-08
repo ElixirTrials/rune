@@ -113,16 +113,41 @@ def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
     return path
 
 
+def _passes_public_checks(task: BenchTask, code: str) -> bool:
+    """True only if *code* actually passes the public checks (quality 3).
+
+    Structural validity is necessary but not sufficient: the engine otherwise
+    shipped runnable-but-wrong near-misses (``best_quality == 2``) that score
+    pass@1=0 (issue #52). Normalize to the gradeable entry form first so the
+    canonical ``class Solution`` shape is graded the same way the LCB grader
+    grades it.
+    """
+    from rune.engine.oracle import build_subtask_probe  # noqa: PLC0415
+
+    normalized = (
+        extract_entry_function(code, task.entry_point) if task.entry_point else code
+    )
+    if not normalized.strip():
+        return False
+    probe, fired = build_subtask_probe(normalized, task.public_checks)
+    if not fired:
+        return False
+    return run_in_sandbox(probe, timeout=5).exit_code == 0
+
+
 def _benchmark_shippable(task: BenchTask, code: str, spec: str) -> bool:
     if not task.public_checks.strip():
         return True
-    return validate_solution(
+    structurally_valid = validate_solution(
         code,
         entry_point=task.entry_point,
         signature=task.signature,
         spec=spec,
         public_checks=task.public_checks,
     ).ok
+    if not structurally_valid:
+        return False
+    return _passes_public_checks(task, code)
 
 
 def _write_task_session(
