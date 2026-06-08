@@ -27,6 +27,7 @@ dependencies = [
     "langchain>=1.3.1",
     "json-repair>=0.60.1",
     "markdown-it-py>=4.2.0",
+    "big-o>=0.11.0",
 ]
 
 [project.optional-dependencies]
@@ -94,6 +95,7 @@ strict = true
 module = [
     "langgraph", "langgraph.*",
     "langchain_core", "langchain_core.*",
+    "big_o", "big_o.*",
     "xgrammar", "xgrammar.*",
     "peft", "peft.*",
     "torch", "torch.*",

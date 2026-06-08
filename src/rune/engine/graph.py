@@ -14,6 +14,19 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from rune.bench.lcb import extract_entry_function
+from rune.engine.complexity import (
+    COMPLEXITY_ANALYSIS_RUBRIC,
+    ComplexityProbeConfig,
+    ScaleProbeOutcome,
+    allowed_complexity_for_max_n,
+    build_complexity_assessment_task,
+    check_constraint_scale_guarded,
+    constraint_max_n,
+    constraint_scale_required,
+    extract_constraints_block,
+    parse_task_constraints,
+    static_complexity_signals,
+)
 from rune.engine.continuation import (
     CONT_SYSTEM_PROMPT,
     degeneration_score,
@@ -27,7 +40,12 @@ from rune.engine.oracle import (
     build_subtask_probe,
     split_acceptance_checks,
 )
-from rune.engine.parse import JudgeResult, parse_output, render_template
+from rune.engine.parse import (
+    ComplexityJudgeResult,
+    JudgeResult,
+    parse_output,
+    render_template,
+)
 from rune.engine.policy import select_action
 from rune.engine.requirements import (
     evaluate_state_requirements,
@@ -600,6 +618,147 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
 
 
 _JUDGE_SYSTEM = "You are a meticulous code reviewer hunting for edge-case bugs."
+_COMPLEXITY_JUDGE_SYSTEM = (
+    "You are a competitive-programming complexity analyst. "
+    "Assess asymptotic TIME complexity from code structure."
+)
+
+
+def render_complexity_assessment_adapter(
+    state: Mapping[str, Any],
+    code: str,
+) -> str:
+    """Episodic adapter trajectory for static time-complexity assessment."""
+    spec = str(state.get("task", "") or "")
+    entry_point = str(state.get("entry_point", "") or "")
+    signature = str(state.get("signature", "") or "")
+    task = build_complexity_assessment_task(
+        spec, entry_point, signature=signature
+    )
+    signals = static_complexity_signals(code)
+    feedback = (
+        "Public examples pass. Assess whether this implementation is fast enough "
+        "for the stated Constraints at scale.\n\n"
+        "Static signals:\n"
+        + "\n".join(f"- {s}" for s in signals)
+    )
+    return render_training_format_trajectory(
+        task=task,
+        current_code=code,
+        feedback=feedback,
+    )
+
+
+async def _run_complexity_judge(
+    model: Any,
+    state: Mapping[str, Any],
+    code: str,
+    run_config: dict[str, Any],
+) -> ComplexityJudgeResult | None:
+    """Adapter-backed complexity verdict when empirical big_o exceeds budget."""
+    spec = str(state.get("task", "") or "")
+    entry_point = str(state.get("entry_point", "") or "")
+    constraints = parse_task_constraints(spec)
+    if constraints is None:
+        return None
+    max_n = constraint_max_n(constraints)
+    required_label, _ = allowed_complexity_for_max_n(max_n)
+    static_signals = "\n".join(
+        f"- {s}" for s in static_complexity_signals(code)
+    ) or "- (none)"
+    prompt = render_template(
+        "prompt_complexity_judge",
+        entry_point=entry_point,
+        constraints_block=extract_constraints_block(spec),
+        required_complexity=required_label,
+        max_n=max_n,
+        complexity_rubric=COMPLEXITY_ANALYSIS_RUBRIC,
+        static_signals=static_signals,
+        candidate_code=code,
+    )
+    try:
+        result = await model.generate(
+            prompt=prompt,
+            system_prompt=_COMPLEXITY_JUDGE_SYSTEM,
+            output_schema=ComplexityJudgeResult,
+            max_tokens=run_config.get("complexity_judge_max_tokens", 384),
+            temperature=run_config.get("complexity_judge_temperature", 0.1),
+            thinking_budget=0,
+        )
+        return ComplexityJudgeResult.model_validate_json(result.text)
+    except Exception:
+        logger.warning(
+            "complexity judge failed to produce a verdict; treating as sufficient"
+        )
+        return None
+
+
+async def _run_constraint_complexity_oracle(
+    model: Any,
+    state: Mapping[str, Any],
+    code: str,
+    run_config: dict[str, Any],
+) -> ScaleProbeOutcome | None:
+    """Empirical big_o within budget; adapter judge fallback on timeout."""
+    spec = str(state.get("task", "") or "")
+    entry_point = str(state.get("entry_point", "") or "")
+    public_checks = str(state.get("public_checks", "") or "")
+    signature = str(state.get("signature", "") or "")
+    if not constraint_scale_required(
+        public_checks, entry_point, spec, signature=signature
+    ):
+        return None
+
+    probe_config = ComplexityProbeConfig.from_state(state)
+    timeout_s = float(run_config.get("complexity_empirical_timeout_s", 15.0))
+    # Guarded: the empirical probe runs in a hard-killable subprocess so a slow
+    # implementation can't stall the run (a thread can't be killed). Returns None
+    # when the wall budget was exceeded -> escalate to the adapter judge.
+    outcome = await asyncio.to_thread(
+        check_constraint_scale_guarded,
+        code,
+        entry_point=entry_point,
+        spec=spec,
+        public_checks=public_checks,
+        signature=signature,
+        probe_config=probe_config,
+        wall_timeout_s=timeout_s,
+    )
+    if outcome is not None:
+        return outcome
+    logger.info(
+        "empirical complexity exceeded %.1fs budget; trying adapter judge",
+        timeout_s,
+    )
+
+    if not run_config.get("complexity_judge_enabled", True):
+        return ScaleProbeOutcome(required=True, ok=True)
+
+    traj = render_complexity_assessment_adapter(state, code)
+    scaling = float(run_config.get("adapter_scaling", 1.0))
+    apply_episodic_adapter(model, traj, scaling=scaling)
+    verdict = await _run_complexity_judge(model, state, code, run_config)
+    if verdict is None:
+        return ScaleProbeOutcome(required=True, ok=True)
+
+    constraints = parse_task_constraints(spec)
+    if constraints is None:
+        return ScaleProbeOutcome(required=True, ok=True)
+    max_n = constraint_max_n(constraints)
+    allowed_label, _ = allowed_complexity_for_max_n(max_n)
+    if verdict.sufficient:
+        return ScaleProbeOutcome(required=True, ok=True)
+    reason = verdict.reason.strip()
+    suffix = f" {reason}" if reason else ""
+    return ScaleProbeOutcome(
+        required=True,
+        ok=False,
+        message=(
+            f"constraint_scale: assessed {verdict.measured_complexity} "
+            f"(adapter analysis); Constraints allow n≤{max_n} "
+            f"— need {allowed_label} or better.{suffix}"
+        ),
+    )
 
 
 async def _run_model_judge(
@@ -961,13 +1120,43 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                         f"judge_flagged/{name or 'integrate'}", 1, step=state["step"]
                     )
 
+    # Constraint-scale oracle: empirical big_o when it finishes within budget;
+    # otherwise hotswap the complexity-assessment adapter for a static verdict.
+    for name in code_action_names:
+        if feedback_map[name].exit_code != 0:
+            continue
+        cx_outcome = await _run_constraint_complexity_oracle(
+            model, state, code_map[name], run_config
+        )
+        if cx_outcome is not None and cx_outcome.required and not cx_outcome.ok:
+            feedback_map[name] = Feedback(
+                stdout="",
+                stderr=format_requirements_feedback((cx_outcome.message,)),
+                exit_code=1,
+            )
+            logger.info(
+                "constraint complexity failed for %s: %s",
+                name or "integrate",
+                cx_outcome.message,
+            )
+            if mlflow.active_run() is not None:
+                mlflow.log_metric(
+                    f"complexity_failed/{name or 'integrate'}",
+                    1,
+                    step=state["step"],
+                )
+
     # Task requirements oracle (benchmark/LCB): pluggable checks that activate
     # only from structured task evidence (starter, public_checks, Constraints).
     if str(state.get("public_checks", "") or "").strip():
         for name in code_action_names:
             if feedback_map[name].exit_code != 0:
                 continue
-            ok, deficiencies = evaluate_state_requirements(state, code_map[name])
+            ok, deficiencies = evaluate_state_requirements(
+                state,
+                code_map[name],
+                skip_kinds=frozenset({"constraint_scale"}),
+            )
             if not ok:
                 msg = format_requirements_feedback(deficiencies)
                 feedback_map[name] = Feedback(stdout="", stderr=msg, exit_code=1)
@@ -1003,6 +1192,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 overall_goal=str(state.get("overall_goal", "") or ""),
                 acceptance_check=sub.acceptance_check if sub else "",
                 subtask_description=sub.description if sub else "",
+                complexity_repair_preserve_logic=bool(
+                    state.get("complexity_repair_preserve_logic", True)
+                ),
             )
             if brief is None:
                 continue
