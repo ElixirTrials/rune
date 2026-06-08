@@ -146,9 +146,17 @@ async def run_hpo(
         if not parent_run_id:
             return
         step = trial.number
-        _client.log_metric(
-            parent_run_id, "best_tuning_pass_at_1", study.best_value, step=step
+        # study.best_value raises ValueError until a trial has COMPLETED; the
+        # callback also fires after failed/pruned trials, so guard it (else a
+        # failed first trial crashes the whole HPO run).
+        has_completed = any(
+            t.state == optuna.trial.TrialState.COMPLETE
+            for t in study.get_trials(deepcopy=False)
         )
+        if has_completed:
+            _client.log_metric(
+                parent_run_id, "best_tuning_pass_at_1", study.best_value, step=step
+            )
         _client.log_metric(parent_run_id, "trials_completed", step + 1, step=step)
         if trial.value is not None:
             _client.log_metric(parent_run_id, "trial_pass_at_1", trial.value, step=step)
