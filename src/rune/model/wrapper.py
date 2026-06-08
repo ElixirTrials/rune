@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +18,25 @@ from rune.model.inference import (
 
 if TYPE_CHECKING:
     from rune.config import PipelineConfig
+
+
+logger = logging.getLogger(__name__)
+
+
+def resolve_attn_implementation(name: str) -> str:
+    """Fall back to ``sdpa`` when ``flash_attention_2`` is configured but absent.
+
+    flash-attn is an optional, environment-specific wheel; the model profile
+    pins it for speed, but it must not hard-fail a run on a box where it is not
+    installed (sdpa is a numerically-equivalent drop-in for our purposes).
+    """
+    if name == "flash_attention_2" and importlib.util.find_spec("flash_attn") is None:
+        logger.warning(
+            "flash_attention_2 requested but flash_attn is not installed; "
+            "falling back to sdpa"
+        )
+        return "sdpa"
+    return name
 
 
 def peft_scaling_params(
@@ -123,7 +144,7 @@ class ModelWrapper:
         _raw_model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
             dtype=getattr(torch, config.dtype),
-            attn_implementation=config.attn_implementation,
+            attn_implementation=resolve_attn_implementation(config.attn_implementation),
         ).to(device)
         lora_config = LoraConfig(
             r=r_peft,
