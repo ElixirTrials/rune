@@ -37,7 +37,8 @@ report "$OUT/mbpp_escalate.json" "MBPP-160 escalate (engine)"
 echo ">>> LCB v6 functional escalate (vs published 35.1)" | tee -a "$SUMMARY"
 tools/run_guarded.sh "$OUT/lcb_escalate.log" tools/_lcb_run.py \
   --arm c3 --prompt-mode escalate --adapter-scaling 0.627 \
-  --out "$OUT/lcb_escalate.json" --max-iters 12 --functional-only
+  --out "$OUT/lcb_escalate.json" --max-iters 12 --functional-only \
+  --sessions "$OUT/lcb_escalate_sessions" --experiment issue52-goal3-lcb --seed 0
 wait_for "_lcb_run.*lcb_escalate.json"
 PYTHONPATH=/tmp/LiveCodeBench /tmp/lcbenv/bin/python tools/_lcb_grade.py \
   --gens "$OUT/lcb_escalate.json" >> "$SUMMARY" 2>>"$OUT/lcb_escalate_grade.log"

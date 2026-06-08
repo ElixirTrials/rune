@@ -12,6 +12,7 @@ from __future__ import annotations
 from rune.engine.oracle import (
     build_probe,
     build_subtask_probe,
+    defines_entry_point,
     defines_function,
     extract_public_checks,
     split_acceptance_checks,
@@ -71,6 +72,11 @@ class TestExtractPublicChecks:
 class TestDefinesFunction:
     def test_top_level_def_detected(self) -> None:
         assert defines_function("def calculate(x):\n    return x", "calculate")
+
+    def test_solution_method_counts_as_entry_point(self) -> None:
+        code = "class Solution:\n    def solve(self, x):\n        return x\n"
+        assert defines_entry_point(code, "solve")
+        assert not defines_function(code, "solve")
 
     def test_substring_in_comment_not_matched(self) -> None:
         # 'calculate' appears only in a comment / helper, not as a top-level def

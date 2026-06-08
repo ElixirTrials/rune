@@ -166,6 +166,19 @@ def select_action(state: dict[str, Any]) -> list[Action]:
                     "failing; stopping run."
                 )
                 return []
+            entry = str(state.get("entry_point", "") or "")
+            if (
+                entry
+                and len(subtasks) == 1
+                and subtasks[0].name == entry
+                and str(state.get("public_checks", "") or "").strip()
+                and state.get("best_code", {}).get(entry)
+            ):
+                logger.info(
+                    "Single benchmark subtask %s exhausted; shipping best_code",
+                    entry,
+                )
+                return []
 
     # All subtasks pass — integrate or done
     if len(subtasks) == 1:

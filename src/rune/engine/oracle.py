@@ -37,6 +37,28 @@ def defines_function(code: str, name: str) -> bool:
     )
 
 
+def defines_entry_point(code: str, entry_point: str) -> bool:
+    """True if *code* defines *entry_point* as top-level def or Solution method."""
+    if not entry_point:
+        return False
+    if defines_function(code, entry_point):
+        return True
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return False
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != "Solution":
+            continue
+        if any(
+            isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and item.name == entry_point
+            for item in node.body
+        ):
+            return True
+    return False
+
+
 def _call_names(node: ast.AST) -> set[str]:
     return {
         c.func.id
@@ -119,7 +141,7 @@ def build_probe(code: str, spec: str, entry_point: str) -> tuple[str, bool]:
     oracle actually fired and failed on attempt 1.
     """
     checks = extract_public_checks(spec, entry_point)
-    if not checks or not defines_function(code, entry_point):
+    if not checks or not defines_entry_point(code, entry_point):
         return code, False
     return f"{code}\n\n{checks}", True
 

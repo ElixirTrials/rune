@@ -13,6 +13,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from rune.bench.lcb import extract_entry_function
 from rune.engine.continuation import (
     CONT_SYSTEM_PROMPT,
     degeneration_score,
@@ -38,6 +39,74 @@ from rune.model.adapter import scale_lora_b
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
+
+_ORACLE_FAIL_CLOSED_MSG = "oracle checks configured but probe did not fire"
+
+
+def resolve_in_loop_check(
+    name: str, subtask_check: str, state: Mapping[str, Any]
+) -> str:
+    """Pick in-loop assert source: task public_checks, subtask check, or none."""
+    public = str(state.get("public_checks", "") or "").strip()
+    entry = str(state.get("entry_point", "") or "")
+    sub = subtask_check.strip()
+    if public and (not name or name == entry):
+        return public
+    if sub:
+        return sub
+    if public:
+        return public
+    return ""
+
+
+def _normalize_probe_code(code: str, entry_point: str) -> str:
+    if not entry_point or not code.strip():
+        return code
+    extracted = extract_entry_function(code, entry_point)
+    return extracted if extracted.strip() else code
+
+
+def build_code_probe(
+    name: str, code: str, state: Mapping[str, Any]
+) -> tuple[str, bool, bool]:
+    """Return ``(probe_code, oracle_fired, check_resolved)`` for sandbox execution."""
+    stripped = strip_self_tests(code)
+    entry_point = str(state.get("entry_point", "") or "")
+    normalized = _normalize_probe_code(stripped, entry_point)
+    subtask_check = ""
+    if name:
+        subtask_check = next(
+            (
+                s.acceptance_check
+                for s in state.get("subtasks", [])
+                if s.name == name
+            ),
+            "",
+        )
+    check = resolve_in_loop_check(name, subtask_check, state)
+    check_resolved = bool(check.strip())
+    if check_resolved:
+        probe, fired = build_subtask_probe(normalized, check)
+        return probe, fired, True
+    spec = str(state.get("task", "") or "")
+    probe, fired = build_probe(normalized, spec, entry_point)
+    return probe, fired, False
+
+
+def apply_oracle_fail_closed(
+    probe_fired: bool,
+    check_resolved: bool,
+    feedback: Feedback,
+) -> Feedback:
+    """Force failure when checks were configured but the probe could not run them."""
+    if check_resolved and not probe_fired and feedback.exit_code == 0:
+        return Feedback(
+            stdout=feedback.stdout,
+            stderr=_ORACLE_FAIL_CLOSED_MSG,
+            exit_code=1,
+        )
+    return feedback
+
 
 _TARGETED_ACTIONS = frozenset({"plan", "code", "repair"})
 # Thin, focused prompts for episodic mode (the adapter carries the context).
@@ -152,14 +221,23 @@ def render_episode_adapter(
         return render_training_format_trajectory(task=str(state.get("task", "")))
 
     if action_name == "integrate" or not target:
+        best_code = state.get("best_code", {})
         code_results = state.get("code_results", {})
         parts = [
-            f"# {s.name} (builds {s.builds or entry})\n{code_results[s.name]}"
+            f"# {s.name} (builds {s.builds or entry})\n"
+            f"{best_code.get(s.name) or code_results.get(s.name, '')}"
             for s in subtasks
-            if code_results.get(s.name)
+            if best_code.get(s.name) or code_results.get(s.name)
         ]
         int_fb = state.get("integration_feedback")
-        task = f"{overall}\n\nIntegrate the completed subtasks into `{entry}`."
+        sig = str(state.get("signature", "") or "").strip()
+        sig_hint = f"\nStarter signature:\n{sig}" if sig else ""
+        public = str(state.get("public_checks", "") or "").strip()
+        public_hint = f"\nPublic checks:\n{public}" if public else ""
+        task = (
+            f"{overall}\n\nIntegrate the completed subtasks into `{entry}`."
+            f"{sig_hint}{public_hint}"
+        )
         return render_training_format_trajectory(
             task=task,
             current_code="\n\n".join(parts),
@@ -184,8 +262,11 @@ def render_episode_adapter(
         goal += f"\nAcceptance: {sub.acceptance_check}"
     # Seed the FIRST code attempt with the real bare signature so the adapter
     # conveys the call contract (R2); once code exists, condition on that instead.
-    current_code = state.get("code_results", {}).get(target, "")
-    if not current_code and name == str(state.get("entry_point", "") or ""):
+    entry_pt = str(state.get("entry_point", "") or "")
+    current_code = state.get("best_code", {}).get(target) or state.get(
+        "code_results", {}
+    ).get(target, "")
+    if not current_code and name == entry_pt:
         current_code = _bare_signature_stub(
             name, str(state.get("signature", "") or ""), str(state.get("task", ""))
         )
@@ -708,15 +789,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # in-loop signal; fall back to the spec's public examples (whole-task / N=1 /
     # integrate) when the subtask has none.
     _subtask_check = {s.name: s.acceptance_check for s in state.get("subtasks", [])}
-    probes: dict[str, tuple[str, bool]] = {}
+    probes: dict[str, tuple[str, bool, bool]] = {}
     for name in code_action_names:
-        stripped = strip_self_tests(code_map[name])
-        check = _subtask_check.get(name, "")
-        probes[name] = (
-            build_subtask_probe(stripped, check)
-            if check.strip()
-            else build_probe(stripped, spec, entry_point)
-        )
+        probes[name] = build_code_probe(name, code_map[name], state)
     sandbox_results = await asyncio.gather(
         *[
             asyncio.to_thread(run_in_sandbox, probes[name][0])
@@ -724,7 +799,11 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         ]
     )
     feedback_map = {
-        name: Feedback(stdout=fb.stdout, stderr=fb.stderr, exit_code=fb.exit_code)
+        name: apply_oracle_fail_closed(
+            probes[name][1],
+            probes[name][2],
+            Feedback(stdout=fb.stdout, stderr=fb.stderr, exit_code=fb.exit_code),
+        )
         for name, fb in zip(code_action_names, sandbox_results, strict=True)
     }
     for name in code_action_names:
@@ -733,9 +812,13 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         # label it explicitly.
         _label = name or "integrate"
         _fb = feedback_map[name]
-        _check = _subtask_check.get(name, "")
+        _resolved_check = resolve_in_loop_check(
+            name, _subtask_check.get(name, ""), state
+        )
         _n_checks = (
-            len(split_acceptance_checks(_check)) if _check.strip() else 0
+            len(split_acceptance_checks(_resolved_check))
+            if _resolved_check.strip()
+            else 0
         )
         logger.info(
             "oracle for %s: %s (%d check(s))",

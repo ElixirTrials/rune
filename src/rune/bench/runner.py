@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rune.bench.lcb import extract_entry_function
 from rune.engine.continuation import strip_self_tests
 from rune.engine.state import make_initial_state
 from rune.mining.session_log import write_session
@@ -46,6 +47,7 @@ class BenchTask:
     test_code: str
     entry_point: str = "solution"
     signature: str = ""  # real def line (reference_* adapter anchor); optional
+    public_checks: str = ""  # in-loop oracle only; empty => doctest fallback (MBPP)
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,43 @@ def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
     return path
 
 
+def resolve_shipped_code(final_state: dict[str, Any], task: BenchTask) -> str:
+    """Pick the code to score: integrated, best per entry, or AST-extracted entry."""
+    entry = task.entry_point
+    best = final_state.get("best_code") or {}
+    best_entry = str(best.get(entry, "")) if entry else ""
+    integrated = final_state.get("integrated_code") or ""
+
+    if integrated.strip() and entry and best_entry.strip():
+        from rune.engine.oracle import defines_entry_point  # noqa: PLC0415
+
+        bq = int(final_state.get("best_quality", {}).get(entry, -1))
+        if (
+            task.public_checks
+            and bq >= 2
+            and defines_entry_point(best_entry, entry)
+            and (not defines_entry_point(integrated, entry) or bq >= 3)
+        ):
+            return best_entry
+
+    if integrated.strip():
+        return integrated
+
+    shipped = best or final_state.get("code_results", {})
+    if entry and entry in shipped:
+        return str(shipped[entry])
+
+    blob = "\n\n".join(str(v) for v in shipped.values() if v)
+    if entry and blob.strip():
+        from rune.engine.oracle import defines_entry_point  # noqa: PLC0415
+
+        extracted = extract_entry_function(blob, entry)
+        if extracted.strip() and defines_entry_point(extracted, entry):
+            return extracted
+
+    return ""
+
+
 async def run_benchmark(
     tasks: list[BenchTask],
     engine: Any,
@@ -139,7 +178,11 @@ async def run_benchmark(
         if seed is not None:
             _seed_rng(seed + i)
         initial_state = make_initial_state(
-            task.description, budget, task.entry_point, task.signature
+            task.description,
+            budget,
+            task.entry_point,
+            task.signature,
+            task.public_checks,
         )
 
         try:
@@ -155,19 +198,22 @@ async def run_benchmark(
             )
             continue
 
-        generated_code = final_state.get("integrated_code") or ""
-        if not generated_code:
-            # Ship the BEST candidate per subtask (no-regress), not the last
-            # attempt — a re-code/repair can leave a crash in code_results that
-            # is worse than an earlier near-miss (issue #52 RC-C).
-            shipped = final_state.get("best_code") or final_state.get(
-                "code_results", {}
-            )
-            generated_code = "\n".join(shipped.values())
+        generated_code = resolve_shipped_code(final_state, task)
 
         # Strip the model's own self-tests (incl. __main__ asserts) before
         # appending the held-out tests: otherwise a wrong self-test fails a
         # correct implementation. The recorded `code` below stays full-length.
+        if not generated_code.strip():
+            results.append(
+                TaskResult(
+                    task_id=task.task_id,
+                    passed=False,
+                    code="",
+                    stderr="entry_point not found in shipped code",
+                )
+            )
+            continue
+
         full_code = strip_self_tests(generated_code) + "\n\n" + task.test_code
 
         try:

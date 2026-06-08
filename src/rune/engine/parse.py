@@ -12,7 +12,7 @@ from jinja2 import Environment, PackageLoader, StrictUndefined
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, field_validator
 
-from rune.engine.oracle import defines_function
+from rune.engine.oracle import defines_entry_point
 from rune.engine.state import Action, Feedback, Subtask
 
 logger = logging.getLogger(__name__)
@@ -138,6 +138,40 @@ def _force_check_calls(check: str, old_name: str, new_name: str) -> str:
         return check
 
 
+def _collapse_benchmark_subtasks(
+    kept: list[SubtaskSchema],
+    state: dict[str, Any],
+    overall_goal: str,
+) -> list[SubtaskSchema]:
+    """Force one entry_point subtask when LCB/MBPP public_checks are wired.
+
+    Decompose often fans out into misnamed helpers; benchmark tasks always grade
+    a single top-level ``entry_point`` function, so subtask names and acceptance
+    checks must match it deterministically.
+    """
+    entry_pt = str(state.get("entry_point", "") or "")
+    public = str(state.get("public_checks", "") or "").strip()
+    if not entry_pt or not public:
+        return kept
+    desc = overall_goal.strip()
+    if not desc:
+        desc = next(
+            (s.description for s in kept if s.name == entry_pt and s.description),
+            "",
+        )
+    if not desc:
+        desc = str(state.get("task", ""))[:500]
+    return [
+        SubtaskSchema(
+            name=entry_pt,
+            description=desc,
+            acceptance_check=public,
+            builds=entry_pt,
+            depends_on=[],
+        )
+    ]
+
+
 def _single_subtask_fallback(state: dict[str, Any]) -> dict[str, Any]:
     """One whole-task subtask (used when decompose is unparseable).
 
@@ -148,6 +182,7 @@ def _single_subtask_fallback(state: dict[str, Any]) -> dict[str, Any]:
     """
     task = str(state.get("task", ""))
     entry = str(state.get("entry_point", "")) or "main"
+    public = str(state.get("public_checks", "") or "").strip()
     return {
         "overall_goal": task[:200],
         "subtasks": [
@@ -155,7 +190,7 @@ def _single_subtask_fallback(state: dict[str, Any]) -> dict[str, Any]:
                 name=entry,
                 description=task,
                 depends_on=[],
-                acceptance_check="",
+                acceptance_check=public,
                 builds=entry,
             )
         ],
@@ -336,6 +371,7 @@ def parse_output(
             kept = [s for s in result.subtasks if not _is_chore_subtask(s)]
             if not kept:
                 kept = list(result.subtasks)
+            kept = _collapse_benchmark_subtasks(kept, state, result.overall_goal)
             entry_pt = str(state.get("entry_point", ""))
             # Authoritative name transmission: a subtask's function name is the
             # function its acceptance_check CALLS (what the model committed to
@@ -355,13 +391,27 @@ def parse_output(
             # Collapse duplicate names (the model sometimes emits the same subtask
             # N times -> N× the work and a guaranteed exhaust). Keep first of each.
             _seen: set[str] = set()
-            kept = [s for s in kept if not (s.name in _seen or _seen.add(s.name))]
+            _deduped: list[SubtaskSchema] = []
+            for s in kept:
+                if s.name in _seen:
+                    continue
+                _seen.add(s.name)
+                _deduped.append(s)
+            kept = _deduped
             kept = kept[:_DECOMPOSE_MAX_SUBTASKS]  # bound (owner: cap <=3)
             # Single-function task: the entry_point is the authoritative name (the
             # held-out test calls it), so the lone subtask must define exactly it.
             if len(kept) == 1 and entry_pt:
                 kept[0].name = entry_pt
                 kept[0].builds = entry_pt
+            public_checks = str(state.get("public_checks", "") or "").strip()
+            if (
+                public_checks
+                and len(kept) == 1
+                and entry_pt
+                and kept[0].name == entry_pt
+            ):
+                kept[0].acceptance_check = public_checks
             # Deterministic name<->check consistency: every kept subtask's
             # acceptance_check must call its own (now-final) name, so the thin
             # prompt, the generated code, the in-loop check, and the held-out test
@@ -427,7 +477,7 @@ def parse_output(
             sandbox_ok = feedback is not None and feedback.exit_code == 0
             # Verified (owner: "bounded + verified"): integration must actually
             # DEFINE the entry_point (AST), not merely run without crashing.
-            defines = (not entry_pt) or defines_function(code, entry_pt)
+            defines = (not entry_pt) or defines_entry_point(code, entry_pt)
             passed = sandbox_ok and defines
             return {
                 "integrated_code": code if passed else "",
