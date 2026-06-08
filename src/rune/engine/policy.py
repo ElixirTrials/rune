@@ -16,8 +16,17 @@ from rune.engine.state import Action, Subtask
 
 logger = logging.getLogger(__name__)
 
-MAX_REPAIRS = 2
+MAX_REPAIRS = 4
 MAX_RETRIES = MAX_REPAIRS * 2
+
+
+def _max_repairs(state: dict[str, Any]) -> int:
+    override = int(state.get("max_repairs") or 0)
+    return override if override > 0 else MAX_REPAIRS
+
+
+def _max_retries(state: dict[str, Any]) -> int:
+    return _max_repairs(state) * 2
 
 ACTIONS: dict[str, Action] = {
     "decompose": Action(
@@ -121,8 +130,13 @@ def select_action(state: dict[str, Any]) -> list[Action]:
         layers = build_execution_layers(unplanned)
         return [_with_target("plan", name) for name in layers[0]]
 
-    # Handle uncoded or failing subtasks
-    failing = [s for s in subtasks if not state["code_passed"].get(s.name)]
+    # Handle uncoded or failing subtasks (skip permanently solved)
+    code_solved = state.get("code_solved", {})
+    failing = [
+        s
+        for s in subtasks
+        if not state["code_passed"].get(s.name) and not code_solved.get(s.name)
+    ]
     if failing:
         layers = build_execution_layers(failing)
         ready_names = set(layers[0])
@@ -132,17 +146,27 @@ def select_action(state: dict[str, Any]) -> list[Action]:
             if s.name in ready_names
             and all(state["code_passed"].get(d, False) for d in s.depends_on)
         ]
+        replan = [
+            s
+            for s in ready
+            if state.get("replan_targets", {}).get(s.name)
+            and s.name not in state.get("plans", {})
+        ]
+        if replan:
+            return [_with_target("plan", replan[0].name)]
+        max_repairs = _max_repairs(state)
+        max_retries = _max_retries(state)
         actions: list[Action] = []
         exhausted: list[str] = []
         for s in ready:
             repairs = state["retries"].get(s.name, 0)
-            if repairs >= MAX_RETRIES:
+            if repairs >= max_retries:
                 exhausted.append(s.name)
                 continue
             has_code = s.name in state["code_results"]
             has_diagnosis = s.name in state.get("diagnosis", {})
 
-            if not has_code or repairs >= MAX_REPAIRS:
+            if not has_code or repairs >= max_repairs:
                 actions.append(_with_target("code", s.name))
             elif has_diagnosis:
                 actions.append(_with_target("repair", s.name))
@@ -154,7 +178,7 @@ def select_action(state: dict[str, Any]) -> list[Action]:
             logger.warning(
                 "Subtasks %s exhausted all %d retries",
                 exhausted,
-                MAX_RETRIES,
+                max_retries,
             )
             # If integration has already been attempted and is still failing,
             # stop rather than looping integrate<->diagnose until the budget is

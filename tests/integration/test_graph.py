@@ -26,9 +26,14 @@ def _initial_state(task: str = "add two numbers", budget: int = 10) -> RunState:
 
 
 class TestShouldContinue:
-    def test_empty_actions_returns_done(self) -> None:
+    def test_solved_single_subtask_returns_done(self) -> None:
+        from rune.engine.state import Subtask
+
         state = _initial_state()
-        state["actions"] = []
+        state["subtasks"] = [Subtask("_main", "do main", [])]
+        state["plans"] = {"_main": "plan"}
+        state["code_passed"] = {"_main": True}
+        state["code_results"] = {"_main": "def f(): pass"}
         assert should_continue(state) == "done"
 
     def test_budget_zero_returns_done(self) -> None:

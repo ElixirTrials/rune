@@ -90,12 +90,18 @@ class RunState(TypedDict):
         plans: Mapping of subtask name to planning prose.
         code_results: Mapping of subtask name to generated source code.
         code_passed: Mapping of subtask name to sandbox pass/fail.
+        code_solved: Subtasks that passed and must not be re-opened by diagnose.
         retries: Mapping of subtask name to retry count.
         integrated_code: Final merged source after all subtasks pass.
         current_adapter: ID of the active LoRA adapter, or None.
         feedback: Per-subtask sandbox feedback, keyed by subtask name.
         integration_feedback: Sandbox feedback from the integration step, or None.
         diagnosis: Per-subtask fix guidance from diagnose actions.
+        repair_briefs: Per-subtask deterministic repair brief text.
+        plan_attempts: Per-subtask plan-gate rejection count.
+        plan_rejections: Per-subtask plan-gate deficiency feedback for replan.
+        replan_targets: Subtasks flagged for replan (complexity / escalation).
+        max_repairs: Override for repair budget (0 = policy default).
         actions: Actions selected in the most recent step.
         trajectory: Ordered list of step records for the full run.
         step: Current step index.
@@ -111,6 +117,7 @@ class RunState(TypedDict):
     plans: dict[str, str]
     code_results: dict[str, str]
     code_passed: dict[str, bool]
+    code_solved: dict[str, bool]
     # Best candidate seen per subtask, ranked by sandbox quality (pass > assertion
     # mismatch > runtime crash > syntax/empty). The engine ships THIS, never a
     # later worse attempt, so a re-code/repair can't regress a near-miss into a
@@ -123,6 +130,15 @@ class RunState(TypedDict):
     feedback: dict[str, Feedback]
     integration_feedback: Feedback | None
     diagnosis: dict[str, str]
+    repair_briefs: dict[str, str]
+    plan_attempts: dict[str, int]
+    plan_rejections: dict[str, str]
+    replan_targets: dict[str, bool]
+    max_repairs: int
+    repair_brief_enabled: bool
+    plan_gate_enabled: bool
+    replan_on_complexity: bool
+    plan_gate_max_attempts: int
     actions: list[Action]
     trajectory: list[StepRecord]
     step: int
@@ -135,6 +151,12 @@ def make_initial_state(
     entry_point: str = "",
     signature: str = "",
     public_checks: str = "",
+    *,
+    max_repairs: int = 0,
+    repair_brief_enabled: bool = True,
+    plan_gate_enabled: bool = True,
+    replan_on_complexity: bool = True,
+    plan_gate_max_attempts: int = 2,
 ) -> RunState:
     return {
         "task": task,
@@ -146,6 +168,7 @@ def make_initial_state(
         "plans": {},
         "code_results": {},
         "code_passed": {},
+        "code_solved": {},
         "best_code": {},
         "best_quality": {},
         "retries": {},
@@ -153,6 +176,15 @@ def make_initial_state(
         "current_adapter": None,
         "feedback": {},
         "diagnosis": {},
+        "repair_briefs": {},
+        "plan_attempts": {},
+        "plan_rejections": {},
+        "replan_targets": {},
+        "max_repairs": max_repairs,
+        "repair_brief_enabled": repair_brief_enabled,
+        "plan_gate_enabled": plan_gate_enabled,
+        "replan_on_complexity": replan_on_complexity,
+        "plan_gate_max_attempts": plan_gate_max_attempts,
         "integration_feedback": None,
         "actions": [],
         "trajectory": [],

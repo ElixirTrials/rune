@@ -27,6 +27,7 @@ def _ctx() -> dict[str, object]:
         "target_subtask": "_main",
         "existing_code": "print(1)",
         "error_summary": "boom",
+        "repair_brief": "",
         "fix_guidance": "fix it",
         "repair_history": ["err"],
         "code_trajectory": [

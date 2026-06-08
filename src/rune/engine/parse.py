@@ -14,6 +14,7 @@ from pydantic import BaseModel, field_validator
 
 from rune.engine.oracle import defines_entry_point
 from rune.engine.state import Action, Feedback, Subtask
+from rune.engine.validity import validate_state_code
 
 logger = logging.getLogger(__name__)
 
@@ -221,8 +222,10 @@ class JudgeResult(BaseModel):
 class DiagnosisEntry(BaseModel):
     subtask_name: str
     error_type: str
-    location: str
+    location: str = ""
     fix_guidance: str
+    violated_invariant: str = ""
+    observed_vs_expected: str = ""
 
 
 class DiagnoseResult(BaseModel):
@@ -253,7 +256,7 @@ def _is_chore_subtask(s: SubtaskSchema) -> bool:
     return bool(_CHORE_RE.search(s.name))
 
 
-_FIX_GUIDANCE_CAP = 150
+_FIX_GUIDANCE_CAP = 500
 
 
 def extract_code_block(value: str) -> str:
@@ -323,9 +326,15 @@ def _parse_code_action(
     quality = candidate_quality(code, feedback)
     best_code = dict(state.get("best_code", {}))
     best_quality = dict(state.get("best_quality", {}))
-    if quality >= best_quality.get(target, -1):
+    ship_ok = True
+    if passed and str(state.get("public_checks", "") or "").strip():
+        ship_ok = validate_state_code(state, code).ok
+    if ship_ok and quality >= best_quality.get(target, -1):
         best_code[target] = code
         best_quality[target] = quality
+    code_solved = dict(state.get("code_solved", {}))
+    if passed:
+        code_solved[target] = True
     result: dict[str, Any] = {
         "code_results": {
             **state.get("code_results", {}),
@@ -335,6 +344,7 @@ def _parse_code_action(
             **state.get("code_passed", {}),
             target: passed,
         },
+        "code_solved": code_solved,
         "best_code": best_code,
         "best_quality": best_quality,
         "retries": retries,
@@ -447,7 +457,53 @@ def parse_output(
                 plan_text = "Implement the function directly to satisfy the task."
             else:
                 plan_text = res.plan
-            return {"plans": {**state.get("plans", {}), target: plan_text}}
+            if state.get("plan_gate_enabled", True) and target:
+                from rune.engine.plan_gate import (  # noqa: PLC0415
+                    format_plan_deficiency_feedback,
+                    validate_plan,
+                )
+
+                gate = validate_plan(
+                    plan_text,
+                    entry_point=str(state.get("entry_point", "") or ""),
+                    signature=str(state.get("signature", "") or ""),
+                    public_checks=str(state.get("public_checks", "") or ""),
+                    task_spec=str(state.get("task", "") or ""),
+                )
+                if not gate.ok:
+                    attempts = dict(state.get("plan_attempts", {}))
+                    n = attempts.get(target, 0) + 1
+                    attempts[target] = n
+                    rejections = {
+                        **state.get("plan_rejections", {}),
+                        target: format_plan_deficiency_feedback(gate.deficiencies),
+                    }
+                    max_attempts = int(state.get("plan_gate_max_attempts", 2))
+                    if n < max_attempts:
+                        logger.info(
+                            "plan gate rejected %s (attempt %d): %s",
+                            target,
+                            n,
+                            gate.deficiencies,
+                        )
+                        return {
+                            "plan_attempts": attempts,
+                            "plan_rejections": rejections,
+                        }
+                    logger.warning(
+                        "plan gate bypassed for %s after %d attempts",
+                        target,
+                        n,
+                    )
+            replan_targets = dict(state.get("replan_targets", {}))
+            replan_targets.pop(str(target), None)
+            plan_rejections = dict(state.get("plan_rejections", {}))
+            plan_rejections.pop(str(target), None)
+            return {
+                "plans": {**state.get("plans", {}), target: plan_text},
+                "replan_targets": replan_targets,
+                "plan_rejections": plan_rejections,
+            }
         case "code":
             target = action.target_subtask
             # The first code attempt for a target is not a retry; only resamples
@@ -485,6 +541,10 @@ def parse_output(
                 "diagnosis": {},
             }
         case "diagnose":
+            from rune.engine.repair_brief import (  # noqa: PLC0415
+                merge_guidance_with_brief,
+            )
+
             diag_result = _loads_structured(raw, DiagnoseResult)
             if diag_result is None:
                 logger.warning("diagnose output unparseable; no diagnosis recorded")
@@ -492,13 +552,25 @@ def parse_output(
             diagnosis = dict(state.get("diagnosis", {}))
             code_passed = dict(state.get("code_passed", {}))
             reopened = False
+            target = action.target_subtask
+            brief_text = state.get("repair_briefs", {}).get(str(target or ""), "")
+            code_solved = state.get("code_solved", {})
             for entry in diag_result.entries:
-                diagnosis[entry.subtask_name] = entry.fix_guidance[:_FIX_GUIDANCE_CAP]
+                diagnosis[entry.subtask_name] = merge_guidance_with_brief(
+                    brief_text,
+                    entry.fix_guidance,
+                    llm_failure_class=entry.error_type,
+                    llm_violated_invariant=entry.violated_invariant,
+                    llm_observed_vs_expected=entry.observed_vs_expected,
+                )[:_FIX_GUIDANCE_CAP]
                 # Re-open diagnosed subtasks so select_action routes them to
                 # repair. Without this an integration-failure diagnose (which
                 # leaves every code_passed True) never triggers a repair and the
                 # engine livelocks integrate<->diagnose until budget is spent.
-                if entry.subtask_name in code_passed:
+                if (
+                    entry.subtask_name in code_passed
+                    and not code_solved.get(entry.subtask_name)
+                ):
                     code_passed[entry.subtask_name] = False
                     reopened = True
             # Targeted diagnose: the model often invents a subtask_name (e.g.
@@ -516,7 +588,7 @@ def parse_output(
                     or "revise this subtask"
                 )
                 diagnosis[target] = guidance
-                if target in code_passed:
+                if target in code_passed and not code_solved.get(target):
                     code_passed[target] = False
 
             # Untargeted (integration-failure) diagnose: the model often emits
@@ -532,6 +604,8 @@ def parse_output(
                     or "integration failed; revise this subtask"
                 )
                 for name in code_passed:
+                    if code_solved.get(name):
+                        continue
                     code_passed[name] = False
                     diagnosis.setdefault(name, guidance)
             return {"diagnosis": diagnosis, "code_passed": code_passed}

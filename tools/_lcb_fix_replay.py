@@ -21,6 +21,7 @@ from rune.engine.oracle import defines_entry_point
 from rune.engine.parse import candidate_quality, parse_output
 from rune.engine.policy import select_action
 from rune.engine.state import Action, Feedback, make_initial_state
+from rune.engine.validity import validate_solution
 from rune.sandbox.executor import run_in_sandbox
 
 LCB_JSONL = Path("/tmp/lcb/test6.jsonl")
@@ -73,6 +74,14 @@ def _best_from_session(qid: str, fn: str) -> tuple[str, int]:
         raw = o.get("output", "")
         code = extract_entry_function(raw, fn) if fn else raw
         if not code.strip() or not defines_entry_point(code, fn):
+            continue
+        if not validate_solution(
+            code,
+            entry_point=fn,
+            signature=task.signature,
+            spec=task.description,
+            public_checks=task.public_checks,
+        ).ok:
             continue
         r = run_in_sandbox(code + "\n\n" + task.public_checks, timeout=10)
         lcb_q = candidate_quality(code, Feedback("", "", r.exit_code))

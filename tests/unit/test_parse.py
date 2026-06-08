@@ -193,7 +193,7 @@ class TestParseOutput:
         assert "solver" in updates["diagnosis"]
         assert updates["diagnosis"]["solver"] == "Add missing import"
 
-    def test_diagnose_caps_fix_guidance_at_150(self) -> None:
+    def test_diagnose_caps_fix_guidance_at_500(self) -> None:
         action = Action(
             "diagnose",
             "diagnose",
@@ -203,10 +203,10 @@ class TestParseOutput:
             False,
             None,
         )
-        long_guidance = "x" * 300
+        long_guidance = "x" * 600
         raw = f'{{"entries": [{{"subtask_name": "a", "error_type": "name", "location": "line 1", "fix_guidance": "{long_guidance}"}}]}}'
         updates = parse_output(action, raw, None, {"diagnosis": {}})
-        assert len(updates["diagnosis"]["a"]) == 150
+        assert len(updates["diagnosis"]["a"]) == 500
 
     def test_targeted_diagnose_hallucinated_name_attaches_to_target(self) -> None:
         # The model invents subtask_name "write_function" for the real target

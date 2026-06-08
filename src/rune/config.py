@@ -52,6 +52,12 @@ class PipelineConfig:
     model_judge: bool = True
     judge_temperature: float = 0.2
     judge_max_tokens: int = 256
+    # Repair-signal experiment flags (issue52 repair-signal A/B).
+    repair_brief_enabled: bool = True
+    plan_gate_enabled: bool = True
+    replan_on_complexity: bool = True
+    max_repairs: int = 4
+    plan_gate_max_attempts: int = 2
     # --- Adapter (hypernetwork) profile ---
     checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
     warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance

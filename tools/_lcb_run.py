@@ -54,6 +54,9 @@ def _load_lcb_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     ]
     if args.functional_only:
         rows = [r for r in rows if r.get("starter_code")]
+    if args.qids:
+        want = {q.strip() for q in args.qids.split(",") if q.strip()}
+        rows = [r for r in rows if r["question_id"] in want]
     if args.limit:
         rows = rows[: args.limit]
     return rows
@@ -64,7 +67,11 @@ def _official_lcb_pass_at_1(gens_path: Path, *, timeout: int = 6) -> float | Non
     grade_script = Path(__file__).resolve().parent / "_lcb_grade.py"
     if not LCB_GRADE_PYTHON.is_file() or not grade_script.is_file():
         return None
-    env = {**os.environ, "PYTHONPATH": str(LCB_HARNESS)}
+    repo_src = Path(__file__).resolve().parent.parent / "src"
+    env = {
+        **os.environ,
+        "PYTHONPATH": f"{repo_src}:{LCB_HARNESS}",
+    }
     proc = subprocess.run(
         [
             str(LCB_GRADE_PYTHON),
@@ -98,6 +105,11 @@ def main() -> None:
         help="Per-task session.jsonl dir (default: <out_stem>_sessions beside --out)",
     )
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument(
+        "--qids",
+        default="",
+        help="Comma-separated question_id filter (e.g. 3753,3777)",
+    )
     ap.add_argument("--functional-only", action="store_true")
     ap.add_argument("--max-iters", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
@@ -117,6 +129,22 @@ def main() -> None:
         default=True,
         help="After generation, run official LCB grading and log pass@1 to MLflow",
     )
+    ap.add_argument(
+        "--repair-brief-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    ap.add_argument(
+        "--plan-gate-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    ap.add_argument(
+        "--replan-on-complexity",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    ap.add_argument("--max-repairs", type=int, default=None)
     args = ap.parse_args()
 
     import asyncio  # noqa: PLC0415
@@ -142,14 +170,23 @@ def main() -> None:
 
     a = ARMS[args.arm]
     scaling = a["adapter_scaling"] if args.adapter_scaling is None else args.adapter_scaling
-    cfg = load_rune_config(None).override(
-        checkpoint_path=a["checkpoint"],
-        adapter_scaling=scaling,
-        seed=args.seed,
-        max_phase_iterations=args.max_iters,
-        prompt_mode=args.prompt_mode,
-        model_judge=False,
-    )
+    overrides: dict[str, Any] = {
+        "checkpoint_path": a["checkpoint"],
+        "adapter_scaling": scaling,
+        "seed": args.seed,
+        "max_phase_iterations": args.max_iters,
+        "prompt_mode": args.prompt_mode,
+        "model_judge": False,
+    }
+    if args.repair_brief_enabled is not None:
+        overrides["repair_brief_enabled"] = args.repair_brief_enabled
+    if args.plan_gate_enabled is not None:
+        overrides["plan_gate_enabled"] = args.plan_gate_enabled
+    if args.replan_on_complexity is not None:
+        overrides["replan_on_complexity"] = args.replan_on_complexity
+    if args.max_repairs is not None:
+        overrides["max_repairs"] = args.max_repairs
+    cfg = load_rune_config(None).override(**overrides)
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()
     tasks = [

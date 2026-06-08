@@ -12,6 +12,7 @@ from typing import Any
 from rune.bench.lcb import extract_entry_function
 from rune.engine.continuation import strip_self_tests
 from rune.engine.state import make_initial_state
+from rune.engine.validity import validate_solution
 from rune.mining.session_log import write_session
 from rune.sandbox.executor import run_in_sandbox
 
@@ -112,38 +113,84 @@ def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
     return path
 
 
-def resolve_shipped_code(final_state: dict[str, Any], task: BenchTask) -> str:
+def _benchmark_shippable(task: BenchTask, code: str, spec: str) -> bool:
+    if not task.public_checks.strip():
+        return True
+    return validate_solution(
+        code,
+        entry_point=task.entry_point,
+        signature=task.signature,
+        spec=spec,
+        public_checks=task.public_checks,
+    ).ok
+
+
+def _write_task_session(
+    sessions_dir: Path | None,
+    final_state: dict[str, Any],
+    task: BenchTask,
+    config: dict[str, Any],
+    *,
+    pass_at_1: bool,
+) -> None:
+    """Persist engine trajectory for mining/debug even when nothing ships."""
+    if sessions_dir is None:
+        return
+    write_session(
+        final_state,
+        {
+            "benchmark": config.get("benchmark", "unknown"),
+            "problem_id": task.task_id,
+            "pass_at_1": pass_at_1,
+        },
+        sessions_dir / task.task_id,
+    )
+
+
+def resolve_shipped_code(
+    final_state: dict[str, Any], task: BenchTask, *, spec: str = ""
+) -> str:
     """Pick the code to score: integrated, best per entry, or AST-extracted entry."""
     entry = task.entry_point
     best = final_state.get("best_code") or {}
     best_entry = str(best.get(entry, "")) if entry else ""
     integrated = final_state.get("integrated_code") or ""
+    task_spec = spec or task.description
 
     if integrated.strip() and entry and best_entry.strip():
         from rune.engine.oracle import defines_entry_point  # noqa: PLC0415
 
         bq = int(final_state.get("best_quality", {}).get(entry, -1))
+        best_valid = _benchmark_shippable(task, best_entry, task_spec)
+        int_valid = _benchmark_shippable(task, integrated, task_spec)
         if (
             task.public_checks
             and bq >= 2
             and defines_entry_point(best_entry, entry)
-            and (not defines_entry_point(integrated, entry) or bq >= 3)
+            and best_valid
+            and (not defines_entry_point(integrated, entry) or not int_valid or bq >= 3)
         ):
             return best_entry
 
-    if integrated.strip():
+    if integrated.strip() and _benchmark_shippable(task, integrated, task_spec):
         return integrated
 
     shipped = best or final_state.get("code_results", {})
     if entry and entry in shipped:
-        return str(shipped[entry])
+        candidate = str(shipped[entry])
+        if _benchmark_shippable(task, candidate, task_spec):
+            return candidate
 
     blob = "\n\n".join(str(v) for v in shipped.values() if v)
     if entry and blob.strip():
         from rune.engine.oracle import defines_entry_point  # noqa: PLC0415
 
         extracted = extract_entry_function(blob, entry)
-        if extracted.strip() and defines_entry_point(extracted, entry):
+        if (
+            extracted.strip()
+            and defines_entry_point(extracted, entry)
+            and _benchmark_shippable(task, extracted, task_spec)
+        ):
             return extracted
 
     return ""
@@ -173,16 +220,23 @@ async def run_benchmark(
     budget = config["run_config"]["max_phase_iterations"]
     results: list[TaskResult] = []
 
+    model = config.get("model")
     seed = config["run_config"].get("seed")
     for i, task in enumerate(tasks):
         if seed is not None:
             _seed_rng(seed + i)
+        rc = config.get("run_config", {})
         initial_state = make_initial_state(
             task.description,
             budget,
             task.entry_point,
             task.signature,
             task.public_checks,
+            max_repairs=int(rc.get("max_repairs") or 0),
+            repair_brief_enabled=bool(rc.get("repair_brief_enabled", True)),
+            plan_gate_enabled=bool(rc.get("plan_gate_enabled", True)),
+            replan_on_complexity=bool(rc.get("replan_on_complexity", True)),
+            plan_gate_max_attempts=int(rc.get("plan_gate_max_attempts", 2)),
         )
 
         try:
@@ -196,6 +250,8 @@ async def run_benchmark(
                     task_id=task.task_id, passed=False, code="", stderr="engine error"
                 )
             )
+            if model is not None and hasattr(model, "reset_adapter"):
+                model.reset_adapter()
             continue
 
         generated_code = resolve_shipped_code(final_state, task)
@@ -212,6 +268,11 @@ async def run_benchmark(
                     stderr="entry_point not found in shipped code",
                 )
             )
+            _write_task_session(
+                sessions_dir, final_state, task, config, pass_at_1=False
+            )
+            if model is not None and hasattr(model, "reset_adapter"):
+                model.reset_adapter()
             continue
 
         full_code = strip_self_tests(generated_code) + "\n\n" + task.test_code
@@ -228,6 +289,11 @@ async def run_benchmark(
                     stderr="sandbox error",
                 )
             )
+            _write_task_session(
+                sessions_dir, final_state, task, config, pass_at_1=False
+            )
+            if model is not None and hasattr(model, "reset_adapter"):
+                model.reset_adapter()
             continue
 
         passed = sandbox_result.exit_code == 0
@@ -239,17 +305,10 @@ async def run_benchmark(
                 stderr=sandbox_result.stderr,
             )
         )
+        _write_task_session(sessions_dir, final_state, task, config, pass_at_1=passed)
 
-        if sessions_dir is not None:
-            write_session(
-                final_state,
-                {
-                    "benchmark": config.get("benchmark", "unknown"),
-                    "problem_id": task.task_id,
-                    "pass_at_1": passed,
-                },
-                sessions_dir / task.task_id,
-            )
+        if model is not None and hasattr(model, "reset_adapter"):
+            model.reset_adapter()
 
     n_passed = sum(1 for r in results if r.passed)
     return BenchResult(

@@ -19,6 +19,7 @@ import codecs
 import contextlib
 import doctest
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,51 @@ def _parse_checks_module(check: str) -> ast.Module | None:
         except (SyntaxError, ValueError):
             continue
     return None
+
+
+def _literal_args_from_call(call: ast.Call) -> list[Any] | None:
+    if len(call.args) == 1 and isinstance(call.args[0], ast.Starred):
+        try:
+            unpacked = ast.literal_eval(call.args[0].value)
+        except (ValueError, SyntaxError):
+            return None
+        if isinstance(unpacked, list):
+            return list(unpacked)
+        return None
+    args: list[Any] = []
+    for arg in call.args:
+        try:
+            args.append(ast.literal_eval(arg))
+        except (ValueError, SyntaxError):
+            return None
+    return args
+
+
+def parse_public_call_arglists(
+    public_checks: str, entry_point: str
+) -> list[list[Any]]:
+    """Literal argument lists from public ``assert entry_point(...) == ...`` lines."""
+    calls: list[list[Any]] = []
+    for raw in split_acceptance_checks(public_checks):
+        piece = raw.strip()
+        if not piece.startswith("assert "):
+            continue
+        try:
+            tree = ast.parse(piece)
+        except SyntaxError:
+            continue
+        if not tree.body or not isinstance(tree.body[0], ast.Assert):
+            continue
+        test = tree.body[0].test
+        if not isinstance(test, ast.Compare) or not isinstance(test.left, ast.Call):
+            continue
+        call = test.left
+        if not isinstance(call.func, ast.Name) or call.func.id != entry_point:
+            continue
+        args = _literal_args_from_call(call)
+        if args is not None:
+            calls.append(args)
+    return calls
 
 
 def split_acceptance_checks(check: str) -> list[str]:

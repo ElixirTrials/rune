@@ -1,8 +1,13 @@
 {% if target_subtask %}
 The subtask "{{ target_subtask }}" is failing.
-Error: {{ error_summary[:300] }}
-Diagnose the root cause. Output JSON:
-{"entries": [{"subtask_name": "{{ target_subtask }}", "error_type": "syntax|name|type|assertion", "location": "line/function where the error occurs", "fix_guidance": "one sentence fix instruction"}]}
+{% if repair_brief|default('') %}
+Ground-truth repair brief (do not contradict failure_class):
+{{ repair_brief }}
+{% endif %}
+Error: {{ error_summary[:2000] }}
+Diagnose the root cause. Name the violated invariant, not just the error class.
+Output JSON:
+{"entries": [{"subtask_name": "{{ target_subtask }}", "error_type": "signature|arity|import|assertion|runtime|complexity|logic", "violated_invariant": "one sentence naming the broken property", "observed_vs_expected": "concrete diff", "fix_guidance": "one actionable fix sentence", "replan_recommended": false}]}
 {% else %}
 Integration is failing.
 Project: {{ project_label }}

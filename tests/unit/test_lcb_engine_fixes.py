@@ -13,6 +13,7 @@ from rune.engine.graph import build_code_probe, render_episode_adapter
 from rune.engine.parse import parse_output
 from rune.engine.policy import select_action
 from rune.engine.state import Action, Subtask, make_initial_state
+from rune.engine.validity import validate_solution
 from rune.sandbox.executor import run_in_sandbox
 
 _LCB_JSONL = Path("/tmp/lcb/test6.jsonl")
@@ -169,7 +170,7 @@ def test_policy_skips_integrate_when_benchmark_exhausted() -> None:
             "plans": {fn: "plan"},
             "code_results": {fn: "def x: pass"},
             "code_passed": {fn: False},
-            "retries": {fn: 4},
+            "retries": {fn: 8},
             "best_code": {fn: "def maxDifference(s):\n    return 1\n"},
         }
     )
@@ -200,6 +201,20 @@ def test_integrate_adapter_uses_best_code() -> None:
     traj = render_episode_adapter("integrate", "", state)
     assert "return 3" in traj
     assert "return 0" not in traj
+
+
+def test_validity_rejects_q3754_grid_integrate() -> None:
+    _, fn, task = _lcb_task("3754")
+    grid = _overnight_step_code("3754", 9)
+    vr = validate_solution(
+        grid,
+        entry_point=fn,
+        signature=task.signature,
+        spec=task.description,
+        public_checks=task.public_checks,
+    )
+    assert not vr.ok
+    assert any("signature" in d or "contract" in d for d in vr.deficiencies)
 
 
 def test_integrate_oracle_fires_with_public_checks() -> None:

@@ -1,0 +1,324 @@
+"""Pluggable task-requirement oracle for benchmark runs.
+
+Each ``TaskRequirement`` activates only when the task itself supplies evidence
+(starter signature, public_checks, Constraints block, etc.). No problem-topic
+keyword rules. Failed requirements produce explicit repair deficiencies.
+
+Add new requirement types by implementing ``TaskRequirement`` and appending to
+``TASK_REQUIREMENTS``.
+"""
+
+from __future__ import annotations
+
+import ast
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from functools import cached_property
+from typing import Any, Protocol
+
+from rune.engine.complexity import check_constraint_scale
+from rune.engine.oracle import defines_entry_point, parse_public_call_arglists
+from rune.sandbox.executor import run_in_sandbox
+
+
+@dataclass(frozen=True)
+class RequirementContext:
+    """Task fields used to decide which requirements apply."""
+
+    entry_point: str
+    signature: str
+    spec: str
+    public_checks: str
+
+    @classmethod
+    def from_state(cls, state: Mapping[str, Any]) -> RequirementContext:
+        return cls(
+            entry_point=str(state.get("entry_point", "") or ""),
+            signature=str(state.get("signature", "") or ""),
+            spec=str(state.get("task", "") or ""),
+            public_checks=str(state.get("public_checks", "") or ""),
+        )
+
+    @cached_property
+    def public_calls(self) -> list[list[Any]]:
+        if not self.public_checks.strip() or not self.entry_point:
+            return []
+        return parse_public_call_arglists(self.public_checks, self.entry_point)
+
+
+@dataclass(frozen=True)
+class RequirementOutcome:
+    """Result of one requirement check."""
+
+    kind: str
+    required: bool
+    ok: bool
+    message: str = ""
+
+
+class TaskRequirement(Protocol):
+    """One check derived from structured task evidence."""
+
+    kind: str
+
+    def applies(self, ctx: RequirementContext) -> bool:
+        """True when this task states the requirement."""
+
+    def check(self, code: str, ctx: RequirementContext) -> RequirementOutcome:
+        """Evaluate *code* when ``applies`` is true."""
+
+
+def _entry_function(code: str, entry_point: str) -> ast.FunctionDef | None:
+    if not code.strip() or not entry_point:
+        return None
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    funcs = [
+        n
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == entry_point
+    ]
+    if funcs:
+        return funcs[-1]
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "Solution":
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == entry_point:
+                    return item
+    return None
+
+
+def _expected_param_names(signature: str, entry_point: str) -> list[str] | None:
+    src = signature.strip()
+    if not src:
+        return None
+    parse_src = f"{src} pass" if src.endswith(":") else src
+    try:
+        tree = ast.parse(parse_src)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+            not entry_point or node.name == entry_point
+        ):
+            return [
+                a.arg for a in node.args.args if a.arg not in ("self", "cls")
+            ]
+    return None
+
+
+class EntryPointRequirement:
+    """Task names an entry_point — implementation must define it."""
+
+    kind = "entry_point"
+
+    def applies(self, ctx: RequirementContext) -> bool:
+        return bool(ctx.public_checks.strip() and ctx.entry_point)
+
+    def check(self, code: str, ctx: RequirementContext) -> RequirementOutcome:
+        ok = defines_entry_point(code, ctx.entry_point)
+        return RequirementOutcome(
+            kind=self.kind,
+            required=True,
+            ok=ok,
+            message="" if ok else f"entry_point: must define `{ctx.entry_point}`",
+        )
+
+
+class ExecutableRequirement:
+    """Shipped code must load in the same sandbox used for public checks."""
+
+    kind = "executable"
+
+    def applies(self, ctx: RequirementContext) -> bool:
+        return bool(ctx.public_checks.strip())
+
+    def check(self, code: str, ctx: RequirementContext) -> RequirementOutcome:
+        if not code.strip():
+            return RequirementOutcome(
+                kind=self.kind, required=True, ok=False, message="empty code"
+            )
+        result = run_in_sandbox(code.strip() + "\n", timeout=5)
+        if result.exit_code == 0:
+            return RequirementOutcome(kind=self.kind, required=True, ok=True)
+        err = (result.stderr or result.stdout or "load failed").strip()
+        last = err.splitlines()[-1] if err else "load failed"
+        return RequirementOutcome(
+            kind=self.kind,
+            required=True,
+            ok=False,
+            message=f"executable: code failed to load in sandbox ({last})",
+        )
+
+
+class SignatureRequirement:
+    """Starter signature defines the required API when present."""
+
+    kind = "signature"
+
+    def applies(self, ctx: RequirementContext) -> bool:
+        return bool(
+            ctx.public_checks.strip()
+            and ctx.entry_point
+            and _expected_param_names(ctx.signature, ctx.entry_point) is not None
+        )
+
+    def check(self, code: str, ctx: RequirementContext) -> RequirementOutcome:
+        expected = _expected_param_names(ctx.signature, ctx.entry_point)
+        assert expected is not None
+        fn = _entry_function(code, ctx.entry_point)
+        if fn is None:
+            return RequirementOutcome(
+                kind=self.kind,
+                required=True,
+                ok=False,
+                message=(
+                    f"signature: define top-level `{ctx.entry_point}` "
+                    f"matching the starter"
+                ),
+            )
+        actual = [a.arg for a in fn.args.args]
+        if actual == expected:
+            return RequirementOutcome(kind=self.kind, required=True, ok=True)
+        exp = ", ".join(expected)
+        got = ", ".join(actual) or "(none)"
+        return RequirementOutcome(
+            kind=self.kind,
+            required=True,
+            ok=False,
+            message=(
+                f"signature: expected def {ctx.entry_point}({exp}) but got "
+                f"def {ctx.entry_point}({got})"
+            ),
+        )
+
+
+class PublicContractRequirement:
+    """Public assert call shapes must match the implementation."""
+
+    kind = "contract"
+
+    def applies(self, ctx: RequirementContext) -> bool:
+        return bool(ctx.public_checks.strip() and ctx.entry_point and ctx.public_calls)
+
+    def check(self, code: str, ctx: RequirementContext) -> RequirementOutcome:
+        fn = _entry_function(code, ctx.entry_point)
+        if fn is None:
+            return RequirementOutcome(kind=self.kind, required=True, ok=True)
+        actual_arity = len(fn.args.args)
+        for args in ctx.public_calls:
+            if len(args) != actual_arity:
+                return RequirementOutcome(
+                    kind=self.kind,
+                    required=True,
+                    ok=False,
+                    message=(
+                        f"contract: public checks call {ctx.entry_point} with "
+                        f"{len(args)} argument(s) {args!r} but implementation has "
+                        f"{actual_arity} parameter(s)"
+                    ),
+                )
+        g: dict[str, Any] = {}
+        try:
+            exec(compile(code, "<requirements>", "exec"), g)
+        except Exception as exc:
+            return RequirementOutcome(
+                kind=self.kind,
+                required=True,
+                ok=False,
+                message=f"contract: could not load implementation: {exc}",
+            )
+        fn_obj = g.get(ctx.entry_point)
+        if not callable(fn_obj):
+            return RequirementOutcome(
+                kind=self.kind,
+                required=True,
+                ok=False,
+                message=f"contract: `{ctx.entry_point}` is not callable",
+            )
+        for args in ctx.public_calls:
+            try:
+                fn_obj(*args)
+            except TypeError as exc:
+                return RequirementOutcome(
+                    kind=self.kind,
+                    required=True,
+                    ok=False,
+                    message=(
+                        f"contract: public checks call {ctx.entry_point}{args!r} "
+                        f"but implementation rejected it ({exc})"
+                    ),
+                )
+            except Exception:
+                pass
+        return RequirementOutcome(kind=self.kind, required=True, ok=True)
+
+
+class ConstraintScaleRequirement:
+    """Constraints allow inputs much larger than public examples — probe scale."""
+
+    kind = "constraint_scale"
+
+    def applies(self, ctx: RequirementContext) -> bool:
+        return bool(ctx.public_checks.strip() and ctx.entry_point and ctx.spec.strip())
+
+    def check(self, code: str, ctx: RequirementContext) -> RequirementOutcome:
+        outcome = check_constraint_scale(
+            code,
+            entry_point=ctx.entry_point,
+            spec=ctx.spec,
+            public_checks=ctx.public_checks,
+            signature=ctx.signature,
+        )
+        return RequirementOutcome(
+            kind=self.kind,
+            required=outcome.required,
+            ok=outcome.ok,
+            message=outcome.message,
+        )
+
+
+TASK_REQUIREMENTS: list[TaskRequirement] = [
+    EntryPointRequirement(),
+    ExecutableRequirement(),
+    SignatureRequirement(),
+    PublicContractRequirement(),
+    ConstraintScaleRequirement(),
+]
+
+
+def evaluate_task_requirements(
+    code: str,
+    ctx: RequirementContext,
+    *,
+    requirements: Sequence[TaskRequirement] = TASK_REQUIREMENTS,
+) -> tuple[bool, tuple[str, ...]]:
+    """Run all requirements that apply to this task; return (ok, deficiencies)."""
+    if not ctx.public_checks.strip():
+        return True, ()
+    deficiencies: list[str] = []
+    for req in requirements:
+        if not req.applies(ctx):
+            continue
+        outcome = req.check(code, ctx)
+        if outcome.required and not outcome.ok and outcome.message:
+            deficiencies.append(outcome.message)
+            break
+    return not deficiencies, tuple(deficiencies)
+
+
+def evaluate_state_requirements(
+    state: Mapping[str, Any],
+    code: str,
+) -> tuple[bool, tuple[str, ...]]:
+    """Evaluate requirements using fields from RunState."""
+    return evaluate_task_requirements(code, RequirementContext.from_state(state))
+
+
+def format_requirements_feedback(deficiencies: tuple[str, ...]) -> str:
+    """Repair-facing message listing each failed requirement."""
+    lines = ["Task requirements failed — fix exactly:"]
+    lines.extend(f"- {d}" for d in deficiencies)
+    return "\n".join(lines)

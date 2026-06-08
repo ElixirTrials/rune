@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from rune.model.adapter import AdapterResult
+from rune.model.adapter import AdapterResult, scale_lora_b
 from rune.model.adapter import hotswap_adapter as hotswap_adapter_fn
 from rune.model.hypernetwork import generate_adapter_weights
 from rune.model.inference import GenerationResult
@@ -180,6 +180,13 @@ class ModelWrapper:
             state_dict: PEFT-compatible adapter weights.
         """
         hotswap_adapter_fn(self._base_model, state_dict)
+
+    def reset_adapter(self) -> None:
+        """Zero LoRA weights so a prior task's adapter cannot bleed into the next."""
+        from peft import get_peft_model_state_dict  # noqa: PLC0415
+
+        sd: dict[str, Any] = get_peft_model_state_dict(self._base_model)  # type: ignore[no-untyped-call]
+        hotswap_adapter_fn(self._base_model, scale_lora_b(sd, 0.0))
 
     async def generate(
         self,

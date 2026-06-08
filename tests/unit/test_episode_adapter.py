@@ -12,7 +12,11 @@ class TestEpisodicPromptReferences:
         # (1): the adapter episode is in the WEIGHTS, not the model's context.
         # The prompt must cue RECALL of learned knowledge about the specific
         # function, never tell the model to "read" a generic section.
-        p = render_template("prompt_episodic_repair", subtask_name="decode_string")
+        p = render_template(
+            "prompt_episodic_repair",
+            subtask_name="decode_string",
+            bare_signature="def decode_string(s: str) -> str:",
+        )
         low = p.lower()
         assert "decode_string" in p  # specific function, not generic
         assert "recall" in low  # recall-of-learned-knowledge framing

@@ -21,6 +21,7 @@ from rune.engine.continuation import (
     strip_self_tests,
     validate_syntax,
 )
+from rune.engine.delivery import format_delivery_contract
 from rune.engine.oracle import (
     build_probe,
     build_subtask_probe,
@@ -28,6 +29,10 @@ from rune.engine.oracle import (
 )
 from rune.engine.parse import JudgeResult, parse_output, render_template
 from rune.engine.policy import select_action
+from rune.engine.requirements import (
+    evaluate_state_requirements,
+    format_requirements_feedback,
+)
 from rune.engine.state import (
     _CODE_HISTORY_CAP,
     Action,
@@ -35,7 +40,7 @@ from rune.engine.state import (
     RunState,
     StepRecord,
 )
-from rune.model.adapter import scale_lora_b
+from rune.model.adapter import apply_episodic_adapter
 from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
@@ -128,6 +133,28 @@ _ACCUMULATED_CODE_CAP = 3500
 _ATTEMPT_HISTORY_CAP = 3
 _ATTEMPT_CODE_CAP = 400
 _ATTEMPT_ERR_CAP = 300
+
+
+def _format_tried_and_failed(trajectory: list[dict[str, Any]]) -> str:
+    """Compact summary of failed repair attempts for episodic recall."""
+    lines: list[str] = []
+    for entry in trajectory:
+        if entry.get("passed"):
+            continue
+        err = (entry.get("error") or "").strip()
+        if not err:
+            continue
+        step = entry.get("step", "?")
+        action = entry.get("action", "attempt")
+        snippet = err.splitlines()[-1][:120]
+        lines.append(f"- step {step} ({action}): {snippet}")
+    if not lines:
+        return ""
+    header = (
+        "## approaches already tried (all failed public oracle)\n"
+        "Do NOT retry these. Try a structurally different algorithm."
+    )
+    return header + "\n" + "\n".join(lines[-3:])
 
 
 def _format_attempts(attempts: list[dict[str, Any]] | None) -> str:
@@ -276,11 +303,39 @@ def render_episode_adapter(
     diag = state.get("diagnosis", {}).get(target, "")
     if diag:
         err = f"{err}\nDiagnosis: {diag}".strip() if err else f"Diagnosis: {diag}"
-    sections = [f"## Mission `{name}`\n{goal}"]
+    tried: list[str] = []
+    for rec in state.get("trajectory", []):
+        if rec.target_subtask != target:
+            continue
+        if rec.feedback and rec.feedback.exit_code != 0:
+            snippet = rec.feedback.stderr.splitlines()[-1][:120]
+            tried.append(f"- step {rec.step} ({rec.action_name}): {snippet}")
+    delivery = ""
+    if name == entry_pt and entry_pt:
+        delivery = format_delivery_contract(
+            entry_point=entry_pt,
+            bare_signature=_bare_signature_stub(
+                entry_pt,
+                str(state.get("signature", "") or ""),
+                str(state.get("task", "") or ""),
+            ),
+            public_checks=str(state.get("public_checks", "") or ""),
+        )
+    mission = f"## Mission `{name}`\n{goal}"
+    if delivery:
+        mission = f"{mission}\n\n## Required deliverable\n{delivery}"
+    sections = [mission]
     if current_code:
         sections.append(f"## `{name}` — your last attempt\n{current_code}")
     if err:
         sections.append(f"## `{name}` — what you learned was wrong with it\n{err}")
+    if tried:
+        block = (
+            "## approaches already tried (all failed public oracle)\n"
+            "Do NOT retry these. Try a structurally different algorithm.\n"
+            + "\n".join(tried[-3:])
+        )
+        sections.append(block)
     return "\n\n".join(sections)
 
 
@@ -327,7 +382,8 @@ def _bare_signature_stub(entry_point: str, signature: str, spec: str) -> str:
                     node.args.args = [
                         a for a in node.args.args if a.arg not in ("self", "cls")
                     ]
-                    return f"def {node.name}({ast.unparse(node.args)}):"
+                    ret = f" -> {ast.unparse(node.returns)}" if node.returns else ""
+                    return f"def {node.name}({ast.unparse(node.args)}){ret}:"
     return _derive_signature(entry_point, spec)
 
 
@@ -458,8 +514,21 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["existing_code"] = code_results.get(target_name, "")
 
         subtask_fb = feedback_map.get(target_name)
-        ctx["error_summary"] = subtask_fb.stderr[:500] if subtask_fb else ""
+        ctx["error_summary"] = subtask_fb.stderr[:2000] if subtask_fb else ""
         ctx["fix_guidance"] = state.get("diagnosis", {}).get(target_name, "")
+        ctx["repair_brief"] = state.get("repair_briefs", {}).get(target_name, "")
+        ctx["plan_rejection"] = state.get("plan_rejections", {}).get(target_name, "")
+        entry_pt = str(state.get("entry_point", "") or target_name)
+        ctx["bare_signature"] = _bare_signature_stub(
+            entry_pt,
+            str(state.get("signature", "") or ""),
+            str(state.get("task", "") or ""),
+        )
+        ctx["delivery_contract"] = format_delivery_contract(
+            entry_point=entry_pt,
+            bare_signature=ctx["bare_signature"],
+            public_checks=str(state.get("public_checks", "") or ""),
+        )
 
         repair_history: list[str] = []
         code_trajectory: list[dict[str, Any]] = []
@@ -484,6 +553,15 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
                 )
         ctx["repair_history"] = repair_history[-2:]
         ctx["code_trajectory"] = code_trajectory
+        ctx["tried_and_failed"] = _format_tried_and_failed(code_trajectory)
+        brief_text = ctx["repair_brief"]
+        ctx["preserve_logic"] = bool(
+            brief_text
+            and any(
+                f"failure_class: {fc}" in brief_text
+                for fc in ("signature", "arity", "import")
+            )
+        )
     else:
         ctx["subtask"] = None
         ctx["target_subtask"] = None
@@ -491,6 +569,10 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["fix_guidance"] = ""
         ctx["repair_history"] = []
         ctx["code_trajectory"] = []
+        ctx["tried_and_failed"] = ""
+        ctx["preserve_logic"] = False
+        ctx["bare_signature"] = ""
+        ctx["delivery_contract"] = ""
 
     ctx["integration_doc"] = "\n".join(
         f"- {s.name}: {s.description[:_INTEGRATION_DOC_LINE_CAP]}" for s in subtasks
@@ -561,6 +643,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
     results: list[tuple[Action, str, str, str | None, str, str, str]] = []
     for action in actions:
+        # Episodic invariant: each action gets a fresh hypernet adapter via
+        # apply_episodic_adapter() immediately before inference — never reuse
+        # a prior step's LoRA weights (see tests/unit/test_adapter_episodic_swap.py).
         import torch  # noqa: PLC0415
 
         torch.cuda.empty_cache()
@@ -623,11 +708,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         eff_scaling = _effective_scaling(
             prompt_mode, action, state.get("code_results", {}), adapter_scaling
         )
-        adapter = model.generate_adapter(trajectory_text)
-        scaled_sd = scale_lora_b(adapter.state_dict, eff_scaling)
-        model.hotswap_adapter(scaled_sd)
-        adapter_id = adapter.adapter_id
-        del adapter, scaled_sd
+        adapter_id = apply_episodic_adapter(
+            model, trajectory_text, scaling=eff_scaling
+        )
         result = await model.generate(
             prompt=prompt_text,
             system_prompt=action.system_prompt,
@@ -666,10 +749,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     feedback=ctx.get("fix_guidance") or ctx.get("error_summary") or "",
                 )
 
-                cont_adapter = model.generate_adapter(cont_traj)
-                cont_sd = scale_lora_b(cont_adapter.state_dict, cont_scaling)
-                model.hotswap_adapter(cont_sd)
-                del cont_adapter, cont_sd
+                apply_episodic_adapter(model, cont_traj, scaling=cont_scaling)
 
                 result = await model.generate_continuation(
                     system_prompt=cont_sys,
@@ -868,12 +948,71 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                         f"judge_flagged/{name or 'integrate'}", 1, step=state["step"]
                     )
 
+    # Task requirements oracle (benchmark/LCB): pluggable checks that activate
+    # only from structured task evidence (starter, public_checks, Constraints).
+    if str(state.get("public_checks", "") or "").strip():
+        for name in code_action_names:
+            if feedback_map[name].exit_code != 0:
+                continue
+            ok, deficiencies = evaluate_state_requirements(state, code_map[name])
+            if not ok:
+                msg = format_requirements_feedback(deficiencies)
+                feedback_map[name] = Feedback(stdout="", stderr=msg, exit_code=1)
+                logger.info(
+                    "task requirements failed for %s: %s",
+                    name or "integrate",
+                    msg,
+                )
+                if mlflow.active_run() is not None:
+                    mlflow.log_metric(
+                        f"requirements_failed/{name or 'integrate'}",
+                        1,
+                        step=state["step"],
+                    )
+
+    brief_updates: dict[str, Any] = {}
+    if state.get("repair_brief_enabled", True):
+        from rune.engine.repair_brief import build_repair_brief  # noqa: PLC0415
+
+        briefs = dict(state.get("repair_briefs", {}))
+        replan = dict(state.get("replan_targets", {}))
+        plans = dict(state.get("plans", {}))
+        for name in code_action_names:
+            fb = feedback_map.get(name)
+            if fb is None or fb.exit_code == 0:
+                continue
+            sub = next((s for s in state.get("subtasks", []) if s.name == name), None)
+            brief = build_repair_brief(
+                fb.stderr,
+                entry_point=str(state.get("entry_point", "") or ""),
+                signature=str(state.get("signature", "") or ""),
+                plan=str(state.get("plans", {}).get(name, "") or ""),
+                overall_goal=str(state.get("overall_goal", "") or ""),
+                acceptance_check=sub.acceptance_check if sub else "",
+                subtask_description=sub.description if sub else "",
+            )
+            if brief is None:
+                continue
+            briefs[name] = brief.format_block()
+            if brief.replan_recommended and state.get("replan_on_complexity", True):
+                replan[name] = True
+                plans.pop(name, None)
+                logger.info(
+                    "replan recommended for %s (%s)",
+                    name,
+                    brief.failure_class,
+                )
+        brief_updates = {"repair_briefs": briefs, "replan_targets": replan}
+        if plans != state.get("plans", {}):
+            brief_updates["plans"] = plans
+
     # Thread an accumulating running state through siblings so each parse_output
     # builds its full maps from the prior sibling's applied change. Reusing a
     # frozen dict(state) snapshot per sibling let the last-merged sibling's stale
     # copy clobber earlier siblings' real updates (code_passed/retries/...).
-    updates: dict[str, Any] = {}
+    updates: dict[str, Any] = dict(brief_updates)
     running = dict(state)
+    running.update(brief_updates)
     for action, target_name, raw, _, _traj, _prompt, _out in results:
         fb = feedback_map.get(target_name)
         partial = parse_output(action, raw, fb, running, code=code_map.get(target_name))
@@ -894,7 +1033,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         )
         for a, name, _, aid, traj, prompt, out in results
     ]
-    updates["actions"] = actions
+    running_final = dict(state)
+    running_final.update(updates)
+    updates["actions"] = select_action(running_final)
     updates["current_adapter"] = results[-1][3] if results else state["current_adapter"]
     updates["trajectory"] = state["trajectory"] + records
     updates["step"] = state["step"] + 1
@@ -903,7 +1044,9 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
 
 
 def should_continue(state: RunState) -> str:
-    if not state["actions"] or state["budget_remaining"] <= 0:
+    if state["budget_remaining"] <= 0:
+        return "done"
+    if not select_action(dict(state)):
         return "done"
     return "continue"
 
