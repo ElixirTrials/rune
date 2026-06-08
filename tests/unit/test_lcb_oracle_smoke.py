@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 from typing import Any
 
 from rune.bench.lcb import build_public_assert_checks
@@ -43,6 +42,17 @@ _LCB_ROW: dict[str, Any] = {
         ]
     ),
     "metadata": json.dumps({"func_name": "maxDifference"}),
+}
+
+_MBPP_ROW: dict[str, Any] = {
+    "task_id": "mbpp/58",
+    "entry_point": "opposite_Signs",
+    "description": (
+        '"""\nWrite a python function to check whether the given two integers '
+        "have opposite sign or not.\n\n"
+        ">>> assert opposite_Signs(1,-2) == True\n"
+        '"""\n'
+    ),
 }
 
 CORRECT_MAXDIFF = """\
@@ -215,8 +225,7 @@ def test_smoke_resolve_shipped_rejects_helper_blob() -> None:
 
 
 def test_smoke_mbpp_doctest_path_unchanged_when_public_checks_empty() -> None:
-    mbpp_path = Path("benchmarks/mbpp160_tasks.json")
-    row = json.loads(mbpp_path.read_text())[0]
+    row = _MBPP_ROW
     checks = extract_public_checks(row["description"], row["entry_point"])
     assert checks != ""
     resolved = resolve_in_loop_check(
