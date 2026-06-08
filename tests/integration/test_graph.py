@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from rune.engine.graph import create_engine, should_continue
-from rune.engine.state import RunState
+from rune.engine.state import RunState, Subtask
 
 
 def _initial_state(task: str = "add two numbers", budget: int = 10) -> RunState:
@@ -27,8 +27,6 @@ def _initial_state(task: str = "add two numbers", budget: int = 10) -> RunState:
 
 class TestShouldContinue:
     def test_solved_single_subtask_returns_done(self) -> None:
-        from rune.engine.state import Subtask
-
         state = _initial_state()
         state["subtasks"] = [Subtask("_main", "do main", [])]
         state["plans"] = {"_main": "plan"}
