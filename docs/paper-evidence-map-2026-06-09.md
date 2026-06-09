@@ -10,7 +10,7 @@
 
 ## 0. Three things to fix before camera-ready (ranked)
 
-1. **`0.16×` / 200-trial / Gemma 2 2B (abstract, §1, §3.4, §4.2, Table 1, B.7).** The Gemma 200-trial scaling study could **not be located** in any artifact reachable here (74 MLflow exps incl. run artifacts + local Optuna DB + all PR comments + both working trees). This is *not present in this environment*, **not** proof it never existed — it may live in an external/recycled store or predate the PR-#28 MLflow wiring (the abstract says the log is *released*). The scaling optimum that **is** in-hand is **0.627 on Qwen3-4B** (`rune-bench-hpo`) vs the **45.25× lora_alpha** contract scale. **Action:** the author must either point to / migrate the Gemma HPO store so `0.16×` has a citable home, or re-anchor §3.4/§4.2/Table 1 to the Qwen `0.627` / 45.25× evidence. See inventory §3. **Signature number — confirm its store before citing the released-log URL as backing.**
+1. **`0.16×` / 200-trial / Gemma 2 2B → RESOLVED: re-anchored to Qwen (2026-06-09).** The Gemma 200-trial scaling study could not be located in any artifact reachable here (74 MLflow exps incl. run artifacts + local Optuna DB + all PR comments + both working trees); not present here ≠ never existed (may be external/pre-MLflow). The author chose to re-anchor rather than cite an unconfirmed store. `paper_v9.tex` now reports **0.627× generation-time scaling on Qwen3-4B-Instruct** (16-trial `rune-bench-hpo`). **Critical unit fix applied throughout:** `adapter_scaling` is a *multiplier* on the native `lora_alpha=45.25` (1.0× = 45.25), so 0.627× is a **mild ~0.6× attenuation**, not "Nx below" — the original "280× below" was unit-confused (dividing 45.25 by the multiplier). The structural conjecture is correspondingly **softened** (sub-unity but modest; 0.627 is outside the old 0.1–0.3× band, so B.8 reframed to "sub-unity"). Per author: the system's contribution is the **memory mechanism itself**, not the scaling magnitude — the paper now states this explicitly.
 2. **Three-model muddle.** The paper names **Gemma 2 2B** (dev), **Qwen 2.5 Coder 7B** + **Qwen 3.5 9B** (production). Artifacts only support **Qwen 3.5 9B** (May `paper-table2`, sparse) and **Qwen 3-4B-Instruct** (June, the documented work). Qwen 2.5 Coder 7B and Gemma 2 2B have essentially no logged runs. Decide the canonical model line and align §4.1.
 3. **Gate 1 has not been run as specified.** Gate 1 = Rune (v) vs **direct PEFT QLoRA on the same trajectories** (iii), McNemar, ≥5pp. We have never run condition (iii) against (v) on a shared held-out set. The LCB-49 result (rune 9/49 = base 9/49) is **(v) vs (i)**, not Gate 1. Do not present any current number as a Gate-1 verdict.
 
@@ -25,7 +25,7 @@ Legend: ✅ backed (cite the home) · 🟡 partial / proxy only · ⛔ un-run / 
 | paper claim | status | evidence / gap |
 |-------------|:------:|----------------|
 | Mechanism: $H_\theta$ emits LoRA delta per step, reversible, constant per-step compute | ✅ | architectural; engine implements adapter hot-swap per step (`graph.py`) |
-| "0.16× ... 280× below 45.25×" | 🟡✍️ | **not located in this environment** (see §0.1) — store may be external/pre-MLflow. Backed alternative in-hand: 0.627 vs 45.25 on Qwen3-4B |
+| scaling claim (re-anchored to 0.627× on Qwen3-4B) | ✅ | now backed by `rune-bench-hpo` (exp 41); reported as a 0.627× *multiplier* of native scale, not "Nx below" (see §0.1) |
 | Pre-registered Gates 1–3 with fixed comparisons | ✅ (protocol) / ⛔ (results) | protocol fixed in paper; **no gate has a measured verdict** |
 | SLM regime, single 24 GB GPU | ✅ | all runs on one consumer GPU; Phase-1 `gpu_peak_gb`=11.6 (exp 45) |
 
@@ -33,7 +33,7 @@ Legend: ✅ backed (cite the home) · 🟡 partial / proxy only · ⛔ un-run / 
 
 | element | status | evidence / gap |
 |---------|:------:|----------------|
-| Table 1 optima (scaling 0.16, temp 0.25, rep-pen 1.04, skeleton, prose) | 🟡✍️ | **no run reachable here produces this row.** Closest in-hand HPO: `rune-bench-hpo` → scaling **0.627**, temp 0.3, presence 0.0, `reference_a` prompt mode (exp 41). Different model, different optimum, different prompt taxonomy — the Gemma source is off-environment (see §0.1). |
+| Table 1 optima (re-anchored) | ✅ | now reports `rune-bench-hpo` (exp 41): scaling **0.627×**, prompt mode **reference_a** (both searched); temp 0.3, presence 0.0, cont-mult 1.53, max-phase 4 (fixed). Objective = held-out MBPP Pass@1 (note: this differs from the old caption's hunk-loss blend, which belongs to the distillation HPO — B.7 now distinguishes them). |
 | "degenerate output at α≥1.0×" | 🟡 | directionally seen: `adapter-scaling-hpo` high-α trials score worse; degeneration root-caused to thinking-phase + presence_penalty, not α alone (`E-degen-ablation`) |
 | override-vs-contextualise conjecture | ✅ (as conjecture) | explicitly labelled provisional; B.8 cross-family sweep is the falsifier — **un-run** |
 
@@ -108,7 +108,7 @@ Two limiters, in order: **(1) in-loop oracle coverage** — shipped code passes 
 |-----------------|-----------------------------------|:----------:|
 | "production: Qwen 3.5 9B + DeltaCoder" | May track (`paper-table2`/`gate2`, exps 18–42) | sparse data |
 | "dev: Gemma 2 2B + gemma_demo" | **no MLflow runs** — dev artifacts off-server | unbacked |
-| §4.2 adapter-scaling result | should be Qwen3-4B `rune-bench-hpo` 0.627 (June), *not* Gemma 0.16 | re-anchor needed |
+| §4.2 adapter-scaling result | re-anchored to Qwen3-4B `rune-bench-hpo` 0.627× (June) | done (2026-06-09) |
 | §4.3 recall/accessibility evidence | June track (Phase-1 exp 45) — the strongest real result | ✅ |
 | Algorithm 1 recursive loop | June engine (`graph.py`) | ✅ |
 
@@ -122,7 +122,7 @@ Ordered by what unblocks a *central* claim.
 
 1. **Fill Table 2 honestly (or restructure it).** Run (i) base and (v) Rune on the **HumanEval+ ∪ LCB held-out** union with $k=5$, McNemar + Wilson CIs as §4.1 specifies. Today only LCB-49 (i)/(v) exists and it's a tie. *Decision:* if the result stays a tie, restructure §4 around the recall objective + efficiency, not pass@1 dominance.
 2. **Run Gate-1 comparator (iii) Direct PEFT QLoRA on the same trajectory corpus.** Without it there is no Gate-1 verdict — the paper's existence test. 200-trial budget already specified in §4.1(iii).
-3. **Resolve `0.16×` (§0.1).** Either produce the Gemma 200-trial log as a durable MLflow run + released artifact, or re-anchor §3.4/§4.2/Table 1 to the Qwen3-4B 0.627 evidence. Cheapest high-impact fix.
+3. **~~Resolve `0.16×`~~ — DONE (2026-06-09).** Re-anchored §3.4/§4.2/Table 1/B.7/B.8 to the Qwen3-4B 0.627× evidence with corrected multiplier semantics. Remaining: pin the 95% CI on 0.627× from the trial-level convergence trace, and (optional) recover the Gemma log if it surfaces.
 4. **Cross-family scaling sweep (B.8).** The paper's self-declared "most pressing methodological question." 50-trial α-only sweep on Qwen/Llama/Phi to test the 0.1–0.3× clustering prediction. Currently the structural conjecture rests on one data point whose store is off-environment (§0.1).
 5. **Close the oracle-coverage gap for pass@1 (the real lever).** Property/metamorphic tests or broader generated inputs so `diagnose→repair` fires on hidden-failing tasks. K=3 consensus already shown unsafe. This is the only path to moving (v) above (i).
 6. **Durable LCB-49 run.** Log both arms' official-harness 49-task grade to MLflow with the grade JSON as an artifact (today it's only in a PR comment). Prereq for citing the number.
