@@ -225,6 +225,31 @@ def test_p4_shippable_accepts_list_annotation() -> None:
     assert _benchmark_shippable(task, LIST_ANNOTATED_CORRECT, task.description)
 
 
+def test_p5_benchmark_collapses_to_entry_point_without_public_checks() -> None:
+    # LCB 3768: the public example didn't parse (empty public_checks), so the
+    # engine over-decomposed into helpers (same_last_two_digits/transform_digits)
+    # and shipped nothing, while base single-shot solved it. The fix collapses to
+    # the single entry_point subtask whenever entry_point is known.
+    from rune.engine.parse import (  # noqa: PLC0415
+        SubtaskSchema,
+        _collapse_benchmark_subtasks,
+    )
+
+    helpers = [
+        SubtaskSchema(name="same_last_two_digits", description="helper"),
+        SubtaskSchema(name="transform_digits", description="helper"),
+    ]
+    state = {
+        "entry_point": "hasSameDigits",
+        "public_checks": "",  # unparsed public example
+        "signature": "def hasSameDigits(self, s: str) -> bool:",  # starter signature
+        "task": "Return True if the final two digits are equal.",
+    }
+    collapsed = _collapse_benchmark_subtasks(helpers, state, overall_goal="")
+    assert len(collapsed) == 1
+    assert collapsed[0].name == "hasSameDigits"
+
+
 def test_p3_tried_and_failed_surfaces_distinct_approaches() -> None:
     # Two attempts whose ERROR line is identical but whose CODE differs: the
     # summary must show the distinct approaches so the model stops repeating.

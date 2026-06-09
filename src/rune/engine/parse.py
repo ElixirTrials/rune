@@ -149,11 +149,18 @@ def _collapse_benchmark_subtasks(
 
     Decompose often fans out into misnamed helpers; benchmark tasks always grade
     a single top-level ``entry_point`` function, so subtask names and acceptance
-    checks must match it deterministically.
+    checks must match it deterministically. Collapse whenever the entry_point is
+    known — even if the public example failed to parse (``public_checks`` empty):
+    helper subtasks are never gradeable, and over-decomposing an atomic task
+    breaks escalate's single-shot base attempt (issue #52, LCB 3768).
     """
     entry_pt = str(state.get("entry_point", "") or "")
     public = str(state.get("public_checks", "") or "").strip()
-    if not entry_pt or not public:
+    signature = str(state.get("signature", "") or "").strip()
+    # Benchmark signal = a known entry_point with either a parsed public example
+    # or a starter signature. (entry_point alone is also used by free-form decompose
+    # tests, which must keep their helper subtasks.)
+    if not entry_pt or not (public or signature):
         return kept
     desc = overall_goal.strip()
     if not desc:
