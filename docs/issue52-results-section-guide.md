@@ -4,6 +4,11 @@
 **Companion:** [`issue52-experimentation-log.md`](issue52-experimentation-log.md) (full catalog).  
 **Audience:** Authors drafting §Results; reviewers asking “what is actually established?”
 
+> **2026-06-09 update.** Two things this guide (authored 06-05) did not yet contain, now reconciled against the runner + MLflow:
+> 1. **LCB functional-49 (official harness): rune 9/49 = base 9/49 — a TIE**, not a win. The morning "10/49 > 9/49" was retracted (within noise + overfit-dependent answer-injection in `repair_brief.py`, removed). See §4.6 and [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md) §2.
+> 2. **None of the paper's pre-registered Gates 1–3 has been run** as specified (Gate-1's PEFT-iii comparator, TTT-E2E-iv, and RAG-ii baselines do not exist; `paper-gate2` MLflow runs are empty). Do not present any current number as a gate verdict.
+> Companion docs added: [`mlflow-experiment-inventory-2026-06-09.md`](mlflow-experiment-inventory-2026-06-09.md) (all 74 experiments + the May `paper-table2` track), [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md) (claim→evidence). **The paper's `0.16×` scaling headline could not be located in any artifact reachable here** (the in-hand Qwen optimum is `0.627`); flagged there as the #1 item to confirm with the author — its store is likely external/pre-MLflow, not necessarily missing.
+
 ---
 
 ## 1. The scientific question (one paragraph for the paper)
@@ -163,7 +168,9 @@ This is the section that speaks to **scientific interest** (adapter vs context).
 | E-hard-memory | 0.25 (2/8) held-out; scale0 = c3 | No held-out gain on hard multistep |
 | Public vs held-out | c3 public 5/8 vs scale0 1/8; held-out flat | Oracle ≪ full tests; adapter helps shallow signal only |
 | int_to_roman | scale0 7/7 → c3 fails @0.627 | Over-perturbation / wrong gen scaling |
-| E-lcb-probe | 1/4; plan truncation | Engine agent loop blocker for hard eval |
+| E-lcb-probe (06-05) | 1/4; plan truncation | Early pipeline blocker — superseded by E-lcb49-arc |
+| **E-lcb49-arc (06-09, official harness)** | **rune 9/49 = base 9/49 (tie)** | Engine+adapter match base single-shot; strict superset, 0 regressions. **Not** a pass@1 win |
+| **E-oracle-rootcause (06-09)** | real oracle 0/11 fires; perfect oracle 11/11 fires / **0/11 solve** | pass@1 ceiling = oracle *coverage* (public tests miss hidden bugs) then base *capability* — channel verified live |
 | B1 repair-memory | Not run | **Cannot claim** multistep repair substrate yet |
 
 **Critical honesty for §Discussion:**

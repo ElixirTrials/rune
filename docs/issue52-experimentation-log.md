@@ -4,6 +4,8 @@
 **Checkpoint of record:** c3 (`c3_t07_lp2_lg1.pt`, sha256 `53e24af243a3…`) — MLflow `issue52-phase1` run `fe72f9ddd69c`  
 **Primary sources reconciled:** `instructions/scratchpad.md` (append-only, latest blocks authoritative), `instructions/reflections.md`, all `docs/issue52-*.md`, PR #55 comments, MLflow (`http://localhost:5000`, 2026-06-05).
 
+> **2026-06-09 continuation.** This log was authored 2026-06-05; the LCB-benchmark / oracle / de-overfit arc (06-05→09) is added as **§3.7** and **§5** is updated. The complete MLflow registry (including the **May `paper-table2`/`paper-gate2` track** this June log never covered) is now indexed in [`mlflow-experiment-inventory-2026-06-09.md`](mlflow-experiment-inventory-2026-06-09.md), and every paper claim is mapped to evidence in [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md). **Headline correction:** the LCB functional-49 result is **rune 9/49 = base 9/49 (a tie)**, not a win — see §3.7.
+
 ---
 
 ## 1. Executive summary
@@ -127,6 +129,29 @@ Source: scratchpad `07:25`, `docs/issue52-goal3-conclusions-2026-06-05.md`.
 
 Scratchpad blocks logged as planning, incorporation, or infrastructure without new measured arms: `19:31`–`19:42` reflections + two-stage RL research; `08:40`–`09:10` config refactor; `09:05` design fork; `09:30` capacity instrument smoke (n=4; full arms in **E-G1-capacity**); `09:30`–`09:35` Goal-2 checkpoint gotcha / Goal-1 doc promotion; `10:05`–`10:10` session close + advisor G2 tightening; `10:20` CI note; `10:35`–`11:05` reflection incorporation + multistep design; `12:30` Goal-3 pre-reg; `13:25` wall-clock note; `14:30` engine miswirings trace (smokes → **E-G3-smokes** STALE); `15:45`–`17:45` implementation / promptfix plans; `16:10` extraction validation; `16:45` runner diagnosis; `18:30` degen debug precursor (**E-degen-ablation**); `19:55` consolidated thoughts; `20:20` reflections; `21:40`–`22:10` spec-in-adapter design/launch; `22:58` scale0-full 0.792 launch (**STALE** invalid floor — superseded **E-true-floor**); `01:50` HPO launch; `02:25` HPO MLflow fix; `03:10` graph revision design; `05:25` benchmark calibration (Qwen MultiPL-E 76.8 ≈ scale0-full 0.792); `07:00` session summary; `07:15` episodic brainstorm; `07:35` implementation start; handoff files referenced in scratchpad but **not present on disk** in this workspace (2026-06-05).
 
+### 3.7 LCB benchmark + engine redesign + oracle root-cause (2026-06-05 → 06-09)
+
+This phase moved from frozen probes to the **real runner on LiveCodeBench v6 functional-49**, graded with the **official LCB harness** (`tools/_lcb_grade.py`, same grader that scores base). All on `Qwen3-4B-Instruct-2507`, c3 checkpoint, escalate mode (zero-shot base first → adapter on repair).
+
+| ID | Date | Hypothesis | Spec & parameters | Procedure / tools | Results | Verdict | X-src |
+|----|------|------------|-------------------|-------------------|---------|---------|-------|
+| **E-engine-redesign** | 2026-06-08 | Engine-correctness bugs (not thesis) cap hard-task pass@1 | sig normalization, typing-name probe, ship-best-on-exhaustion, advisory `big_o` gate w/ static floor + killable subprocess, decompose-collapse, flash-attn torch-2.12 wheel | commits `d28a3ab`…`eeff35f`; 516–522 unit tests | All fixes property-based (non-task-specific); CI green | PASS (engine) | ✓ PR #55 §3 + git |
+| **E-lcb49-arc** | 2026-06-09 | Does rune beat the same base single-shot on LCB func-49? | official LCB harness; escalate c3@0.627 vs base zero-shot | `_lcb_run.py`, `_lcb_grade.py` | **0/49 (pre-fix) → 10/49 (post-fix, overfit live) → 9/49 (de-overfit)**; base **9/49**. Final: **TIE, strict superset, 0 regressions** | PASS (engine ties base; NOT a win) | ✓ PR #55 comments 03:00/07:11/14:33 |
+| **E-deoverfit** | 2026-06-09 | The +1 (3832) margin is robust? | audit `repair_brief.py` (new-in-PR) for answer-injection | code audit + clean rerun; commit `d173ef8` | Found hard-coded LCB answers (maxDifference→3753 soln; any list task→3760 anti-diagonal invariant; keyword suppression). 3832 passed *because* anti-diagonal fired. Removed → task-agnostic briefs → **3832 fails, rune=base** | **+1 was overfit-dependent + within noise**; corrected | ✓ PR #55 14:33 + commit |
+| **E-oracle-rootcause** | 2026-06-09 | Is there a model↔oracle comms failure behind false-pass misses? | real repair path (adapter-on, scaling 1.0, code not in-prompt); 11 false-pass tasks | `_real_repair_oracle_test.py`, `_perfect_oracle_probe.py`, `_repair_trace.py` | Real oracle **0/11 fires** (public always passes); perfect oracle **11/11 fires, 10/11 change code, 0/11 solve**. Channel live (byte-echo was synthetic-probe artifact) | Two limiters: **(1) oracle coverage** (dominant, addressable); **(2) capability** | ✓ PR #55 07:11 + tools |
+| **E-kconsensus** | 2026-06-09 | K=3 consensus differential oracle closes coverage gap | 3-arm consensus on hidden-bug detection | `_oracle_gate_test.py` | 1 systematic FP (`3817`), detection 2/11 | FAIL (unsafe) | ✓ handoff + tools |
+
+**LCB functional-49 final table (official harness):**
+
+| Config | pass@1 | breakdown |
+|--------|--------|-----------|
+| base, single-shot, no runner/adapter | **9/49 (18.4%)** | pass=9, runtime=3, tle=6, wrong=31 |
+| rune escalate (c3@0.627), de-overfit | **9/49 (18.4%)** | strict superset of base; rune-only [], base-only [] after de-overfit |
+
+*Note: rune escalate's first attempt **is** the base zero-shot, so it can only add tasks via escalation, never lose them — hence "strict superset." Published 35.1% is base on the **full** LCB v6 set; on this harder functional-only subset base itself is 18.4%, so 35% is not the comparable bar.*
+
+**MLflow caveat:** exps 73/74 (`issue52-lcb-fix-rerun*`) are **6-task smokes** (1/6), *not* the 49-task grade. The authoritative 49-task number lives in the official-harness JSON + PR comment only — **not yet a durable MLflow run** (see inventory §4, action item).
+
 ---
 
 ## 4. Cross-cutting findings
@@ -176,11 +201,16 @@ Scratchpad blocks logged as planning, incorporation, or infrastructure without n
 3. **"Retention gate passed"** → **Partial baseline** only; diff channel flat; full val.clean + CIs pending.
 4. **HPO val 0.571 vs scale0 0.792** → Compared invalid arms until reference_a true-floor correction.
 5. **training_exact HPO worst (0.294)** → Does not disprove Phase-1 probe gains — different metric/regime (runner generation vs frozen probe).
+6. **"rune 10/49 > base 9/49" (06-09 morning)** → **Retracted.** The +1 (3832) was within noise *and* dependent on task-specific answer-injection in `repair_brief.py`. De-overfit → **rune 9/49 = base 9/49 (tie)**. PR value is the held-out recall objective + engine fixes, not a pass@1 win (§3.7).
+7. **"oracle communication failure"** → **Ruled out.** Channel verified live through the real repair path; limiters are oracle *coverage* then *capability* (§3.7 E-oracle-rootcause).
 
 ---
 
 ## 5. Open questions & next steps
 
+> **Paper-facing prioritized list** (Table 2, Gate-1 comparator, 0.16× provenance, cross-family sweep, oracle-coverage lever, durable LCB run) is in [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md) §4. The items below are the issue-52 research backlog; they overlap but are scoped to the recall thread.
+
+0. **Oracle-coverage mechanism (the pass@1 lever).** Real-engine oracle never fires on hidden bugs (public tests pass); perfect oracle fires but base solves 0/11. Build property/metamorphic tests or broader generated inputs so `diagnose→repair` triggers on false-pass tasks. K=3 consensus already shown unsafe (§3.7 E-kconsensus). This is the only demonstrated path to moving rune above base.
 1. **Full retention panel:** Re-run `diag_recoverability` on full `val.clean` (323 rows) or pre-registered stratified 50–100 with bootstrap; close **diff** gap or scope Phase-2 objective.
 2. **Repair-memory eval:** Frozen B2 slice (40–60 attempt-1-fail), 3-arm `rune run`, success-vs-turn curve + recovery gap (B1 pre-reg); report by outcome stratum (attempt-1 pass vs repair-needed).
 3. **Hard-task slice:** Curate MBPP attempt-1-fail + multistep; re-HPO gen_scaling on hard only; fix plan-step spec leak (`project_label` in plan).
@@ -260,6 +290,7 @@ Scratchpad blocks logged as planning, incorporation, or infrastructure without n
 | MLflow trial-level metrics for all 16 HPO trials | Parent run + scratchpad interim; per-trial val_pass@1 not fully exported here |
 | Goal-2 n80/n160 checkpoint sha256 | Fetched via MLflow; local paths ephemeral post-upload |
 | Handoff files `instructions/handoff_*.md` | Cited in scratchpad; not found in workspace snapshot |
+| `docs/issue52-phase1-results-2026-06-04.md` | **Cited in §1/§3.2 but absent from disk** (2026-06-09); phase-1 numbers are recoverable from §3.2 (E-phase1), MLflow exp 45 run `fe72f9ddd69c`, and scratchpad `21:37`. Restore or re-point citations. |
 | Full `val.clean` retention | Only n=24 subsample scored |
 | B1 repair-memory batch | Pre-registered; not completed on frozen slice post-profile |
 | Judge arm | Reordered but not re-validated |

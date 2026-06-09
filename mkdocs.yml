@@ -43,6 +43,12 @@ nav:
       - Registry: api/registry.md
       - Sandbox: api/sandbox.md
       - CLI: api/cli.md
+  - Paper & Experiments:
+      - "Paper Evidence Map (paper_v9)": paper-evidence-map-2026-06-09.md
+      - "MLflow Experiment Inventory": mlflow-experiment-inventory-2026-06-09.md
+      - "Issue #52 Experimentation Log": issue52-experimentation-log.md
+      - "Results Section Guide": issue52-results-section-guide.md
+      - "Goal-3 Conclusions": issue52-goal3-conclusions-2026-06-05.md
   - Design Notes:
       - "Issue #49 D2L Retrain": superpowers/specs/2026-05-30-issue49-d2l-self-distillation-retrain-design.md
       - Rune v2 Simplification Design: superpowers/specs/2026-05-21-rune-v2-simplification-design.md
