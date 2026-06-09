@@ -95,7 +95,7 @@ The paper's most-cited quantitative claim:
 |----------|-------|----------------|-------|
 | Phase-1 held-out recall (Δlp_matched) | **+0.105**, CI [+0.033, +0.182] | exp 45 `issue52-phase1` run `fe72f9ddd69c` (c3); `_specificity_probe` post-hoc | J |
 | Phase-1 absent pass@1 | 8/24 (c3) vs 0/24 (scale0) vs 3/24 (warm) | `issue52-experimentation-log.md` §3.2 (E-phase1) + scratchpad `21:37` | J |
-| Spec-in-adapter scaling optimum | `adapter_scaling`=**0.627** → tuning 0.588 / val 0.571 | exp 41 `rune-bench-hpo` | J |
+| Spec-in-adapter scaling optimum | flat plateau `adapter_scaling`≈**0.6–0.9×** (0.627/0.673/0.685/0.815/0.921 all → tuning 0.588); 0.627 = lower edge; val 0.571 | exp 41 `rune-bench-hpo` | J |
 | spec-absent floor vs adapter | 0.333 → 0.583 (+0.25) | exp 61 `truefloor`; `goal3-conclusions` | J |
 | **LCB functional-49, base single-shot** | **9/49 (18.4%)** | official LCB harness via `tools/_lcb_grade.py` (PR #55 comment 2026-06-09 14:33Z) | J |
 | **LCB functional-49, rune (de-overfit)** | **9/49 (18.4%)** — ties base | same; **not** in MLflow (exps 73/74 are 6-task smokes only) | J |

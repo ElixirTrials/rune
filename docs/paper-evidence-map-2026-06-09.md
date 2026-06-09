@@ -25,7 +25,7 @@ Legend: ✅ backed (cite the home) · 🟡 partial / proxy only · ⛔ un-run / 
 | paper claim | status | evidence / gap |
 |-------------|:------:|----------------|
 | Mechanism: $H_\theta$ emits LoRA delta per step, reversible, constant per-step compute | ✅ | architectural; engine implements adapter hot-swap per step (`graph.py`) |
-| scaling claim (re-anchored to 0.627× on Qwen3-4B) | ✅ | now backed by `rune-bench-hpo` (exp 41); reported as a 0.627× *multiplier* of native scale, not "Nx below" (see §0.1) |
+| scaling claim (re-anchored to ≈0.6–0.9× plateau on Qwen3-4B) | 🟡 | backed by `rune-bench-hpo` (exp 41), but single-regime (reference_a spec-in-adapter Pass@1 sweep) and a **flat tie** (0.627/0.673/0.685/0.815/0.921 all = 0.588) — report as a sub-unity plateau, not a sharp 0.627× optimum. Multiplier of native scale, not "Nx below" (see §0.1). |
 | Pre-registered Gates 1–3 with fixed comparisons | ✅ (protocol) / ⛔ (results) | protocol fixed in paper; **no gate has a measured verdict** |
 | SLM regime, single 24 GB GPU | ✅ | all runs on one consumer GPU; Phase-1 `gpu_peak_gb`=11.6 (exp 45) |
 
@@ -33,7 +33,7 @@ Legend: ✅ backed (cite the home) · 🟡 partial / proxy only · ⛔ un-run / 
 
 | element | status | evidence / gap |
 |---------|:------:|----------------|
-| Table 1 optima (re-anchored) | ✅ | now reports `rune-bench-hpo` (exp 41): scaling **0.627×**, prompt mode **reference_a** (both searched); temp 0.3, presence 0.0, cont-mult 1.53, max-phase 4 (fixed). Objective = held-out MBPP Pass@1 (note: this differs from the old caption's hunk-loss blend, which belongs to the distillation HPO — B.7 now distinguishes them). |
+| Table 1 optima (re-anchored) | 🟡 | now reports `rune-bench-hpo` (exp 41): scaling **≈0.6–0.9× plateau** (0.627× = lower edge), prompt mode **reference_a** (both searched); temp 0.3, presence 0.0, cont-mult 1.53, max-phase 4 (fixed). Objective = held-out MBPP Pass@1 (differs from the old caption's hunk-loss blend, which belongs to the distillation HPO — B.7 now distinguishes them). |
 | "degenerate output at α≥1.0×" | 🟡 | directionally seen: `adapter-scaling-hpo` high-α trials score worse; degeneration root-caused to thinking-phase + presence_penalty, not α alone (`E-degen-ablation`) |
 | override-vs-contextualise conjecture | ✅ (as conjecture) | explicitly labelled provisional; B.8 cross-family sweep is the falsifier — **un-run** |
 
