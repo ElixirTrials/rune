@@ -86,54 +86,38 @@ def _3753_state(*, with_passing_code: bool = False) -> dict:
 
 
 class TestAssertionBriefEnrichment:
-    def test_3753_step4_brief_mentions_odd_even_not_generic(self) -> None:
+    def test_assertion_brief_carries_failing_case_task_agnostic(self) -> None:
+        # The brief must carry the concrete observed-vs-expected failing case and
+        # must NOT inject any task-specific solution (overfitting; misfires on
+        # other tasks). See test_repair_brief.test_assertion_brief_is_task_agnostic.
         stderr = _b4_stderr(4)
         brief = build_repair_brief(
-            stderr,
-            entry_point="maxDifference",
-            signature=SIG_3753,
-            plan=PLAN_3753,
-            overall_goal="odd and even frequency difference",
+            stderr, entry_point="maxDifference", signature=SIG_3753
         )
         assert brief is not None
         assert brief.failure_class == "assertion"
-        inv = brief.violated_invariant.lower()
-        assert "odd" in inv and "even" in inv
-        assert "not max(all_freq)" in inv
-
-    def test_3753_step4_fix_directive_discourages_max_min(self) -> None:
-        stderr = _b4_stderr(4)
-        brief = build_repair_brief(
-            stderr,
-            entry_point="maxDifference",
-            signature=SIG_3753,
-            plan=PLAN_3753,
-        )
-        assert brief is not None
-        assert (
-            "max" not in brief.fix_directive.lower()
-            or "odd" in brief.fix_directive.lower()
-        )
+        assert brief.observed.strip()
+        assert brief.expected.strip()
+        blob = brief.format_block().lower()
+        for leaked in ("odd-frequency", "not max(all_freq)", "anti-diagonal"):
+            assert leaked not in blob
 
 
 class TestMergeGuidanceHygiene:
-    def test_b4_step5_llm_max_min_guidance_filtered(self) -> None:
+    def test_b4_step5_llm_guidance_appended_as_advisory(self) -> None:
+        # Task-agnostic merge: the deterministic brief leads and the model's
+        # how-to-fix is appended as advisory (never suppressed by task keywords).
         brief = build_repair_brief(
-            _b4_stderr(4),
-            entry_point="maxDifference",
-            signature=SIG_3753,
-            plan=PLAN_3753,
+            _b4_stderr(4), entry_point="maxDifference", signature=SIG_3753
         )
         assert brief is not None
         llm = (
-            "Ensure that the maximum difference between the frequency of any two "
-            "characters is computed correctly by identifying the highest and lowest "
-            "frequencies in the character count map, then returning their absolute "
-            "difference."
+            "Identify the highest and lowest frequencies in the character count "
+            "map and return their absolute difference."
         )
         merged = merge_guidance_with_brief(brief.format_block(), llm)
-        assert "highest and lowest" not in merged
-        assert "odd" in merged.lower() or "violated_invariant" in merged
+        assert "failure_class: assertion" in merged
+        assert "how_to_fix" in merged
 
     def test_additive_guidance_kept_when_non_contradictory(self) -> None:
         brief = build_repair_brief(

@@ -83,7 +83,7 @@ def _stderr(qid: str, step: int) -> str:
             2,
             "assertion",
             False,
-            "anti-diagonal",
+            "correct results",
         ),
     ],
 )
@@ -104,6 +104,42 @@ def test_v2_golden_brief(
     assert brief.failure_class == failure_class
     assert brief.replan_recommended is replan
     assert invariant_substr.lower() in brief.violated_invariant.lower()
+
+
+@pytest.mark.parametrize(
+    ("entry", "stderr", "want_observed", "want_expected"),
+    [
+        # maxDifference-style (was hardcoded to inject odd/even parity answer).
+        (
+            "maxDifference",
+            "AssertionError: maxDifference(*['aaaaabbc']) -> 4, want 3",
+            "maxDifference(*['aaaaabbc']) -> 4",
+            "3",
+        ),
+        # list-returning task (the `[` in expected used to inject the anti-diagonal
+        # answer into ANY list task).
+        (
+            "assignElements",
+            "AssertionError: assignElements(*[[8, 4], [4, 2]]) -> [-1, 0], want [0, 0]",
+            "assignElements(*[[8, 4], [4, 2]]) -> [-1, 0]",
+            "[0, 0]",
+        ),
+    ],
+)
+def test_assertion_brief_is_task_agnostic(
+    entry: str, stderr: str, want_observed: str, want_expected: str
+) -> None:
+    # The brief must carry the concrete observed-vs-expected failing case and NOT
+    # inject any task-specific solution (overfitting that misfires on other tasks).
+    brief = build_repair_brief(stderr, entry_point=entry, signature="")
+    assert brief is not None
+    assert brief.failure_class == "assertion"
+    assert brief.observed == want_observed
+    assert brief.expected == want_expected
+    blob = brief.format_block().lower()
+    for leaked in ("odd-frequency", "even-frequency", "anti-diagonal",
+                   "max(all_freq)", "sorted independently"):
+        assert leaked not in blob, f"task-specific answer leaked: {leaked}"
 
 
 def test_brief_serialization() -> None:

@@ -5,7 +5,6 @@ from __future__ import annotations
 from rune.engine.delivery import format_delivery_contract
 from rune.engine.graph import _bare_signature_stub, render_episode_adapter, state_to_ctx
 from rune.engine.parse import render_template
-from rune.engine.repair_brief import _enrich_assertion_invariant
 from rune.engine.state import Action, Subtask, make_initial_state
 
 _SIG_3748 = "class Solution:\n    def sortMatrix(self, grid: List[List[int]]) -> List[List[int]]:\n        "
@@ -60,24 +59,6 @@ def test_adapter_includes_required_deliverable_for_entry_subtask() -> None:
     adp = render_episode_adapter("code", "sortMatrix", state)
     assert "## Required deliverable" in adp
     assert "grid" in adp
-
-
-def test_enrich_invariant_not_applied_to_even_numbers_task() -> None:
-    inv = _enrich_assertion_invariant(
-        "generic",
-        entry_point="totalNumbers",
-        plan="Count three-digit even numbers from digits",
-    )
-    assert inv == "generic"
-
-
-def test_enrich_invariant_applied_to_max_difference() -> None:
-    inv = _enrich_assertion_invariant(
-        "generic",
-        entry_point="maxDifference",
-        plan="odd and even character frequencies",
-    )
-    assert "odd-frequency" in inv.lower()
 
 
 def test_state_to_ctx_sets_delivery_contract() -> None:

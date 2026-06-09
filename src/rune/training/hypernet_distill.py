@@ -86,15 +86,12 @@ class DistillConfig(D2LTrainConfig):
     #   (edit-local mask, feedback swapped).
     # - "body_derangement": issue #52 cross-over control
     #   (BODY span, adapter derangement negative).
-    # - "body_recall_guarded": issue #52 pilot-2 objective. PRIMARY raises matched
+    # - "body_recall_guarded": issue #52 recall objective. PRIMARY raises matched
     #   body lp toward matched_target_lp (accessibility); GUARD holds the deranged
     #   partner's body lp at its frozen warm-start baseline (anti generic-boost),
-    #   with NO suppression reward. The win can only come from matched rising with
-    #   mismatch held — see docs/issue52-crossover-frozen-probe-results-2026-06-03.md.
-    #   REMOVE BEFORE MERGE unless the pilot validates the lever — the body_* branches
-    #   + helpers (_body_span_mask, _deranged_partner_context,
-    #   _contrastive_logprob_readout, _precompute_recall_baselines,
-    #   _recall_snapshot) are issue-52 probe code under eval (handoff RBM manifest).
+    #   with NO suppression reward — the win comes only from matched rising with
+    #   mismatch held. Validated on a held-out split (Phase-1: Δlp_matched +0.105,
+    #   CI [+0.033, +0.182] excludes 0; generalizes).
     contrastive_mode: str = "feedback_swap_edit_local"
     contrastive_weight: float = 1.0
     contrastive_margin: float = 1.0

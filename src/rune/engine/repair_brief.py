@@ -135,78 +135,27 @@ def _arity_brief(stderr: str, entry_point: str, signature: str) -> RepairBrief |
     )
 
 
-_ODD_FREQ_RE = re.compile(r"odd\w*freq", re.IGNORECASE)
-_EVEN_FREQ_RE = re.compile(r"even\w*freq", re.IGNORECASE)
-_MAX_MIN_FREQ_RE = re.compile(
-    r"\b(?:highest|lowest|max(?:imum)?|min(?:imum)?)\b.*\bfreq",
-    re.IGNORECASE,
-)
-
-
-def _enrich_assertion_invariant(
-    invariant: str,
-    *,
-    entry_point: str = "",
-    plan: str = "",
-    overall_goal: str = "",
-    acceptance_check: str = "",
-    subtask_description: str = "",
-) -> str:
-    """Pull algorithmic invariant from plan/goal when stderr lacks semantics."""
-    context = " ".join([plan, overall_goal, acceptance_check, subtask_description])
-    has_freq_parity = entry_point == "maxDifference" or (
-        _ODD_FREQ_RE.search(context) and _EVEN_FREQ_RE.search(context)
-    )
-    if has_freq_parity:
-        return (
-            "Return the maximum difference between an odd-frequency character "
-            "count and an even-frequency character count — NOT "
-            "max(all_freq) - min(all_freq)"
-        )
-    return invariant
-
-
 def _assertion_brief(
     stderr: str,
     entry_point: str,
-    *,
-    plan: str = "",
-    overall_goal: str = "",
-    acceptance_check: str = "",
-    subtask_description: str = "",
 ) -> RepairBrief | None:
     m = _ASSERT_WANT.search(stderr)
     if m:
         call, got, want = m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
-        invariant = f"`{entry_point}` must return correct results for public examples"
-        if "[" in want or "grid" in call.lower() or "matrix" in call.lower():
-            invariant = (
-                "Each anti-diagonal (constant i+j) must be sorted independently; "
-                "bottom-left diagonals non-increasing, top-right non-decreasing"
-            )
-        invariant = _enrich_assertion_invariant(
-            invariant,
-            entry_point=entry_point,
-            plan=plan,
-            overall_goal=overall_goal,
-            acceptance_check=acceptance_check,
-            subtask_description=subtask_description,
-        )
-        fix = (
-            "Fix the algorithm so observed output matches expected on the "
-            "failing public case"
-        )
-        if "odd-frequency" in invariant.lower():
-            fix = (
-                "Use odd-vs-even frequency parity (not max-min across all freqs) "
-                "so observed output matches expected"
-            )
+        # Task-agnostic brief: the concrete observed-vs-expected failing case IS the
+        # signal. No task-specific invariant is injected (a baked-in answer for one
+        # task is overfitting and misfires on others).
         return RepairBrief(
             failure_class="assertion",
-            violated_invariant=invariant,
+            violated_invariant=(
+                f"`{entry_point}` must return correct results for public examples"
+            ),
             observed=f"{call} -> {got}",
             expected=want,
-            fix_directive=fix,
+            fix_directive=(
+                "Fix the algorithm so observed output matches expected on the "
+                "failing public case"
+            ),
             replan_recommended=False,
         )
     m2 = _ASSERT_SIMPLE.search(stderr)
@@ -284,10 +233,6 @@ def build_repair_brief(
     *,
     entry_point: str = "",
     signature: str = "",
-    plan: str = "",
-    overall_goal: str = "",
-    acceptance_check: str = "",
-    subtask_description: str = "",
     complexity_repair_preserve_logic: bool = True,
 ) -> RepairBrief | None:
     """Classify sandbox stderr into a structured repair brief.
@@ -322,14 +267,7 @@ def build_repair_brief(
         )
 
     if "AssertionError" in text:
-        assertion = _assertion_brief(
-            text,
-            entry_point,
-            plan=plan,
-            overall_goal=overall_goal,
-            acceptance_check=acceptance_check,
-            subtask_description=subtask_description,
-        )
+        assertion = _assertion_brief(text, entry_point)
         if assertion is not None:
             return assertion
 
@@ -357,16 +295,12 @@ def build_repair_brief(
 
 
 def _contradicts_brief(brief_block: str, llm_guidance: str) -> bool:
-    """Drop LLM guidance that reframes a deterministic brief invariant."""
-    brief_lower = brief_block.lower()
-    guidance_lower = llm_guidance.lower()
-    if "odd-frequency" in brief_lower or (
-        "odd" in brief_lower and "even" in brief_lower
-    ):
-        if _MAX_MIN_FREQ_RE.search(guidance_lower):
-            return True
-        if "highest" in guidance_lower and "lowest" in guidance_lower:
-            return True
+    """Whether to drop LLM how-to-fix as contradicting the deterministic brief.
+
+    Intentionally task-agnostic: we no longer special-case any specific problem's
+    invariant (that was overfitting). The deterministic brief already leads; the
+    model's how-to-fix is appended as advisory, never suppressed by keyword.
+    """
     return False
 
 

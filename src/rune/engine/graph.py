@@ -341,7 +341,8 @@ def render_episode_adapter(
         if rec.target_subtask != target:
             continue
         if rec.feedback and rec.feedback.exit_code != 0:
-            snippet = rec.feedback.stderr.splitlines()[-1][:120]
+            lines = rec.feedback.stderr.splitlines()
+            snippet = (lines[-1][:120] if lines else "failed (no error text)")
             tried.append(f"- step {rec.step} ({rec.action_name}): {snippet}")
     delivery = ""
     if name == entry_pt and entry_pt:
@@ -1180,15 +1181,10 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             fb = feedback_map.get(name)
             if fb is None or fb.exit_code == 0:
                 continue
-            sub = next((s for s in state.get("subtasks", []) if s.name == name), None)
             brief = build_repair_brief(
                 fb.stderr,
                 entry_point=str(state.get("entry_point", "") or ""),
                 signature=str(state.get("signature", "") or ""),
-                plan=str(state.get("plans", {}).get(name, "") or ""),
-                overall_goal=str(state.get("overall_goal", "") or ""),
-                acceptance_check=sub.acceptance_check if sub else "",
-                subtask_description=sub.description if sub else "",
                 complexity_repair_preserve_logic=bool(
                     state.get("complexity_repair_preserve_logic", True)
                 ),

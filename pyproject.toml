@@ -160,8 +160,7 @@ ignore = ["B008"]
 "src/rune/training/diff_loss.py" = ["PLC0415", "PLW0603", "B905"]
 "src/rune/model/*.py" = ["PLC0415"]
 "tests/**" = ["E501"]
-# Research / remove-before-merge probe scripts: line length not enforced
-# (consolidates the explicit per-tool E501 entries below).
+# One-off diagnostic / research scripts under tools/: line length not enforced.
 "tools/*.py" = ["E501"]
 "tools/diag_synthetic_overfit.py" = ["E501"]
 "tools/diag_traj_sensitivity.py" = ["E501"]
