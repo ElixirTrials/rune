@@ -30,12 +30,15 @@ QID = "3705"
 N = 5
 
 _vc = importlib.util.spec_from_file_location(
-    "vc", "/workspaces/content/tools/_verify_critique.py")
+    "vc", "/workspaces/content/tools/_verify_critique.py"
+)
 vc = importlib.util.module_from_spec(_vc)
 _vc.loader.exec_module(vc)
 
-_PRE = ("from typing import *\nimport collections, math, heapq, bisect, itertools, "
-        "functools, re\nfrom collections import defaultdict, deque, Counter, OrderedDict\n")
+_PRE = (
+    "from typing import *\nimport collections, math, heapq, bisect, itertools, "
+    "functools, re\nfrom collections import defaultdict, deque, Counter, OrderedDict\n"
+)
 
 
 def _load_fn(code: str, entry: str):
@@ -46,23 +49,27 @@ def _load_fn(code: str, entry: str):
 
 
 async def main() -> None:
-    from rune.bench.lcb import extract_entry_function
-    from rune.config import load_rune_config
-    from rune.engine.graph import (
+    from rune.bench.lcb import extract_entry_function  # noqa: PLC0415
+    from rune.config import load_rune_config  # noqa: PLC0415
+    from rune.engine.graph import (  # noqa: PLC0415
         _effective_scaling,
         render_episode_adapter,
         state_to_ctx,
     )
-    from rune.engine.parse import extract_code_block, render_template
-    from rune.engine.policy import ACTIONS
-    from rune.engine.state import Feedback, StepRecord, Subtask
-    from rune.model.adapter import apply_episodic_adapter
-    from rune.model.wrapper import ModelWrapper
+    from rune.engine.parse import extract_code_block, render_template  # noqa: PLC0415
+    from rune.engine.policy import ACTIONS  # noqa: PLC0415
+    from rune.engine.state import Feedback, StepRecord, Subtask  # noqa: PLC0415
+    from rune.model.adapter import apply_episodic_adapter  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
-    rows = {json.loads(x)["question_id"]: json.loads(x)
-            for x in Path(LCB).read_text().splitlines()}
-    cands = {g["question_id"]: g["code_list"][0]
-             for g in json.loads(Path(COMBINED).read_text())}
+    rows = {
+        json.loads(x)["question_id"]: json.loads(x)
+        for x in Path(LCB).read_text().splitlines()
+    }
+    cands = {
+        g["question_id"]: g["code_list"][0]
+        for g in json.loads(Path(COMBINED).read_text())
+    }
     row = rows[QID]
     meta = json.loads(row["metadata"]) if row.get("metadata") else {}
     entry = meta.get("func_name") or ""
@@ -79,11 +86,15 @@ async def main() -> None:
         "observed: passes all public example tests, but is INCORRECT on at least one "
         "hidden test\n"
         "fix_directive: review the algorithm for missed edge cases (e.g. boundary / "
-        "degenerate inputs) and fix it.")
+        "degenerate inputs) and fix it."
+    )
 
     cfg = load_rune_config(None).override(
-        checkpoint_path=C3_CKPT, adapter_scaling=1.0, prompt_mode="escalate",
-        model_judge=False)
+        checkpoint_path=C3_CKPT,
+        adapter_scaling=1.0,
+        prompt_mode="escalate",
+        model_judge=False,
+    )
     model = ModelWrapper.from_config(cfg)
     base_repair = ACTIONS["repair"]
 
@@ -99,19 +110,38 @@ async def main() -> None:
         # never empty: the engine's adapter renderer indexes stderr.splitlines()[-1]
         tried = obs.replace("observed: ", "") if obs else "incorrect on a hidden test"
         state = {
-            "entry_point": entry, "signature": sig, "task": spec, "public_checks": "",
+            "entry_point": entry,
+            "signature": sig,
+            "task": spec,
+            "public_checks": "",
             "overall_goal": spec,
-            "subtasks": [Subtask(name=entry, description="", depends_on=[],
-                                 acceptance_check="", builds=entry)],
-            "code_results": {entry: wrong}, "best_code": {entry: wrong},
+            "subtasks": [
+                Subtask(
+                    name=entry,
+                    description="",
+                    depends_on=[],
+                    acceptance_check="",
+                    builds=entry,
+                )
+            ],
+            "code_results": {entry: wrong},
+            "best_code": {entry: wrong},
             "feedback": {entry: Feedback(stdout="", stderr=crit, exit_code=1)},
-            "diagnosis": {entry: crit}, "repair_briefs": {entry: crit},
-            "plans": {entry: ""}, "plan_rejections": {}, "integration_feedback": None,
-            "trajectory": [StepRecord(step=2, action_name="code", target_subtask=entry,
-                                      adapter_id=None,
-                                      feedback=Feedback(stdout="", stderr=tried,
-                                                        exit_code=1),
-                                      generated_code=wrong)],
+            "diagnosis": {entry: crit},
+            "repair_briefs": {entry: crit},
+            "plans": {entry: ""},
+            "plan_rejections": {},
+            "integration_feedback": None,
+            "trajectory": [
+                StepRecord(
+                    step=2,
+                    action_name="code",
+                    target_subtask=entry,
+                    adapter_id=None,
+                    feedback=Feedback(stdout="", stderr=tried, exit_code=1),
+                    generated_code=wrong,
+                )
+            ],
         }
         act = replace(base_repair, target_subtask=entry)
         ctx = state_to_ctx(state, act)
@@ -119,15 +149,23 @@ async def main() -> None:
         prompt = render_template("prompt_episodic_repair", **ctx)
         scaling = _effective_scaling("escalate", act, state["code_results"], 1.0)
         apply_episodic_adapter(model, traj, scaling=scaling)
-        gen = await model.generate(prompt=prompt, system_prompt=act.system_prompt,
-                                   max_tokens=2048, temperature=0.3, thinking_budget=0)
+        gen = await model.generate(
+            prompt=prompt,
+            system_prompt=act.system_prompt,
+            max_tokens=2048,
+            temperature=0.3,
+            thinking_budget=0,
+        )
         new = extract_entry_function(extract_code_block(gen.text) or "", entry)
         if not new.strip():
             return False, False
         return new.strip() != wrong.strip(), solved(new)
 
-    arms = [("perfect", perfect_crit), ("standard_generic", generic_crit),
-            ("standard_silent", "")]
+    arms = [
+        ("perfect", perfect_crit),
+        ("standard_generic", generic_crit),
+        ("standard_silent", ""),
+    ]
     summary = {}
     for name, crit in arms:
         ch = sv = 0
@@ -135,15 +173,17 @@ async def main() -> None:
             c, s = await forced_repair(crit)
             ch += c
             sv += s
-            print(f"  {name:16s} run {i+1}/{N}: changed={c} solved={s}", flush=True)
+            print(f"  {name:16s} run {i + 1}/{N}: changed={c} solved={s}", flush=True)
         summary[name] = (sv, ch)
 
-    print(f"\n=== 3705: FORCED repair, same channel, varying ONLY critique info ===")
+    print("\n=== 3705: FORCED repair, same channel, varying ONLY critique info ===")
     for name, _ in arms:
         sv, ch = summary[name]
         print(f"  {name:16s}: solved {sv}/{N}  (changed {ch}/{N})")
-    print("\nperfect = specific hidden case | standard_generic = told-wrong-but-no-case "
-          "| standard_silent = repair fired with no failing case at all")
+    print(
+        "\nperfect = specific hidden case | standard_generic = told-wrong-but-no-case "
+        "| standard_silent = repair fired with no failing case at all"
+    )
 
 
 if __name__ == "__main__":

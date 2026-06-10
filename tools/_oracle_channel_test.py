@@ -42,36 +42,48 @@ Output only the function in one ```python block."""
 
 # (label, critique-line, what a LIVE channel should produce)
 VARIANTS = [
-    ("V0_real",
-     "PERFECT CRITIQUE — On input [[0]*50, 50] your function returns -1, but the "
-     "correct answer is 0. Fix the logic.",
-     "the real bug fix (hard)"),
+    (
+        "V0_real",
+        "PERFECT CRITIQUE — On input [[0]*50, 50] your function returns -1, but the "
+        "correct answer is 0. Fix the logic.",
+        "the real bug fix (hard)",
+    ),
     ("V1_no_critique", "", "any attempt"),
-    ("V2_trivial_addline",
-     "INSTRUCTION — Keep the logic EXACTLY the same, but add `debug = True` as the "
-     "very first line inside the function body. Make only that change.",
-     "code with `debug = True` added"),
-    ("V3_drastic_replace",
-     "INSTRUCTION — The entire body is wrong. Replace the WHOLE function body with "
-     "exactly this single line: `return sum(nums) % k`. Do not keep the old logic.",
-     "body == `return sum(nums) % k`"),
-    ("V4_rename",
-     "INSTRUCTION — Keep the logic identical but RENAME the function from "
-     "`largestInteger` to `solve`.",
-     "function named `solve`"),
+    (
+        "V2_trivial_addline",
+        "INSTRUCTION — Keep the logic EXACTLY the same, but add `debug = True` as the "
+        "very first line inside the function body. Make only that change.",
+        "code with `debug = True` added",
+    ),
+    (
+        "V3_drastic_replace",
+        "INSTRUCTION — The entire body is wrong. Replace the WHOLE function body with "
+        "exactly this single line: `return sum(nums) % k`. Do not keep the old logic.",
+        "body == `return sum(nums) % k`",
+    ),
+    (
+        "V4_rename",
+        "INSTRUCTION — Keep the logic identical but RENAME the function from "
+        "`largestInteger` to `solve`.",
+        "function named `solve`",
+    ),
 ]
 
 
 async def main() -> None:
-    from rune.bench.lcb import extract_entry_function
-    from rune.config import load_rune_config
-    from rune.engine.parse import extract_code_block
-    from rune.model.wrapper import ModelWrapper
+    from rune.bench.lcb import extract_entry_function  # noqa: PLC0415
+    from rune.config import load_rune_config  # noqa: PLC0415
+    from rune.engine.parse import extract_code_block  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
-    rows = {json.loads(x)["question_id"]: json.loads(x)
-            for x in Path(LCB).read_text().splitlines()}
-    cands = {g["question_id"]: g["code_list"][0]
-             for g in json.loads(Path(COMBINED).read_text())}
+    rows = {
+        json.loads(x)["question_id"]: json.loads(x)
+        for x in Path(LCB).read_text().splitlines()
+    }
+    cands = {
+        g["question_id"]: g["code_list"][0]
+        for g in json.loads(Path(COMBINED).read_text())
+    }
     row = rows[QID]
     meta = json.loads(row["metadata"]) if row.get("metadata") else {}
     entry = meta.get("func_name") or ""
@@ -80,22 +92,32 @@ async def main() -> None:
 
     cfg = load_rune_config(None).override(
         checkpoint_path="/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt",
-        adapter_scaling=0.0, model_judge=False)
+        adapter_scaling=0.0,
+        model_judge=False,
+    )
     model = ModelWrapper.from_config(cfg)
 
-    print(f"# {QID} {entry}  (base, scaling=0)\n# ORIGINAL ({len(orig)} chars):\n{orig}\n")
+    print(
+        f"# {QID} {entry}  (base, scaling=0)\n# ORIGINAL ({len(orig)} chars):\n{orig}\n"
+    )
     for temp in (0.3, 0.0):
-        print(f"\n{'='*70}\n=== temperature={temp} ===\n{'='*70}")
+        print(f"\n{'=' * 70}\n=== temperature={temp} ===\n{'=' * 70}")
         for label, crit, expect in VARIANTS:
             prompt = _REPAIR.format(entry=entry, spec=spec, code=orig, crit=crit)
             gen = await model.generate(
-                prompt=prompt, max_tokens=1024, temperature=temp, thinking_budget=0)
+                prompt=prompt, max_tokens=1024, temperature=temp, thinking_budget=0
+            )
             raw = gen.text
             new = extract_entry_function(extract_code_block(raw) or "", entry)
             identical = new.strip() == orig.strip()
             empty = not new.strip()
-            tag = ("BYTE-IDENTICAL" if identical else
-                   "EMPTY/UNEXTRACTABLE" if empty else "CHANGED")
+            tag = (
+                "BYTE-IDENTICAL"
+                if identical
+                else "EMPTY/UNEXTRACTABLE"
+                if empty
+                else "CHANGED"
+            )
             print(f"\n--- {label}  (live-channel expects: {expect}) -> {tag}")
             print(f"    raw_gen_len={len(raw)} extracted_len={len(new)}")
             if not identical and not empty:

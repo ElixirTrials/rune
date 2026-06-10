@@ -29,17 +29,20 @@ from typing import Any
 LCB = "/tmp/lcb/test6.jsonl"
 COMBINED = "/tmp/goal3/overnight/lcb_postfix_combined.json"
 C3_CKPT = "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
-TASKS = ["3817", "3705"]   # must-NOT-flag, should-flag
+TASKS = ["3817", "3705"]  # must-NOT-flag, should-flag
 K_REFS = 6
 MIN_AGREE = 3
 
 _vc = importlib.util.spec_from_file_location(
-    "vc", "/workspaces/content/tools/_verify_critique.py")
+    "vc", "/workspaces/content/tools/_verify_critique.py"
+)
 vc = importlib.util.module_from_spec(_vc)
 _vc.loader.exec_module(vc)
 
-_PRE = ("from typing import *\nimport collections, math, heapq, bisect, itertools, "
-        "functools, re\nfrom collections import defaultdict, deque, Counter, OrderedDict\n")
+_PRE = (
+    "from typing import *\nimport collections, math, heapq, bisect, itertools, "
+    "functools, re\nfrom collections import defaultdict, deque, Counter, OrderedDict\n"
+)
 
 _REF_PROMPTS = [
     "Write a SIMPLE, obviously-correct BRUTE-FORCE implementation of `{entry}`. "
@@ -62,6 +65,7 @@ def _load(code: str, entry: str):
 def _call(fn, args, t=4):
     def _to(_s, _f):
         raise TimeoutError()
+
     signal.signal(signal.SIGALRM, _to)
     signal.alarm(t)
     try:
@@ -79,16 +83,26 @@ def _boundary(public_calls: list[list[Any]]) -> list[list[Any]]:
     for args in public_calls:
         out.append(list(args))
         for i, v in enumerate(args):
+
             def swap(nv, _i=i, _a=args):
                 c = list(_a)
                 c[_i] = nv
                 return c
+
             if isinstance(v, list):
-                out += [swap([]), swap(v[:1]), swap(v + v), swap(sorted(v)),
-                        swap(list(reversed(v)))]
+                out += [
+                    swap([]),
+                    swap(v[:1]),
+                    swap(v + v),
+                    swap(sorted(v)),
+                    swap(list(reversed(v))),
+                ]
                 if v and all(isinstance(x, int) for x in v):
-                    out += [swap([0] * len(v)), swap([v[0]] * len(v)),
-                            swap([-x for x in v])]
+                    out += [
+                        swap([0] * len(v)),
+                        swap([v[0]] * len(v)),
+                        swap([-x for x in v]),
+                    ]
             elif isinstance(v, int) and not isinstance(v, bool):
                 out += [swap(0), swap(1), swap(v + 1), swap(max(0, v - 1))]
             elif isinstance(v, str):
@@ -103,22 +117,27 @@ def _boundary(public_calls: list[list[Any]]) -> list[list[Any]]:
 
 
 async def main() -> None:
-    from rune.bench.lcb import (
+    from rune.bench.lcb import (  # noqa: PLC0415
         build_public_assert_checks,
         extract_entry_function,
     )
-    from rune.config import load_rune_config
-    from rune.engine.oracle import parse_public_call_arglists
-    from rune.engine.parse import extract_code_block
-    from rune.model.wrapper import ModelWrapper
+    from rune.config import load_rune_config  # noqa: PLC0415
+    from rune.engine.oracle import parse_public_call_arglists  # noqa: PLC0415
+    from rune.engine.parse import extract_code_block  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
-    rows = {json.loads(x)["question_id"]: json.loads(x)
-            for x in Path(LCB).read_text().splitlines()}
-    cands = {g["question_id"]: g["code_list"][0]
-             for g in json.loads(Path(COMBINED).read_text())}
+    rows = {
+        json.loads(x)["question_id"]: json.loads(x)
+        for x in Path(LCB).read_text().splitlines()
+    }
+    cands = {
+        g["question_id"]: g["code_list"][0]
+        for g in json.loads(Path(COMBINED).read_text())
+    }
 
     cfg = load_rune_config(None).override(
-        checkpoint_path=C3_CKPT, adapter_scaling=0.0, model_judge=False)  # base refs
+        checkpoint_path=C3_CKPT, adapter_scaling=0.0, model_judge=False
+    )  # base refs
     model = ModelWrapper.from_config(cfg)
 
     for qid in TASKS:
@@ -127,13 +146,22 @@ async def main() -> None:
         entry = meta.get("func_name") or ""
         spec = row.get("question_content", "")[:3500]
         public = build_public_assert_checks(row)
-        pub_calls = parse_public_call_arglists(public, entry) if (public and entry) else []
-        all_cases = vc._cases(row)
+        pub_calls = (
+            parse_public_call_arglists(public, entry) if (public and entry) else []
+        )
         pub_cases = []
         for t in json.loads(row["public_test_cases"]):
             try:
-                pub_cases.append(([ast.literal_eval(x) for x in t["input"].split("\n")
-                                   if x.strip()], ast.literal_eval(t["output"])))
+                pub_cases.append(
+                    (
+                        [
+                            ast.literal_eval(x)
+                            for x in t["input"].split("\n")
+                            if x.strip()
+                        ],
+                        ast.literal_eval(t["output"]),
+                    )
+                )
             except (ValueError, SyntaxError):
                 continue
         cand = _load(extract_entry_function(cands[qid], entry), entry)
@@ -141,11 +169,17 @@ async def main() -> None:
         # --- generate K diverse references, keep those passing ALL public ---
         refs = []
         for k in range(K_REFS):
-            prompt = (_REF_PROMPTS[k % len(_REF_PROMPTS)].format(entry=entry)
-                      + f"\n\n{spec}\n\nDefine `{entry}` exactly. Output only the "
-                      f"function in one ```python block.")
-            gen = await model.generate(prompt=prompt, max_tokens=1024,
-                                       temperature=0.2 + 0.12 * k, thinking_budget=0)
+            prompt = (
+                _REF_PROMPTS[k % len(_REF_PROMPTS)].format(entry=entry)
+                + f"\n\n{spec}\n\nDefine `{entry}` exactly. Output only the "
+                f"function in one ```python block."
+            )
+            gen = await model.generate(
+                prompt=prompt,
+                max_tokens=1024,
+                temperature=0.2 + 0.12 * k,
+                thinking_budget=0,
+            )
             rc = extract_entry_function(extract_code_block(gen.text) or "", entry)
             if not rc.strip():
                 continue
@@ -157,16 +191,19 @@ async def main() -> None:
                 refs.append(rfn)
         # --- model-proposed adversarial inputs ---
         proposed: list[list[Any]] = []
-        jp = (f"Here is a candidate solution for `{entry}`:\n```python\n"
-              f"{extract_entry_function(cands[qid], entry)}\n```\n\n{spec}\n\n"
-              f"List up to 6 specific argument tuples (valid per the constraints) "
-              f"that are tricky edge cases where this code is most likely WRONG. "
-              f"Output each as a Python list of the call arguments, one per line, "
-              f"no prose.")
-        gen = await model.generate(prompt=jp, max_tokens=512, temperature=0.5,
-                                   thinking_budget=0)
-        for line in gen.text.splitlines():
-            line = line.strip().strip("`").lstrip("-").strip()
+        jp = (
+            f"Here is a candidate solution for `{entry}`:\n```python\n"
+            f"{extract_entry_function(cands[qid], entry)}\n```\n\n{spec}\n\n"
+            f"List up to 6 specific argument tuples (valid per the constraints) "
+            f"that are tricky edge cases where this code is most likely WRONG. "
+            f"Output each as a Python list of the call arguments, one per line, "
+            f"no prose."
+        )
+        gen = await model.generate(
+            prompt=jp, max_tokens=512, temperature=0.5, thinking_budget=0
+        )
+        for raw in gen.text.splitlines():
+            line = raw.strip().strip("`").lstrip("-").strip()
             if line.startswith("[") and line.endswith("]"):
                 try:
                     v = ast.literal_eval(line)
@@ -194,13 +231,17 @@ async def main() -> None:
         verdict = "FLAG" if flagged else "no-flag"
         want = "should-flag" if qid == "3705" else "must-NOT-flag"
         ok = (flagged is not None) == (qid == "3705")
-        print(f"\n{qid} {entry}: refs_valid={len(refs)}/{K_REFS} "
-              f"proposed_inputs={len(proposed)} boundary={len(_boundary(pub_calls))}")
+        print(
+            f"\n{qid} {entry}: refs_valid={len(refs)}/{K_REFS} "
+            f"proposed_inputs={len(proposed)} boundary={len(_boundary(pub_calls))}"
+        )
         print(f"  verdict={verdict}  ({want})  -> {'PASS' if ok else 'FAIL'}")
         if flagged:
             X, cv, rv, na = flagged
-            print(f"  disagreement on {vc._summarize(X)[:120]}: cand={cv[:60]} "
-                  f"vs {na} unanimous refs={rv[:60]}")
+            print(
+                f"  disagreement on {vc._summarize(X)[:120]}: cand={cv[:60]} "
+                f"vs {na} unanimous refs={rv[:60]}"
+            )
 
 
 if __name__ == "__main__":

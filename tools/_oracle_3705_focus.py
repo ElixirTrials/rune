@@ -27,12 +27,15 @@ QID = "3705"
 N = 5
 
 _vc = importlib.util.spec_from_file_location(
-    "vc", "/workspaces/content/tools/_verify_critique.py")
+    "vc", "/workspaces/content/tools/_verify_critique.py"
+)
 vc = importlib.util.module_from_spec(_vc)
 _vc.loader.exec_module(vc)
 
-_PRE = ("from typing import *\nimport collections, math, heapq, bisect, itertools, "
-        "functools, re\nfrom collections import defaultdict, deque, Counter, OrderedDict\n")
+_PRE = (
+    "from typing import *\nimport collections, math, heapq, bisect, itertools, "
+    "functools, re\nfrom collections import defaultdict, deque, Counter, OrderedDict\n"
+)
 
 
 def _load_fn(code: str, entry: str):
@@ -43,23 +46,27 @@ def _load_fn(code: str, entry: str):
 
 
 async def main() -> None:
-    from rune.bench.lcb import extract_entry_function
-    from rune.config import load_rune_config
-    from rune.engine.graph import (
+    from rune.bench.lcb import extract_entry_function  # noqa: PLC0415
+    from rune.config import load_rune_config  # noqa: PLC0415
+    from rune.engine.graph import (  # noqa: PLC0415
         _effective_scaling,
         render_episode_adapter,
         state_to_ctx,
     )
-    from rune.engine.parse import extract_code_block, render_template
-    from rune.engine.policy import ACTIONS
-    from rune.engine.state import Feedback, StepRecord, Subtask
-    from rune.model.adapter import apply_episodic_adapter
-    from rune.model.wrapper import ModelWrapper
+    from rune.engine.parse import extract_code_block, render_template  # noqa: PLC0415
+    from rune.engine.policy import ACTIONS  # noqa: PLC0415
+    from rune.engine.state import Feedback, StepRecord, Subtask  # noqa: PLC0415
+    from rune.model.adapter import apply_episodic_adapter  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
-    rows = {json.loads(x)["question_id"]: json.loads(x)
-            for x in Path(LCB).read_text().splitlines()}
-    cands = {g["question_id"]: g["code_list"][0]
-             for g in json.loads(Path(COMBINED).read_text())}
+    rows = {
+        json.loads(x)["question_id"]: json.loads(x)
+        for x in Path(LCB).read_text().splitlines()
+    }
+    cands = {
+        g["question_id"]: g["code_list"][0]
+        for g in json.loads(Path(COMBINED).read_text())
+    }
     row = rows[QID]
     meta = json.loads(row["metadata"]) if row.get("metadata") else {}
     entry = meta.get("func_name") or ""
@@ -67,12 +74,17 @@ async def main() -> None:
     sig = row.get("starter_code", "") or ""
     wrong = extract_entry_function(cands[QID], entry)
     all_cases = vc._cases(row)
-    import ast
+    import ast  # noqa: PLC0415
+
     pub_cases = []
     for t in json.loads(row["public_test_cases"]):
         try:
-            pub_cases.append(([ast.literal_eval(x) for x in t["input"].split("\n")
-                               if x.strip()], ast.literal_eval(t["output"])))
+            pub_cases.append(
+                (
+                    [ast.literal_eval(x) for x in t["input"].split("\n") if x.strip()],
+                    ast.literal_eval(t["output"]),
+                )
+            )
         except (ValueError, SyntaxError):
             continue
 
@@ -81,33 +93,59 @@ async def main() -> None:
     hidden_fail = vc.first_failure(fn, all_cases)
 
     print(f"# {QID} {entry}: {len(pub_cases)} public cases, {len(all_cases)} total")
-    print(f"# STANDARD oracle (public tests) verdict on shipped code: "
-          f"{'FAIL '+str(pub_fail[0]) if pub_fail else 'ALL PASS'}")
-    print(f"# PERFECT oracle first hidden failure: {hidden_fail[0]}  "
-          f"{vc.build_critique(entry, *hidden_fail).splitlines()[1][:90]}")
+    print(
+        f"# STANDARD oracle (public tests) verdict on shipped code: "
+        f"{'FAIL ' + str(pub_fail[0]) if pub_fail else 'ALL PASS'}"
+    )
+    print(
+        f"# PERFECT oracle first hidden failure: {hidden_fail[0]}  "
+        f"{vc.build_critique(entry, *hidden_fail).splitlines()[1][:90]}"
+    )
 
     cfg = load_rune_config(None).override(
-        checkpoint_path=C3_CKPT, adapter_scaling=1.0, prompt_mode="escalate",
-        model_judge=False)
+        checkpoint_path=C3_CKPT,
+        adapter_scaling=1.0,
+        prompt_mode="escalate",
+        model_judge=False,
+    )
     model = ModelWrapper.from_config(cfg)
     base_repair = ACTIONS["repair"]
 
     async def repair_once(crit: str, obs_line: str) -> tuple[bool, bool]:
         tried = obs_line.replace("observed: ", "")
         state = {
-            "entry_point": entry, "signature": sig, "task": spec, "public_checks": "",
+            "entry_point": entry,
+            "signature": sig,
+            "task": spec,
+            "public_checks": "",
             "overall_goal": spec,
-            "subtasks": [Subtask(name=entry, description="", depends_on=[],
-                                 acceptance_check="", builds=entry)],
-            "code_results": {entry: wrong}, "best_code": {entry: wrong},
+            "subtasks": [
+                Subtask(
+                    name=entry,
+                    description="",
+                    depends_on=[],
+                    acceptance_check="",
+                    builds=entry,
+                )
+            ],
+            "code_results": {entry: wrong},
+            "best_code": {entry: wrong},
             "feedback": {entry: Feedback(stdout="", stderr=crit, exit_code=1)},
-            "diagnosis": {entry: crit}, "repair_briefs": {entry: crit},
-            "plans": {entry: ""}, "plan_rejections": {}, "integration_feedback": None,
-            "trajectory": [StepRecord(step=2, action_name="code", target_subtask=entry,
-                                      adapter_id=None,
-                                      feedback=Feedback(stdout="", stderr=tried,
-                                                        exit_code=1),
-                                      generated_code=wrong)],
+            "diagnosis": {entry: crit},
+            "repair_briefs": {entry: crit},
+            "plans": {entry: ""},
+            "plan_rejections": {},
+            "integration_feedback": None,
+            "trajectory": [
+                StepRecord(
+                    step=2,
+                    action_name="code",
+                    target_subtask=entry,
+                    adapter_id=None,
+                    feedback=Feedback(stdout="", stderr=tried, exit_code=1),
+                    generated_code=wrong,
+                )
+            ],
         }
         act = replace(base_repair, target_subtask=entry)
         ctx = state_to_ctx(state, act)
@@ -115,8 +153,13 @@ async def main() -> None:
         prompt = render_template("prompt_episodic_repair", **ctx)
         scaling = _effective_scaling("escalate", act, state["code_results"], 1.0)
         apply_episodic_adapter(model, traj, scaling=scaling)
-        gen = await model.generate(prompt=prompt, system_prompt=act.system_prompt,
-                                   max_tokens=2048, temperature=0.3, thinking_budget=0)
+        gen = await model.generate(
+            prompt=prompt,
+            system_prompt=act.system_prompt,
+            max_tokens=2048,
+            temperature=0.3,
+            thinking_budget=0,
+        )
         new = extract_entry_function(extract_code_block(gen.text) or "", entry)
         if not new.strip():
             return False, False
@@ -136,29 +179,35 @@ async def main() -> None:
         ch, sv = await repair_once(pcrit, pobs)
         p_changed += ch
         p_solved += sv
-        print(f"  perfect run {i+1}/{N}: changed={ch} solved={sv}", flush=True)
+        print(f"  perfect run {i + 1}/{N}: changed={ch} solved={sv}", flush=True)
 
     # STANDARD oracle: only fires if a PUBLIC case fails
     if pub_fail is None:
-        print("\n# STANDARD oracle: public tests all PASS -> diagnose/repair never "
-              "fires -> shipped code is the wrong code, UNCHANGED. solved=0/1 (no "
-              "repair possible).")
+        print(
+            "\n# STANDARD oracle: public tests all PASS -> diagnose/repair never "
+            "fires -> shipped code is the wrong code, UNCHANGED. solved=0/1 (no "
+            "repair possible)."
+        )
         s_solved = "n/a (repair never fires)"
     else:
         scrit = vc.build_critique(entry, *pub_fail)
         sobs = next(ln for ln in scrit.splitlines() if ln.startswith("observed:"))
         s_solved = 0
-        for i in range(N):
+        for _ in range(N):
             _ch, sv = await repair_once(scrit, sobs)
             s_solved += sv
         s_solved = f"{s_solved}/{N}"
 
-    print(f"\n=== 3705, fixed communication, oracle swapped ===")
-    print(f"PERFECT oracle  (sees hidden [0]*50 case): solved {p_solved}/{N} "
-          f"(changed {p_changed}/{N})")
+    print("\n=== 3705, fixed communication, oracle swapped ===")
+    print(
+        f"PERFECT oracle  (sees hidden [0]*50 case): solved {p_solved}/{N} "
+        f"(changed {p_changed}/{N})"
+    )
     print(f"STANDARD oracle (public tests only):       solved {s_solved}")
-    print("\nSame model, same verified-clean repair channel. The only difference is "
-          "whether the oracle SAW the failing case -> isolates oracle COVERAGE.")
+    print(
+        "\nSame model, same verified-clean repair channel. The only difference is "
+        "whether the oracle SAW the failing case -> isolates oracle COVERAGE."
+    )
 
 
 if __name__ == "__main__":

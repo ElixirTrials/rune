@@ -14,7 +14,6 @@ Adapter sweep: --ref-scaling lets us confirm base (0.0) gives the most-valid ref
 from __future__ import annotations
 
 import argparse
-import ast
 import asyncio
 import base64
 import json
@@ -25,10 +24,28 @@ LCB = "/tmp/lcb/test6.jsonl"
 COMBINED = "/tmp/goal3/overnight/lcb_postfix_combined.json"
 
 OFFICIAL_PASS = {
-    "3709", "3723", "3736", "3750", "3768", "3773", "3778", "3809", "3817", "3832",
+    "3709",
+    "3723",
+    "3736",
+    "3750",
+    "3768",
+    "3773",
+    "3778",
+    "3809",
+    "3817",
+    "3832",
 }
 FALSE_PASS = {
-    "3701", "3705", "3717", "3743", "3754", "3760", "3771", "3777", "3786", "3791",
+    "3701",
+    "3705",
+    "3717",
+    "3743",
+    "3754",
+    "3760",
+    "3771",
+    "3777",
+    "3786",
+    "3791",
     "3793",
 }
 
@@ -49,17 +66,27 @@ def _boundary_inputs(public_calls: list[list[Any]]) -> list[list[Any]]:
     for args in public_calls:
         out.append(list(args))  # the example itself
         for i, v in enumerate(args):
+
             def _swap(nv: Any, _i: int = i, _a: list[Any] = args) -> list[Any]:
                 c = list(_a)
                 c[_i] = nv
                 return c
 
             if isinstance(v, list):
-                out += [_swap([]), _swap(v[:1]), _swap(v + v), _swap(sorted(v)),
-                        _swap(list(reversed(v))), _swap(v * 3)]
+                out += [
+                    _swap([]),
+                    _swap(v[:1]),
+                    _swap(v + v),
+                    _swap(sorted(v)),
+                    _swap(list(reversed(v))),
+                    _swap(v * 3),
+                ]
                 if v and all(isinstance(x, int) for x in v):
-                    out += [_swap([-x for x in v]), _swap([0] * len(v)),
-                            _swap([v[0]] * len(v))]
+                    out += [
+                        _swap([-x for x in v]),
+                        _swap([0] * len(v)),
+                        _swap([v[0]] * len(v)),
+                    ]
             elif isinstance(v, str):
                 out += [_swap(""), _swap(v[:1]), _swap(v + v), _swap(v[::-1])]
             elif isinstance(v, int) and not isinstance(v, bool):
@@ -125,17 +152,27 @@ async def main() -> None:
     ap.add_argument("--out", default="/tmp/goal3/overnight/oracle_probe.json")
     args = ap.parse_args()
 
-    from rune.bench.lcb import build_public_assert_checks, extract_entry_function
-    from rune.config import load_rune_config
-    from rune.engine.oracle import parse_public_call_arglists, with_probe_imports
-    from rune.engine.parse import extract_code_block
-    from rune.model.wrapper import ModelWrapper
-    from rune.sandbox.executor import run_in_sandbox
+    from rune.bench.lcb import (  # noqa: PLC0415
+        build_public_assert_checks,
+        extract_entry_function,
+    )
+    from rune.config import load_rune_config  # noqa: PLC0415
+    from rune.engine.oracle import (  # noqa: PLC0415
+        parse_public_call_arglists,
+        with_probe_imports,
+    )
+    from rune.engine.parse import extract_code_block  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
+    from rune.sandbox.executor import run_in_sandbox  # noqa: PLC0415
 
-    rows = {json.loads(line)["question_id"]: json.loads(line)
-            for line in Path(LCB).read_text().splitlines()}
-    cands = {g["question_id"]: g["code_list"][0]
-             for g in json.loads(Path(COMBINED).read_text())}
+    rows = {
+        json.loads(line)["question_id"]: json.loads(line)
+        for line in Path(LCB).read_text().splitlines()
+    }
+    cands = {
+        g["question_id"]: g["code_list"][0]
+        for g in json.loads(Path(COMBINED).read_text())
+    }
 
     cfg = load_rune_config(None).override(
         checkpoint_path="/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt",
@@ -154,12 +191,15 @@ async def main() -> None:
         public = build_public_assert_checks(row)
         calls = parse_public_call_arglists(public, entry) if (public and entry) else []
         # --- generate K brute-force references (BASE: no adapter applied) ---
-        from rune.engine.oracle import build_subtask_probe
+        from rune.engine.oracle import build_subtask_probe  # noqa: PLC0415
+
         valid_refs: list[str] = []
         for k in range(args.k):
             gen = await model.generate(
                 prompt=_REF_PROMPT.format(entry=entry, spec=spec),
-                max_tokens=1024, temperature=0.2 if k == 0 else 0.6, thinking_budget=0,
+                max_tokens=1024,
+                temperature=0.2 if k == 0 else 0.6,
+                thinking_budget=0,
             )
             rc = extract_entry_function(extract_code_block(gen.text), entry)
             if not rc.strip() or not public:
@@ -176,17 +216,29 @@ async def main() -> None:
             script = _DIFF_TEMPLATE.format(
                 cand_b64=base64.b64encode(cand_code.encode()).decode(),
                 ref_b64s=[base64.b64encode(r.encode()).decode() for r in valid_refs],
-                entry=entry, inputs=inputs,
+                entry=entry,
+                inputs=inputs,
             )
             res = run_in_sandbox(with_probe_imports(script), timeout=20)
             out = (res.stdout or "").strip()
             flagged = out.startswith("DISAGREE")
             detail = out[:160]
         cohort = "PASS" if qid in OFFICIAL_PASS else "FALSE_PASS"
-        results.append({"qid": qid, "entry": entry, "cohort": cohort,
-                        "ref_valid": ref_valid, "flagged": flagged, "detail": detail})
-        print(f"{qid} {cohort:10s} ref_valid={ref_valid!s:5s} flagged={flagged!s:5s} "
-              f"{detail}", flush=True)
+        results.append(
+            {
+                "qid": qid,
+                "entry": entry,
+                "cohort": cohort,
+                "ref_valid": ref_valid,
+                "flagged": flagged,
+                "detail": detail,
+            }
+        )
+        print(
+            f"{qid} {cohort:10s} ref_valid={ref_valid!s:5s} flagged={flagged!s:5s} "
+            f"{detail}",
+            flush=True,
+        )
 
     Path(args.out).write_text(json.dumps(results, indent=2))
     fp = [r for r in results if r["cohort"] == "PASS" and r["flagged"]]
@@ -194,10 +246,14 @@ async def main() -> None:
     rv = sum(r["ref_valid"] for r in results)
     print(f"\n=== ref_scaling={args.ref_scaling} ===")
     print(f"reference valid: {rv}/{len(results)}")
-    print(f"FALSE-POSITIVE (PASS tasks flagged): {len(fp)}/{len(OFFICIAL_PASS)} "
-          f"{[r['qid'] for r in fp]}")
-    print(f"DETECTION (false-pass tasks flagged): {len(det)}/{len(FALSE_PASS)} "
-          f"{[r['qid'] for r in det]}")
+    print(
+        f"FALSE-POSITIVE (PASS tasks flagged): {len(fp)}/{len(OFFICIAL_PASS)} "
+        f"{[r['qid'] for r in fp]}"
+    )
+    print(
+        f"DETECTION (false-pass tasks flagged): {len(det)}/{len(FALSE_PASS)} "
+        f"{[r['qid'] for r in det]}"
+    )
 
 
 if __name__ == "__main__":

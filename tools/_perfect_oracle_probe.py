@@ -25,7 +25,16 @@ LCB = "/tmp/lcb/test6.jsonl"
 COMBINED = "/tmp/goal3/overnight/lcb_postfix_combined.json"
 
 FALSE_PASS = [
-    "3701", "3705", "3717", "3743", "3754", "3760", "3771", "3777", "3786", "3791",
+    "3701",
+    "3705",
+    "3717",
+    "3743",
+    "3754",
+    "3760",
+    "3771",
+    "3777",
+    "3786",
+    "3791",
     "3793",
 ]
 
@@ -39,7 +48,7 @@ def _decode_private(s: str) -> list:
 
 def _test_cases(row: dict) -> list[tuple[list[Any], Any]]:
     """Decoded (args, expected) pairs from public + private test cases."""
-    import ast
+    import ast  # noqa: PLC0415
 
     tc = json.loads(row["public_test_cases"]) + _decode_private(
         row["private_test_cases"]
@@ -107,21 +116,26 @@ async def main() -> None:
     ap.add_argument("--out", default="/tmp/goal3/overnight/perfect_oracle.json")
     args = ap.parse_args()
 
-    from rune.bench.lcb import extract_entry_function
-    from rune.config import load_rune_config
-    from rune.engine.oracle import with_probe_imports
-    from rune.engine.parse import extract_code_block
-    from rune.model.wrapper import ModelWrapper
-    from rune.sandbox.executor import run_in_sandbox
+    from rune.bench.lcb import extract_entry_function  # noqa: PLC0415
+    from rune.config import load_rune_config  # noqa: PLC0415
+    from rune.engine.oracle import with_probe_imports  # noqa: PLC0415
+    from rune.engine.parse import extract_code_block  # noqa: PLC0415
+    from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
+    from rune.sandbox.executor import run_in_sandbox  # noqa: PLC0415
 
-    rows = {json.loads(line)["question_id"]: json.loads(line)
-            for line in Path(LCB).read_text().splitlines()}
-    cands = {g["question_id"]: g["code_list"][0]
-             for g in json.loads(Path(COMBINED).read_text())}
+    rows = {
+        json.loads(line)["question_id"]: json.loads(line)
+        for line in Path(LCB).read_text().splitlines()
+    }
+    cands = {
+        g["question_id"]: g["code_list"][0]
+        for g in json.loads(Path(COMBINED).read_text())
+    }
 
     cfg = load_rune_config(None).override(
         checkpoint_path="/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt",
-        adapter_scaling=0.0, model_judge=False,
+        adapter_scaling=0.0,
+        model_judge=False,
     )
     model = ModelWrapper.from_config(cfg)
 
@@ -160,30 +174,55 @@ async def main() -> None:
             _i, kind, inp, got, want = fail
             history.append(kind)
             if kind == "TLE":
-                crit = (f"On a large input your function TIMES OUT. Input (truncated): "
-                        f"{inp}. Keep the SAME correct behavior but use a faster "
-                        f"algorithm.")
+                crit = (
+                    f"On a large input your function TIMES OUT. Input (truncated): "
+                    f"{inp}. Keep the SAME correct behavior but use a faster "
+                    f"algorithm."
+                )
             elif kind.startswith("CRASH"):
-                crit = (f"On input {inp} your function raises {kind}. The correct "
-                        f"answer is {want}. Fix it.")
+                crit = (
+                    f"On input {inp} your function raises {kind}. The correct "
+                    f"answer is {want}. Fix it."
+                )
             else:
-                crit = (f"On input {inp} your function returns {got}, but the correct "
-                        f"answer is {want}. Fix the logic.")
+                crit = (
+                    f"On input {inp} your function returns {got}, but the correct "
+                    f"answer is {want}. Fix the logic."
+                )
             gen = await model.generate(
-                prompt=_REPAIR.format(entry=entry, spec=spec, code=extract_entry_function(code, entry), crit=crit),
-                max_tokens=1024, temperature=0.3, thinking_budget=0,
+                prompt=_REPAIR.format(
+                    entry=entry,
+                    spec=spec,
+                    code=extract_entry_function(code, entry),
+                    crit=crit,
+                ),
+                max_tokens=1024,
+                temperature=0.3,
+                thinking_budget=0,
             )
             code = extract_code_block(gen.text) or code
-        results.append({"qid": qid, "entry": entry, "solved": solved,
-                        "round": solved_round, "history": history,
-                        "final_code": extract_entry_function(code, entry)[:1200]})
-        print(f"{qid} {entry:24s} solved={solved!s:5s} round={solved_round} "
-              f"history={history}", flush=True)
+        results.append(
+            {
+                "qid": qid,
+                "entry": entry,
+                "solved": solved,
+                "round": solved_round,
+                "history": history,
+                "final_code": extract_entry_function(code, entry)[:1200],
+            }
+        )
+        print(
+            f"{qid} {entry:24s} solved={solved!s:5s} round={solved_round} "
+            f"history={history}",
+            flush=True,
+        )
 
     Path(args.out).write_text(json.dumps(results, indent=2))
     n = sum(r["solved"] for r in results)
-    print(f"\n=== PERFECT ORACLE: model solved {n}/{len(FALSE_PASS)} false-pass tasks "
-          f"with perfect critique (rounds<= {args.rounds}) ===")
+    print(
+        f"\n=== PERFECT ORACLE: model solved {n}/{len(FALSE_PASS)} false-pass tasks "
+        f"with perfect critique (rounds<= {args.rounds}) ==="
+    )
     print("solved:", [r["qid"] for r in results if r["solved"]])
 
 

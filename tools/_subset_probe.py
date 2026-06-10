@@ -14,7 +14,6 @@ generations json + the clean24 sessions.
 from __future__ import annotations
 
 import argparse
-import glob
 import importlib.util
 import json
 import os
@@ -41,11 +40,19 @@ def _grade(gens_path: str) -> dict[str, bool]:
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     m.apply_lcb_harness_patches()
-    from lcb_runner.evaluation.compute_code_generation_metrics import check_correctness
-    from rune.bench.lcb import extract_entry_function, normalize_lcb_submission
+    from lcb_runner.evaluation.compute_code_generation_metrics import (  # noqa: PLC0415
+        check_correctness,  # noqa: PLC0415
+    )
 
-    rows = {json.loads(x)["question_id"]: json.loads(x)
-            for x in Path(LCB).read_text().splitlines()}
+    from rune.bench.lcb import (  # noqa: PLC0415
+        extract_entry_function,
+        normalize_lcb_submission,
+    )
+
+    rows = {
+        json.loads(x)["question_id"]: json.loads(x)
+        for x in Path(LCB).read_text().splitlines()
+    }
     out: dict[str, bool] = {}
     for g in json.loads(Path(gens_path).read_text()):
         qid = g["question_id"]
@@ -57,7 +64,9 @@ def _grade(gens_path: str) -> dict[str, bool]:
         if not fn.strip():
             out[qid] = False
             continue
-        norm = normalize_lcb_submission(fn, entry, _starter_code=row.get("starter_code", ""))
+        norm = normalize_lcb_submission(
+            fn, entry, _starter_code=row.get("starter_code", "")
+        )
         res, _ = check_correctness(m._sample(row), norm, timeout=6, debug=False)
         out[qid] = bool(res) and all(r is True for r in res)
     return out
@@ -70,11 +79,19 @@ def _clean24_grade(qids: list[str]) -> dict[str, bool]:
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     m.apply_lcb_harness_patches()
-    from lcb_runner.evaluation.compute_code_generation_metrics import check_correctness
-    from rune.bench.lcb import extract_entry_function, normalize_lcb_submission
+    from lcb_runner.evaluation.compute_code_generation_metrics import (  # noqa: PLC0415
+        check_correctness,  # noqa: PLC0415
+    )
 
-    rows = {json.loads(x)["question_id"]: json.loads(x)
-            for x in Path(LCB).read_text().splitlines()}
+    from rune.bench.lcb import (  # noqa: PLC0415
+        extract_entry_function,
+        normalize_lcb_submission,
+    )
+
+    rows = {
+        json.loads(x)["question_id"]: json.loads(x)
+        for x in Path(LCB).read_text().splitlines()
+    }
     out: dict[str, bool] = {}
     for qid in qids:
         s = os.path.join(CLEAN24_SESSIONS, qid, "session.jsonl")
@@ -86,16 +103,19 @@ def _clean24_grade(qids: list[str]) -> dict[str, bool]:
             "func_name", ""
         )
         code = ""
-        for r in (json.loads(line) for line in open(s)):
-            if r.get("action") in ("code", "repair", "integrate") and (
-                r.get("output") or ""
-            ).strip():
+        for r in (json.loads(line) for line in Path(s).read_text().splitlines()):
+            if (
+                r.get("action") in ("code", "repair", "integrate")
+                and (r.get("output") or "").strip()
+            ):
                 code = r["output"]
         fn = extract_entry_function(code, entry)
         if not fn.strip():
             out[qid] = False
             continue
-        norm = normalize_lcb_submission(fn, entry, _starter_code=row.get("starter_code", ""))
+        norm = normalize_lcb_submission(
+            fn, entry, _starter_code=row.get("starter_code", "")
+        )
         res, _ = check_correctness(m._sample(row), norm, timeout=6, debug=False)
         out[qid] = bool(res) and all(r is True for r in res)
     return out
@@ -131,10 +151,16 @@ def main() -> None:
         print(f"{qid:6s} {role:10s} {os_:9s} {ns_:9s} {delta}")
     no = sum(1 for q in SUBSET if old.get(q))
     nn = sum(1 for q in SUBSET if new.get(q))
-    print(f"\nclean24 subset pass: {no}/{len(SUBSET)} | newcode subset pass: {nn}/{len(SUBSET)}")
+    print(
+        f"\nclean24 subset pass: {no}/{len(SUBSET)} | newcode subset pass: {nn}/{len(SUBSET)}"
+    )
     print(f"GAINS: {gains}  REGRESSIONS: {regressions}")
-    print("VERDICT:", "PASS (>= baseline, no regressions)"
-          if (nn >= no and not regressions) else "REVIEW (regression or drop)")
+    print(
+        "VERDICT:",
+        "PASS (>= baseline, no regressions)"
+        if (nn >= no and not regressions)
+        else "REVIEW (regression or drop)",
+    )
 
 
 if __name__ == "__main__":
