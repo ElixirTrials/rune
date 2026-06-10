@@ -78,13 +78,22 @@ def test_guarded_hard_kills_runaway_probe() -> None:
 
 def test_guarded_returns_outcome_for_fast_linear() -> None:
     linear = "def f(nums):\n    return sum(nums)\n"
+    # Unlike the other _FAST users (which short-circuit on the static floor or
+    # hard-kill before fitting), this test asserts the empirical big_o fit itself.
+    # The tiny _FAST range (n=8..64) leaves sub-microsecond per-call times swamped
+    # by scheduler noise, so the least-squares fit intermittently lands on a
+    # super-linear class on a contended runner (flaky). A wider span with more
+    # repeats gives a clean linear signal without slowing the test meaningfully.
+    linear_probe = ComplexityProbeConfig(
+        min_n=100, max_n=10000, n_repeats=5, per_run_timeout_s=30.0
+    )
     out = check_constraint_scale_guarded(
         linear,
         entry_point="f",
         spec=_SPEC,
         public_checks=_PUBLIC,
         signature=_SIG,
-        probe_config=_FAST,
+        probe_config=linear_probe,
         wall_timeout_s=30.0,
     )
     assert out is not None
