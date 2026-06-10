@@ -141,11 +141,11 @@ async def main() -> None:
             print(f"[CRITIQUE] input(len={len(inp)})={inp[:1200]}", flush=True)
             print(f"[CRITIQUE] got={got[:300]}  want={want[:300]}", flush=True)
             if kind == "TLE":
-                crit = f"On a large input your function TIMES OUT. Input: {inp}. Keep the SAME correct behavior but use a faster algorithm."
+                crit = f"On a large input your function TIMES OUT. Input: {inp}. Keep the SAME correct behavior but use a faster algorithm."  # noqa: E501
             elif kind.startswith("CRASH"):
-                crit = f"On input {inp} your function raises {kind}. The correct answer is {want}. Fix it."
+                crit = f"On input {inp} your function raises {kind}. The correct answer is {want}. Fix it."  # noqa: E501
             else:
-                crit = f"On input {inp} your function returns {got}, but the correct answer is {want}. Fix the logic."
+                crit = f"On input {inp} your function returns {got}, but the correct answer is {want}. Fix the logic."  # noqa: E501
             prompt = _REPAIR.format(
                 entry=entry,
                 spec=spec,
@@ -157,7 +157,7 @@ async def main() -> None:
                 prompt=prompt, max_tokens=1024, temperature=0.3, thinking_budget=0
             )
             print(
-                f"[RAW GENERATION len={len(gen.text)}]\n{gen.text[:2500]}\n[/GENERATION]",
+                f"[RAW GENERATION len={len(gen.text)}]\n{gen.text[:2500]}\n[/GENERATION]",  # noqa: E501
                 flush=True,
             )
             new = extract_code_block(gen.text) or code

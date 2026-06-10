@@ -152,7 +152,7 @@ def main() -> None:
     no = sum(1 for q in SUBSET if old.get(q))
     nn = sum(1 for q in SUBSET if new.get(q))
     print(
-        f"\nclean24 subset pass: {no}/{len(SUBSET)} | newcode subset pass: {nn}/{len(SUBSET)}"
+        f"\nclean24 subset pass: {no}/{len(SUBSET)} | newcode subset pass: {nn}/{len(SUBSET)}"  # noqa: E501
     )
     print(f"GAINS: {gains}  REGRESSIONS: {regressions}")
     print(

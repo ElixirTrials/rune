@@ -125,7 +125,7 @@ def main() -> None:
             print(f"  [{'PASS' if v else 'FAIL'}] {k}")
         print(
             f"  adapter spec_head count = {adapter_txt.count(spec_head)} "
-            f"(want 1); adapter chars={len(adapter_txt)}, prompt chars={len(prompt_txt)}"
+            f"(want 1); adapter chars={len(adapter_txt)}, prompt chars={len(prompt_txt)}"  # noqa: E501
         )
 
 

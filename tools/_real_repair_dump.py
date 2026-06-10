@@ -68,7 +68,7 @@ for i, (args, exp) in enumerate(cases):
         signal.alarm(0)
         first = (i, 'CRASH:' + type(e).__name__, repr(args)[:200], '', repr(exp)[:120]); break
 print('SOLVED' if first is None else 'FAIL', repr(first) if first else '')
-"""
+"""  # noqa: E501
 
 
 async def main() -> None:
@@ -184,16 +184,16 @@ async def main() -> None:
         print(f"\n{bar}\n# {qid}  {entry}   (adapter scaling={scaling})\n{bar}")
         print(f"\n----- PERFECT CRITIQUE (the corrective signal) -----\n{crit}")
         print(
-            f"\n----- CHANNEL 1: ADAPTER CONDITIONING (baked into LoRA weights) -----\n{traj}"
+            f"\n----- CHANNEL 1: ADAPTER CONDITIONING (baked into LoRA weights) -----\n{traj}"  # noqa: E501
         )
         print(
-            f"\n----- CHANNEL 2: IN-CONTEXT REPAIR PROMPT (system='{act.system_prompt}') -----\n{prompt}"
+            f"\n----- CHANNEL 2: IN-CONTEXT REPAIR PROMPT (system='{act.system_prompt}') -----\n{prompt}"  # noqa: E501
         )
         print(
-            f"\n----- MODEL GENERATION (raw, len={len(gen.text)}) -----\n{gen.text[:2400]}"
+            f"\n----- MODEL GENERATION (raw, len={len(gen.text)}) -----\n{gen.text[:2400]}"  # noqa: E501
         )
         print(
-            f"\n----- EXTRACTED FN  (changed={new.strip() != wrong.strip()}) -----\n{new[:1200]}"
+            f"\n----- EXTRACTED FN  (changed={new.strip() != wrong.strip()}) -----\n{new[:1200]}"  # noqa: E501
         )
 
 

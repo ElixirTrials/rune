@@ -160,7 +160,7 @@ async def main() -> None:
         B = "#" * 80
         print(f"\n{B}\n# {qid} {entry}   (adapter scaling={sc})\n{B}")
         print(
-            f"\n========== (1) PERFECT CRITIQUE — the corrective signal ==========\n{crit}"
+            f"\n========== (1) PERFECT CRITIQUE — the corrective signal ==========\n{crit}"  # noqa: E501
         )
         print(
             f"\n========== (2) CHANNEL 1: ADAPTER CONDITIONING (LoRA weights) "
@@ -172,7 +172,7 @@ async def main() -> None:
         )
         print(f"\n========== (4) ORIGINAL (wrong) CODE ==========\n{wrong}")
         print(
-            f"\n========== (5) RAW MODEL GENERATION [{len(raw)} chars] ==========\n{raw}"
+            f"\n========== (5) RAW MODEL GENERATION [{len(raw)} chars] ==========\n{raw}"  # noqa: E501
         )
         print("\n========== (6) DIFF  original -> new ==========")
         diff = difflib.unified_diff(
