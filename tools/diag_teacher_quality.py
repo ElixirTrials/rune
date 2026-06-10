@@ -35,6 +35,7 @@ from typing import Any
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from rune.config import load_rune_config
 from rune.training.hypernet_distill import _map_record, _prepare_ids
 
 PREFIX_TASK = "## Task"  # rows start with this
@@ -121,7 +122,7 @@ def main() -> int:
     ap.add_argument(
         "--json-out", type=str, default="/tmp/rune-issue49-teacher-quality.json"
     )
-    ap.add_argument("--model-id", type=str, default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model-id", type=str, default=load_rune_config().model_id)
     args = ap.parse_args()
 
     base = AutoModelForCausalLM.from_pretrained(

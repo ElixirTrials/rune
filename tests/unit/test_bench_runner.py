@@ -124,10 +124,15 @@ class TestRunBenchmarkCodeExtraction:
         assert "assert solution() == 42" in captured[0]
 
     def test_falls_back_to_code_results_when_integrated_empty(self) -> None:
-        task = _make_task("t1", test_code="assert add(1,2)==3")
+        task = BenchTask(
+            task_id="t1",
+            description="write add",
+            test_code="assert add(1,2)==3",
+            entry_point="add",
+        )
         final_state = {
             "integrated_code": "",
-            "code_results": {"sub1": "def add(a,b): return a+b"},
+            "code_results": {"add": "def add(a,b): return a+b"},
         }
         engine = _make_engine(final_state)
 
@@ -147,7 +152,28 @@ class TestRunBenchmarkCodeExtraction:
         assert "return a + b" in captured[0]
         assert "assert add(1,2)==3" in captured[0]
 
-    def test_no_code_at_all_still_runs_test(self) -> None:
+    def test_prefers_entry_point_subtask_over_joined_helpers(self) -> None:
+        task = BenchTask(
+            task_id="t1",
+            description="solve",
+            test_code="assert solve() == 1",
+            entry_point="solve",
+        )
+        final_state = {
+            "integrated_code": "",
+            "best_code": {
+                "helper": "def helper():\n    return 0",
+                "solve": "def solve():\n    return 1",
+            },
+        }
+        engine = _make_engine(final_state)
+
+        with patch("rune.bench.runner.run_in_sandbox", return_value=_sandbox_pass()):
+            result = asyncio.run(run_benchmark([task], engine, _bench_config()))
+
+        assert result.per_task[0].code.strip() == "def solve():\n    return 1"
+
+    def test_no_shipped_code_skips_sandbox(self) -> None:
         task = _make_task("t1", test_code="assert True")
         final_state = {"integrated_code": "", "code_results": {}}
         engine = _make_engine(final_state)
@@ -158,7 +184,8 @@ class TestRunBenchmarkCodeExtraction:
             result = asyncio.run(run_benchmark([task], engine, _bench_config()))
 
         assert result.passed_tasks == 0
-        mock_sb.assert_called_once()
+        assert "entry_point" in result.per_task[0].stderr
+        mock_sb.assert_not_called()
 
 
 class TestRunBenchmarkSandboxTimeout:

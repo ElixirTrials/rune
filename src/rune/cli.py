@@ -27,13 +27,16 @@ def run(
     """Run a single task through the engine."""
     import asyncio  # noqa: PLC0415
 
-    from rune.config import PipelineConfig, load_config  # noqa: PLC0415
+    from rune.config import load_rune_config  # noqa: PLC0415
     from rune.engine.graph import create_engine  # noqa: PLC0415
     from rune.engine.state import make_initial_state  # noqa: PLC0415
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
     from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
 
-    cfg = load_config(config) if config else PipelineConfig()
+    # config=None -> repo-root config.yaml (single source); RUNE_* env overrides
+    # apply either way, so editing config.yaml or exporting RUNE_BASE_MODEL drives
+    # `rune run`.
+    cfg = load_rune_config(config)
     if checkpoint:
         cfg = cfg.override(checkpoint_path=checkpoint)
 
@@ -42,7 +45,11 @@ def run(
 
     model = ModelWrapper.from_config(cfg)
 
-    initial_state = make_initial_state(task, cfg.max_phase_iterations)
+    initial_state = make_initial_state(
+        task,
+        cfg.max_phase_iterations,
+        run_config=cfg.to_dict(),
+    )
 
     engine = create_engine()
     with tracked_run("run", params=cfg.to_dict()):
@@ -65,19 +72,12 @@ def run(
         typer.echo("Done (no integrated code produced)")
 
 
-def _load_train_config(path: Path) -> Any:
-    """Load D2LTrainConfig from YAML."""
-    import yaml  # noqa: PLC0415
-
-    from rune.training.d2l_train import D2LTrainConfig  # noqa: PLC0415
-
-    return D2LTrainConfig(**yaml.safe_load(path.read_text()))
-
-
 @app.command()
 def train(
     corpus_dir: Path | None = typer.Option(None, help="Training corpus directory"),
-    config: Path | None = typer.Option(None, help="Config YAML path"),
+    config: Path | None = typer.Option(
+        None, help="Path to config.yaml (defaults to the repo-root config.yaml)"
+    ),
     hpo: bool = typer.Option(False, help="Run Optuna HPO"),
     n_trials: int = typer.Option(50, help="Number of HPO trials"),
 ) -> None:
@@ -85,19 +85,26 @@ def train(
     import asyncio  # noqa: PLC0415
     from pathlib import Path as _Path  # noqa: PLC0415
 
-    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
-    from rune.training.d2l_train import D2LTrainConfig  # noqa: PLC0415
+    from rune.tracking import (  # noqa: PLC0415
+        configure_mlflow,
+        log_dataset,
+        tracked_run,
+    )
+    from rune.training.d2l_train import load_train_config  # noqa: PLC0415
     from rune.training.orchestrator import run_training_pipeline  # noqa: PLC0415
 
     typer.echo(f"Training {'with HPO' if hpo else 'single run'}")
 
-    train_cfg = _load_train_config(config) if config is not None else D2LTrainConfig()
+    # config=None -> repo-root config.yaml (single surface); reads its `training:`
+    # section and inherits model_id from the top level.
+    train_cfg = load_train_config(config)
 
     if corpus_dir is None:
         corpus_dir = _Path("./corpus")
 
     configure_mlflow("rune-train")
     with tracked_run("train", params=train_cfg.model_dump()):
+        log_dataset(corpus_dir, name=corpus_dir.name, context="training")
         exit_code = asyncio.run(
             run_training_pipeline(
                 train_cfg,
@@ -144,7 +151,7 @@ def bench(
     import asyncio  # noqa: PLC0415
 
     from rune.bench.runner import load_tasks, run_benchmark  # noqa: PLC0415
-    from rune.config import PipelineConfig, load_config  # noqa: PLC0415
+    from rune.config import load_rune_config  # noqa: PLC0415
     from rune.engine.graph import create_engine  # noqa: PLC0415
     from rune.model.wrapper import ModelWrapper  # noqa: PLC0415
 
@@ -154,9 +161,13 @@ def bench(
 
     import mlflow as _mlflow  # noqa: PLC0415
 
-    from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
+    from rune.tracking import (  # noqa: PLC0415
+        configure_mlflow,
+        log_dataset,
+        tracked_run,
+    )
 
-    cfg = load_config(config) if config else PipelineConfig()
+    cfg = load_rune_config(config)
     tasks = load_tasks(tasks_file)
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()
@@ -168,6 +179,7 @@ def bench(
         trials = n_trials or cfg.hpo["n_trials"]
         typer.echo(f"Running HPO: {trials} trials{' (fresh)' if fresh else ''}")
         with tracked_run("bench-hpo", params=cfg.to_dict()) as parent:
+            log_dataset(tasks_file, name=tasks_file.name, context="test")
             best = asyncio.run(
                 run_hpo(
                     tasks,
@@ -203,6 +215,7 @@ def bench(
     }
 
     with tracked_run("bench", params=cfg.to_dict()):
+        log_dataset(tasks_file, name=tasks_file.name, context="test")
         result = asyncio.run(run_benchmark(tasks, engine, bench_config))
         _mlflow.log_metric("pass_at_1", result.pass_at_1)
         _mlflow.log_metric("passed_tasks", result.passed_tasks)

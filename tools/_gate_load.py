@@ -8,7 +8,7 @@ from dataclasses import replace
 
 import torch
 
-from rune.config import PipelineConfig
+from rune.config import PipelineConfig, load_rune_config
 from rune.model.wrapper import ModelWrapper
 
 CKPT = (
@@ -46,7 +46,7 @@ def main() -> None:
         base = PipelineConfig()
         cfg = replace(
             base,
-            model_id="Qwen/Qwen3-4B-Instruct-2507",
+            model_id=load_rune_config().model_id,
             checkpoint_path=CKPT,
             adapter_scaling=0.0,
         )

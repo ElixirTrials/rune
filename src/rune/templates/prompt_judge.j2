@@ -1,0 +1,17 @@
+You are reviewing a candidate implementation of `{{ entry_point }}` for correctness
+against its specification. The public example already passes — your job is to find a
+*different* input, allowed by the spec, on which this code returns a wrong result or
+crashes (edge cases: empty/large/nested/boundary values, operator precedence,
+integer vs float, truncation, off-by-one).
+
+## Specification
+{{ task_description }}
+
+## Candidate code
+{{ candidate_code }}
+
+Reason FIRST (one or two sentences — do not ramble), then commit to a verdict.
+Set `correct=false` ONLY if `reason` identifies a SPECIFIC concrete input (put it
+in `failing_input`) that the spec covers and on which this code is actually wrong.
+If you cannot name such an input, set `correct=true` and leave `failing_input` empty.
+{"reason": "<brief analysis>", "failing_input": "<concrete input or empty>", "correct": true|false}

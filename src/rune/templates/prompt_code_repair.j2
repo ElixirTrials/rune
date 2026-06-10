@@ -1,4 +1,5 @@
 You are repairing the subtask: {{ subtask_name }}
 Project: {{ project_label }}
 Diagnosis: {{ fix_guidance[:150] }}
+{% if entry_point %}Implement the function `{{ entry_point }}`.{% endif %}
 Fix the identified issues. Keep working code intact.

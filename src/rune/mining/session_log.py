@@ -42,7 +42,12 @@ def write_session(
             )
         )
     (out_dir / "session.jsonl").write_text("\n".join(lines) + "\n" if lines else "")
-    (out_dir / "metadata.json").write_text(
-        json.dumps({**metadata, "schema_version": SESSION_SCHEMA_VERSION})
-    )
+    subtasks = final_state.get("subtasks", [])
+    meta = {
+        **metadata,
+        "schema_version": SESSION_SCHEMA_VERSION,
+        "entry_point": str(final_state.get("entry_point", "") or ""),
+        "subtask_names": [s.name for s in subtasks],
+    }
+    (out_dir / "metadata.json").write_text(json.dumps(meta, indent=2))
     return out_dir

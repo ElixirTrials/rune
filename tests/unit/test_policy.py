@@ -83,7 +83,7 @@ class TestSelectAction:
         assert actions[0].name == "repair"
         assert actions[0].target_subtask == "a"
 
-    def test_two_repairs_failed_returns_code_resample(self) -> None:
+    def test_max_repairs_failed_returns_code_resample(self) -> None:
         subtasks = [Subtask("a", "do a", [])]
         fb = Feedback(stdout="", stderr="err", exit_code=1)
         state = _make_state(
@@ -91,12 +91,25 @@ class TestSelectAction:
             plans={"a": "plan"},
             code_results={"a": "bad"},
             code_passed={"a": False},
-            retries={"a": 2},
+            retries={"a": 4},
             feedback={"a": fb},
         )
         actions = select_action(state)
         assert len(actions) == 1
         assert actions[0].name == "code"
+        assert actions[0].target_subtask == "a"
+
+    def test_replan_target_routes_to_plan(self) -> None:
+        subtasks = [Subtask("a", "do a", [])]
+        state = _make_state(
+            subtasks=subtasks,
+            plans={},
+            code_results={"a": "bad"},
+            code_passed={"a": False},
+            replan_targets={"a": True},
+        )
+        actions = select_action(state)
+        assert actions[0].name == "plan"
         assert actions[0].target_subtask == "a"
 
     def test_max_retries_exhausted_falls_through_to_integrate(self) -> None:
@@ -107,7 +120,7 @@ class TestSelectAction:
             plans={"a": "plan"},
             code_results={"a": "bad"},
             code_passed={"a": False},
-            retries={"a": 4},
+            retries={"a": 8},
             feedback={"a": fb},
         )
         actions = select_action(state)
@@ -187,7 +200,7 @@ class TestSelectActionTermination:
             plans={"a": "plan"},
             code_results={"a": "code"},
             code_passed={"a": False},
-            retries={"a": 4},  # >= MAX_RETRIES
+            retries={"a": 8},  # >= MAX_RETRIES
             integration_feedback=fb,
             diagnosis={"a": "fix"},
         )

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from rune.model.adapter import AdapterResult
+from rune.model.adapter import AdapterResult, scale_lora_b
 from rune.model.adapter import hotswap_adapter as hotswap_adapter_fn
 from rune.model.hypernetwork import generate_adapter_weights
 from rune.model.inference import GenerationResult
@@ -118,10 +118,12 @@ class ModelWrapper:
         checkpoint_alpha = float(getattr(hc.lora_config, "lora_alpha", rank * 2))
         use_bias = bool(getattr(hc, "use_bias", False))
         r_peft, lora_alpha_peft = peft_scaling_params(checkpoint_alpha, rank, use_bias)
+        # dtype + attention impl come from the model profile (config), not
+        # hardcoded — different models need different generation contracts.
         _raw_model = AutoModelForCausalLM.from_pretrained(
             config.model_id,
-            dtype=torch.bfloat16,
-            attn_implementation="flash_attention_2",
+            dtype=getattr(torch, config.dtype),
+            attn_implementation=config.attn_implementation,
         ).to(device)
         lora_config = LoraConfig(
             r=r_peft,
@@ -160,6 +162,17 @@ class ModelWrapper:
         )
         return AdapterResult(adapter_id=uuid.uuid4().hex, state_dict=state_dict)
 
+    def count_tokens(self, text: str) -> int:
+        """Token count of ``text`` under the base tokenizer (content tokens only).
+
+        The engine step logs adapter-conditioning tokens vs prompt tokens per
+        turn (issue #52 GOAL-3 pre-reg g): the adapter-as-memory thesis
+        instrument — the prompt stays ~flat while the adapter's trajectory
+        conditioning grows. ``add_special_tokens=False`` so the count reflects
+        content, comparable across the two surfaces.
+        """
+        return len(self._tokenizer(text, add_special_tokens=False).input_ids)
+
     def hotswap_adapter(self, state_dict: dict[str, Any]) -> None:
         """Hot-swap LoRA weights into the base model in-place.
 
@@ -167,6 +180,13 @@ class ModelWrapper:
             state_dict: PEFT-compatible adapter weights.
         """
         hotswap_adapter_fn(self._base_model, state_dict)
+
+    def reset_adapter(self) -> None:
+        """Zero LoRA weights so a prior task's adapter cannot bleed into the next."""
+        from peft import get_peft_model_state_dict  # noqa: PLC0415
+
+        sd: dict[str, Any] = get_peft_model_state_dict(self._base_model)  # type: ignore[no-untyped-call]
+        hotswap_adapter_fn(self._base_model, scale_lora_b(sd, 0.0))
 
     async def generate(
         self,
@@ -179,7 +199,7 @@ class ModelWrapper:
         top_p: float = 0.9,
         no_repeat_ngram_size: int = 0,
         presence_penalty: float = 0.0,
-        thinking_budget: int = 1024,
+        thinking_budget: int = 0,  # 0 = non-thinking; config drives the real value
         skip_completion_retry: bool = False,
     ) -> GenerationResult:
         return await inference_generate(

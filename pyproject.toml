@@ -25,6 +25,9 @@ dependencies = [
     "boto3>=1.35.0",
     "pyyaml>=6.0",
     "langchain>=1.3.1",
+    "json-repair>=0.60.1",
+    "markdown-it-py>=4.2.0",
+    "big-o>=0.11.0",
 ]
 
 [project.optional-dependencies]
@@ -76,8 +79,8 @@ flash-linear-attention = ["setuptools"]
 
 [tool.uv.sources]
 ctx-to-lora = { git = "https://github.com/SakanaAI/doc-to-lora.git" }
-flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp312-cp312-linux_x86_64.whl" }
-flash-attn-3 = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn_3-3.0.0+cu130torch2.11gite2743ab-cp39-abi3-linux_x86_64.whl" }
+flash-attn = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu130torch2.12-cp312-cp312-linux_x86_64.whl" }
+flash-attn-3 = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.18/flash_attn_3-3.0.0+cu130torch2.12gite2743ab-cp39-abi3-linux_x86_64.whl" }
 
 [[tool.uv.dependency-metadata]]
 name = "ctx-to-lora"
@@ -92,6 +95,7 @@ strict = true
 module = [
     "langgraph", "langgraph.*",
     "langchain_core", "langchain_core.*",
+    "big_o", "big_o.*",
     "xgrammar", "xgrammar.*",
     "peft", "peft.*",
     "torch", "torch.*",
@@ -156,6 +160,8 @@ ignore = ["B008"]
 "src/rune/training/diff_loss.py" = ["PLC0415", "PLW0603", "B905"]
 "src/rune/model/*.py" = ["PLC0415"]
 "tests/**" = ["E501"]
+# One-off diagnostic / research scripts under tools/: line length not enforced.
+"tools/*.py" = ["E501"]
 "tools/diag_synthetic_overfit.py" = ["E501"]
 "tools/diag_traj_sensitivity.py" = ["E501"]
 "tools/diag_forced_choice.py" = ["E501"]

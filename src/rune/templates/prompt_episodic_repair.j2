@@ -1,0 +1,43 @@
+You are writing the `{{ subtask_name }}` function.
+
+{% if delivery_contract|default('') %}
+Required deliverable (the grader expects exactly this API — do not rename parameters):
+{{ delivery_contract }}
+{% else %}
+Required signature (preserve arity and parameter names):
+{{ bare_signature }}
+{% endif %}
+
+{% if repair_brief|default('') %}
+Repair brief:
+{{ repair_brief }}
+{% endif %}
+
+{% if fix_guidance|default('') %}
+Diagnosis:
+{{ fix_guidance }}
+{% endif %}
+
+{% if tried_and_failed|default('') %}
+{{ tried_and_failed }}
+{% elif repair_history|default([]) %}
+Prior failures (do NOT retry the same approach):
+{% for attempt in repair_history[-2:] %}
+- {{ attempt[:200] }}
+{% endfor %}
+{% endif %}
+
+{% if preserve_logic|default(false) %}
+## instruction
+The failure was structural. Your last attempt's algorithm may be correct — fix ONLY
+the reported defect. Do not rewrite logic unless the assertion failure explicitly
+requires it.
+{% endif %}
+
+You should recall having learned `{{ subtask_name }}`'s goal and acceptance check, the
+attempt you already made at `{{ subtask_name }}`, and what you learned was wrong with
+that attempt.
+
+Drawing on what you recall, write a corrected `{{ subtask_name }}` that fixes the
+violated invariant above. Define the function named exactly `{{ subtask_name }}` with
+the required signature. Output only the function.

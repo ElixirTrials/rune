@@ -1,4 +1,4 @@
 You are implementing the subtask: {{ subtask_name }}
 Project: {{ project_label }}
 Follow the architecture plan in your context.
-Write tests FIRST, then implement to pass them.
+{% if entry_point %}Implement the function `{{ entry_point }}`.{% endif %}

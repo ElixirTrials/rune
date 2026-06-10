@@ -24,6 +24,13 @@ def test_extract_review_feedback() -> None:
     )
     assert extract_review_feedback("## Task\nx") == ""
     assert has_feedback(_CTX) and not has_feedback("## Task\nx")
+    # new recall format (issue #52): feedback under the function-named header
+    recall = (
+        "## Mission `f`\ng\n\n## `f` — your last attempt\ndef f(): ...\n\n"
+        "## `f` — what you learned was wrong with it\nf(1) -> 0, want 1"
+    )
+    assert extract_review_feedback(recall) == "f(1) -> 0, want 1"
+    assert has_feedback(recall)
 
 
 def test_make_hard_negative_swaps_feedback_keeps_scaffold() -> None:

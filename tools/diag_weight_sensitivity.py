@@ -25,6 +25,7 @@ import sys
 
 import torch
 
+from rune.config import load_rune_config
 from rune.model.hypernetwork import (
     HypernetworkConfig,
     extract_activations_with_model,
@@ -64,7 +65,7 @@ def main() -> int:
         "--val", default="/tmp/rune-corpus/external_codereview.val.clean.jsonl"
     )
     ap.add_argument("--max-seq-length", type=int, default=768)
-    ap.add_argument("--model-id", default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model-id", default=load_rune_config().model_id)
     a = ap.parse_args()
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig

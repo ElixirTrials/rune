@@ -1,0 +1,31 @@
+# GOAL-3: HPO over (prompt/adapter FLAVOR x adapter_scaling) for held-out pass@1.
+# Flavors span training-faithful -> precise/prompt-coupled. c3 checkpoint; clean
+# generation profile (thinking off, presence 0). Launch:
+#   uv run rune bench --hpo --config configs/goal3_flavor_hpo.yaml \
+#     --tasks-file benchmarks/goal3_ref_pool_24.json
+model_id: "Qwen/Qwen3-4B-Instruct-2507"
+checkpoint_path: "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
+thinking_budget: 0
+presence_penalty: 0.0
+# Corrected runner: deterministic public-example oracle is the in-loop repair
+# signal. model_judge OFF — the in-loop judge false-positives correct code
+# (flagged a correct int_to_roman) and is slow; kept a separate, to-be-validated
+# arm so the HPO optimises against a clean signal, not judge noise.
+model_judge: false
+temperature: 0.3
+max_tokens: 768
+max_phase_iterations: 4
+cont_budget: 2
+cont_multiplier: 1.53
+prompt_mode: "reference_a"
+hpo:
+  n_trials: 24
+  seed: 42
+  tuning_fraction: 0.70
+  adapter_scaling: {low: 0.1, high: 1.5}
+  prompt_mode:
+    choices: ["training_exact", "reference_a", "reference_c", "reference_b", "reference_b1"]
+  temperature: {low: 0.3, high: 0.3}
+  presence_penalty: {low: 0.0, high: 0.0}
+  max_phase_iterations: {low: 4, high: 4, step: 1}
+  cont_multiplier: {low: 1.53, high: 1.53}

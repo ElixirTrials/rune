@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import re
 
-from rune.engine.parse import CodeResult, extract_code_from_raw
+from rune.engine.parse import extract_code_block
 
 CONT_SYSTEM_PROMPT = (
     "Output only Python code. No commentary, no explanations, "
@@ -15,12 +15,12 @@ CONT_SYSTEM_PROMPT = (
 
 
 def extract_partial_code(raw: str) -> str:
-    """Extract code from a possibly-truncated CodeResult JSON string.
+    """De-fence freeform model code output (a ```python fence or bare code).
 
-    Falls back to *raw* when input isn't JSON at all (e.g. continuation
-    rounds that emit plain Python).
+    Code actions are freeform — never JSON — so extraction is a single CommonMark
+    de-fence; bare code (continuation rounds emit plain Python) passes through.
     """
-    return extract_code_from_raw(raw, CodeResult, fallback_to_raw=True)
+    return extract_code_block(raw)
 
 
 _NUM_RE = re.compile(r"\b\d+\b")

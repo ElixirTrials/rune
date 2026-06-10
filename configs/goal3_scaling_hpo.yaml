@@ -1,0 +1,38 @@
+# GOAL-3 fix-4: HPO over engine generation params for bench pass@1.
+#
+# Ranges reflect what the degeneration ablation taught us (#52):
+#  - thinking_budget=0 (non-thinking model) is the FIX, not a tunable -> NOT searched.
+#  - presence_penalty=1.5 DEGENERATES code; 0.0 is clean -> search LOW [0.0, 0.3] only.
+#  - adapter_scaling is the GENERATION-time multiplier on the native adapter. The
+#    "45.25 melts generation" worry was mostly the thinking bug (c3@1.0+thinking-off
+#    was 0/18), so 1.0 may already be good; search [0.1, 1.5] to confirm/refine.
+#    NB: this is gen_scaling (rune run/bench), DISTINCT from the FROZEN probe_scaling
+#    (effective 45.25) used by _specificity_probe / recoverability canaries — do not
+#    conflate the two in any headline (reflections P3).
+#
+# SPEEDUPS (owner): few trials, low retry budget, short max_length; thinking off
+# already removes the 1024-token thinking phase (big speedup on its own).
+# Launch: uv run rune bench --hpo --config configs/goal3_scaling_hpo.yaml \
+#         --tasks-file benchmarks/goal3_hpo_tasks.json
+model_id: "Qwen/Qwen3-4B-Instruct-2507"
+checkpoint_path: "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"   # c3 (fetch from MLflow if /tmp cleared)
+# model generation profile (the #52 fix — inherited intent, pinned here explicitly)
+thinking_budget: 0
+dtype: "bfloat16"
+attn_implementation: "flash_attention_2"
+adapter_scaling: 1.0
+temperature: 0.3
+presence_penalty: 0.0
+max_tokens: 768          # MBPP functions fit easily; caps gen time + truncation
+max_phase_iterations: 6  # lower retry budget (still allows code->diagnose->repair)
+cont_budget: 3
+cont_multiplier: 1.53
+hpo:
+  n_trials: 6            # small sweep; raise once the curve looks sensible
+  seed: 42
+  tuning_fraction: 0.70
+  adapter_scaling: {low: 0.1, high: 1.5}             # gen_scaling multiplier
+  presence_penalty: {low: 0.0, high: 0.3}            # LOW only (1.5 degenerates)
+  temperature: {low: 0.0, high: 0.4}                 # allow greedy..0.4
+  max_phase_iterations: {low: 6, high: 6, step: 1}   # pinned low (speed)
+  cont_multiplier: {low: 1.53, high: 1.53}           # pinned

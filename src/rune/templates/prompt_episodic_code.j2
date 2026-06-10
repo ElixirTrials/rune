@@ -1,0 +1,11 @@
+You are writing the `{{ subtask_name }}` function.
+
+{% if delivery_contract|default('') %}
+Required deliverable (the grader expects exactly this API):
+{{ delivery_contract }}
+{% endif %}
+
+You should recall having learned `{{ subtask_name }}`'s goal and the acceptance check
+it must satisfy. Drawing on what you recall, write `{{ subtask_name }}` so it satisfies
+that acceptance check. Define the function named exactly `{{ subtask_name }}` with
+the required parameter names above. Output only the function.

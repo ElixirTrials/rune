@@ -27,6 +27,7 @@ import sys
 
 import torch
 
+from rune.config import load_rune_config
 from rune.model.hypernetwork import HypernetworkConfig, load_hypernetwork
 from rune.training.hypernet_distill import (
     _functional_lora,
@@ -84,7 +85,7 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=30)
     ap.add_argument("--scaling", type=float, default=0.5)
     ap.add_argument("--max-seq-length", type=int, default=768)
-    ap.add_argument("--model-id", type=str, default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model-id", type=str, default=load_rune_config().model_id)
     ap.add_argument("--json-out", default="/tmp/rune-issue49-specificity.json")
     a = ap.parse_args()
 

@@ -27,6 +27,7 @@ import torch
 from peft import LoraConfig, get_peft_model, set_peft_model_state_dict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from rune.config import load_rune_config
 from rune.model.adapter import scale_lora_b
 from rune.model.hypernetwork import (
     HypernetworkConfig,
@@ -180,7 +181,7 @@ def main() -> int:
         type=str,
         default="s3://elixirtrials-949678234935-eu-west-2-artifacts/checkpoints/hypernet_hpo/checkpoint.pt",
     )
-    ap.add_argument("--model-id", type=str, default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model-id", type=str, default=load_rune_config().model_id)
     args = ap.parse_args()
 
     base = AutoModelForCausalLM.from_pretrained(

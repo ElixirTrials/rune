@@ -22,6 +22,7 @@ import sys
 
 import torch
 
+from rune.config import load_rune_config
 from rune.model.hypernetwork import HypernetworkConfig, load_hypernetwork
 from rune.training.collapse_metrics import diff_agreement, preservation_agreement
 from rune.training.contrastive import (
@@ -154,7 +155,7 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=30)
     ap.add_argument("--scalings", type=float, nargs="+", default=[0.25, 0.5, 1.0])
     ap.add_argument("--max-seq-length", type=int, default=768)
-    ap.add_argument("--model-id", default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model-id", default=load_rune_config().model_id)
     ap.add_argument("--json-out", default="/tmp/rune-issue49-trajectory-gate.json")
     a = ap.parse_args()
 

@@ -1,16 +1,36 @@
-Decompose into subtasks with dependencies. Output a JSON object:
-{"subtasks": [{"name": ..., "description": ..., "depends_on": [...]}]}
-Use depends_on: [] when a subtask has no prerequisites.
-No preamble, no analysis, no reasoning outside the JSON.
+Output the subtasks for this task as JSON. DEFAULT TO EXACTLY ONE SUBTASK.
 
-A subtask is a unit of IMPLEMENTATION, not a project chore. For a single
-self-contained function, ONE subtask is correct.
+DECISION RULE (read carefully):
+- A task that implements ONE function (returns a value from its inputs) is ALWAYS
+  exactly ONE subtask — no matter how many internal steps it needs. Tokenizing,
+  looping, parsing, handling cases, helper logic ALL live INSIDE that one function.
+  Do NOT make internal steps or helpers into separate subtasks.
+- Do NOT emit the entry_point as a subtask AND its internal pieces — that is one
+  subtask (the entry_point), full stop.
+- Output MULTIPLE subtasks (at most 3) ONLY when the task explicitly asks for
+  several SEPARATE top-level functions/classes that are independently usable.
+- When in doubt: ONE subtask.
 
-BAD subtasks (never emit these):
-- "Analyze the request" — that is reasoning, not a subtask.
-- "Add documentation" / "Write docstrings" — part of the implementation.
-- "Write unit tests" / "Handle edge cases" — part of the implementation.
-- "Define the function signature" / "Add type hints" — part of the implementation.
+Output a JSON object:
+{
+  "overall_goal": "<one concise sentence stating the overall goal>",
+  "subtasks": [
+    {"name": "<a VALID PYTHON IDENTIFIER — the exact function name to define; for a single-function task this is the entry_point>",
+     "description": "<what this function must implement, including its internal steps>",
+     "acceptance_check": ["<2-4 Python asserts, each calling THIS function BY ITS name — cover DISTINCT behaviors (the spec doctest PLUS at least one held-out-style edge: a boundary value, an empty/degenerate input, a nested/compound case, or a type variant). NOT redundant rephrasings of the same case. May be a JSON list OR newline/semicolon-separated string>"],
+     "builds": "<the entry_point>",
+     "depends_on": [...]}
+  ]
+}
+CRITICAL: `name` MUST be a valid Python identifier and MUST be the function defined;
+`acceptance_check` MUST call that same `name` in EVERY assert. For a single-function
+task, `name` is the entry_point: include the task's doctest example PLUS 1–3 extra
+edge-case asserts that would catch held-out failures (e.g. a boundary or empty input,
+a nested/compound case, or a list-vs-tuple type variant). depends_on: [] when
+none. No preamble, no analysis, no reasoning outside the JSON.
+
+NEVER emit subtasks for: reasoning ("analyze", "define signature"), documentation,
+tests, edge cases, or internal helpers — those are part of implementing the function.
 
 [USER TASK]
 {{ task_description }}
