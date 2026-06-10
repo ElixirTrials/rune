@@ -50,7 +50,8 @@ def extract_entry_function(code: str, entry_point: str) -> str:
     try:
         tree = ast.parse(text)
     except SyntaxError:
-        return text
+        salvaged = _salvage_entry_function(text, entry_point)
+        return salvaged if salvaged else text
 
     funcs = [
         node
@@ -64,6 +65,80 @@ def extract_entry_function(code: str, entry_point: str) -> str:
     if bare is not None:
         return bare
     return text
+
+
+def _extract_from_tree(tree: ast.Module, entry_point: str) -> str | None:
+    """Bare top-level ``entry_point`` from a parsed tree, or None."""
+    funcs = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == entry_point
+    ]
+    if funcs:
+        return ast.unparse(funcs[-1])
+    return _class_method_to_bare(tree, entry_point)
+
+
+def _salvage_entry_function(text: str, entry_point: str) -> str | None:
+    """Recover ``entry_point`` from a blob whose tail is unparseable garbage.
+
+    A code step can emit a valid function then ramble into prose/pseudo-code,
+    making ``ast.parse`` of the whole blob raise. We locate where the entry's
+    ``def``/``class`` begins and binary-search for the largest prefix (starting
+    there) that parses cleanly and still defines ``entry_point``.
+
+    Complexity: O(log L) parse attempts over O(L) lines, each parse O(slice);
+    overall O(L log L) — no O(L^2) per-line scan.
+    """
+    lines = text.split("\n")
+    start = _entry_start_line(lines, entry_point)
+    if start is None:
+        return None
+
+    # Binary-search the largest end boundary (exclusive) in (start, len(lines)]
+    # whose slice both parses and defines entry_point. Parsing is monotone only
+    # up to the first syntax error, but the leading valid def is contiguous from
+    # `start`, so the largest parseable prefix is what we want.
+    lo, hi = start + 1, len(lines)
+    best: str | None = None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        slice_text = "\n".join(lines[start:mid])
+        candidate = _try_extract(slice_text, entry_point)
+        if candidate is not None:
+            best = candidate
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def _try_extract(slice_text: str, entry_point: str) -> str | None:
+    try:
+        tree = ast.parse(slice_text)
+    except SyntaxError:
+        return None
+    return _extract_from_tree(tree, entry_point)
+
+
+def _entry_start_line(lines: list[str], entry_point: str) -> int | None:
+    """Index of the line opening ``def entry_point(`` or its ``class`` host."""
+    def_marker = f"def {entry_point}("
+    class_start: int | None = None
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith(def_marker):
+            indent = len(line) - len(stripped)
+            # Top-level def: salvage from here. Indented def: it's a method; the
+            # enclosing class start (if seen) is the better salvage anchor.
+            if indent == 0:
+                return i
+            if class_start is not None:
+                return class_start
+            return i
+        if stripped.startswith("class "):
+            class_start = i
+    return None
 
 
 def normalize_lcb_submission(

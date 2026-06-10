@@ -23,7 +23,7 @@ class TestPipelineConfig:
         assert cfg.presence_penalty == 0.0  # flat presence penalty harms codegen
         assert cfg.dtype == "bfloat16"
         assert cfg.attn_implementation == "flash_attention_2"
-        assert cfg.max_phase_iterations == 10
+        assert cfg.max_phase_iterations == 16
         assert cfg.advisory_requirement_kinds == ("constraint_scale",)
         assert cfg.constraint_scale_pass_quality is True
         assert cfg.ship_best_on_exhaustion is True

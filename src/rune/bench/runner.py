@@ -300,6 +300,43 @@ def resolve_shipped_code(
         ):
             return normalized
 
+    # Last resort: rather than shipping blank, scan every retained candidate
+    # (best_code, code_results, and raw trajectory outputs) for any extractable
+    # function that defines the entry point and is structurally runnable. The
+    # salvage-capable extractor recovers functions buried under trailing garbage
+    # (issue: "ships blank despite valid code"). Prefer the most-recent
+    # trajectory output (repair wins).
+    if entry:
+        from rune.engine.oracle import defines_entry_point  # noqa: PLC0415
+
+        candidates: list[str] = []
+        for value in best.values():
+            if value:
+                candidates.append(str(value))
+        for value in (final_state.get("code_results") or {}).values():
+            if value:
+                candidates.append(str(value))
+        for record in final_state.get("trajectory", []):
+            gen = getattr(record, "generated_code", None)
+            if gen:
+                candidates.append(str(gen))
+            out = getattr(record, "output_text", "")
+            if out:
+                candidates.append(str(out))
+        # Most-recent / repair-stage candidates first.
+        for raw in reversed(candidates):
+            if not raw.strip():
+                continue
+            extracted = extract_entry_function(raw, entry)
+            if (
+                extracted.strip()
+                and defines_entry_point(extracted, entry)
+                and _runnable_ship_fallback(
+                    task, extracted, task_spec, skip_kinds=skip_kinds
+                )
+            ):
+                return extracted
+
     return ""
 
 

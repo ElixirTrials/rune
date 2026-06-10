@@ -53,10 +53,10 @@ class _NoShipEngine:
                     target_subtask="f",
                     adapter_id="a0",
                     feedback=Feedback(stdout="", stderr="assert fail", exit_code=1),
-                    generated_code="def f(): pass",
+                    generated_code="def g(): pass",
                     trajectory_text="ROLE: coder",
                     prompt_text="p",
-                    output_text="def f(): pass",
+                    output_text="def g(): pass",
                 )
             ],
         }

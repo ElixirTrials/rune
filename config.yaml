@@ -32,7 +32,7 @@ no_repeat_ngram_size: 0   # 0 = no n-gram blocking; it fights legitimate code
                           # main codegen pass regressed the hard slice 4/8->2/8 (#52).
 
 # --- Engine loop ---
-max_phase_iterations: 10
+max_phase_iterations: 16   # escalate needs ~3 + 2*max_repairs steps; headroom so the last repair round is not clipped
 cont_multiplier: 1.53   # continuation-round adapter scaling over base adapter_scaling
 cont_budget: 5
 
@@ -58,7 +58,10 @@ merge_spec_public_checks: true        # add spec doctest examples to public_chec
 ship_best_on_exhaustion: true         # never submit blank when budget is spent
 ship_best_min_quality: 1              # minimum best_quality to ship on exhaustion
 complexity_repair_preserve_logic: true  # "optimize, don't replace" complexity brief
-model_judge: true
+# Off: the judge can hallucinate a failing input on correct code and trigger a
+# needless repair; its net effect on pass@1 is unvalidated and it ~4x's latency
+# on passing candidates. Re-enable as a separate validated arm, not the default.
+model_judge: false
 judge_temperature: 0.2
 judge_max_tokens: 256
 

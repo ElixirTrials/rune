@@ -138,7 +138,7 @@ _EPISODIC_PROMPTS = {
     "decompose": "prompt_decompose_concise",
 }
 _INTEGRATION_DOC_LINE_CAP = 200
-_PROJECT_CAP = 1200
+_PROJECT_CAP = 4096
 # Carries the task spec into the minimal generation prompt; must NOT truncate a
 # short spec mid-example (a 200-char cap cut MBPP docstring asserts off).
 _PROJECT_LABEL_CAP = 1200
@@ -315,14 +315,17 @@ def render_episode_adapter(
     # per-function headers give the recall-phrased prompt ("recall what you
     # learned about `name`...") a sharp anchor to cue (issue #52 (1)).
     name = sub.name
-    goal = overall
+    entry_pt = str(state.get("entry_point", "") or "")
+    # For the single benchmark task (subtask IS the entry_point) the FULL spec
+    # belongs in the adapter's conditioning, not the condensed overall goal (#52
+    # memory thesis); multi-subtask / non-entry cases keep the condensed goal.
+    goal = str(state.get("task", "") or "") if name == entry_pt else overall
     if sub.description:
         goal = f"{goal}\n{sub.description}" if goal else sub.description
     if sub.acceptance_check:
         goal += f"\nAcceptance: {sub.acceptance_check}"
     # Seed the FIRST code attempt with the real bare signature so the adapter
     # conveys the call contract (R2); once code exists, condition on that instead.
-    entry_pt = str(state.get("entry_point", "") or "")
     current_code = state.get("best_code", {}).get(target) or state.get(
         "code_results", {}
     ).get(target, "")
@@ -343,7 +346,9 @@ def render_episode_adapter(
         if rec.feedback and rec.feedback.exit_code != 0:
             lines = rec.feedback.stderr.splitlines()
             snippet = (lines[-1][:120] if lines else "failed (no error text)")
-            tried.append(f"- step {rec.step} ({rec.action_name}): {snippet}")
+            approach = _approach_signature(rec.generated_code or "")
+            detail = f"`{approach}` -> {snippet}" if approach else snippet
+            tried.append(f"- step {rec.step} ({rec.action_name}): {detail}")
     delivery = ""
     if name == entry_pt and entry_pt:
         delivery = format_delivery_contract(
@@ -898,7 +903,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         if action.name in ("code", "repair", "integrate") and needs_continuation:
             cont_multiplier = run_config.get("cont_multiplier", 1.53)
             cont_no_repeat = run_config.get("no_repeat_ngram_size", 12)
-            cont_scaling = adapter_scaling * cont_multiplier
+            cont_scaling = eff_scaling * cont_multiplier
             accumulated_code = extract_partial_code(result.text)
             cont_budget = run_config.get("cont_budget", 5)
             cont_round = 0
@@ -1092,7 +1097,13 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     # sandbox, ask the model for a SPECIFIC failing input; a grounded verdict
     # flips feedback to failure so the existing diagnose->repair routing engages,
     # and the named input becomes the repair signal carried in the adapter.
-    if run_config.get("model_judge", True):
+    # Pre-judge sandbox verdict per name: a model-judge flip (below) drives repair
+    # ROUTING but must NOT lower the candidate's retained QUALITY (its synthetic
+    # stderr has no AssertionError, so candidate_quality would rank a verified
+    # public-passing solution at "runs" and let a later bare-running repair clobber
+    # it in best_code — issue #52 P0-3). Quality is ranked from this snapshot.
+    prejudge_feedback = dict(feedback_map)
+    if run_config.get("model_judge", False):
         for name in code_action_names:
             if feedback_map[name].exit_code != 0:
                 continue  # already failing — nothing for the judge to add
@@ -1213,7 +1224,14 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     running.update(brief_updates)
     for action, target_name, raw, _, _traj, _prompt, _out in results:
         fb = feedback_map.get(target_name)
-        partial = parse_output(action, raw, fb, running, code=code_map.get(target_name))
+        partial = parse_output(
+            action,
+            raw,
+            fb,
+            running,
+            code=code_map.get(target_name),
+            quality_feedback=prejudge_feedback.get(target_name),
+        )
         updates.update(partial)
         running.update(partial)
 

@@ -336,6 +336,7 @@ def _parse_code_action(
     *,
     retries_delta: int,
     code: str | None = None,
+    quality_feedback: Feedback | None = None,
 ) -> dict[str, Any]:
     if code is None:
         code = extract_code_block(raw)
@@ -349,9 +350,12 @@ def _parse_code_action(
         fb_map[target] = feedback
     # No-regress: retain the highest-quality candidate seen for this subtask so a
     # later re-code/repair can't throw away a near-miss by shipping a crash.
+    # ``quality_feedback`` (the pre-judge sandbox verdict) ranks quality when given,
+    # so a model-judge flip drives ROUTING (via ``feedback``) without lowering the
+    # retained quality of a verified public-passing candidate (#52 P0-3).
     quality = candidate_quality(
         code,
-        feedback,
+        quality_feedback if quality_feedback is not None else feedback,
         constraint_scale_pass_quality=bool(
             state.get("constraint_scale_pass_quality", True)
         ),
@@ -396,6 +400,7 @@ def parse_output(
     state: dict[str, Any],
     *,
     code: str | None = None,
+    quality_feedback: Feedback | None = None,
 ) -> dict[str, Any]:
     # ``code``, when provided, is the already-extracted code the sandbox actually
     # ran (from graph.step_node); using it keeps state's recorded code identical
@@ -548,6 +553,7 @@ def parse_output(
                 state,
                 retries_delta=0 if first_attempt else 1,
                 code=code,
+                quality_feedback=quality_feedback,
             )
         case "repair":
             return _parse_code_action(
@@ -557,6 +563,7 @@ def parse_output(
                 state,
                 retries_delta=1,
                 code=code,
+                quality_feedback=quality_feedback,
             )
         case "integrate":
             if code is None:

@@ -35,7 +35,11 @@ class PipelineConfig:
     max_tokens: int = 2048
     repetition_penalty: float = 1.1
     top_p: float = 0.9
-    max_phase_iterations: int = 10
+    # Escalate mode for a single-subtask task needs ~3 + 2*max_repairs phase
+    # iterations (decompose + plan + code, then a diagnose+repair pair per round)
+    # to fully exhaust max_repairs. With max_repairs=4 that is ~11; 16 leaves
+    # headroom so the final repair round is not clipped (P0-4 budget bug).
+    max_phase_iterations: int = 16
     cont_multiplier: float = 1.53
     cont_budget: int = 5
     no_repeat_ngram_size: int = 12
@@ -48,8 +52,10 @@ class PipelineConfig:
     # In-loop correctness judge: after a candidate passes the spec's public
     # example, the model is asked for a specific failing input; a grounded verdict
     # flips the result to failing so diagnose->repair engages on held-out-style
-    # logic bugs the single public example misses.
-    model_judge: bool = True
+    # logic bugs the single public example misses. Off by default: net effect on
+    # pass@1 is unvalidated and false-positives cost a needless repair cycle;
+    # enable it explicitly (config.yaml) as a validated arm.
+    model_judge: bool = False
     judge_temperature: float = 0.2
     judge_max_tokens: int = 256
     # Repair-signal experiment flags (issue52 repair-signal A/B).
