@@ -137,8 +137,13 @@ def test_assertion_brief_is_task_agnostic(
     assert brief.observed == want_observed
     assert brief.expected == want_expected
     blob = brief.format_block().lower()
-    for leaked in ("odd-frequency", "even-frequency", "anti-diagonal",
-                   "max(all_freq)", "sorted independently"):
+    for leaked in (
+        "odd-frequency",
+        "even-frequency",
+        "anti-diagonal",
+        "max(all_freq)",
+        "sorted independently",
+    ):
         assert leaked not in blob, f"task-specific answer leaked: {leaked}"
 
 

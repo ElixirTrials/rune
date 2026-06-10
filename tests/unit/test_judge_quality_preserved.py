@@ -32,7 +32,9 @@ def _state() -> dict:
 
 def test_judge_flip_preserves_quality_via_parse_code_action() -> None:
     routing_fb = Feedback(
-        stdout="", stderr="Correctness judge: wrong on input (3,). off by one", exit_code=1
+        stdout="",
+        stderr="Correctness judge: wrong on input (3,). off by one",
+        exit_code=1,
     )
     quality_fb = Feedback(stdout="", stderr="", exit_code=0)
     out = _parse_code_action(
@@ -51,7 +53,9 @@ def test_judge_flip_preserves_quality_via_parse_code_action() -> None:
 def test_judge_flip_preserves_quality_via_parse_output() -> None:
     action = Action("code", "code", "prompt_code", "", None, True, "f")
     routing_fb = Feedback(
-        stdout="", stderr="Correctness judge: wrong on input (3,). off by one", exit_code=1
+        stdout="",
+        stderr="Correctness judge: wrong on input (3,). off by one",
+        exit_code=1,
     )
     quality_fb = Feedback(stdout="", stderr="", exit_code=0)
     out = parse_output(
@@ -68,8 +72,6 @@ def test_judge_flip_preserves_quality_via_parse_output() -> None:
 
 def test_no_quality_feedback_is_identical_to_today() -> None:
     routing_fb = Feedback(stdout="", stderr="", exit_code=0)
-    out = _parse_code_action(
-        "f", "", routing_fb, _state(), retries_delta=0, code=CODE
-    )
+    out = _parse_code_action("f", "", routing_fb, _state(), retries_delta=0, code=CODE)
     assert out["best_quality"]["f"] == 3
     assert out["code_passed"]["f"] is True

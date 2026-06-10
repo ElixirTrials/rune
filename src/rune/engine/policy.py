@@ -168,9 +168,7 @@ def select_action(state: dict[str, Any]) -> list[Action]:
             has_diagnosis = s.name in state.get("diagnosis", {})
             # A non-empty deterministic repair_brief already carries the
             # structured failure signal, so skip the redundant diagnose step.
-            has_brief = bool(
-                state.get("repair_briefs", {}).get(s.name, "").strip()
-            )
+            has_brief = bool(state.get("repair_briefs", {}).get(s.name, "").strip())
 
             if not has_code or repairs >= max_repairs:
                 actions.append(_with_target("code", s.name))

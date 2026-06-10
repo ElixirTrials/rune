@@ -345,7 +345,7 @@ def render_episode_adapter(
             continue
         if rec.feedback and rec.feedback.exit_code != 0:
             lines = rec.feedback.stderr.splitlines()
-            snippet = (lines[-1][:120] if lines else "failed (no error text)")
+            snippet = lines[-1][:120] if lines else "failed (no error text)"
             approach = _approach_signature(rec.generated_code or "")
             detail = f"`{approach}` -> {snippet}" if approach else snippet
             tried.append(f"- step {rec.step} ({rec.action_name}): {detail}")
