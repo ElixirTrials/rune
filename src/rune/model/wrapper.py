@@ -120,11 +120,25 @@ class ModelWrapper:
         r_peft, lora_alpha_peft = peft_scaling_params(checkpoint_alpha, rank, use_bias)
         # dtype + attention impl come from the model profile (config), not
         # hardcoded — different models need different generation contracts.
-        _raw_model = AutoModelForCausalLM.from_pretrained(
-            config.model_id,
-            dtype=getattr(torch, config.dtype),
-            attn_implementation=config.attn_implementation,
-        ).to(device)
+        # Low-RAM host (~15GB): stream weight shards directly onto the GPU instead
+        # of materialising the full ~8GB bf16 model in CPU RAM and then copying it
+        # over (a plain `.to(device)` peaks CPU RAM and thrashes the page cache on
+        # this box). device_map onto a single CUDA device is numerically identical
+        # to `.to("cuda")`; the CPU fallback keeps the old path for CPU-only CI.
+        if device == "cuda":
+            _raw_model = AutoModelForCausalLM.from_pretrained(
+                config.model_id,
+                dtype=getattr(torch, config.dtype),
+                attn_implementation=config.attn_implementation,
+                low_cpu_mem_usage=True,
+                device_map={"": 0},
+            )
+        else:
+            _raw_model = AutoModelForCausalLM.from_pretrained(
+                config.model_id,
+                dtype=getattr(torch, config.dtype),
+                attn_implementation=config.attn_implementation,
+            ).to(device)
         lora_config = LoraConfig(
             r=r_peft,
             lora_alpha=lora_alpha_peft,
