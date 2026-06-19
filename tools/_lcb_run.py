@@ -23,6 +23,12 @@ LCB_GRADE_PYTHON = Path("/tmp/lcbenv/bin/python")
 LCB_HARNESS = Path("/tmp/LiveCodeBench")
 C3_CKPT = "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
 ARMS = {
+    # base: single-shot capability ceiling — adapter OFF, NO engine loop. The c3
+    # checkpoint is loaded but never hot-swapped (scaling 0 == base weights). This
+    # is the engine's escalate zero-shot first attempt in isolation (same
+    # prompt_zeroshot template + "code" action system prompt, freeform), so c3/
+    # scale0 are strict supersets of base by construction.
+    "base": {"checkpoint": C3_CKPT, "adapter_scaling": 0.0},
     "scale0": {"checkpoint": C3_CKPT, "adapter_scaling": 0.0},
     "c3": {"checkpoint": C3_CKPT, "adapter_scaling": 1.0},
 }
@@ -66,11 +72,18 @@ def _load_lcb_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     return rows
 
 
-def _official_lcb_pass_at_1(gens_path: Path, *, timeout: int = 6) -> float | None:
-    """Run the official LCB grader in lcbenv; return pass@1 or None if unavailable."""
+def _official_lcb_pass_at_1(
+    gens_path: Path, *, timeout: int = 6
+) -> tuple[float | None, str]:
+    """Run the official LCB grader in lcbenv.
+
+    Returns ``(pass_at_1, raw_output)`` — pass_at_1 is None if the grader is
+    unavailable or failed; raw_output is the grader's stdout/stderr (logged as a
+    durable MLflow artifact so the official grade is reproducible, not a comment).
+    """
     grade_script = Path(__file__).resolve().parent / "_lcb_grade.py"
     if not LCB_GRADE_PYTHON.is_file() or not grade_script.is_file():
-        return None
+        return None, "grader unavailable (lcbenv/_lcb_grade.py missing)"
     repo_src = Path(__file__).resolve().parent.parent / "src"
     env = {
         **os.environ,
@@ -90,13 +103,71 @@ def _official_lcb_pass_at_1(gens_path: Path, *, timeout: int = 6) -> float | Non
         env=env,
         check=False,
     )
+    out = proc.stdout + ("\n[stderr]\n" + proc.stderr if proc.stderr else "")
     if proc.returncode != 0:
         print(proc.stderr or proc.stdout, file=sys.stderr, flush=True)
-        return None
+        return None, out
     match = re.search(r"LCB pass@1 = (\S+)", proc.stdout)
     if not match:
-        return None
-    return float(match.group(1))
+        return None, out
+    return float(match.group(1)), out
+
+
+async def _generate_base(model: Any, tasks: list[Any], cfg: Any) -> list[dict[str, Any]]:
+    """Single-shot base capability ceiling: one generate per task, adapter off.
+
+    Mirrors the engine's escalate zero-shot attempt exactly — the same
+    ``prompt_zeroshot`` template and the "code" action's freeform system prompt —
+    but with NO decompose/plan/diagnose/repair loop. This is the headline base
+    arm; c3/scale0 (which start from this same zero-shot) are strict supersets.
+    """
+    import torch  # noqa: PLC0415
+
+    from rune.bench.lcb import normalize_lcb_submission  # noqa: PLC0415
+    from rune.engine.continuation import extract_partial_code  # noqa: PLC0415
+    from rune.engine.parse import render_template  # noqa: PLC0415
+
+    rc = cfg.to_dict()
+    seed = rc.get("seed")
+    gens: list[dict[str, Any]] = []
+    for i, t in enumerate(tasks):
+        # Match run_benchmark's per-task seeding (seed + i) so base is
+        # deterministic/reproducible and uses the same RNG convention as the
+        # c3/scale0 engine arms (temperature 0.3 is stochastic otherwise).
+        if seed is not None:
+            torch.manual_seed(seed + i)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed + i)
+        prompt = render_template(
+            "prompt_zeroshot",
+            task_description=t.description,
+            entry_point=t.entry_point,
+        )
+        gen = await model.generate(
+            prompt=prompt,
+            system_prompt="You are a code generator.",
+            output_schema=None,
+            max_tokens=rc.get("max_tokens", 2048),
+            temperature=rc.get("temperature", 0.3),
+            repetition_penalty=rc.get("repetition_penalty", 1.1),
+            top_p=rc.get("top_p", 0.9),
+            no_repeat_ngram_size=rc.get("no_repeat_ngram_size", 0),
+            presence_penalty=rc.get("presence_penalty", 0.0),
+            thinking_budget=rc.get("thinking_budget", 0),
+        )
+        code = extract_partial_code(gen.text)
+        gens.append(
+            {
+                "question_id": t.task_id,
+                "code_list": [
+                    normalize_lcb_submission(
+                        code, t.entry_point, _starter_code=t.signature
+                    )
+                ],
+            }
+        )
+        print(f"base {t.task_id}: gen {len(code)} chars", flush=True)
+    return gens
 
 
 def main() -> None:
@@ -224,6 +295,14 @@ def main() -> None:
     sessions.mkdir(parents=True, exist_ok=True)
 
     lcb_sha = hashlib.sha256(Path(LCB_JSONL).read_bytes()).hexdigest()
+    ckpt_sha = hashlib.sha256(Path(a["checkpoint"]).read_bytes()).hexdigest()
+    engine_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=str(Path(__file__).resolve().parent.parent),
+    ).stdout.strip()
     configure_mlflow(args.experiment)
     params = {
         **cfg.to_dict(),
@@ -231,38 +310,49 @@ def main() -> None:
         "benchmark": "livecodebench_v6",
         "lcb_jsonl": LCB_JSONL,
         "lcb_sha256": lcb_sha,
+        "checkpoint_sha256": ckpt_sha,
+        "engine_commit": engine_commit,
+        "timeout_s": 6,
         "functional_only": args.functional_only,
         "start_date": args.start_date,
         "end_date": args.end_date,
         "n_tasks": len(tasks),
     }
     run_name = f"lcb-{args.arm}-{args.prompt_mode}-seed{args.seed}"
+    result = None
     with tracked_run(run_name, params=params):
         log_dataset(Path(LCB_JSONL), name="test6.jsonl", context="test")
-        result = asyncio.run(
-            run_benchmark(tasks, engine, config, sessions_dir=sessions)
-        )
-        mlflow.log_metric("pass_at_1", result.pass_at_1)
-        mlflow.log_metric("passed_tasks", result.passed_tasks)
-        mlflow.log_metric("total_tasks", result.total_tasks)
-
-        gens = [
-            {
-                "question_id": r.task_id,
-                "code_list": [
-                    normalize_lcb_submission(
-                        r.code or "",
-                        t.entry_point,
-                        _starter_code=t.signature,
-                    )
-                ],
-            }
-            for r, t in zip(result.per_task, tasks, strict=True)
-        ]
+        if args.arm == "base":
+            gens = asyncio.run(_generate_base(model, tasks, cfg))
+            mlflow.log_metric("total_tasks", len(gens))
+        else:
+            result = asyncio.run(
+                run_benchmark(tasks, engine, config, sessions_dir=sessions)
+            )
+            mlflow.log_metric("pass_at_1", result.pass_at_1)
+            mlflow.log_metric("passed_tasks", result.passed_tasks)
+            mlflow.log_metric("total_tasks", result.total_tasks)
+            gens = [
+                {
+                    "question_id": r.task_id,
+                    "code_list": [
+                        normalize_lcb_submission(
+                            r.code or "",
+                            t.entry_point,
+                            _starter_code=t.signature,
+                        )
+                    ],
+                }
+                for r, t in zip(result.per_task, tasks, strict=True)
+            ]
         out_path.write_text(json.dumps(gens, indent=1))
+        mlflow.log_artifact(str(out_path))  # durable: the graded generations
 
         if args.grade:
-            official = _official_lcb_pass_at_1(out_path)
+            official, grade_out = _official_lcb_pass_at_1(out_path)
+            grade_path = out_path.with_suffix(".grade.txt")
+            grade_path.write_text(grade_out)
+            mlflow.log_artifact(str(grade_path))  # durable: official grade output
             if official is not None:
                 mlflow.log_metric("lcb_official_pass_at_1", official)
                 print(f"LCB official pass@1={official:.3f} (n={len(gens)})", flush=True)
@@ -272,11 +362,10 @@ def main() -> None:
                     flush=True,
                 )
 
-    print(
-        f"{args.arm}: wrote {len(gens)} generations -> {out_path} "
-        f"(rune-internal pass@1={result.pass_at_1:.3f})",
-        flush=True,
+    internal = (
+        f" (rune-internal pass@1={result.pass_at_1:.3f})" if result is not None else ""
     )
+    print(f"{args.arm}: wrote {len(gens)} generations -> {out_path}{internal}", flush=True)
 
 
 if __name__ == "__main__":

@@ -53,6 +53,22 @@ def apply_lcb_harness_patches() -> None:
 
     testing_util.grade_call_based = _grade_call_based_safe  # type: ignore[method-assign]
     testing_util.timeout_handler = _quiet_timeout_handler  # type: ignore[method-assign]
+
+    # --- RAM guard: fixes the OOM that crashed the VM twice during grading. ---
+    # Upstream runs each untrusted candidate via reliability_guard() with NO memory
+    # cap, so a buggy/large-input solution can allocate unbounded RAM and OOM the
+    # ~15GB box. Force a per-candidate cap so it raises MemoryError instead. 4GB is
+    # far above any correct LeetCode-style solution (no false negatives). The whole
+    # grading chain is fork-based, so this monkeypatch reaches candidate processes.
+    _orig_reliability_guard = testing_util.reliability_guard
+    _mem_cap_bytes = 4 * 1024 * 1024 * 1024
+
+    def _capped_reliability_guard(maximum_memory_bytes: object = None) -> object:
+        return _orig_reliability_guard(
+            maximum_memory_bytes=maximum_memory_bytes or _mem_cap_bytes
+        )
+
+    testing_util.reliability_guard = _capped_reliability_guard  # type: ignore[method-assign]
     testing_util._rune_patched = True  # type: ignore[attr-defined]
 
 
@@ -148,7 +164,10 @@ def main() -> None:
         samples_list,
         generations_list,
         k_list=[1],
-        num_process_evaluate=8,
+        # Bound grading RAM on this ~15GB box: the grader executes untrusted
+        # generated solutions in parallel; 8-way OOM-crashed the VM mid-c3-grade.
+        # Parallelism only affects speed, not the per-task pass/fail verdict.
+        num_process_evaluate=2,
         timeout=args.timeout,
     )
     pass_at_1 = float(metrics.get("pass@1", 0.0))
