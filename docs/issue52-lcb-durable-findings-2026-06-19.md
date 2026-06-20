@@ -65,10 +65,24 @@ superset**, not a significance claim.
 - Recovery: c3's 49-task generation survived both crashes and was re-graded from saved
   gens (no 7h re-run).
 
-## 7. Pending (in progress)
-- scale0 extension to N=63 (pooled attribution).
-- **HumanEval+ (EvalPlus, 164 tasks)** corroboration — base vs c3 uplift on a 2nd
-  function-level benchmark. `tools/_he_run.py`, graded by the hardened rune sandbox.
+## 7. HumanEval+ (EvalPlus, 164) — corroboration: NEGATIVE (difficulty-dependent)
+Graded by the hardened rune sandbox against the EvalPlus "plus" tests (same grader both arms).
+| arm | pass@1 |
+|---|---|
+| base (single-shot) | **116/164 (70.7%)** |
+| c3 (escalate, adapter@1.0) | **100/164 (61.0%)** |
+
+**c3 is WORSE than base by 16 tasks** (gains 4, **loses 20** base-solved tasks — not a superset).
+The uplift does **not** generalize. On easy/high-base-accuracy tasks the escalate scaffolding
+(over-decomposition → integration, repair churn) regresses code the base solves zero-shot.
+
+**Combined conclusion (the honest, refined claim):** rune's benefit is **difficulty-dependent**.
+- LCB-v6 functional (base 19%): c3 **+4, strict superset, 0 regressions** — the engine helps where the base frequently fails.
+- HumanEval+ (base 71%): c3 **−16, 20 regressions** — the engine hurts where the base is already strong.
+The iterative engine adds value only when there is failure headroom for repair; otherwise its
+extra processing is net-negative. This bounds the contribution rather than universally supporting it.
+
+## 8. Pending (in progress)
 - **Mutated-spec pointer-vs-content control** on the c3 spec-absent solves (reference_a,
   scaling 0.627; c3 spec-absent = 14/24, NOT the 8/24 adapter-off floor). Decision rule:
   output tracks mutated spec = content; reproduces original memorized solution = pointer.
