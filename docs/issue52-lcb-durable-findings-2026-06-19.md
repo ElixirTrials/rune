@@ -82,7 +82,26 @@ The uplift does **not** generalize. On easy/high-base-accuracy tasks the escalat
 The iterative engine adds value only when there is failure headroom for repair; otherwise its
 extra processing is net-negative. This bounds the contribution rather than universally supporting it.
 
-## 8. Pending (in progress)
-- **Mutated-spec pointer-vs-content control** on the c3 spec-absent solves (reference_a,
-  scaling 0.627; c3 spec-absent = 14/24, NOT the 8/24 adapter-off floor). Decision rule:
-  output tracks mutated spec = content; reproduces original memorized solution = pointer.
+## 8. Mutated-spec pointer-vs-content control — POINTER confound CONFIRMED
+On the MBPP held-out tasks c3 solves spec-absent (reference_a@0.627; **19/24** this run — the
+spec lives only in the adapter, prompt names the function), the spec was mutated so the correct
+answer changes (type-aware: +1 / reverse / negate), c3 re-run spec-absent, and each output classified.
+
+| outcome | count (n=19) | meaning |
+|---|---|---|
+| **pointer** | **9 (47%)** | reproduced the ORIGINAL memorized solution, ignored the mutated spec |
+| content | 4 (21%) | tracked the mutated spec (genuine content recall) |
+| other | 6 (32%) | solved neither |
+
+**pointer (9) > content (4): the confound is confirmed.** c3's spec-absent "recall" is
+substantially **memorization** (a pointer to the trained solution), not genuine recall of the
+adapter-encoded content. This is a cautionary bound on the adapter-as-memory claim: spec-absent
+pass@1 overstates content recall because nearly half of solves reproduce the memorized answer.
+
+## 9. Overall (article-ready summary)
+1. **LCB-v6 (hard):** rune +4 over base (strict superset, 0 regressions) — durable.
+2. **HumanEval+ (easy):** rune −16 (20 regressions) — benefit is **difficulty-dependent**.
+3. **Attribution (LCB):** scaffold +2, adapter +2 (with churn); adapter active (logit Δ=10.97) but modest/noisy.
+4. **Mutated-spec:** spec-absent recall is mostly **pointer/memorization** (9 vs 4), not content.
+Honest framing: the engine helps on hard, low-base benchmarks; the adapter's pass@1 contribution is
+modest and its spec-absent recall is largely memorization. Claims are bounded, not oversold.
