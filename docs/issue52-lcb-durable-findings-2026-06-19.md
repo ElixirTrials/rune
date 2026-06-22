@@ -66,6 +66,16 @@ superset**, not a significance claim.
   gens (no 7h re-run).
 
 ## 7. HumanEval+ (EvalPlus, 164) — corroboration: NEGATIVE (difficulty-dependent)
+
+> **CORRECTION (2026-06-22): this section's conclusion is RETRACTED.** The −16 /
+> 20-regressions result was an **artifact** of feeding the engine
+> `public_checks=""`: the in-loop oracle fell back to bogus model-authored checks
+> that rejected correct zero-shots and drove a destructive escalation (19/20
+> regressions had a passing zero-shot the engine discarded). Fixed at the root —
+> the graded entry is gated only by trusted public examples (wired or spec
+> doctests), and the doctest extractor no longer corrupts the last example. rune
+> is **not** "difficulty-dependent / harmful on easy tasks". Full RCA + fixes +
+> re-run: `docs/issue52-humaneval-regression-rca-fix-2026-06-22.md`.
 Graded by the hardened rune sandbox against the EvalPlus "plus" tests (same grader both arms).
 | arm | pass@1 |
 |---|---|
@@ -100,7 +110,11 @@ pass@1 overstates content recall because nearly half of solves reproduce the mem
 
 ## 9. Overall (article-ready summary)
 1. **LCB-v6 (hard):** rune +4 over base (strict superset, 0 regressions) — durable.
-2. **HumanEval+ (easy):** rune −16 (20 regressions) — benefit is **difficulty-dependent**.
+2. **HumanEval+ (easy):** ~~rune −16 (20 regressions) — benefit is difficulty-dependent.~~
+   **RETRACTED (2026-06-22):** artifact of `public_checks=""` letting bogus model
+   acceptance_checks reject correct zero-shots. Fixed at the in-loop oracle (entry
+   gated only by trusted public examples + clean doctest extraction); c3 re-run.
+   See `docs/issue52-humaneval-regression-rca-fix-2026-06-22.md`.
 3. **Attribution (LCB):** scaffold +2, adapter +2 (with churn); adapter active (logit Δ=10.97) but modest/noisy.
 4. **Mutated-spec:** spec-absent recall is mostly **pointer/memorization** (9 vs 4), not content.
 Honest framing: the engine helps on hard, low-base benchmarks; the adapter's pass@1 contribution is

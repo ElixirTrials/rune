@@ -379,7 +379,13 @@ async def run_benchmark(
                 PipelineConfig().merge_spec_public_checks,
             )
         )
-        if merge_spec and public_checks.strip() and task.entry_point:
+        # Derive the public signal from the spec's doctest examples — even when
+        # the task ships NO public_checks (HumanEval/MBPP carry examples in the
+        # docstring, not a wired field). Without a trustworthy in-loop signal the
+        # engine can only floor at base; with one it can verify escalations and
+        # KEEP the gains (issue #52). merge_public_checks returns the spec-derived
+        # checks when the wired set is empty, and unions them otherwise (LCB).
+        if merge_spec and task.entry_point:
             public_checks = merge_public_checks(
                 task.description, public_checks, task.entry_point
             )

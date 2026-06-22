@@ -69,17 +69,27 @@ _ORACLE_FAIL_CLOSED_MSG = "oracle checks configured but probe did not fire"
 def resolve_in_loop_check(
     name: str, subtask_check: str, state: Mapping[str, Any]
 ) -> str:
-    """Pick in-loop assert source: task public_checks, subtask check, or none."""
+    """Pick the in-loop assert source for a subtask.
+
+    The graded ENTRY point is verified ONLY by trusted public examples (the wired
+    benchmark checks or the spec's doctests). A model-authored ``acceptance_check``
+    is never an authoritative correctness gate for it: the decompose model emits
+    bogus checks (undefined helpers, unparseable asserts, wrong expectations) that
+    reject zero-shots the base model solves and drive a destructive escalation
+    (issue #52, HumanEval+). With no public signal the entry has no in-loop gate
+    (module-load only) and the engine ships the base zero-shot.
+
+    Non-entry helper subtasks have no public examples of their own, so their
+    model-authored ``acceptance_check`` is the only in-loop signal available.
+    """
     public = str(state.get("public_checks", "") or "").strip()
     entry = str(state.get("entry_point", "") or "")
     sub = subtask_check.strip()
-    if public and (not name or name == entry):
+    if (not name) or (name == entry):
         return public
     if sub:
         return sub
-    if public:
-        return public
-    return ""
+    return public
 
 
 def _normalize_probe_code(code: str, entry_point: str) -> str:

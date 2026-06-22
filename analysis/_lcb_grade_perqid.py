@@ -46,7 +46,7 @@ def apply_patches() -> None:
     tu.timeout_handler = quiet  # type: ignore[method-assign]
 
     # RAM guard: cap each untrusted candidate at 4GB so a memory-bomb solution
-    # raises MemoryError instead of OOM-crashing the 15GB VM (same fix as _lcb_grade.py).
+    # raises MemoryError instead of OOM-crashing the 15GB VM (same as _lcb_grade.py).
     _orig_guard = tu.reliability_guard
 
     def _capped(maximum_memory_bytes: object = None) -> object:
@@ -64,7 +64,9 @@ def _decode_private(s: str) -> list:
 
 
 def _sample(row: dict) -> dict:
-    tc = json.loads(row["public_test_cases"]) + _decode_private(row["private_test_cases"])
+    tc = json.loads(row["public_test_cases"]) + _decode_private(
+        row["private_test_cases"]
+    )
     meta = json.loads(row["metadata"]) if row["metadata"] else {}
     return {
         "input_output": json.dumps(
@@ -120,10 +122,17 @@ def main() -> None:
         )
         empty = not code.strip()
         if empty:
-            out[qid] = {"status": "empty", "n_tests": 0, "n_pass": 0, "raw_empty": not raw.strip()}
+            out[qid] = {
+                "status": "empty",
+                "n_tests": 0,
+                "n_pass": 0,
+                "raw_empty": not raw.strip(),
+            }
             print(f"{qid}: empty", flush=True)
             continue
-        res, _meta = check_correctness(_sample(row), code, timeout=args.timeout, debug=False)
+        res, _meta = check_correctness(
+            _sample(row), code, timeout=args.timeout, debug=False
+        )
         status = _classify(res)
         n_pass = sum(1 for r in res if r is True)
         out[qid] = {

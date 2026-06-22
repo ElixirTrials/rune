@@ -8,7 +8,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-
 # Per-process address-space cap for untrusted code: a runaway/large-input
 # solution raises MemoryError instead of OOM-killing the host (the ~15GB box
 # crashed twice on unbounded grading). 4GB is far above any benchmark solution.
@@ -18,7 +17,8 @@ _MEM_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
 _MEM_GUARD_PROLOGUE = (
     "import resource as _rune_res\n"
     "try:\n"
-    f"    _rune_res.setrlimit(_rune_res.RLIMIT_AS, ({_MEM_LIMIT_BYTES}, {_MEM_LIMIT_BYTES}))\n"
+    f"    _rune_res.setrlimit(_rune_res.RLIMIT_AS, "
+    f"({_MEM_LIMIT_BYTES}, {_MEM_LIMIT_BYTES}))\n"
     "except Exception:\n"
     "    pass\n"
 )
