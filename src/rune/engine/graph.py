@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 import mlflow
@@ -43,6 +43,7 @@ from rune.engine.oracle import (
 from rune.engine.parse import (
     ComplexityJudgeResult,
     JudgeResult,
+    candidate_quality,
     parse_output,
     render_template,
 )
@@ -281,6 +282,28 @@ def _effective_temperature(
     if _is_zeroshot_attempt(prompt_mode, action, code_results):
         return 0.0
     return base_temperature
+
+
+async def oracle_gated_best_of_k(
+    k: int,
+    generate_one: Callable[[], Awaitable[Any]],
+    evaluate: Callable[[Any], Awaitable[tuple[bool, int]]],
+) -> Any:
+    """Sample up to *k* escalation candidates; return the first whose ``evaluate``
+    reports ``passed=True`` (it passed the trusted public oracle), else the
+    highest-quality candidate (issue #52 powered-eval, B). ``evaluate`` returns
+    ``(passed, quality)``. Generation/oracle deps are injected so this is testable
+    without a model."""
+    best: Any = None
+    best_quality = -2
+    for _ in range(max(k, 0)):
+        result = await generate_one()
+        passed, quality = await evaluate(result)
+        if passed:
+            return result
+        if quality > best_quality:
+            best, best_quality = result, quality
+    return best
 
 
 def render_episode_adapter(
@@ -914,8 +937,15 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         eff_temperature = _effective_temperature(
             prompt_mode, action, state.get("code_results", {}), temperature
         )
-        adapter_id = apply_episodic_adapter(model, trajectory_text, scaling=eff_scaling)
-        result = await model.generate(
+        best_of_k = int(run_config.get("escalation_best_of_k", 1))
+        is_escalation = (
+            action.executes_code
+            and action.name in ("code", "repair")
+            and not _is_zeroshot_attempt(
+                prompt_mode, action, state.get("code_results", {})
+            )
+        )
+        gen_kwargs: dict[str, Any] = dict(
             prompt=prompt_text,
             system_prompt=action.system_prompt,
             output_schema=action.output_schema,
@@ -927,6 +957,45 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             presence_penalty=presence_penalty,
             thinking_budget=thinking_budget,
         )
+        adapter_id: str | None = None
+
+        if is_escalation and best_of_k > 1:
+            _cand_target = action.target_subtask or ""
+
+            async def _generate_one(
+                _traj: str = trajectory_text,
+                _scale: float = eff_scaling,
+                _kw: dict[str, Any] = gen_kwargs,
+            ) -> Any:
+                nonlocal adapter_id
+                adapter_id = apply_episodic_adapter(model, _traj, scaling=_scale)
+                return await model.generate(**_kw)
+
+            async def _evaluate(
+                result: Any,
+                _target: str = _cand_target,
+            ) -> tuple[bool, int]:
+                cand = extract_partial_code(result.text)
+                probe, fired, resolved = build_code_probe(_target, cand, state)
+                raw = await asyncio.to_thread(run_in_sandbox, probe)
+                fb = apply_oracle_fail_closed(
+                    fired,
+                    resolved,
+                    Feedback(
+                        stdout=raw.stdout,
+                        stderr=raw.stderr,
+                        exit_code=raw.exit_code,
+                    ),
+                )
+                passed = bool(fired and fb.exit_code == 0)
+                return passed, candidate_quality(cand, fb)
+
+            result = await oracle_gated_best_of_k(best_of_k, _generate_one, _evaluate)
+        else:
+            adapter_id = apply_episodic_adapter(
+                model, trajectory_text, scaling=eff_scaling
+            )
+            result = await model.generate(**gen_kwargs)
         raw_text = result.text
         needs_continuation = result.truncated
         if action.name in ("code", "repair", "integrate") and needs_continuation:
