@@ -609,10 +609,13 @@ Expected: green; existing runner tests unaffected (`resume` defaults False).
 
 After all four tasks land and the suite is green, run the LCB significance attempt. base is re-run at temperature 0; c3 at temp-0 floor + best-of-k.
 
+> **HARD PRECONDITION (the byte-identical floor==base property is operator-enforced, not machine-enforced).** `_effective_temperature` forces only the *c3 floor* to greedy; the *base arm* reads `temperature` from config (default 0.3). The base arm MUST run with `RUNE_TEMPERATURE=0` (greedy) — otherwise base is stochastic, the floor is not byte-identical to base, and the strict-superset (`b=0`) guarantee silently breaks. Pin `thinking_budget` identically on both arms too (config.yaml already sets `thinking_budget: 0`; do not override one arm). **Backstop:** the `b=0` audit below catches any divergence — a non-zero `base_only` means the arms diverged (or a real oracle false-negative); investigate before claiming one-sided significance.
+
 ```bash
 export MLFLOW_TRACKING_URI=http://localhost:5000 UV_NO_SYNC=1 TMPDIR=/tmp
 
-# base arm: single-shot greedy (== the c3 floor)
+# base arm: single-shot greedy (== the c3 floor). RUNE_TEMPERATURE=0 is REQUIRED
+# (see HARD PRECONDITION above) — without it base samples at 0.3 and b=0 breaks.
 RUNE_TEMPERATURE=0 uv run --extra gpu python tools/_lcb_run.py --arm base \
   --seed 0 --out /tmp/lcbout/lcb_base_t0.json --experiment issue52-powered
 
