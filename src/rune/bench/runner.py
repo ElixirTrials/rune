@@ -345,6 +345,7 @@ async def run_benchmark(
     engine: Any,
     config: dict[str, Any],
     sessions_dir: Path | None = None,
+    resume: bool = False,
 ) -> BenchResult:
     """Run the full benchmark suite and return aggregate results.
 
@@ -354,6 +355,10 @@ async def run_benchmark(
         config: Configurable dict passed to engine.ainvoke (contains
             ``model`` and ``run_config`` keys).
         sessions_dir: If set, write one session dir per task here (corpus producer).
+        resume: If True and sessions_dir is set, skip tasks whose
+            ``<sessions_dir>/<task_id>/metadata.json`` already records a
+            ``pass_at_1`` result (written by a prior run). Corrupt or missing
+            metadata falls through to re-running the task normally.
 
     Returns:
         BenchResult with pass@1 and per-task details.
@@ -367,6 +372,24 @@ async def run_benchmark(
     model = config.get("model")
     seed = config["run_config"].get("seed")
     for i, task in enumerate(tasks):
+        if resume and sessions_dir is not None:
+            meta_path = sessions_dir / task.task_id / "metadata.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    meta = None
+                if meta is not None and "pass_at_1" in meta:
+                    results.append(
+                        TaskResult(
+                            task_id=task.task_id,
+                            passed=bool(meta["pass_at_1"]),
+                            code="",
+                            stderr="resumed from session",
+                        )
+                    )
+                    continue
+
         if seed is not None:
             _seed_rng(seed + i)
         rc = config.get("run_config", {})

@@ -145,7 +145,9 @@ def main() -> None:
             }
             sess = out_path.with_suffix("")  # per-task sessions dir for progress
             sess.mkdir(parents=True, exist_ok=True)
-            result = asyncio.run(run_benchmark(tasks, engine, config, sessions_dir=sess))
+            result = asyncio.run(
+                run_benchmark(tasks, engine, config, sessions_dir=sess, resume=True)
+            )
             perq = {tr.task_id: bool(tr.passed) for tr in result.per_task}
         npass = sum(perq.values())
         n = len(perq)

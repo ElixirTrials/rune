@@ -327,7 +327,7 @@ def main() -> None:
             mlflow.log_metric("total_tasks", len(gens))
         else:
             result = asyncio.run(
-                run_benchmark(tasks, engine, config, sessions_dir=sessions)
+                run_benchmark(tasks, engine, config, sessions_dir=sessions, resume=True)
             )
             mlflow.log_metric("pass_at_1", result.pass_at_1)
             mlflow.log_metric("passed_tasks", result.passed_tasks)
