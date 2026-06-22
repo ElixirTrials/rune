@@ -67,16 +67,25 @@ Tests: `tests/unit/test_oracle_signal_fixes.py` (A: no triple-quote in extracted
 checks + runnable; B: `run_benchmark` derives public_checks from spec doctests;
 C: entry ignores an untrusted model `acceptance_check`, helpers still use theirs).
 
-## Verification (end-to-end re-run)
+## Verification (end-to-end re-run — completed 2026-06-22)
 
-base is unchanged (116/164 — the base arm does not use the engine). The c3 arm is
-re-run with the fixes (`tools/_he_run.py --arm c3`, seed 0, budget 24, judge off).
+Both arms re-run at engine `efa7b9e` (seed 0, budget 24, judge off) through the
+fixed harness (the escalation-floor RCA above **plus** the import-preamble fix in
+the addendum below). The apparent −16 regression is **fully resolved**.
 
 | arm | pass@1 |
 |---|---|
-| base (single-shot) | 116/164 |
-| c3 BEFORE fixes | 100/164 (−16) |
-| c3 AFTER fixes | _(re-run; filled on completion)_ |
+| base, pre-import-fix `db48504` | 116/164 (0.707) |
+| c3 BEFORE fixes `5954c81` | 100/164 (0.610, −16) |
+| **base, post-import-fix `efa7b9e`** | **134/164 (0.817)** |
+| **c3 AFTER fixes `efa7b9e`** | **135/164 (0.823)** — strict superset of base: +1 (`HumanEval/10`), 0 regressions |
+
+The base arm rose **+18** (116→134) purely from the import-preamble grading fix
+(addendum; within the 19 typing-signature tasks — the base arm does not use the
+engine). c3 then adds **one** engine gain (`HumanEval/10`, a multi-step
+`make_palindrome` the zero-shot gets subtly wrong and the escalate→repair loop
+fixes) with **zero** regressions — c3 (135) ⊇ base (134). MLflow
+`issue52-humanevalplus`: `he-base-seed0` / `he-c3-seed0` @ `efa7b9e`.
 
 Trace-based soundness pre-check (fixed extractor): of the 69 doctest-bearing
 tasks, the held-out-correct zero-shot fails the derived doctests in only **1**

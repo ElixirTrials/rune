@@ -4,10 +4,10 @@
 > DUMP* as the adapter conditioning (`render_xfile_adapter 'structured'`), which is the
 > WRONG template for an episodic per-task adapter. A follow-up HPO over an **episodic**
 > template (name the one cross-file API the task must call, in the hypernet's training
-> surface) **reverses the result**: on held-out tasks the tuned episodic adapter recovers
-> **4/10 vs floor 1/10 (strict superset, 0 regressions)**, including 32k tasks where
-> context-in-prompt is prohibitive. See
-> `docs/issue52-repobench-template-hpo-findings-2026-06-22.md`. The §2–§6 negative stands
+> surface) **reverses the result**: tuned by Optuna (held-out 4/10 vs floor 1/10) and
+> **confirmed at N=60 fresh rows — episodic 31/60 (0.517) vs floor 9/60 (0.150), McNemar
+> p=3.0e-06**, including 32k tasks where context-in-prompt is prohibitive (skipped 30/30).
+> See `docs/issue52-repobench-template-hpo-findings-2026-06-22.md`. The §2–§6 negative stands
 > only as "the *dump* template fails"; "frozen c3 can't carry context / needs distillation"
 > is **withdrawn** — it carries context fine with the right episodic conditioning, no training.
 

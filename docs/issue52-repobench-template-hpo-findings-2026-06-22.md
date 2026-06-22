@@ -51,12 +51,25 @@ is unaffordable.
   in-file prefix (already in the prompt). Including it diluted the conditioning.
 - **`scaling≈0.91`** — near full strength (cf. the dump run's flat scaling sweep).
 
-## 4. Honest bounds + next step
-N(held-out)=10 — the 4/10 vs 1/10 superset is **directional, not significant** (need ≥5
-discordant gains for one-sided p≤0.031 per the powered-significance method). The result is a
-clean existence-at-scale: the episodic adapter beats the floor on tasks it never tuned on, with
-zero regressions, no training. **Next:** scale the held-out set (target ≥5 discordant gains) at
-the best config to cross significance, and report against the same floor/a2_full/dump baselines.
+## 4. Scaled confirmation (N=60) — CROSSED SIGNIFICANCE
+The held-out 4/10 (directional, one-sided p=0.125) is **confirmed at scale**. The best
+config was frozen and re-run on **N=60 fresh rows** (offset 100, disjoint from tuning),
+W=768, engine `efa7b9e` (MLflow `issue52-repobench-clamp`, run `clamp-use-…-off100`):
+
+| arm | recovery |
+|---|---|
+| floor (no context) | 9/60 = 0.150 |
+| a2_clamp (ctx in truncated prompt) | 11/60 = 0.183 |
+| dump_gf (old multi-file dump) | 11/60 = 0.183 |
+| **episodic_use (tuned)** | **31/60 = 0.517** |
+| a2_full (ctx in full prompt) | 17/30 = 0.567 (ceiling, partial) |
+
+**McNemar floor vs episodic: 23 adapter-only / 1 floor-only, p = 3.0e-06.** 22/31 recoveries
+are beyond the clamped prompt. By level: 8k 18/30 (0.600), **32k 13/30 (0.433) where a2_full is
+skipped 30/30 (prohibitive)** — episodic delivers context at constant 768-tok prompt (~16.7×
+fewer tokens than full-context) exactly where the prompt cannot. One regression (32k `dilation`).
+Episodic ≈ near-ceiling at a fraction of the prompt cost; the dump template stayed at floor
+(0.183) — **the template, not the adapter mechanism, was the confound.**
 
 ## 5. Reproduction
 ```
