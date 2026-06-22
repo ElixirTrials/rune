@@ -50,6 +50,10 @@ class BenchTask:
     entry_point: str = "solution"
     signature: str = ""  # real def line (reference_* adapter anchor); optional
     public_checks: str = ""  # in-loop oracle only; empty => doctest fallback (MBPP)
+    # Code prepended to the solution before grading (e.g. a HumanEval prompt's
+    # imports, which the generated function body omits). Empty for benchmarks
+    # whose solutions are self-contained. See ``build_graded_program``.
+    grading_preamble: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,20 @@ def load_tasks(path: Path) -> list[BenchTask]:
     """
     data = json.loads(path.read_text())
     return [BenchTask(**t) for t in data]
+
+
+def build_graded_program(task: BenchTask, solution_code: str) -> str:
+    """Assemble the program graded for pass@1: preamble + solution + held-out tests.
+
+    ``grading_preamble`` (e.g. a HumanEval prompt's imports) is prepended so a
+    correct solution whose generated body omits the prompt's imports does not fail
+    with a spurious ``NameError`` (e.g. ``List`` in a signature annotation). Self-
+    tests are stripped so a wrong model-authored assert can't fail a correct
+    implementation. Duplicate imports (when the body already repeats them) are
+    harmless. The single source of truth for grading assembly across arms.
+    """
+    preamble = f"{task.grading_preamble}\n" if task.grading_preamble.strip() else ""
+    return preamble + strip_self_tests(solution_code) + "\n\n" + task.test_code
 
 
 def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
@@ -457,7 +475,7 @@ async def run_benchmark(
                 model.reset_adapter()
             continue
 
-        full_code = strip_self_tests(generated_code) + "\n\n" + task.test_code
+        full_code = build_graded_program(task, generated_code)
 
         try:
             sandbox_result = await asyncio.to_thread(run_in_sandbox, full_code)

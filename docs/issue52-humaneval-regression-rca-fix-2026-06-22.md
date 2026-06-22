@@ -84,3 +84,23 @@ case (low false-negative/regression risk), while **21** zero-shots pass the publ
 doctests yet fail the hidden EvalPlus tests — the engine early-stops on those (it
 cannot know they are wrong), so the upside over base is bounded by escalation
 headroom on the remaining doctest-failing tasks.
+
+## Addendum (2026-06-22): grading dropped the prompt's imports
+
+A pre-launch smoke (HumanEval/0, /1) caught a **second, independent** grading
+defect affecting BOTH arms: the graded program was `solution + test`, omitting the
+prompt's imports. A correct solution whose generated body does not echo
+`from typing import List` then fails with `NameError: List` at definition (the
+signature annotation is evaluated at def-time). Confirmed: the shipped, correct
+`has_close_elements` failed grading as-is; `+ "from typing import List"` → pass.
+Blast radius: **19/164** tasks use a typing name in the signature.
+
+Fix (`bench/runner.py`): `BenchTask.grading_preamble` (default `""`) + a single
+`build_graded_program(task, code)` assembler now used by both the c3 (`run_benchmark`)
+and base (`_gen_base`) paths; `tools/_he_run.py::load_he_tasks` populates the
+preamble with the prompt's import lines. Verified end-to-end: HumanEval/0+1 base
+**0/2 → 2/2** and c3 **0/2 → 2/2** (the final-grade fix suffices — the engine
+already ships the correct floored zero-shot; no in-loop probe change needed).
+Both arms are affected symmetrically, so prior base-vs-c3 comparisons stay valid,
+but absolute pass@1 was understated; the full re-run uses the fixed grader.
+Tests: `tests/unit/test_grading_preamble.py`.

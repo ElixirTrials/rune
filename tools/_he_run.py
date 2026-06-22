@@ -12,12 +12,24 @@ import argparse
 import asyncio
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
 C3_CKPT = "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
 ARMS = {"base": 0.0, "scale0": 0.0, "c3": 1.0}
+_IMPORT_RE = re.compile(r"^[ \t]*(?:import\s+\S|from\s+\S+\s+import\s)")
+
+
+def _prompt_imports(prompt: str) -> str:
+    """Top-level import lines from a HumanEval prompt.
+
+    The generated function body often omits these (e.g. ``from typing import
+    List``), so a correct solution NameErrors at grading on its signature
+    annotation. Prepended to the graded program via ``BenchTask.grading_preamble``.
+    """
+    return "\n".join(ln for ln in prompt.splitlines() if _IMPORT_RE.match(ln))
 
 
 def load_he_tasks() -> list[Any]:
@@ -38,6 +50,7 @@ def load_he_tasks() -> list[Any]:
                 entry_point=ep,
                 signature="",
                 public_checks="",  # docstring >>> examples -> doctest oracle fallback
+                grading_preamble=_prompt_imports(r["prompt"]),
             )
         )
     return tasks
@@ -46,10 +59,8 @@ def load_he_tasks() -> list[Any]:
 async def _gen_base(model: Any, tasks: list[Any], cfg: Any) -> dict[str, bool]:
     import torch  # noqa: PLC0415
 
-    from rune.engine.continuation import (  # noqa: PLC0415
-        extract_partial_code,
-        strip_self_tests,
-    )
+    from rune.bench.runner import build_graded_program  # noqa: PLC0415
+    from rune.engine.continuation import extract_partial_code  # noqa: PLC0415
     from rune.engine.parse import render_template  # noqa: PLC0415
     from rune.sandbox.executor import run_in_sandbox  # noqa: PLC0415
 
@@ -77,7 +88,7 @@ async def _gen_base(model: Any, tasks: list[Any], cfg: Any) -> dict[str, bool]:
             thinking_budget=rc.get("thinking_budget", 0),
         )
         code = extract_partial_code(gen.text)
-        full = strip_self_tests(code) + "\n\n" + t.test_code
+        full = build_graded_program(t, code)
         passed = run_in_sandbox(full, timeout=30).exit_code == 0
         out[t.task_id] = passed
         print(f"base {t.task_id}: {'PASS' if passed else 'fail'} ({len(code)}c)", flush=True)
