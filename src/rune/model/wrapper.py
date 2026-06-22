@@ -18,6 +18,13 @@ if TYPE_CHECKING:
     from rune.config import PipelineConfig
 
 
+def _tail_ids(ids: list[int], max_tokens: int) -> list[int]:
+    """Last ``max_tokens`` of ``ids`` (window-budget tail; pure for CPU tests)."""
+    if max_tokens <= 0:
+        return []
+    return ids[-max_tokens:]
+
+
 def peft_scaling_params(
     checkpoint_alpha: float, rank: int, use_bias: bool
 ) -> tuple[int, float]:
@@ -155,6 +162,7 @@ class ModelWrapper:
         trajectory_text: str,
         *,
         offload_base: bool = False,
+        max_length: int = 2048,
     ) -> AdapterResult:
         """Generate LoRA weights from a trajectory via the hypernetwork.
 
@@ -162,6 +170,8 @@ class ModelWrapper:
             trajectory_text: Serialised coding trajectory used as conditioning.
             offload_base: Move base model to CPU during the hypernetwork forward
                 pass to free GPU memory.
+            max_length: Token budget for trajectory encoding (the hypernet was
+                distilled at 2048; raising it is out-of-distribution).
 
         Returns:
             AdapterResult with a fresh UUID adapter_id and the generated state dict.
@@ -172,9 +182,23 @@ class ModelWrapper:
             base_model=self._base_model,
             tokenizer=self._tokenizer,
             layer_indices=self._layer_indices,
+            max_length=max_length,
             offload_base=offload_base,
         )
         return AdapterResult(adapter_id=uuid.uuid4().hex, state_dict=state_dict)
+
+    def clamp_to_window(self, text: str, max_tokens: int) -> str:
+        """Truncate ``text`` to its last ``max_tokens`` tokens (window budget).
+
+        Simulates a constrained context window (JTBD #3 / issue #52 long-context
+        probe): under a token budget the cursor-adjacent tail is kept and
+        front-loaded context is evicted. Returns ``text`` unchanged when it
+        already fits.
+        """
+        ids: list[int] = self._tokenizer(text, add_special_tokens=False).input_ids
+        if len(ids) <= max_tokens:
+            return text
+        return str(self._tokenizer.decode(_tail_ids(ids, max_tokens)))
 
     def count_tokens(self, text: str) -> int:
         """Token count of ``text`` under the base tokenizer (content tokens only).
