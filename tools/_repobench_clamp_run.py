@@ -302,7 +302,10 @@ def main() -> None:
         "episodic_anchor": args.anchor,
         "episodic_scaling": args.scaling,
     }
-    run_name = f"clamp-W{args.window}-{'_'.join(levels)}-n{len(rows)}-seed{args.seed}"
+    run_name = (
+        f"clamp-{args.variant}-W{args.window}-{'_'.join(levels)}"
+        f"-n{len(rows)}-off{args.offset}-seed{args.seed}"
+    )
     with tracked_run(run_name, params=params):
         traces = asyncio.run(_run(model, rows, args))
         out_path = Path(args.out)
