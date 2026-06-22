@@ -152,28 +152,59 @@ def _gold_signature(snippet: str) -> str:
     return first
 
 
-def render_episodic_adapter(
-    row: RepoBenchRow, *, signature_only: bool = False, anchor_chars: int = 400
+def _module_path(path: str) -> str:
+    """``a/b/c.py`` -> ``a.b.c`` (import-style module path)."""
+    return path.removesuffix(".py").replace("/", ".").replace("\\", ".")
+
+
+#: Episodic template variants for HPO. Each names the ONE gold cross-file API the
+#: task must use; they differ in verb/framing and how much of the def they carry.
+EPISODIC_VARIANTS = ("gold", "sig", "use", "minimal", "import")
+
+
+def render_episodic(
+    row: RepoBenchRow, variant: str = "gold", *, anchor_chars: int = 400
 ) -> str:
-    """Episodic, per-task adapter conditioning (the corrected template).
+    """Episodic, per-task adapter conditioning (the corrected template family).
 
     The adapter is episodic and per-task: it needs to know *what this task must
-    call*, not the whole repo. This names the single gold cross-file API and its
-    definition, in the hypernet's distillation surface
+    call*, not the whole repo. Each variant names the single gold cross-file API
+    and (some of) its definition, in the hypernet's distillation surface
     (``## Task / ## Current Code / ## Review Feedback``) — far smaller than the
     multi-file ``render_xfile_adapter`` dump (which the 2048-token cap shredded).
 
-    ``signature_only`` keeps just the class/def headers (the call surface), not the
-    full body.
+    Variants: ``gold`` (full def), ``sig`` (signatures only), ``use`` (softer
+    "must use" verb — for assigned/referenced, not just called, APIs),
+    ``minimal`` (bare available-API surface, no prose), ``import`` (import-style
+    name binding + signatures).
     """
     gi = row.gold_snippet_index
     if not (0 <= gi < len(row.context)):
         return ""
     g = row.context[gi]
-    body = _gold_signature(g["snippet"]) if signature_only else g["snippet"]
-    task = (
-        "Complete the next line of the current file. It must call "
-        f"`{g['identifier']}` defined in {g['path']}:\n\n{body}"
+    ident, path, snip = g["identifier"], g["path"], g["snippet"]
+    sig = _gold_signature(snip)
+    if variant == "gold":
+        task = f"Complete the next line of the current file. It must call `{ident}` defined in {path}:\n\n{snip}"  # noqa: E501
+    elif variant == "sig":
+        task = f"Complete the next line of the current file. It must call `{ident}` defined in {path}:\n\n{sig}"  # noqa: E501
+    elif variant == "use":
+        task = f"Complete the next line. It must use `{ident}` (from {_module_path(path)}):\n\n{sig}"  # noqa: E501
+    elif variant == "minimal":
+        task = f"# Available API:\n{sig}"
+    elif variant == "import":
+        task = f"from {_module_path(path)} import {ident}\n\n{sig}"
+    else:
+        raise ValueError(f"unknown episodic variant {variant!r}")
+    anchor = row.cropped_code[-anchor_chars:] if anchor_chars > 0 else ""
+    cc = f"\n\n## Current Code\n{anchor}" if anchor else ""
+    return f"## Task\n{task}{cc}\n\n## Review Feedback\n"
+
+
+def render_episodic_adapter(
+    row: RepoBenchRow, *, signature_only: bool = False, anchor_chars: int = 400
+) -> str:
+    """Back-compat shim for the ``gold``/``sig`` variants (see ``render_episodic``)."""
+    return render_episodic(
+        row, "sig" if signature_only else "gold", anchor_chars=anchor_chars
     )
-    anchor = row.cropped_code[-anchor_chars:]
-    return f"## Task\n{task}\n\n## Current Code\n{anchor}\n\n## Review Feedback\n"

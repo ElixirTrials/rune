@@ -1,6 +1,8 @@
 from rune.bench.repobench import (
+    EPISODIC_VARIANTS,
     RepoBenchRow,
     order_context,
+    render_episodic,
     render_episodic_adapter,
     render_xfile_adapter,
 )
@@ -93,6 +95,38 @@ def test_render_episodic_adapter() -> None:
     assert "class Pooler(nn.Module):" in sig
     assert "def __init__(self, dim):" in sig
     assert "self.dim = dim" not in sig
+
+
+def test_render_episodic_variants() -> None:
+    ctx = (
+        {"identifier": "noise", "path": "x.py", "snippet": "X = 1"},
+        {
+            "identifier": "Pooler",
+            "path": "m/pool.py",
+            "snippet": "class Pooler(nn.Module):\n    def __init__(self, dim):\n        self.dim = dim",
+        },
+    )
+    row = RepoBenchRow(
+        task_id="t", cropped_code="x = 1\ny = 2", import_statement="", context=ctx,
+        gold_snippet_index=1, next_line="self.p = Pooler(dim)", level="8k",
+        token_num=0, repo_name="r", file_path="f",
+    )
+    for v in EPISODIC_VARIANTS:
+        out = render_episodic(row, v)
+        assert out.startswith("## Task")
+        assert "Pooler" in out  # every variant names the gold API
+        assert "X = 1" not in out  # never the non-gold snippet
+    # variant-specific surface
+    assert "must call `Pooler`" in render_episodic(row, "gold")
+    assert "must use `Pooler` (from m.pool)" in render_episodic(row, "use")
+    assert render_episodic(row, "import").startswith("## Task\nfrom m.pool import Pooler")
+    # anchor_chars=0 drops the Current Code block
+    assert "## Current Code" not in render_episodic(row, "minimal", anchor_chars=0)
+    # unknown variant is a hard error
+    import pytest  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="unknown episodic variant"):
+        render_episodic(row, "nope")
 
 
 def test_render_training_mode() -> None:
