@@ -1,4 +1,9 @@
-from rune.bench.repobench import RepoBenchRow, order_context, render_xfile_adapter
+from rune.bench.repobench import (
+    RepoBenchRow,
+    order_context,
+    render_episodic_adapter,
+    render_xfile_adapter,
+)
 
 
 def _row(import_statement: str = "from m import tool") -> RepoBenchRow:
@@ -60,6 +65,34 @@ def test_order_context_gold_first() -> None:
     assert [c["identifier"] for c in order_context(row, gold_first=True)] == ["c", "a", "b"]
     # gold snippet leads the rendered conditioning
     assert render_xfile_adapter(row, "raw", gold_first=True).startswith("C")
+
+
+def test_render_episodic_adapter() -> None:
+    ctx = (
+        {"identifier": "noise", "path": "x.py", "snippet": "X = 1"},
+        {
+            "identifier": "Pooler",
+            "path": "m/pool.py",
+            "snippet": "class Pooler(nn.Module):\n    def __init__(self, dim):\n        self.dim = dim",
+        },
+    )
+    row = RepoBenchRow(
+        task_id="t", cropped_code="x = 1\ny = 2", import_statement="", context=ctx,
+        gold_snippet_index=1, next_line="self.p = Pooler(dim)", level="8k",
+        token_num=0, repo_name="r", file_path="f",
+    )
+    full = render_episodic_adapter(row)
+    # episodic: training surface, names the ONE gold call, NOT the noise snippet
+    assert full.startswith("## Task")
+    assert "must call `Pooler`" in full and "m/pool.py" in full
+    assert "## Current Code" in full and "## Review Feedback" in full
+    assert "class Pooler" in full
+    assert "X = 1" not in full  # the non-gold snippet is excluded
+    # signature-only keeps the headers, drops the body
+    sig = render_episodic_adapter(row, signature_only=True)
+    assert "class Pooler(nn.Module):" in sig
+    assert "def __init__(self, dim):" in sig
+    assert "self.dim = dim" not in sig
 
 
 def test_render_training_mode() -> None:

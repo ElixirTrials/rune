@@ -10,9 +10,12 @@ CPU-importable (PRODUCT.md invariant 2).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from rune.bench.identifier_match import extract_identifiers
+
+_SIG_RE = re.compile(r"^\s*(class|def|async def)\s")
 
 _HF_DATASET = "tianyang/repobench_python_v1.1"
 _CROSS_FILE_FIRST = "cross_file_first"
@@ -138,3 +141,39 @@ def render_xfile_adapter(
 def render_context_prompt(row: RepoBenchRow) -> str:
     """Cross-file context as a prompt prefix (arm A2: context-in-prompt)."""
     return render_xfile_adapter(row, mode="structured")
+
+
+def _gold_signature(snippet: str) -> str:
+    """Callable signature lines (class/def headers) of a snippet — the API surface."""
+    sigs = [ln for ln in snippet.splitlines() if _SIG_RE.match(ln)]
+    if sigs:
+        return "\n".join(sigs)
+    first = next((ln for ln in snippet.splitlines() if ln.strip()), "")
+    return first
+
+
+def render_episodic_adapter(
+    row: RepoBenchRow, *, signature_only: bool = False, anchor_chars: int = 400
+) -> str:
+    """Episodic, per-task adapter conditioning (the corrected template).
+
+    The adapter is episodic and per-task: it needs to know *what this task must
+    call*, not the whole repo. This names the single gold cross-file API and its
+    definition, in the hypernet's distillation surface
+    (``## Task / ## Current Code / ## Review Feedback``) — far smaller than the
+    multi-file ``render_xfile_adapter`` dump (which the 2048-token cap shredded).
+
+    ``signature_only`` keeps just the class/def headers (the call surface), not the
+    full body.
+    """
+    gi = row.gold_snippet_index
+    if not (0 <= gi < len(row.context)):
+        return ""
+    g = row.context[gi]
+    body = _gold_signature(g["snippet"]) if signature_only else g["snippet"]
+    task = (
+        "Complete the next line of the current file. It must call "
+        f"`{g['identifier']}` defined in {g['path']}:\n\n{body}"
+    )
+    anchor = row.cropped_code[-anchor_chars:]
+    return f"## Task\n{task}\n\n## Current Code\n{anchor}\n\n## Review Feedback\n"
