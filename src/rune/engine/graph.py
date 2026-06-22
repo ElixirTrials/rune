@@ -267,6 +267,22 @@ def _effective_scaling(
     return base_scaling
 
 
+def _effective_temperature(
+    prompt_mode: str,
+    action: Action,
+    code_results: Mapping[str, str],
+    base_temperature: float,
+) -> float:
+    """Greedy (temperature 0) for the zero-shot floor candidate so it is
+    byte-identical to the base single-shot arm — a strict-superset-by-construction
+    (issue #52 powered-eval). Greedy decoding is argmax and does not draw from the
+    RNG, so the floor matches base regardless of prior decompose/plan steps. All
+    other attempts (escalation re-code/repair) use the configured temperature."""
+    if _is_zeroshot_attempt(prompt_mode, action, code_results):
+        return 0.0
+    return base_temperature
+
+
 def render_episode_adapter(
     action_name: str, target: str | None, state: Mapping[str, Any]
 ) -> str:
@@ -895,13 +911,16 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         eff_scaling = _effective_scaling(
             prompt_mode, action, state.get("code_results", {}), adapter_scaling
         )
+        eff_temperature = _effective_temperature(
+            prompt_mode, action, state.get("code_results", {}), temperature
+        )
         adapter_id = apply_episodic_adapter(model, trajectory_text, scaling=eff_scaling)
         result = await model.generate(
             prompt=prompt_text,
             system_prompt=action.system_prompt,
             output_schema=action.output_schema,
             max_tokens=run_config.get("max_tokens", 2048),
-            temperature=temperature,
+            temperature=eff_temperature,
             repetition_penalty=repetition_penalty,
             top_p=top_p,
             no_repeat_ngram_size=run_config.get("no_repeat_ngram_size", 0),
@@ -941,7 +960,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     user_prompt=cont_user,
                     assistant_prefix=accumulated_code,
                     max_tokens=run_config.get("max_tokens", 2048),
-                    temperature=temperature,
+                    temperature=eff_temperature,
                     repetition_penalty=repetition_penalty,
                     top_p=top_p,
                     no_repeat_ngram_size=cont_no_repeat,
