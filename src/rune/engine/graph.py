@@ -966,15 +966,15 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 _traj: str = trajectory_text,
                 _scale: float = eff_scaling,
                 _kw: dict[str, Any] = gen_kwargs,
-            ) -> Any:
-                nonlocal adapter_id
-                adapter_id = apply_episodic_adapter(model, _traj, scaling=_scale)
-                return await model.generate(**_kw)
+            ) -> tuple[Any, str | None]:
+                _aid = apply_episodic_adapter(model, _traj, scaling=_scale)
+                return await model.generate(**dict(_kw)), _aid
 
             async def _evaluate(
-                result: Any,
+                item: tuple[Any, str | None],
                 _target: str = _cand_target,
             ) -> tuple[bool, int]:
+                result = item[0]
                 cand = extract_partial_code(result.text)
                 probe, fired, resolved = build_code_probe(_target, cand, state)
                 raw = await asyncio.to_thread(run_in_sandbox, probe)
@@ -990,7 +990,8 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 passed = bool(fired and fb.exit_code == 0)
                 return passed, candidate_quality(cand, fb)
 
-            result = await oracle_gated_best_of_k(best_of_k, _generate_one, _evaluate)
+            winner = await oracle_gated_best_of_k(best_of_k, _generate_one, _evaluate)
+            result, adapter_id = winner
         else:
             adapter_id = apply_episodic_adapter(
                 model, trajectory_text, scaling=eff_scaling
