@@ -1,11 +1,21 @@
 # RepoBench clamped-window (adapter-as-context) — findings (2026-06-22)
 
+> **⚠️ CORRECTION (superseded in part).** The negative below used a *multi-file repo
+> DUMP* as the adapter conditioning (`render_xfile_adapter 'structured'`), which is the
+> WRONG template for an episodic per-task adapter. A follow-up HPO over an **episodic**
+> template (name the one cross-file API the task must call, in the hypernet's training
+> surface) **reverses the result**: on held-out tasks the tuned episodic adapter recovers
+> **4/10 vs floor 1/10 (strict superset, 0 regressions)**, including 32k tasks where
+> context-in-prompt is prohibitive. See
+> `docs/issue52-repobench-template-hpo-findings-2026-06-22.md`. The §2–§6 negative stands
+> only as "the *dump* template fails"; "frozen c3 can't carry context / needs distillation"
+> is **withdrawn** — it carries context fine with the right episodic conditioning, no training.
+
 Tests PRODUCT.md's current bet — *"adapters provide unbounded context at constant
-prompt length"* (JTBD #3) — on a real cross-file benchmark. **Result: with the
-frozen c3 hypernet the conjecture does NOT hold at credible N.** Context delivered
-via the prompt doubles cross-file recovery; context delivered via the adapter is
-statistically indistinguishable from no context. The adapter channel needs
-distillation, not tuning.
+prompt length"* (JTBD #3) — on a real cross-file benchmark. **Result (DUMP template):
+the conjecture does NOT hold.** Context delivered via the prompt doubles cross-file
+recovery; context delivered via the *dumped* adapter is statistically indistinguishable
+from no context. (The episodic template, tuned, does hold — see the correction banner.)
 
 Engine commit `bae71d1`. Checkpoint c3 (`c3_t07_lp2_lg1.pt`, sha256 `53e24af2…`).
 Durable MLflow: experiment **`issue52-repobench-clamp`**, run `clamp-W768-8k_32k-n60-seed0`
