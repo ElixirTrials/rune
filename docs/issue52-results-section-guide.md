@@ -9,6 +9,10 @@
 > 2. **None of the paper's pre-registered Gates 1–3 has been run** as specified (Gate-1's PEFT-iii comparator, TTT-E2E-iv, and RAG-ii baselines do not exist; `paper-gate2` MLflow runs are empty). Do not present any current number as a gate verdict.
 > Companion docs added: [`mlflow-experiment-inventory-2026-06-09.md`](mlflow-experiment-inventory-2026-06-09.md) (all 74 experiments + the May `paper-table2` track), [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md) (claim→evidence). **The paper's `0.16×` scaling headline could not be located in any artifact reachable here**, so (per author, 2026-06-09) `paper_v9.tex` was **re-anchored** to the in-hand Qwen optimum `0.627×` — corrected to read as a *multiplier* of the native 45.25 scale (a mild ~0.6× attenuation), not "Nx below"; the structural conjecture was softened to match.
 
+> **2026-06-22 update — the constant-prompt evidence now exists, and the HumanEval+ limit is retracted.** Two §4.6 gaps this guide flagged as un-measured are now measured (full prose: [`issue52-results-longcontext-2026-06-22.md`](issue52-results-longcontext-2026-06-22.md); MLflow `issue52-repobench-clamp` / `issue52-humanevalplus`, engine `efa7b9e`):
+> 1. **Adapter-carried context under a token budget (the missing §4.6 eval).** On RepoBench v1.1 `cross_file_first` (cross-file completion) under a fixed prompt budget W=768 with the in-prompt baseline deliberately stressed past it, the frozen adapter recovers the required cross-file symbol at **31/60 (0.517 [0.393,0.638])** vs **floor 9/60 (0.150)** and **= the unbudgeted full-context ceiling 17/30 (0.567)** — at a **16.7× shorter prompt** (McNemar 23:1, **p=3e-6**). At 32k the full-context prompt is prohibitive on 30/30 yet the adapter recovers 13/30. This is the constant-prompt / beyond-budget result §4.6 said "requires a fixed prompt budget + window stressor … not yet measured." **Conditioning format is the controlling variable:** a naïve multi-file dump is a null (0.217≈floor, p=1.0); only the **episodic per-task surface** (name the one cross-file API) works — HPO-selected (variant=use, anchor=0, scaling=0.91), held-out validated (4/10 vs 1/10) before the N=60 confirmation. No weight training. Metric is identifier-recovery, not pass@1.
+> 2. **HumanEval+ "difficulty-dependent / hurts easy tasks" is RETRACTED.** The −16 (c3 100 < base 116) was a 2-bug grading artifact (harness dropped prompt imports → spurious NameError on 19 typing-signature tasks; untrusted escalation-floor discarded correct zero-shots). Post-fix at `efa7b9e`: **base 134/164 (0.817)**, **c3 135/164 (0.823) — strict superset, +1, 0 regressions.** §4.6's E-lcb / HE+ rows and §6's "beyond window" row are updated accordingly.
+
 ---
 
 ## 1. The scientific question (one paragraph for the paper)
@@ -192,14 +196,16 @@ Template:
 | Context wins when spec fits in prompt (easy tasks) | **Yes (directional)** | scale0-full 0.792 vs reference_a c3 0.583 | Not a controlled per-token efficiency measurement |
 | Adapter can carry spec when prompt is minimal | **Yes** | +0.25 true-floor; Phase-1 absent 8/24 | Easy MBPP; n=24 |
 | Adapter reduces need for prompt tokens (architecture) | **By design** | Engine uses minimal `prompt_*`; trajectory in adapter conditioning | Token-count curves not in main log |
-| Adapter wins for **long-running** / beyond window | **Not established** | Hard multistep NULL; B1 not run | Need step curves + window stressor |
+| Adapter delivers context **beyond a prompt budget** | **Established (directional, significant)** | RepoBench clamp W=768 (§4.x / `issue52-results-longcontext-2026-06-22.md`): adapter 0.517 = full-context ceiling 0.567 at 16.7× shorter prompt; 32k prompt-prohibitive yet adapter 0.433; McNemar p=3e-6 | identifier-recovery not pass@1; 1 regression; format-tuned |
+| Adapter wins for **long-running multi-step** (pass@1) | **Not established** | hard multistep NULL; B1 repair batch not run | Need step-indexed pass@1 curves |
 | Adapter wins for **repeated queries** on same episode | **Plausible, not measured** | Doc2LoRA motivation [1]; single-turn pass@1 only | Multi-query same-adapter bench |
 | Hypernet beats warm doc-to-lora prior on recall | **Weak / mixed** | c3 > warm on some arms; c3−warm CIs often span 0 | Training is the lever, not architecture alone |
 
-**Paper-safe synthesis:**
+**Paper-safe synthesis (updated 2026-06-22):**
 
-- **Include** the per-token / per-query tradeoff as a **Discussion-quality hypothesis** anchored by [1][4][5] and **supported directionally** by ceiling vs floor (§4.5).
-- **Do not state** “adapters win long-running tasks” as a Results conclusion—state it as **motivation + future work**, with SHINE-R / Doc-to-LoRA long-context results [1][2] as **related work**, not as Rune findings.
+- **Now a Results conclusion (not just a hypothesis):** under a fixed prompt budget the adapter delivers out-of-prompt context **at parity with full in-prompt context, at ~16.7× shorter prompt**, and remains effective where the in-prompt channel is infeasible (32k prohibitive) — RepoBench clamp, McNemar p=3e-6 (§4.x). State this as an **established budget-stressed context-delivery result on coding trajectories**, directionally consistent with Doc-to-LoRA / SHINE long-context results [1][2]. Scope it precisely: the metric is **identifier-recovery**, the conditioning format is **tuned/held-out-validated**, and it is a **(v)-vs-context-channel** comparison, not a Gate verdict.
+- **Still future work:** “adapters win **long-running multi-step coding** (end-to-end pass@1)” — the budget result is single-turn recovery, not a step-indexed pass@1 curve; the B1 repair-substrate batch remains un-run.
+- The per-token / per-query **efficiency** tradeoff is now anchored by a direct prompt-length measurement (768 vs 12,836 mean tokens at parity), not only by ceiling-vs-floor [1,4,5].
 
 ---
 

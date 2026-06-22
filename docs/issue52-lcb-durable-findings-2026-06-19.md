@@ -74,8 +74,13 @@ superset**, not a significance claim.
 > regressions had a passing zero-shot the engine discarded). Fixed at the root —
 > the graded entry is gated only by trusted public examples (wired or spec
 > doctests), and the doctest extractor no longer corrupts the last example. rune
-> is **not** "difficulty-dependent / harmful on easy tasks". Full RCA + fixes +
-> re-run: `docs/issue52-humaneval-regression-rca-fix-2026-06-22.md`.
+> is **not** "difficulty-dependent / harmful on easy tasks". A second grading
+> defect (the harness graded the completion without the prompt's imports →
+> spurious NameError on 19 typing-signature tasks) further deflated the **base**
+> baseline. **Post-fix re-run (`efa7b9e`): base 134/164 (0.817), c3 135/164
+> (0.823) — strict superset, +1, 0 regressions.** Full RCA + fixes + re-run:
+> `docs/issue52-humaneval-regression-rca-fix-2026-06-22.md`; the corrected
+> adapter-vs-context story is in `docs/issue52-results-longcontext-2026-06-22.md`.
 Graded by the hardened rune sandbox against the EvalPlus "plus" tests (same grader both arms).
 | arm | pass@1 |
 |---|---|
