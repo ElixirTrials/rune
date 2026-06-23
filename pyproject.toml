@@ -119,7 +119,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-    "rune.training.diff_loss",
     "rune.training.config",
     "rune.training.oracle_cache",
     "rune.model.hypernetwork",
