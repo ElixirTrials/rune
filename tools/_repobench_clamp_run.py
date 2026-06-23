@@ -47,7 +47,6 @@ _A2_FULL_MAX_TOKENS = (
 _EPISODIC_VARIANT = "use"
 _EPISODIC_ANCHOR = 0
 _EPISODIC_SCALING = 0.91
-_ADAPTER_LABELS = ("episodic_use", "dump_gf")  # primary + regression reference
 
 _SYSTEM = (
     "You are a code completion engine. Output ONLY the single next line of "
