@@ -88,6 +88,12 @@ sudo chown -R "$(id -u):$(id -g)" "$HOME/.npm-global" "$HOME/.npm" 2>/dev/null |
 export PATH="$HOME/.npm-global/bin:$PATH"
 grep -q '.npm-global/bin' "$DEVPOD_ENV" 2>/dev/null \
   || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$DEVPOD_ENV"
+# Persist NPM_CONFIG_PREFIX too (not just PATH): at runtime, claude's auto-update
+# shells out to npm, which without this falls back to the default root-owned
+# global prefix and fails with "npm global folder isn't writable". Sourced by
+# bash and zsh via ~/.devpod-env.
+grep -q 'NPM_CONFIG_PREFIX' "$DEVPOD_ENV" 2>/dev/null \
+  || echo 'export NPM_CONFIG_PREFIX="$HOME/.npm-global"' >> "$DEVPOD_ENV"
 
 # Install Claude Code (user prefix — no sudo, stays user-owned)
 if ! command -v claude &>/dev/null; then
@@ -164,6 +170,22 @@ if [ -n "$LOGIN_SCRIPT" ]; then
   bash "$LOGIN_SCRIPT" || echo "WARNING: login.sh failed — run 'make login' manually"
 else
   echo "WARNING: login.sh not found — run 'make login' from the infra repo root"
+fi
+
+# The GitHub MCP server (claude-plugins-official) reads GITHUB_PERSONAL_ACCESS_TOKEN
+# from the environment. Persist a RESOLVER, not the value: each shell resolves it
+# from the user's gh login at startup. The token never lands on disk, so it is
+# never captured in a golden-AMI snapshot (bake the fetcher, not the secret).
+# For a shared, login-free token instead, point this at Secrets Manager:
+#   export GITHUB_PERSONAL_ACCESS_TOKEN="$(aws secretsmanager get-secret-value \
+#     --secret-id "$DEVBOX_PROJECT/$DEVBOX_ENV_NAME/github-mcp-pat" \
+#     --query SecretString --output text --region "$AWS_DEFAULT_REGION" 2>/dev/null)"
+# Rewrite any existing line (incl. a previously-baked literal value) to the resolver.
+_gh_resolver='export GITHUB_PERSONAL_ACCESS_TOKEN="$(gh auth token 2>/dev/null)"'
+if grep -q '^export GITHUB_PERSONAL_ACCESS_TOKEN=' "$DEVPOD_ENV" 2>/dev/null; then
+  sed -i 's|^export GITHUB_PERSONAL_ACCESS_TOKEN=.*|'"$_gh_resolver"'|' "$DEVPOD_ENV"
+else
+  echo "$_gh_resolver" >> "$DEVPOD_ENV"
 fi
 
 # Discover artifact bucket and export training data path.
