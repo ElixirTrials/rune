@@ -67,13 +67,6 @@ run over quantized base layers.
 Precision matters for interpretation: training-matched 4-bit evaluation and
 engine-target bf16 evaluation must be labeled separately.
 
-## Legacy Diff-Aware SFT
-
-`rune.training.diff_loss` still contains a diff-weighted SFT trainer and
-collator. That path weights supervised tokens using `pre_code` / `post_code`
-hunks and optional `quality_score`. It is useful reference code, but it is not
-the active Issue #49 HyperLoRA distillation loop.
-
 ## Gates and HPO
 
 Training completion is not success. Promotion requires post-training evaluation:

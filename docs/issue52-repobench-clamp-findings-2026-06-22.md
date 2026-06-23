@@ -104,8 +104,7 @@ uv run --extra gpu python tools/_repobench_clamp_run.py \
   --levels 8k,32k --per-level 30 --window 768 \
   --experiment issue52-repobench-clamp --out /tmp/rb_clamp_run.json
 ```
-Exploration harness (committed): `tools/_repobench_probe.py` (escalate framing),
-`tools/_repobench_clamp_probe.py` (window clamp), `tools/_repobench_strengthen.py`
-(cheap-lever sweep). Scorer + loader: `src/rune/bench/identifier_match.py`,
-`src/rune/bench/repobench.py`. Window clamp: `ModelWrapper.clamp_to_window`. Design spec:
+Template selection: `tools/_repobench_template_hpo.py`. Scorer + loader:
+`src/rune/bench/identifier_match.py`, `src/rune/bench/repobench.py`. Window clamp:
+`ModelWrapper.clamp_to_window`. Design spec:
 `docs/superpowers/specs/2026-06-22-crossfile-context-adapter-benchmark-design.md`.

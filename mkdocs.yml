@@ -33,7 +33,6 @@ nav:
           - Collapse Metrics: api/training/collapse_metrics.md
           - Gate: api/training/gate.md
           - D2L Train Config: api/training/d2l_train.md
-          - Diff-Aware Loss: api/training/diff_loss.md
       - Benchmark:
           - Runner: api/benchmark.md
           - HPO: api/bench/hpo.md
