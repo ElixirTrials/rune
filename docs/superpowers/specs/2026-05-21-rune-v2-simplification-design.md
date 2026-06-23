@@ -1,5 +1,7 @@
 # Rune v2: Simplified Single-Loop Architecture
 
+> **Superseded (historic record).** References to `diff_loss.py` / `DiffAwareSFTTrainer` describe the original v2 plan; that module has since been removed. The active training path is D2L `run_hypernet_distillation` (see `docs/architecture/training.md`).
+
 ## Overview
 
 Rewrite of the rune codebase from a 72K-line multi-service monorepo to a single ~3-4K line Python package (plus ~1.5K lines of training code carried from v1 with modifications). The core insight: the paper describes one recursive loop (state → H(state) → adapter → generate → observe → repeat), but the current implementation has 5 overlapping iteration mechanisms across 32 entry-point scripts, 7 libs, and 5 FastAPI services.

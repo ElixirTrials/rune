@@ -1,5 +1,7 @@
 # Rune v2 Implementation Plan
 
+> **Superseded (historic record).** Steps referencing `diff_loss.py` / `DiffAwareSFTTrainer` reflect the original v2 plan; that module has since been removed. The active training path is D2L `run_hypernet_distillation` (see `docs/architecture/training.md`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Rebuild rune as a ~5K-line single-loop LangGraph engine on a fresh branch, TDD-first, then optimize templates empirically against MBPP/Pass@1.

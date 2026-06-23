@@ -4,8 +4,7 @@
 
 ## Motivation
 
-Diagnosis (`docs/issue52-goal3-hardtask-failure-2026-06-05.md`) showed the adapter
-carries the full spec fine (+0.25 single-turn on easy tasks) but gives **no gain on hard
+Diagnosis showed the adapter carries the full spec fine (+0.25 single-turn on easy tasks) but gives **no gain on hard
 tasks**, for engine-structural reasons — not adapter capacity:
 
 - The **plan prompt leaks the full spec** (`project_label`); the model is never focused on
