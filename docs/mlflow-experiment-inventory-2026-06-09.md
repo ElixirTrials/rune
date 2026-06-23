@@ -3,6 +3,8 @@
 **Generated:** 2026-06-09 · **Tracking server:** `http://localhost:5000` (S3-backed store; the local `mlflow.db` holds only `Default` — always query the server, never the file).
 **Why this doc exists:** the committed `docs/issue52-*.md` set captures the **June (issue #52 / PR #55)** track but is blind to the **May "paper" track** (`paper-table2`, `paper-gate2`, the baseline/HPO experiments the paper §4 is built around). Everything was logged to MLflow; this is the index. Use it together with [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md).
 
+> **Superseded in part (2026-06-22).** This 06-09 inventory predates the durable long-context / powered-eval work. Three MLflow experiments are now authoritative and are **not** listed in §1 below: `issue52-repobench-clamp`, `issue52-repobench-template-hpo`, `issue52-humanevalplus`. Also, the §4 LCB-49 "rune ties base 9/49" line is the old framing — the final clean run is **rune 12/49 > base 9/49** (strict superset; pooled N=63: c3 16/63 > base 12/63). See [`issue52-results-longcontext-2026-06-22.md`](issue52-results-longcontext-2026-06-22.md), [`issue52-lcb-durable-findings-2026-06-19.md`](issue52-lcb-durable-findings-2026-06-19.md), and the 06-22 RCA docs for the current numbers.
+
 > **Reconciliation note.** Two distinct experimental tracks exist and **must not be merged**:
 > - **May track** — `Qwen/Qwen3.5-9B` + `danielcherubini/Qwen3.5-DeltaCoder-9B` warm-start. This is the paper's *production* model line and the structure behind Table 2 (conditions i–v) and Gate 2.
 > - **June track** — `Qwen/Qwen3-4B-Instruct-2507` + `body_recall_guarded` checkpoint (c3). This is the issue #52 recall-objective + LCB-49 work documented in `issue52-experimentation-log.md`.

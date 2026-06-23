@@ -16,12 +16,11 @@ from rune.engine.state import Action, Subtask, make_initial_state
 from rune.engine.validity import validate_solution
 from rune.sandbox.executor import run_in_sandbox
 
-_LCB_JSONL = Path("/tmp/lcb/test6.jsonl")
-
-pytestmark = pytest.mark.skipif(
-    not _LCB_JSONL.exists(),
-    reason="requires /tmp/lcb/test6.jsonl + /tmp/goal3 session data (not in CI)",
-)
+# Hermetic fixtures vendored from the LCB-v6 escalate run (slimmed LCB rows +
+# the step-0 decompose output per qid), so these engine-fix regression tests run
+# in CI without the 134MB test6.jsonl or ephemeral /tmp GPU-run session data.
+_FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "lcb_engine_fixes"
+_LCB_JSONL = _FIXTURES / "rows.jsonl"
 
 
 def _lcb_row(qid: str) -> dict:
@@ -51,32 +50,28 @@ def _lcb_task(qid: str) -> tuple[dict, str, BenchTask]:
     return row, fn, task
 
 
-def _overnight_decompose_raw(qid: str) -> str:
-    p = Path(f"/tmp/goal3/overnight/lcb_escalate_sessions/{qid}/session.jsonl")
+def _decompose_raw(qid: str) -> str:
+    p = _FIXTURES / "sessions" / qid / "session.jsonl"
     return json.loads(p.read_text().splitlines()[0])["output"]
 
 
-def _overnight_step_code(qid: str, step: int, target: str | None = None) -> str:
-    for line in (
-        Path(f"/tmp/goal3/overnight/lcb_escalate_sessions/{qid}/session.jsonl")
-        .read_text()
-        .splitlines()
-    ):
-        o = json.loads(line)
-        if (
-            o.get("step") == step
-            and (target is None or o.get("target") == target)
-            and o.get("action") in ("code", "repair", "integrate")
-        ):
-            return o["output"]
-    raise KeyError((qid, step, target))
+# A maxDistance integrate with the WRONG signature (1-arg ``grid`` vs the
+# ``maxDistance(s, k)`` starter contract) — the over-decomposed-helper bug the
+# engine fixes guard against (issue #52).
+_Q3754_WRONG_SIG_GRID = (
+    "def maxDistance(grid):\n"
+    "    for row in grid:\n"
+    "        for _ in row:\n"
+    "            pass\n"
+    "    return 0\n"
+)
 
 
 @pytest.mark.parametrize("qid", ["3753", "3754", "3777"])
 def test_decompose_collapses_to_entry_point(qid: str) -> None:
     """Overnight multi-helper decompose must collapse to one entry subtask."""
     _, fn, task = _lcb_task(qid)
-    raw = _overnight_decompose_raw(qid)
+    raw = _decompose_raw(qid)
     state = make_initial_state(
         task.description,
         12,
@@ -98,11 +93,20 @@ def test_decompose_collapses_to_entry_point(qid: str) -> None:
     assert subs[0].acceptance_check == task.public_checks
 
 
-def test_q3753_replay_ships_step4_not_integrate() -> None:
-    """Step-4 repair passed LCB public; fixes must ship it not integrate regression."""
+def test_q3753_ships_passing_best_over_regressing_integrate() -> None:
+    """A best_code that passes the LCB public checks must be shipped, never a
+    regressing integrate (issue #52 RC-C)."""
     _, fn, task = _lcb_task("3753")
-    step4 = _overnight_step_code("3753", 4, "maxDifference")
-    integrate = _overnight_step_code("3753", 9)
+    # Correct maxDifference: max odd-count freq minus min even-count freq.
+    best = (
+        "from collections import Counter\n"
+        "def maxDifference(s):\n"
+        "    c = Counter(s)\n"
+        "    odd = max(v for v in c.values() if v % 2 == 1)\n"
+        "    even = min(v for v in c.values() if v % 2 == 0)\n"
+        "    return odd - even\n"
+    )
+    integrate = "def maxDifference(s):\n    return 0\n"  # regresses: fails public
 
     state = make_initial_state(
         task.description, 12, fn, task.signature, task.public_checks
@@ -118,19 +122,19 @@ def test_q3753_replay_ships_step4_not_integrate() -> None:
                     builds=fn,
                 )
             ],
-            "best_code": {fn: step4},
+            "best_code": {fn: best},
             "best_quality": {fn: 3},
             "integrated_code": integrate,
         }
     )
     shipped = resolve_shipped_code(state, task)
-    assert shipped.strip() == step4.strip()
+    assert shipped.strip() == best.strip()
     full = shipped + "\n\n" + task.test_code
     assert run_in_sandbox(full, timeout=10).exit_code == 0
 
 
 def test_q3754_replay_subtask_name_is_maxdistance() -> None:
-    raw = _overnight_decompose_raw("3754")
+    raw = _decompose_raw("3754")
     _, fn, task = _lcb_task("3754")
     state = make_initial_state(
         task.description, 12, fn, task.signature, task.public_checks
@@ -214,11 +218,13 @@ def test_integrate_adapter_uses_best_code() -> None:
     assert "return 0" not in traj
 
 
-def test_validity_rejects_q3754_grid_integrate() -> None:
+def test_validity_rejects_wrong_signature_integrate() -> None:
+    """An integrate whose signature violates the entry-point contract
+    (``maxDistance(grid)`` vs the ``maxDistance(s, k)`` starter) must be rejected
+    by validate_solution (issue #52)."""
     _, fn, task = _lcb_task("3754")
-    grid = _overnight_step_code("3754", 9)
     vr = validate_solution(
-        grid,
+        _Q3754_WRONG_SIG_GRID,
         entry_point=fn,
         signature=task.signature,
         spec=task.description,
@@ -230,7 +236,7 @@ def test_validity_rejects_q3754_grid_integrate() -> None:
 
 def test_integrate_oracle_fires_with_public_checks() -> None:
     _, fn, task = _lcb_task("3754")
-    grid_integrate = _overnight_step_code("3754", 9)
+    grid_integrate = _Q3754_WRONG_SIG_GRID
     state = make_initial_state(
         task.description, 12, fn, task.signature, task.public_checks
     )
@@ -242,7 +248,7 @@ def test_integrate_oracle_fires_with_public_checks() -> None:
 @pytest.mark.parametrize("qid", ["3748", "3799", "3801"])
 def test_single_subtask_controls_still_one_subtask(qid: str) -> None:
     """Problems that already decomposed to one subtask stay stable."""
-    raw = _overnight_decompose_raw(qid)
+    raw = _decompose_raw(qid)
     row = _lcb_row(qid)
     fn = json.loads(row["metadata"])["func_name"]
     public = build_public_assert_checks(row)

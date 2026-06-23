@@ -48,6 +48,11 @@ nav:
       - "MLflow Experiment Inventory": mlflow-experiment-inventory-2026-06-09.md
       - "Issue #52 Experimentation Log": issue52-experimentation-log.md
       - "Results Section Guide": issue52-results-section-guide.md
+      - "Long-Context Results (adapter vs context)": issue52-results-longcontext-2026-06-22.md
+      - "LCB Durable Findings": issue52-lcb-durable-findings-2026-06-19.md
+      - "RepoBench Clamp Findings": issue52-repobench-clamp-findings-2026-06-22.md
+      - "RepoBench Template HPO": issue52-repobench-template-hpo-findings-2026-06-22.md
+      - "HumanEval+ Regression RCA": issue52-humaneval-regression-rca-fix-2026-06-22.md
       - "Goal-3 Conclusions": issue52-goal3-conclusions-2026-06-05.md
   - Design Notes:
       - "Issue #49 D2L Retrain": superpowers/specs/2026-05-30-issue49-d2l-self-distillation-retrain-design.md

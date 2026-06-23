@@ -68,9 +68,10 @@ async def run_training_pipeline(
     hpo: bool = False,
     n_trials: int = 50,
 ) -> int:
-    """Run the full three-stage training pipeline.
+    """Run the training pipeline: D2L hypernetwork distillation → success gate.
 
-    Stage 2: D2L hypernetwork context distillation.
+    Stage 2: D2L hypernetwork context distillation. (A stage-1 oracle/QLoRA
+    step is reserved in the stage numbering but is not implemented.)
 
     The success gate is evaluated from the bench path (issue #49 Task 13),
     not inline here, so a successful pipeline run returns 0.

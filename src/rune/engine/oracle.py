@@ -83,6 +83,32 @@ def _augmented_assert(left_src: str, right_src: str, index: int) -> str:
     )
 
 
+def _doctest_source(spec: str) -> str:
+    """Text the doctest parser should scan: function/class/module docstrings when
+    *spec* is Python source (a HumanEval-style ``def f(): \"\"\"...\"\"\"`` prompt),
+    else the raw *spec*.
+
+    Parsing the raw prompt text treats the docstring's closing ``\"\"\"`` — indented
+    like the preceding ``want`` — as a second line of expected output, corrupting
+    the last example into a syntactically broken assert (issue #52: fib4 produced
+    ``repr(14\\n\"\"\")`` -> SyntaxError, so the whole probe failed on correct code).
+    Reading the docstring node's text instead never sees the delimiters.
+    """
+    try:
+        tree = ast.parse(spec)
+    except (SyntaxError, ValueError):
+        return spec
+    docs = [
+        doc
+        for node in ast.walk(tree)
+        if isinstance(
+            node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        )
+        and (doc := ast.get_docstring(node, clean=False))
+    ]
+    return "\n".join(docs) if docs else spec
+
+
 def extract_public_checks(spec: str, entry_point: str) -> str:
     """Executable assert lines from *spec*'s doctest examples that call *entry_point*.
 
@@ -93,7 +119,7 @@ def extract_public_checks(spec: str, entry_point: str) -> str:
     if not entry_point:
         return ""
     try:
-        examples = doctest.DocTestParser().get_examples(spec)
+        examples = doctest.DocTestParser().get_examples(_doctest_source(spec))
     except ValueError:
         return ""
 

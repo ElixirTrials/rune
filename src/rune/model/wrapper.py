@@ -18,6 +18,13 @@ if TYPE_CHECKING:
     from rune.config import PipelineConfig
 
 
+def _tail_ids(ids: list[int], max_tokens: int) -> list[int]:
+    """Last ``max_tokens`` of ``ids`` (window-budget tail; pure for CPU tests)."""
+    if max_tokens <= 0:
+        return []
+    return ids[-max_tokens:]
+
+
 def peft_scaling_params(
     checkpoint_alpha: float, rank: int, use_bias: bool
 ) -> tuple[int, float]:
@@ -120,11 +127,25 @@ class ModelWrapper:
         r_peft, lora_alpha_peft = peft_scaling_params(checkpoint_alpha, rank, use_bias)
         # dtype + attention impl come from the model profile (config), not
         # hardcoded — different models need different generation contracts.
-        _raw_model = AutoModelForCausalLM.from_pretrained(
-            config.model_id,
-            dtype=getattr(torch, config.dtype),
-            attn_implementation=config.attn_implementation,
-        ).to(device)
+        # Low-RAM host (~15GB): stream weight shards directly onto the GPU instead
+        # of materialising the full ~8GB bf16 model in CPU RAM and then copying it
+        # over (a plain `.to(device)` peaks CPU RAM and thrashes the page cache on
+        # this box). device_map onto a single CUDA device is numerically identical
+        # to `.to("cuda")`; the CPU fallback keeps the old path for CPU-only CI.
+        if device == "cuda":
+            _raw_model = AutoModelForCausalLM.from_pretrained(
+                config.model_id,
+                dtype=getattr(torch, config.dtype),
+                attn_implementation=config.attn_implementation,
+                low_cpu_mem_usage=True,
+                device_map={"": 0},
+            )
+        else:
+            _raw_model = AutoModelForCausalLM.from_pretrained(
+                config.model_id,
+                dtype=getattr(torch, config.dtype),
+                attn_implementation=config.attn_implementation,
+            ).to(device)
         lora_config = LoraConfig(
             r=r_peft,
             lora_alpha=lora_alpha_peft,
@@ -141,6 +162,7 @@ class ModelWrapper:
         trajectory_text: str,
         *,
         offload_base: bool = False,
+        max_length: int = 2048,
     ) -> AdapterResult:
         """Generate LoRA weights from a trajectory via the hypernetwork.
 
@@ -148,6 +170,8 @@ class ModelWrapper:
             trajectory_text: Serialised coding trajectory used as conditioning.
             offload_base: Move base model to CPU during the hypernetwork forward
                 pass to free GPU memory.
+            max_length: Token budget for trajectory encoding (the hypernet was
+                distilled at 2048; raising it is out-of-distribution).
 
         Returns:
             AdapterResult with a fresh UUID adapter_id and the generated state dict.
@@ -158,9 +182,23 @@ class ModelWrapper:
             base_model=self._base_model,
             tokenizer=self._tokenizer,
             layer_indices=self._layer_indices,
+            max_length=max_length,
             offload_base=offload_base,
         )
         return AdapterResult(adapter_id=uuid.uuid4().hex, state_dict=state_dict)
+
+    def clamp_to_window(self, text: str, max_tokens: int) -> str:
+        """Truncate ``text`` to its last ``max_tokens`` tokens (window budget).
+
+        Simulates a constrained context window (JTBD #3 / issue #52 long-context
+        probe): under a token budget the cursor-adjacent tail is kept and
+        front-loaded context is evicted. Returns ``text`` unchanged when it
+        already fits.
+        """
+        ids: list[int] = self._tokenizer(text, add_special_tokens=False).input_ids
+        if len(ids) <= max_tokens:
+            return text
+        return str(self._tokenizer.decode(_tail_ids(ids, max_tokens)))
 
     def count_tokens(self, text: str) -> int:
         """Token count of ``text`` under the base tokenizer (content tokens only).

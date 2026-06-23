@@ -19,6 +19,8 @@ Rune exposes four concerns as CLI commands:
 - **Run** — execute a coding task through the engine (`rune run`)
 - **Bench** — measure pass@1 and run HPO (`rune bench`)
 
+An auxiliary `rune gen-tasks` command materializes benchmark task files for the runner.
+
 The north-star metric is pass@1 on coding benchmarks, comparing
 adapter-conditioned runs against the frozen base model. Leading diagnostics also
 track degeneration, syntax validity, content retrieval, preservation, and
@@ -49,10 +51,10 @@ The action sequence is `decompose → plan → code → [diagnose → repair]* �
 1. **Decompose** the task into subtasks forming a dependency DAG.
 2. **Plan** each subtask, layer by layer.
 3. **Code** each subtask, executing the result in the sandbox.
-4. **Diagnose → repair** — a bounded sub-loop on failing subtasks (`MAX_REPAIRS=2`, `MAX_RETRIES=4`).
+4. **Diagnose → repair** — a bounded sub-loop on failing subtasks (`MAX_REPAIRS=4`, `MAX_RETRIES=8`).
 5. **Integrate** — terminal, gated on all subtasks passing.
 
-Independent subtasks in the same DAG layer are dispatched and sandbox-executed in parallel within a single step. A complexity gate skips decomposition for short single-unit tasks, running them against a synthetic `_main` subtask.
+Independent subtasks in the same DAG layer are dispatched and sandbox-executed in parallel within a single step. `decompose` always runs first; the model itself decides whether a self-contained task is one subtask or many (no word-count heuristic pre-empts it), and a lone passing subtask finalizes directly without a separate `integrate` step.
 
 See [engine](architecture/engine.md), [model](architecture/model.md), and [training](architecture/training.md) for details.
 

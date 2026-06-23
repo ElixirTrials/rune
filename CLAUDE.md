@@ -9,7 +9,7 @@ Local-first coding agent that encodes coding trajectories into LoRA adapters via
 - `uv` Python 3.12 single package.
 - Engine: LangGraph single-loop (`src/rune/engine/`).
 - Model: xgrammar (structured output) + PEFT + transformers (`src/rune/model/`).
-- Training: hypernetwork distillation via DiffAwareSFTTrainer (`src/rune/training/`).
+- Training: D2L privileged-context hypernetwork distillation (`src/rune/training/`; `DiffAwareSFTTrainer` is legacy, not in the active loop).
 - Base model: Qwen/Qwen3-4B-Instruct-2507 — the *instruct* variant, required so the pre-warmed Sakana doc-to-lora adapter (hypernet warm start) stays compatible. Single source of truth: `config.yaml` / `RUNE_BASE_MODEL` via `rune.config.load_rune_config()`; never hardcode a model id.
 - Quality: ruff, mypy (strict), pytest.
 
@@ -48,7 +48,7 @@ Subtask dependencies form a DAG; independent subtasks in the same layer run in p
 `ctx-to-lora` HyperLoRA perceiver: trajectory text → base model activations → per-layer LoRA A/B weights → PEFT hot-swap. Continuation rounds use scaled adapter (`cont_multiplier ≈ 1.53` over base scaling).
 
 ### Training (`src/rune/training/`)
-Three-stage pipeline: oracle QLoRA → hypernetwork distillation (DiffAwareSFTTrainer + KL+CE) → success gate. Oracle stage is currently a stub.
+Two implemented stages in `orchestrator.py`: D2L privileged-context hypernetwork distillation (`run_hypernet_distillation`, KL on teacher top-K over answer-span diff tokens) → success gate (`evaluate_gate`). A stage-1 oracle/QLoRA step is reserved in the stage numbering but not implemented; the legacy `DiffAwareSFTTrainer` (diff_loss.py) is not in the active loop.
 
 ### Mining (`src/rune/mining/`)
 Session scanner → trajectory extractor → per-action JSONL shards, keyed by `{action}_{benchmark}`.

@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from rune.bench.lcb import build_public_assert_checks
 from rune.engine.parse import parse_output
 from rune.engine.requirements import (
@@ -17,10 +15,9 @@ from rune.engine.requirements import (
 from rune.engine.state import Action, make_initial_state
 from rune.engine.validity import format_validity_feedback, validate_solution
 
-pytestmark = pytest.mark.skipif(
-    not Path("/tmp/lcb/test6.jsonl").exists(),
-    reason="requires /tmp/lcb/test6.jsonl + /tmp/goal3 session data (not in CI)",
-)
+# Hermetic fixtures vendored from the LCB-v6 escalate run (see
+# tests/fixtures/lcb_engine_fixes); no 134MB test6.jsonl / ephemeral /tmp needed.
+_FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "lcb_engine_fixes"
 
 _Q3754_SIG = (
     "class Solution:\n    def maxDistance(self, s: str, k: int) -> int:\n        \n"
@@ -91,7 +88,7 @@ def test_feedback_lists_deficiencies() -> None:
 def test_decompose_does_not_inject_goal_extras() -> None:
     row = next(
         json.loads(line)
-        for line in Path("/tmp/lcb/test6.jsonl").read_text().splitlines()
+        for line in (_FIXTURES / "rows.jsonl").read_text().splitlines()
         if json.loads(line)["question_id"] == "3754"
     )
     desc = row["question_content"]
@@ -102,9 +99,7 @@ def test_decompose_does_not_inject_goal_extras() -> None:
         desc, 12, "maxDistance", row.get("starter_code", ""), public
     )
     raw = json.loads(
-        Path("/tmp/goal3/overnight/lcb_escalate_sessions/3754/session.jsonl")
-        .read_text()
-        .splitlines()[0]
+        (_FIXTURES / "sessions" / "3754" / "session.jsonl").read_text().splitlines()[0]
     )["output"]
     out = parse_output(
         Action(

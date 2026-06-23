@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 import mlflow
@@ -43,6 +43,7 @@ from rune.engine.oracle import (
 from rune.engine.parse import (
     ComplexityJudgeResult,
     JudgeResult,
+    candidate_quality,
     parse_output,
     render_template,
 )
@@ -69,17 +70,27 @@ _ORACLE_FAIL_CLOSED_MSG = "oracle checks configured but probe did not fire"
 def resolve_in_loop_check(
     name: str, subtask_check: str, state: Mapping[str, Any]
 ) -> str:
-    """Pick in-loop assert source: task public_checks, subtask check, or none."""
+    """Pick the in-loop assert source for a subtask.
+
+    The graded ENTRY point is verified ONLY by trusted public examples (the wired
+    benchmark checks or the spec's doctests). A model-authored ``acceptance_check``
+    is never an authoritative correctness gate for it: the decompose model emits
+    bogus checks (undefined helpers, unparseable asserts, wrong expectations) that
+    reject zero-shots the base model solves and drive a destructive escalation
+    (issue #52, HumanEval+). With no public signal the entry has no in-loop gate
+    (module-load only) and the engine ships the base zero-shot.
+
+    Non-entry helper subtasks have no public examples of their own, so their
+    model-authored ``acceptance_check`` is the only in-loop signal available.
+    """
     public = str(state.get("public_checks", "") or "").strip()
     entry = str(state.get("entry_point", "") or "")
     sub = subtask_check.strip()
-    if public and (not name or name == entry):
+    if (not name) or (name == entry):
         return public
     if sub:
         return sub
-    if public:
-        return public
-    return ""
+    return public
 
 
 def _normalize_probe_code(code: str, entry_point: str) -> str:
@@ -255,6 +266,44 @@ def _effective_scaling(
     if _is_zeroshot_attempt(prompt_mode, action, code_results):
         return 0.0
     return base_scaling
+
+
+def _effective_temperature(
+    prompt_mode: str,
+    action: Action,
+    code_results: Mapping[str, str],
+    base_temperature: float,
+) -> float:
+    """Greedy (temperature 0) for the zero-shot floor candidate so it is
+    byte-identical to the base single-shot arm — a strict-superset-by-construction
+    (issue #52 powered-eval). Greedy decoding is argmax and does not draw from the
+    RNG, so the floor matches base regardless of prior decompose/plan steps. All
+    other attempts (escalation re-code/repair) use the configured temperature."""
+    if _is_zeroshot_attempt(prompt_mode, action, code_results):
+        return 0.0
+    return base_temperature
+
+
+async def oracle_gated_best_of_k(
+    k: int,
+    generate_one: Callable[[], Awaitable[Any]],
+    evaluate: Callable[[Any], Awaitable[tuple[bool, int]]],
+) -> Any:
+    """Sample up to *k* escalation candidates; return the first whose ``evaluate``
+    reports ``passed=True`` (it passed the trusted public oracle), else the
+    highest-quality candidate (issue #52 powered-eval, B). ``evaluate`` returns
+    ``(passed, quality)``. Generation/oracle deps are injected so this is testable
+    without a model."""
+    best: Any = None
+    best_quality = -2
+    for _ in range(max(k, 0)):
+        result = await generate_one()
+        passed, quality = await evaluate(result)
+        if passed:
+            return result
+        if quality > best_quality:
+            best, best_quality = result, quality
+    return best
 
 
 def render_episode_adapter(
@@ -885,19 +934,69 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         eff_scaling = _effective_scaling(
             prompt_mode, action, state.get("code_results", {}), adapter_scaling
         )
-        adapter_id = apply_episodic_adapter(model, trajectory_text, scaling=eff_scaling)
-        result = await model.generate(
+        eff_temperature = _effective_temperature(
+            prompt_mode, action, state.get("code_results", {}), temperature
+        )
+        best_of_k = int(run_config.get("escalation_best_of_k", 1))
+        is_escalation = (
+            action.executes_code
+            and action.name in ("code", "repair")
+            and not _is_zeroshot_attempt(
+                prompt_mode, action, state.get("code_results", {})
+            )
+        )
+        gen_kwargs: dict[str, Any] = dict(
             prompt=prompt_text,
             system_prompt=action.system_prompt,
             output_schema=action.output_schema,
             max_tokens=run_config.get("max_tokens", 2048),
-            temperature=temperature,
+            temperature=eff_temperature,
             repetition_penalty=repetition_penalty,
             top_p=top_p,
             no_repeat_ngram_size=run_config.get("no_repeat_ngram_size", 0),
             presence_penalty=presence_penalty,
             thinking_budget=thinking_budget,
         )
+        adapter_id: str | None = None
+
+        if is_escalation and best_of_k > 1:
+            _cand_target = action.target_subtask or ""
+
+            async def _generate_one(
+                _traj: str = trajectory_text,
+                _scale: float = eff_scaling,
+                _kw: dict[str, Any] = gen_kwargs,
+            ) -> tuple[Any, str | None]:
+                _aid = apply_episodic_adapter(model, _traj, scaling=_scale)
+                return await model.generate(**dict(_kw)), _aid
+
+            async def _evaluate(
+                item: tuple[Any, str | None],
+                _target: str = _cand_target,
+            ) -> tuple[bool, int]:
+                result = item[0]
+                cand = extract_partial_code(result.text)
+                probe, fired, resolved = build_code_probe(_target, cand, state)
+                raw = await asyncio.to_thread(run_in_sandbox, probe)
+                fb = apply_oracle_fail_closed(
+                    fired,
+                    resolved,
+                    Feedback(
+                        stdout=raw.stdout,
+                        stderr=raw.stderr,
+                        exit_code=raw.exit_code,
+                    ),
+                )
+                passed = bool(fired and fb.exit_code == 0)
+                return passed, candidate_quality(cand, fb)
+
+            winner = await oracle_gated_best_of_k(best_of_k, _generate_one, _evaluate)
+            result, adapter_id = winner
+        else:
+            adapter_id = apply_episodic_adapter(
+                model, trajectory_text, scaling=eff_scaling
+            )
+            result = await model.generate(**gen_kwargs)
         raw_text = result.text
         needs_continuation = result.truncated
         if action.name in ("code", "repair", "integrate") and needs_continuation:
@@ -931,7 +1030,7 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     user_prompt=cont_user,
                     assistant_prefix=accumulated_code,
                     max_tokens=run_config.get("max_tokens", 2048),
-                    temperature=temperature,
+                    temperature=eff_temperature,
                     repetition_penalty=repetition_penalty,
                     top_p=top_p,
                     no_repeat_ngram_size=cont_no_repeat,

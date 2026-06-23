@@ -63,6 +63,8 @@ class PipelineConfig:
     plan_gate_enabled: bool = True
     replan_on_complexity: bool = True
     max_repairs: int = 4
+    escalation_best_of_k: int = 1  # >1: sample k escalation candidates, keep first
+    #                                that passes the trusted public oracle (#52)
     plan_gate_max_attempts: int = 2
     # --- Engine oracle / retention / ship gate (issue #52) ---
     # Requirement kinds that route repair but do not demote best_code or block ship.
@@ -144,6 +146,7 @@ class PipelineConfig:
             "RUNE_THINKING_BUDGET": ("thinking_budget", int),
             "RUNE_MAX_PHASE_ITERATIONS": ("max_phase_iterations", int),
             "RUNE_ADAPTER_SCALING": ("adapter_scaling", float),
+            "RUNE_ESCALATION_BEST_OF_K": ("escalation_best_of_k", int),
         }
         for env_key, (field_name, converter) in env_map.items():
             val = os.environ.get(env_key)

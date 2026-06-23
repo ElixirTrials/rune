@@ -50,6 +50,10 @@ class BenchTask:
     entry_point: str = "solution"
     signature: str = ""  # real def line (reference_* adapter anchor); optional
     public_checks: str = ""  # in-loop oracle only; empty => doctest fallback (MBPP)
+    # Code prepended to the solution before grading (e.g. a HumanEval prompt's
+    # imports, which the generated function body omits). Empty for benchmarks
+    # whose solutions are self-contained. See ``build_graded_program``.
+    grading_preamble: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,20 @@ def load_tasks(path: Path) -> list[BenchTask]:
     """
     data = json.loads(path.read_text())
     return [BenchTask(**t) for t in data]
+
+
+def build_graded_program(task: BenchTask, solution_code: str) -> str:
+    """Assemble the program graded for pass@1: preamble + solution + held-out tests.
+
+    ``grading_preamble`` (e.g. a HumanEval prompt's imports) is prepended so a
+    correct solution whose generated body omits the prompt's imports does not fail
+    with a spurious ``NameError`` (e.g. ``List`` in a signature annotation). Self-
+    tests are stripped so a wrong model-authored assert can't fail a correct
+    implementation. Duplicate imports (when the body already repeats them) are
+    harmless. The single source of truth for grading assembly across arms.
+    """
+    preamble = f"{task.grading_preamble}\n" if task.grading_preamble.strip() else ""
+    return preamble + strip_self_tests(solution_code) + "\n\n" + task.test_code
 
 
 def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
@@ -345,6 +363,7 @@ async def run_benchmark(
     engine: Any,
     config: dict[str, Any],
     sessions_dir: Path | None = None,
+    resume: bool = False,
 ) -> BenchResult:
     """Run the full benchmark suite and return aggregate results.
 
@@ -354,6 +373,10 @@ async def run_benchmark(
         config: Configurable dict passed to engine.ainvoke (contains
             ``model`` and ``run_config`` keys).
         sessions_dir: If set, write one session dir per task here (corpus producer).
+        resume: If True and sessions_dir is set, skip tasks whose
+            ``<sessions_dir>/<task_id>/metadata.json`` already records a
+            ``pass_at_1`` result (written by a prior run). Corrupt or missing
+            metadata falls through to re-running the task normally.
 
     Returns:
         BenchResult with pass@1 and per-task details.
@@ -367,6 +390,24 @@ async def run_benchmark(
     model = config.get("model")
     seed = config["run_config"].get("seed")
     for i, task in enumerate(tasks):
+        if resume and sessions_dir is not None:
+            meta_path = sessions_dir / task.task_id / "metadata.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    meta = None
+                if meta is not None and "pass_at_1" in meta:
+                    results.append(
+                        TaskResult(
+                            task_id=task.task_id,
+                            passed=bool(meta["pass_at_1"]),
+                            code="",
+                            stderr="resumed from session",
+                        )
+                    )
+                    continue
+
         if seed is not None:
             _seed_rng(seed + i)
         rc = config.get("run_config", {})
@@ -379,7 +420,13 @@ async def run_benchmark(
                 PipelineConfig().merge_spec_public_checks,
             )
         )
-        if merge_spec and public_checks.strip() and task.entry_point:
+        # Derive the public signal from the spec's doctest examples — even when
+        # the task ships NO public_checks (HumanEval/MBPP carry examples in the
+        # docstring, not a wired field). Without a trustworthy in-loop signal the
+        # engine can only floor at base; with one it can verify escalations and
+        # KEEP the gains (issue #52). merge_public_checks returns the spec-derived
+        # checks when the wired set is empty, and unions them otherwise (LCB).
+        if merge_spec and task.entry_point:
             public_checks = merge_public_checks(
                 task.description, public_checks, task.entry_point
             )
@@ -428,7 +475,7 @@ async def run_benchmark(
                 model.reset_adapter()
             continue
 
-        full_code = strip_self_tests(generated_code) + "\n\n" + task.test_code
+        full_code = build_graded_program(task, generated_code)
 
         try:
             sandbox_result = await asyncio.to_thread(run_in_sandbox, full_code)
