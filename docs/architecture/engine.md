@@ -9,14 +9,10 @@ beyond the `RunState` TypedDict (`rune.engine.state`) threaded through it.
 
 Each `step_node` invocation performs one full cycle:
 
-1. **Complexity gate.** If no subtasks exist yet and `_is_simple_task` matches (task under
-   `_SIMPLE_WORD_LIMIT=200` words containing a single-unit signal such as "write a function"),
-   a synthetic `_main` subtask is injected and its plan pre-seeded (`plans["_main"] =
-   task`), so both decomposition and planning are skipped and the first action is `code`.
-2. **Action selection.** `select_action` (`rune.engine.policy`) deterministically returns the
+1. **Action selection.** `select_action` (`rune.engine.policy`) deterministically returns the
    list of `Action`s for this step — possibly several sibling actions targeting independent
    subtasks in the same execution layer. An empty list signals termination.
-3. **Per-action generation** (sequential over the returned actions):
+2. **Per-action generation** (sequential over the returned actions):
    - `state_to_ctx` builds the Jinja2 context (subtask, plan, existing code, error summary,
      diagnosis-derived `fix_guidance`, capped `repair_history` and `code_trajectory`).
    - `render_template` (`rune.engine.parse`) renders the action's `trajectory_template` and
@@ -28,12 +24,12 @@ Each `step_node` invocation performs one full cycle:
      model.
    - `model.generate` runs xgrammar-constrained decoding (with a thinking phase) against the
      action's `output_schema`.
-4. **Sandbox execution.** Code-bearing actions (`Action.executes_code`) have their output
+3. **Sandbox execution.** Code-bearing actions (`Action.executes_code`) have their output
    passed once through `extract_partial_code`; the extracted source is dispatched across all
    sibling code actions concurrently via `asyncio.gather` over
    `asyncio.to_thread(run_in_sandbox, …)` (`rune.sandbox.executor`), yielding per-subtask
    `Feedback`.
-5. **Parse and state update.** `parse_output` is applied per action against an accumulating
+4. **Parse and state update.** `parse_output` is applied per action against an accumulating
    `running` snapshot (each sibling sees the prior sibling's applied change, avoiding
    stale-snapshot clobbering). The merged updates append `StepRecord`s to `trajectory`,
    advance `step`, and decrement `budget_remaining` by one.
@@ -47,7 +43,7 @@ integrate` as a priority cascade over `RunState`:
 - **Unplanned subtasks** → `plan` for every subtask in the first ready execution layer.
 - **Failing subtasks** (`not code_passed[name]`) → for each subtask in the first ready layer
   whose dependencies all pass:
-  - no code yet, or `retries ≥ MAX_REPAIRS (2)` → `code` (regenerate from scratch);
+  - no code yet, or `retries ≥ MAX_REPAIRS (4)` → `code` (regenerate from scratch);
   - else if a diagnosis exists → `repair`;
   - else → `diagnose`.
 - **All subtasks pass** → if exactly one subtask and its sandbox passed, set
@@ -55,7 +51,7 @@ integrate` as a priority cascade over `RunState`:
   multiple subtasks, `integrate`; if integration already failed, `diagnose` then re-
   `integrate`; once `integrated_code` is set, return `[]` (done).
 
-Repair budgeting: `MAX_REPAIRS=2`, `MAX_RETRIES=2·MAX_REPAIRS=4`. A subtask at `MAX_RETRIES`
+Repair budgeting: `MAX_REPAIRS=4`, `MAX_RETRIES=2·MAX_REPAIRS=8`. A subtask at `MAX_RETRIES`
 is exhausted and dropped from selection. If all repairable work is exhausted and integration
 is still failing, `select_action` returns `[]` to stop rather than burn the budget on a
 non-converging `integrate ↔ diagnose` loop.

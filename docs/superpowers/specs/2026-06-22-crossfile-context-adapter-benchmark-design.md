@@ -1,5 +1,16 @@
 # Cross-file-context-as-adapter benchmark — design (2026-06-22)
 
+> **RESULT (executed).** Conjecture supported via an **episodic per-task** template under an
+> imposed window budget W=768 (the spec did not anticipate the budget — at the base's full 262k
+> window the question is vacuous): episodic 31/60 (0.517) vs floor 9/60 (0.150), McNemar p=3.0e-06,
+> statistically indistinguishable from the full-context ceiling (a2_full 17/30=0.567) at ~16.7×
+> shorter prompt. No adapter weights trained (frozen c3); best config `variant=use, anchor=0,
+> scaling=0.91`. The earlier multi-file *dump* template was a negative (superseded). Arms were
+> renamed in execution (floor/a2_clamp/a2_full/episodic). See
+> [issue52-results-longcontext-2026-06-22.md](../../issue52-results-longcontext-2026-06-22.md),
+> [issue52-repobench-template-hpo-findings-2026-06-22.md](../../issue52-repobench-template-hpo-findings-2026-06-22.md),
+> [issue52-repobench-clamp-findings-2026-06-22.md](../../issue52-repobench-clamp-findings-2026-06-22.md).
+
 > **Conjecture under test.** Rune's real advantage is on tasks that are *impossible for a small
 > model without sufficient context length*: the hypernetwork compresses long cross-file context
 > into a constant-length LoRA adapter, so rune solves cross-file completions that the base model
@@ -181,7 +192,7 @@ New, additive only:
   `edit_similarity` (pure functions, unit-tested on CPU).
 - `render_xfile_adapter(row, mode)` — beside `render_reference_adapter` in `engine/graph.py`
   (or a small `engine/xfile_adapter.py` if it keeps `graph.py` from growing).
-- `tools/_repobench_run.py` — the three-arm durable harness (clone of `_lcb_run.py` structure).
+- `tools/_repobench_clamp_run.py` — the durable clamped-window harness (plus `tools/_repobench_template_hpo.py` for episodic-template selection).
 - Unit tests (CPU): scorer correctness, loader shape, each `render_xfile_adapter` mode, mutation
   correctness. Reuses `ModelWrapper`, `scale_lora_b`, `count_tokens`, MLflow helpers unchanged.
 

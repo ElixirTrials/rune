@@ -1,5 +1,12 @@
 # Powered strict-superset evaluation — design (2026-06-22)
 
+> **RESULT (executed).** The machinery (temp-0 strict-superset floor + oracle-gated best-of-k +
+> exact-McNemar `significance` module) shipped and was applied to **HumanEval+**, where it resolved
+> a grading artifact and produced a strict superset: base 134/164 ⊇ c3 135/164 (0 regressions, +1
+> gain). The headline LCB-v6 N=63 target below — `b=0` and `c≥5` ⇒ one-sided p≤0.031 — was **not
+> reached** on the executed track (HumanEval+ gave c=1, n.s.). See
+> [issue52-humaneval-regression-rca-fix-2026-06-22.md](../../issue52-humaneval-regression-rca-fix-2026-06-22.md).
+
 ## Goal
 
 Achieve a **statistically significant** improvement of the rune engine over the

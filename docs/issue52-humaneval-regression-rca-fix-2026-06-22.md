@@ -26,6 +26,7 @@ which broke it on two layers:
    `_benchmark_shippable`, which returns `True` for **any** code when
    `public_checks` is empty. So `integrated_code` (or a repair) is shipped
    unconditionally and the retained-correct zero-shot is never selected.
+   (Both symbols were since removed from `src/` — see the Fix below.)
 
 The base arm grades the clean zero-shot; the c3 arm grades the engine output with
 the floor switched off → not apples-to-apples.

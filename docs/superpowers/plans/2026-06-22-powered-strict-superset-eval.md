@@ -1,5 +1,13 @@
 # Powered Strict-Superset Evaluation — Implementation Plan
 
+> **STATUS (executed).** All four code tasks landed (significance module, temp-0 floor, oracle-gated
+> best-of-k, resumable runner — verified in `src/rune/bench/significance.py`, `src/rune/engine/graph.py`,
+> `src/rune/config.py`, `src/rune/bench/runner.py`). The run protocol was applied to **HumanEval+**
+> → strict superset base 134/164 ⊇ c3 135/164, 0 regressions
+> ([issue52-humaneval-regression-rca-fix-2026-06-22.md](../../issue52-humaneval-regression-rca-fix-2026-06-22.md));
+> the LCB N=63 k=8 `c≥5` significance endpoint was not reached. Checkboxes below are left as the
+> historical implementation record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the rune engine reach statistical significance over base on a fixed task set by (a) a strict-superset-by-construction at temperature 0 and (b) oracle-gated best-of-k escalation, scored with a one-sided exact McNemar test.

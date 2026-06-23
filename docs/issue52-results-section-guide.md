@@ -254,7 +254,7 @@ Supplementary: Goal-2 scaling, full HPO 16 trials, withdrawn k>1 / prompt_mode v
 
 [6] [Exploring Parameter-Efficient Fine-Tuning Techniques for Code Generation with Large Language Models](https://consensus.app/papers/details/3006ca88cf1d54338e17a36ca5905ff7/) (Weyssow et al., 2023) — PEFT vs ICL on code generation.
 
-**Rune primary data:** [`issue52-experimentation-log.md`](issue52-experimentation-log.md), [`issue52-phase1-results-2026-06-04.md`](issue52-phase1-results-2026-06-04.md), [`issue52-goal3-conclusions-2026-06-05.md`](issue52-goal3-conclusions-2026-06-05.md).
+**Rune primary data:** [`issue52-experimentation-log.md`](issue52-experimentation-log.md), [`issue52-results-longcontext-2026-06-22.md`](issue52-results-longcontext-2026-06-22.md), [`issue52-lcb-durable-findings-2026-06-19.md`](issue52-lcb-durable-findings-2026-06-19.md), [`issue52-goal3-conclusions-2026-06-05.md`](issue52-goal3-conclusions-2026-06-05.md).
 
 ---
 

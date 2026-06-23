@@ -1,6 +1,6 @@
 # Paper Evidence Map — `paper_v9.tex` ↔ measured artifacts
 
-**Generated:** 2026-06-09 · **Paper:** `instructions/fork_plans/paper_v9.tex` ("Parametric Episodic Memory: A Third Axis for Language-Model Reasoning").
+**Generated:** 2026-06-09 · **Paper:** `paper_v9.tex` ("Parametric Episodic Memory: A Third Axis for Language-Model Reasoning") — LaTeX source maintained outside this repo tree.
 **Purpose:** for every quantitative claim, table, and gate in the paper, state **what evidence exists, where it lives, and what is still un-run** — so the manuscript can be filled honestly and reviewers' "what is actually established?" is answerable in one place.
 **Companions:** [`mlflow-experiment-inventory-2026-06-09.md`](mlflow-experiment-inventory-2026-06-09.md) (system of record), [`issue52-experimentation-log.md`](issue52-experimentation-log.md) (full catalog), [`issue52-results-section-guide.md`](issue52-results-section-guide.md) (narrative framing).
 
@@ -102,7 +102,7 @@ Through rune's *real* repair path (adapter-on, scaling 1.0, code not pasted in p
 | real-engine oracle (public tests) | 0/11 | 0/11 | **0/11** |
 | perfect oracle (hidden failing case) | 11/11 | 10/11 | **0/11** |
 
-Two limiters, in order: **(1) in-loop oracle coverage** — shipped code passes every *public* test, so `diagnose→repair` never fires on the hidden bug (dominant, addressable); **(2) base-model capability** — even a perfect critique yields 0/11 solves on hard tasks. The earlier "byte-identical echo → capability ceiling" reading was a **synthetic-probe artifact** (code pasted at scaling 0 induced copying); the channel is demonstrably live. K=3 consensus differential oracle was **unsafe** (1 systematic FP `3817`, detection 2/11). (`tools/_real_repair_oracle_test.py`, `_perfect_oracle_probe.py`; PR #55 comment 2026-06-09 07:11Z.)
+Two limiters, in order: **(1) in-loop oracle coverage** — shipped code passes every *public* test, so `diagnose→repair` never fires on the hidden bug (dominant, addressable); **(2) base-model capability** — even a perfect critique yields 0/11 solves on hard tasks. The earlier "byte-identical echo → capability ceiling" reading was a **synthetic-probe artifact** (code pasted at scaling 0 induced copying); the channel is demonstrably live. K=3 consensus differential oracle was **unsafe** (1 systematic FP `3817`, detection 2/11). (Exploratory probes, since removed; provenance: PR #55 comment 2026-06-09 07:11Z.)
 
 ---
 
