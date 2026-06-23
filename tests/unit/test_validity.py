@@ -99,9 +99,7 @@ def test_decompose_does_not_inject_goal_extras() -> None:
         desc, 12, "maxDistance", row.get("starter_code", ""), public
     )
     raw = json.loads(
-        (_FIXTURES / "sessions" / "3754" / "session.jsonl")
-        .read_text()
-        .splitlines()[0]
+        (_FIXTURES / "sessions" / "3754" / "session.jsonl").read_text().splitlines()[0]
     )["output"]
     out = parse_output(
         Action(

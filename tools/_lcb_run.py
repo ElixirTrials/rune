@@ -113,7 +113,9 @@ def _official_lcb_pass_at_1(
     return float(match.group(1)), out
 
 
-async def _generate_base(model: Any, tasks: list[Any], cfg: Any) -> list[dict[str, Any]]:
+async def _generate_base(
+    model: Any, tasks: list[Any], cfg: Any
+) -> list[dict[str, Any]]:
     """Single-shot base capability ceiling: one generate per task, adapter off.
 
     Mirrors the engine's escalate zero-shot attempt exactly — the same
@@ -365,7 +367,9 @@ def main() -> None:
     internal = (
         f" (rune-internal pass@1={result.pass_at_1:.3f})" if result is not None else ""
     )
-    print(f"{args.arm}: wrote {len(gens)} generations -> {out_path}{internal}", flush=True)
+    print(
+        f"{args.arm}: wrote {len(gens)} generations -> {out_path}{internal}", flush=True
+    )
 
 
 if __name__ == "__main__":

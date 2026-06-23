@@ -13,7 +13,9 @@ def _row(import_statement: str = "from m import tool") -> RepoBenchRow:
         task_id="cross_file_first/0",
         cropped_code="x = 1",
         import_statement=import_statement,
-        context=({"identifier": "tool", "path": "m.py", "snippet": "def tool():\n    ..."},),
+        context=(
+            {"identifier": "tool", "path": "m.py", "snippet": "def tool():\n    ..."},
+        ),
         gold_snippet_index=0,
         next_line="tool()",
         level="2k",
@@ -29,9 +31,16 @@ def test_gold_identifier() -> None:
 
 def test_gold_identifier_out_of_range() -> None:
     row = RepoBenchRow(
-        task_id="t", cropped_code="", import_statement="", context=(),
-        gold_snippet_index=3, next_line="", level="2k", token_num=0,
-        repo_name="r", file_path="f",
+        task_id="t",
+        cropped_code="",
+        import_statement="",
+        context=(),
+        gold_snippet_index=3,
+        next_line="",
+        level="2k",
+        token_num=0,
+        repo_name="r",
+        file_path="f",
     )
     assert row.gold_identifier == ""
 
@@ -58,13 +67,24 @@ def test_order_context_gold_first() -> None:
         {"identifier": "c", "path": "c.py", "snippet": "C"},
     )
     row = RepoBenchRow(
-        task_id="t", cropped_code="", import_statement="", context=ctx,
-        gold_snippet_index=2, next_line="", level="8k", token_num=0,
-        repo_name="r", file_path="f",
+        task_id="t",
+        cropped_code="",
+        import_statement="",
+        context=ctx,
+        gold_snippet_index=2,
+        next_line="",
+        level="8k",
+        token_num=0,
+        repo_name="r",
+        file_path="f",
     )
     assert [c["identifier"] for c in order_context(row)] == ["a", "b", "c"]
     # gold (index 2 = "c") moves to front, others keep order
-    assert [c["identifier"] for c in order_context(row, gold_first=True)] == ["c", "a", "b"]
+    assert [c["identifier"] for c in order_context(row, gold_first=True)] == [
+        "c",
+        "a",
+        "b",
+    ]
     # gold snippet leads the rendered conditioning
     assert render_xfile_adapter(row, "raw", gold_first=True).startswith("C")
 
@@ -79,9 +99,16 @@ def test_render_episodic_adapter() -> None:
         },
     )
     row = RepoBenchRow(
-        task_id="t", cropped_code="x = 1\ny = 2", import_statement="", context=ctx,
-        gold_snippet_index=1, next_line="self.p = Pooler(dim)", level="8k",
-        token_num=0, repo_name="r", file_path="f",
+        task_id="t",
+        cropped_code="x = 1\ny = 2",
+        import_statement="",
+        context=ctx,
+        gold_snippet_index=1,
+        next_line="self.p = Pooler(dim)",
+        level="8k",
+        token_num=0,
+        repo_name="r",
+        file_path="f",
     )
     full = render_episodic_adapter(row)
     # episodic: training surface, names the ONE gold call, NOT the noise snippet
@@ -107,9 +134,16 @@ def test_render_episodic_variants() -> None:
         },
     )
     row = RepoBenchRow(
-        task_id="t", cropped_code="x = 1\ny = 2", import_statement="", context=ctx,
-        gold_snippet_index=1, next_line="self.p = Pooler(dim)", level="8k",
-        token_num=0, repo_name="r", file_path="f",
+        task_id="t",
+        cropped_code="x = 1\ny = 2",
+        import_statement="",
+        context=ctx,
+        gold_snippet_index=1,
+        next_line="self.p = Pooler(dim)",
+        level="8k",
+        token_num=0,
+        repo_name="r",
+        file_path="f",
     )
     for v in EPISODIC_VARIANTS:
         out = render_episodic(row, v)
@@ -119,7 +153,9 @@ def test_render_episodic_variants() -> None:
     # variant-specific surface
     assert "must call `Pooler`" in render_episodic(row, "gold")
     assert "must use `Pooler` (from m.pool)" in render_episodic(row, "use")
-    assert render_episodic(row, "import").startswith("## Task\nfrom m.pool import Pooler")
+    assert render_episodic(row, "import").startswith(
+        "## Task\nfrom m.pool import Pooler"
+    )
     # anchor_chars=0 drops the Current Code block
     assert "## Current Code" not in render_episodic(row, "minimal", anchor_chars=0)
     # unknown variant is a hard error

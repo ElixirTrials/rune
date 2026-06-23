@@ -13,7 +13,10 @@ def test_zeroshot_floor_is_greedy() -> None:
 def test_escalation_uses_configured_temperature() -> None:
     code_action = _with_target("code", "f")
     # "f" already has code => this is an escalation re-code => keep configured temp
-    assert _effective_temperature("escalate", code_action, {"f": "def f(): ..."}, 0.8) == 0.8
+    assert (
+        _effective_temperature("escalate", code_action, {"f": "def f(): ..."}, 0.8)
+        == 0.8
+    )
 
 
 def test_non_escalate_mode_unchanged() -> None:

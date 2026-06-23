@@ -38,7 +38,9 @@ from typing import Any
 
 C3_CKPT = "/tmp/phase1/ckpt/c3_t07_lp2_lg1.pt"
 _COND_CHAR_CAP = 16000
-_A2_FULL_MAX_TOKENS = 12000  # skip the full-context forward above this (OOM guard + cost arg)
+_A2_FULL_MAX_TOKENS = (
+    12000  # skip the full-context forward above this (OOM guard + cost arg)
+)
 
 # Best episodic config from the template HPO (issue52-repobench-template-hpo,
 # held-out 4/10 vs floor 1/10, strict superset). CLI-overridable.
@@ -71,9 +73,16 @@ def _prefix(row: Any) -> str:
 
 async def _gen_line(model: Any, user: str, max_new: int) -> str:
     gen = await model.generate(
-        prompt=user, system_prompt=_SYSTEM, output_schema=None, max_tokens=max_new,
-        temperature=0.0, repetition_penalty=1.1, top_p=0.9, no_repeat_ngram_size=0,
-        presence_penalty=0.0, thinking_budget=0,
+        prompt=user,
+        system_prompt=_SYSTEM,
+        output_schema=None,
+        max_tokens=max_new,
+        temperature=0.0,
+        repetition_penalty=1.1,
+        top_p=0.9,
+        no_repeat_ngram_size=0,
+        presence_penalty=0.0,
+        thinking_budget=0,
     )
     return _first_code_line(gen.text)
 
@@ -94,7 +103,9 @@ def _score(pred: str, row: Any) -> dict[str, Any]:
     }
 
 
-async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[dict[str, Any]]:
+async def _run(
+    model: Any, rows: list[Any], args: argparse.Namespace
+) -> list[dict[str, Any]]:
     import torch  # noqa: PLC0415
 
     from rune.bench.repobench import (  # noqa: PLC0415,E501
@@ -105,15 +116,19 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
     from rune.model.adapter import scale_lora_b  # noqa: PLC0415
 
     w = args.window
+
     # (label, conditioning text, scaling): the validated episodic arm + the dump
     # regression reference. Episodic conditioning names the ONE cross-file API.
     def adapter_arms(row: Any) -> list[tuple[str, str, float]]:
         return [
-            ("episodic_use",
-             render_episodic(row, args.variant, anchor_chars=args.anchor), args.scaling),
-            ("dump_gf",
-             render_xfile_adapter(row, "structured", gold_first=True), 1.0),
+            (
+                "episodic_use",
+                render_episodic(row, args.variant, anchor_chars=args.anchor),
+                args.scaling,
+            ),
+            ("dump_gf", render_xfile_adapter(row, "structured", gold_first=True), 1.0),
         ]
+
     traces: list[dict[str, Any]] = []
     for idx, row in enumerate(rows):
         prefix = _prefix(row)
@@ -125,26 +140,39 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
         floor_p = model.clamp_to_window(f"# Current file:\n{prefix}\n# Next line:", w)
         a2c_p = model.clamp_to_window(a2_full_prompt, w)
         rec: dict[str, Any] = {
-            "task_id": row.task_id, "repo": row.repo_name, "level": row.level,
-            "token_num": row.token_num, "gold_identifier": row.gold_identifier,
-            "gold_snippet_index": row.gold_snippet_index, "next_line": row.next_line,
-            "n_context": len(row.context), "ctx_tokens": ctx_tokens,
+            "task_id": row.task_id,
+            "repo": row.repo_name,
+            "level": row.level,
+            "token_num": row.token_num,
+            "gold_identifier": row.gold_identifier,
+            "gold_snippet_index": row.gold_snippet_index,
+            "next_line": row.next_line,
+            "n_context": len(row.context),
+            "ctx_tokens": ctx_tokens,
             "a2_full_prompt_tokens": model.count_tokens(a2_full_prompt),
             "arms": {},
         }
         try:
             torch.manual_seed(args.seed)
             model.reset_adapter()
-            rec["arms"]["floor"] = _score(await _gen_line(model, floor_p, args.max_new), row)
+            rec["arms"]["floor"] = _score(
+                await _gen_line(model, floor_p, args.max_new), row
+            )
             torch.manual_seed(args.seed)
             model.reset_adapter()
-            rec["arms"]["a2_clamp"] = _score(await _gen_line(model, a2c_p, args.max_new), row)
+            rec["arms"]["a2_clamp"] = _score(
+                await _gen_line(model, a2c_p, args.max_new), row
+            )
             if ctx_tokens <= _A2_FULL_MAX_TOKENS:
                 torch.manual_seed(args.seed)
                 model.reset_adapter()
-                rec["arms"]["a2_full"] = _score(await _gen_line(model, a2_full_prompt, args.max_new), row)
+                rec["arms"]["a2_full"] = _score(
+                    await _gen_line(model, a2_full_prompt, args.max_new), row
+                )
             else:
-                rec["arms"]["a2_full"] = {"skipped": f"ctx_tokens>{_A2_FULL_MAX_TOKENS}"}
+                rec["arms"]["a2_full"] = {
+                    "skipped": f"ctx_tokens>{_A2_FULL_MAX_TOKENS}"
+                }
             for label, cond_text, scaling in adapter_arms(row):
                 cond = cond_text[:_COND_CHAR_CAP]
                 ar = model.generate_adapter(cond)
@@ -153,7 +181,8 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
                 s = _score(await _gen_line(model, floor_p, args.max_new), row)
                 s["cond_tokens"] = model.count_tokens(cond)
                 s["recovers_beyond_prompt"] = bool(s["recovered"]) and not (
-                    rec["arms"]["floor"]["recovered"] or rec["arms"]["a2_clamp"]["recovered"]
+                    rec["arms"]["floor"]["recovered"]
+                    or rec["arms"]["a2_clamp"]["recovered"]
                 )
                 rec["arms"][label] = s
             model.reset_adapter()
@@ -163,8 +192,11 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         g = rec["arms"].get("episodic_use", {})
-        print(f"[{idx + 1}/{len(rows)}] {row.task_id} [{row.level}] gold={row.gold_identifier!r} "
-              f"episodic_recov={g.get('recovered')} {rec.get('error', '')}", flush=True)
+        print(
+            f"[{idx + 1}/{len(rows)}] {row.task_id} [{row.level}] gold={row.gold_identifier!r} "
+            f"episodic_recov={g.get('recovered')} {rec.get('error', '')}",
+            flush=True,
+        )
         traces.append(rec)
     return traces
 
@@ -206,12 +238,16 @@ def _metrics(traces: list[dict[str, Any]]) -> dict[str, float]:
     )
     # McNemar floor vs best adapter (episodic_use) on recovery
     b = sum(  # adapter recovers, floor does not
-        1 for t in ok
-        if t["arms"].get("episodic_use", {}).get("recovered") and not t["arms"]["floor"]["recovered"]
+        1
+        for t in ok
+        if t["arms"].get("episodic_use", {}).get("recovered")
+        and not t["arms"]["floor"]["recovered"]
     )
     c = sum(  # floor recovers, adapter does not
-        1 for t in ok
-        if t["arms"]["floor"].get("recovered") and not t["arms"].get("episodic_use", {}).get("recovered")
+        1
+        for t in ok
+        if t["arms"]["floor"].get("recovered")
+        and not t["arms"].get("episodic_use", {}).get("recovered")
     )
     out["mcnemar_adapter_only"] = b
     out["mcnemar_floor_only"] = c
@@ -226,10 +262,14 @@ def _fmt_metrics(m: dict[str, float]) -> str:
         r, d = int(m[f"recovery_{label}_n"]), int(m[f"denom_{label}"])
         lines.append(f"{label:<14}{r:>4}/{d:<4} = {m[f'recovery_{label}']:.3f}")
     lines.append("")
-    lines.append(f"beyond-prompt (adapter recovers where floor AND clamped-prompt fail): "
-                 f"episodic={int(m['beyond_prompt_episodic'])} dump={int(m['beyond_prompt_dump'])}")
-    lines.append(f"McNemar floor vs episodic_use: adapter_only={int(m['mcnemar_adapter_only'])} "
-                 f"floor_only={int(m['mcnemar_floor_only'])} p={m['mcnemar_p']:.4f}")
+    lines.append(
+        f"beyond-prompt (adapter recovers where floor AND clamped-prompt fail): "
+        f"episodic={int(m['beyond_prompt_episodic'])} dump={int(m['beyond_prompt_dump'])}"
+    )
+    lines.append(
+        f"McNemar floor vs episodic_use: adapter_only={int(m['mcnemar_adapter_only'])} "
+        f"floor_only={int(m['mcnemar_floor_only'])} p={m['mcnemar_p']:.4f}"
+    )
     return "\n".join(lines)
 
 
@@ -246,8 +286,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--levels", default="8k,32k")
     ap.add_argument("--per-level", type=int, default=30)
-    ap.add_argument("--offset", type=int, default=0,
-                    help="skip the first N rows per level (use fresh rows uncontaminated by HPO tuning)")
+    ap.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="skip the first N rows per level (use fresh rows uncontaminated by HPO tuning)",
+    )
     ap.add_argument("--window", type=int, default=768)
     ap.add_argument("--max-new", type=int, default=48)
     ap.add_argument("--seed", type=int, default=0)
@@ -272,16 +316,25 @@ def main() -> None:
 
     levels = [x.strip() for x in args.levels.split(",") if x.strip()]
     rows = _load_stratified(levels, args.per_level, args.offset)
-    print(f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level}, offset={args.offset}, W={args.window})", flush=True)
+    print(
+        f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level}, offset={args.offset}, W={args.window})",
+        flush=True,
+    )
     cfg = load_rune_config(None).override(
-        checkpoint_path=C3_CKPT, thinking_budget=0, seed=args.seed,
-        max_tokens=args.max_new, temperature=0.0,
+        checkpoint_path=C3_CKPT,
+        thinking_budget=0,
+        seed=args.seed,
+        max_tokens=args.max_new,
+        temperature=0.0,
     )
     model = ModelWrapper.from_config(cfg)
 
     ckpt_sha = hashlib.sha256(Path(C3_CKPT).read_bytes()).hexdigest()
     engine_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False,
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
         cwd=str(Path(__file__).resolve().parent.parent),
     ).stdout.strip()
     configure_mlflow(args.experiment)

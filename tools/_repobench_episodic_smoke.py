@@ -50,9 +50,16 @@ def _prefix(row: Any) -> str:
 
 async def _gen_line(model: Any, user: str, max_new: int) -> str:
     gen = await model.generate(
-        prompt=user, system_prompt=_SYSTEM, output_schema=None, max_tokens=max_new,
-        temperature=0.0, repetition_penalty=1.1, top_p=0.9, no_repeat_ngram_size=0,
-        presence_penalty=0.0, thinking_budget=0,
+        prompt=user,
+        system_prompt=_SYSTEM,
+        output_schema=None,
+        max_tokens=max_new,
+        temperature=0.0,
+        repetition_penalty=1.1,
+        top_p=0.9,
+        no_repeat_ngram_size=0,
+        presence_penalty=0.0,
+        thinking_budget=0,
     )
     return _first_code_line(gen.text)
 
@@ -71,7 +78,9 @@ def _score(pred: str, row: Any) -> dict[str, Any]:
     }
 
 
-async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[dict[str, Any]]:
+async def _run(
+    model: Any, rows: list[Any], args: argparse.Namespace
+) -> list[dict[str, Any]]:
     import torch  # noqa: PLC0415
 
     from rune.bench.repobench import (  # noqa: PLC0415
@@ -92,19 +101,28 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
     for row in rows:
         prefix = _prefix(row)
         ctx = render_context_prompt(row)
-        a2_full_prompt = f"# Cross-file context:\n{ctx}\n\n# Current file:\n{prefix}\n# Next line:"
+        a2_full_prompt = (
+            f"# Cross-file context:\n{ctx}\n\n# Current file:\n{prefix}\n# Next line:"
+        )
         floor_p = model.clamp_to_window(f"# Current file:\n{prefix}\n# Next line:", w)
         rec: dict[str, Any] = {
-            "task_id": row.task_id, "level": row.level, "gold_identifier": row.gold_identifier,
-            "next_line": row.next_line, "arms": {},
+            "task_id": row.task_id,
+            "level": row.level,
+            "gold_identifier": row.gold_identifier,
+            "next_line": row.next_line,
+            "arms": {},
         }
         try:
             torch.manual_seed(args.seed)
             model.reset_adapter()
-            rec["arms"]["floor"] = _score(await _gen_line(model, floor_p, args.max_new), row)
+            rec["arms"]["floor"] = _score(
+                await _gen_line(model, floor_p, args.max_new), row
+            )
             torch.manual_seed(args.seed)
             model.reset_adapter()
-            rec["arms"]["a2_full"] = _score(await _gen_line(model, a2_full_prompt, args.max_new), row)
+            rec["arms"]["a2_full"] = _score(
+                await _gen_line(model, a2_full_prompt, args.max_new), row
+            )
             for label, render in adapter_arms:
                 cond = render(row)[:_COND_CHAR_CAP]
                 ar = model.generate_adapter(cond)
@@ -125,7 +143,10 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
             if "recovered" in a:
                 flag = "RECOVER" if a["recovered"] else "  miss "
                 ct = f" cond={a['cond_tokens']}t" if "cond_tokens" in a else ""
-                print(f"   {label:<14} [{flag}] es={a['es']:<5}{ct}  {a['pred']!r}", flush=True)
+                print(
+                    f"   {label:<14} [{flag}] es={a['es']:<5}{ct}  {a['pred']!r}",
+                    flush=True,
+                )
         traces.append(rec)
     return traces
 
@@ -139,13 +160,17 @@ def _summary(traces: list[dict[str, Any]]) -> str:
         es = sum(t["arms"][label]["es"] for t in ok if label in t["arms"]) / (n or 1)
         lines.append(f"  {label:<14} recovery {rec}/{n}   mean_es={es:.3f}")
     lines.append("")
-    lines.append("(a2_full=0 by construction — these are its failures; any episodic recovery is NET-NEW.)")
+    lines.append(
+        "(a2_full=0 by construction — these are its failures; any episodic recovery is NET-NEW.)"
+    )
     return "\n".join(lines)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task-ids", required=True, help="comma-separated cross_file_first/<i>")
+    ap.add_argument(
+        "--task-ids", required=True, help="comma-separated cross_file_first/<i>"
+    )
     ap.add_argument("--level", default="8k")
     ap.add_argument("--window", type=int, default=768)
     ap.add_argument("--max-new", type=int, default=48)
@@ -161,10 +186,16 @@ def main() -> None:
 
     want = {x.strip() for x in args.task_ids.split(",") if x.strip()}
     rows = [r for r in load_repobench_rows(level=args.level) if r.task_id in want]
-    print(f"smoke rows: {len(rows)}/{len(want)} requested (level={args.level}, W={args.window})", flush=True)
+    print(
+        f"smoke rows: {len(rows)}/{len(want)} requested (level={args.level}, W={args.window})",
+        flush=True,
+    )
     cfg = load_rune_config(None).override(
-        checkpoint_path=C3_CKPT, thinking_budget=0, seed=args.seed,
-        max_tokens=args.max_new, temperature=0.0,
+        checkpoint_path=C3_CKPT,
+        thinking_budget=0,
+        seed=args.seed,
+        max_tokens=args.max_new,
+        temperature=0.0,
     )
     model = ModelWrapper.from_config(cfg)
     traces = asyncio.run(_run(model, rows, args))

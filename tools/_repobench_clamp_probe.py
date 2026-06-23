@@ -160,7 +160,10 @@ async def _run(
             rec["error"] = f"{type(e).__name__}: {e}"
         w0 = str(windows[0])
         fe = rec.get("windows", {}).get(w0, {}).get("floor", {}).get("es")
-        print(f"{row.task_id} [{row.level}] floor_es@{w0}={fe} {rec.get('error','')}", flush=True)
+        print(
+            f"{row.task_id} [{row.level}] floor_es@{w0}={fe} {rec.get('error', '')}",
+            flush=True,
+        )
         traces.append(rec)
     return traces
 
@@ -175,7 +178,9 @@ def _summary(traces: list[dict[str, Any]], args: argparse.Namespace) -> str:
     lines = ["", f"=== CLAMP SUMMARY (N={len(ok)} ok / {len(traces)}) ==="]
     a2f = _mean([t["a2_full"]["es"] for t in ok])
     a2f_tok = _mean([t["a2_full_prompt_tokens"] for t in ok])
-    lines.append(f"A2_full (ceiling, full window): es={a2f:.3f}  prompt_tok={a2f_tok:.0f}")
+    lines.append(
+        f"A2_full (ceiling, full window): es={a2f:.3f}  prompt_tok={a2f_tok:.0f}"
+    )
     lines.append("")
     lines.append(
         f"{'window':>7} {'floor_es':>8} {'a2clamp_es':>10} {'a3clamp_es':>10} "
@@ -203,7 +208,8 @@ def _summary(traces: list[dict[str, Any]], args: argparse.Namespace) -> str:
         cells = [
             t["windows"][w]
             for t in ok
-            if w in t.get("windows", {}) and t["windows"][w]["floor"]["es"] < _FLOOR_FAIL_ES
+            if w in t.get("windows", {})
+            and t["windows"][w]["floor"]["es"] < _FLOOR_FAIL_ES
         ]
         if not cells:
             lines.append(f"{w:>7}  (none)")
@@ -212,8 +218,12 @@ def _summary(traces: list[dict[str, Any]], args: argparse.Namespace) -> str:
         a2c = _mean([c["a2_clamp"]["es"] for c in cells])
         a3 = _mean([c["a3_clamp"]["es"] for c in cells])
         a2full = _mean(
-            [t["a2_full"]["es"] for t in ok if w in t.get("windows", {})
-             and t["windows"][w]["floor"]["es"] < _FLOOR_FAIL_ES]
+            [
+                t["a2_full"]["es"]
+                for t in ok
+                if w in t.get("windows", {})
+                and t["windows"][w]["floor"]["es"] < _FLOOR_FAIL_ES
+            ]
         )
         wins = sum(1 for c in cells if c["a3_clamp"]["win_vs_floor"])
         lines.append(
@@ -236,8 +246,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--levels", default="8k", help="comma-separated RepoBench levels")
     ap.add_argument("--per-level", type=int, default=6)
-    ap.add_argument("--windows", default="768,1536", help="comma-separated token budgets")
-    ap.add_argument("--template", default="structured", choices=["raw", "structured", "training"])
+    ap.add_argument(
+        "--windows", default="768,1536", help="comma-separated token budgets"
+    )
+    ap.add_argument(
+        "--template", default="structured", choices=["raw", "structured", "training"]
+    )
     ap.add_argument("--scaling", type=float, default=1.0)
     ap.add_argument("--max-new", type=int, default=48)
     ap.add_argument("--seed", type=int, default=0)
@@ -251,7 +265,9 @@ def main() -> None:
 
     levels = [x.strip() for x in args.levels.split(",") if x.strip()]
     rows = _load_stratified(levels, args.per_level)
-    print(f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level})", flush=True)
+    print(
+        f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level})", flush=True
+    )
     cfg = load_rune_config(None).override(
         checkpoint_path=C3_CKPT,
         thinking_budget=0,

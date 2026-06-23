@@ -7,7 +7,10 @@ _TEST = "assert f([1, 2]) == 1"
 
 def _task(preamble: str = "") -> BenchTask:
     return BenchTask(
-        task_id="t", description="", test_code=_TEST, entry_point="f",
+        task_id="t",
+        description="",
+        test_code=_TEST,
+        entry_point="f",
         grading_preamble=preamble,
     )
 

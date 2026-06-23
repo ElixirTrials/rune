@@ -121,7 +121,9 @@ async def _run(
         try:
             torch.manual_seed(args.seed)
             model.reset_adapter()
-            zs = _score(await _gen_line(model, user_nc, args.max_new), row)  # floor (A1)
+            zs = _score(
+                await _gen_line(model, user_nc, args.max_new), row
+            )  # floor (A1)
             rec["arms"][user_nc_key] = zs
             model.reset_adapter()
             rec["arms"][user_ctx_key] = _score(
@@ -144,7 +146,9 @@ async def _run(
         except Exception as e:  # noqa: BLE001 - probe: capture, don't abort the sweep
             rec["error"] = f"{type(e).__name__}: {e}"
         ze = rec["arms"].get(user_nc_key, {}).get("es")
-        print(f"{row.task_id} [{row.level}] zs_es={ze} {rec.get('error', '')}", flush=True)
+        print(
+            f"{row.task_id} [{row.level}] zs_es={ze} {rec.get('error', '')}", flush=True
+        )
         traces.append(rec)
     return traces
 
@@ -165,7 +169,9 @@ def _summary(traces: list[dict[str, Any]], args: argparse.Namespace) -> str:
         return [t["arms"][key][metric] for t in ok if key in t["arms"]]
 
     lines.append("")
-    lines.append(f"{'arm':<22} {'es':>6} {'em':>5} {'esc_es':>7} {'wins':>5} {'cond_tok':>9}")
+    lines.append(
+        f"{'arm':<22} {'es':>6} {'em':>5} {'esc_es':>7} {'wins':>5} {'cond_tok':>9}"
+    )
     for base in ("no_context", "context_in_prompt"):
         es, em = _mean(col(base, "es")), _mean(col(base, "em"))
         lines.append(f"{base:<22} {es:>6.3f} {em:>5.2f} {'-':>7} {'-':>5} {'-':>9}")
@@ -217,7 +223,9 @@ def _load_stratified(levels: list[str], per_level: int) -> list[Any]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--levels", default="2k,8k", help="comma-separated RepoBench levels")
+    ap.add_argument(
+        "--levels", default="2k,8k", help="comma-separated RepoBench levels"
+    )
     ap.add_argument("--per-level", type=int, default=4)
     ap.add_argument("--templates", default="structured,training")
     ap.add_argument("--scalings", default="1.0,0.5,0.25")
@@ -233,7 +241,9 @@ def main() -> None:
 
     levels = [x.strip() for x in args.levels.split(",") if x.strip()]
     rows = _load_stratified(levels, args.per_level)
-    print(f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level})", flush=True)
+    print(
+        f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level})", flush=True
+    )
     cfg = load_rune_config(None).override(
         checkpoint_path=C3_CKPT,
         thinking_budget=0,

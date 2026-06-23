@@ -80,7 +80,12 @@ def test_B_run_benchmark_derives_public_checks_from_spec_doctests() -> None:
         run_benchmark(
             [task],
             eng,
-            {"run_config": {"max_phase_iterations": 3, "merge_spec_public_checks": True}},
+            {
+                "run_config": {
+                    "max_phase_iterations": 3,
+                    "merge_spec_public_checks": True,
+                }
+            },
         )
     )
     assert eng.seen_public.strip(), "engine should have received derived public checks"

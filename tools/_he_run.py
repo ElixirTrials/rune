@@ -91,7 +91,10 @@ async def _gen_base(model: Any, tasks: list[Any], cfg: Any) -> dict[str, bool]:
         full = build_graded_program(t, code)
         passed = run_in_sandbox(full, timeout=30).exit_code == 0
         out[t.task_id] = passed
-        print(f"base {t.task_id}: {'PASS' if passed else 'fail'} ({len(code)}c)", flush=True)
+        print(
+            f"base {t.task_id}: {'PASS' if passed else 'fail'} ({len(code)}c)",
+            flush=True,
+        )
     return out
 
 

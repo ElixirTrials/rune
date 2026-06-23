@@ -61,9 +61,16 @@ def _prefix(row: Any) -> str:
 
 async def _gen_line(model: Any, user: str, max_new: int) -> str:
     gen = await model.generate(
-        prompt=user, system_prompt=_SYSTEM, output_schema=None, max_tokens=max_new,
-        temperature=0.0, repetition_penalty=1.1, top_p=0.9, no_repeat_ngram_size=0,
-        presence_penalty=0.0, thinking_budget=0,
+        prompt=user,
+        system_prompt=_SYSTEM,
+        output_schema=None,
+        max_tokens=max_new,
+        temperature=0.0,
+        repetition_penalty=1.1,
+        top_p=0.9,
+        no_repeat_ngram_size=0,
+        presence_penalty=0.0,
+        thinking_budget=0,
     )
     return _first_code_line(gen.text)
 
@@ -106,25 +113,36 @@ async def _run(
         floor_p = model.clamp_to_window(f"# Current file:\n{prefix}\n# Next line:", w)
         a2c_p = model.clamp_to_window(a2_full_prompt, w)
         rec: dict[str, Any] = {
-            "task_id": row.task_id, "repo": row.repo_name, "level": row.level,
-            "token_num": row.token_num, "gold_identifier": row.gold_identifier,
-            "gold_snippet_index": row.gold_snippet_index, "next_line": row.next_line,
-            "n_context": len(row.context), "ctx_tokens": model.count_tokens(ctx),
+            "task_id": row.task_id,
+            "repo": row.repo_name,
+            "level": row.level,
+            "token_num": row.token_num,
+            "gold_identifier": row.gold_identifier,
+            "gold_snippet_index": row.gold_snippet_index,
+            "next_line": row.next_line,
+            "n_context": len(row.context),
+            "ctx_tokens": model.count_tokens(ctx),
             "arms": {},
         }
         try:
             torch.manual_seed(args.seed)
             model.reset_adapter()
-            rec["arms"]["a2_full"] = _score(await _gen_line(model, a2_full_prompt, args.max_new), row)
+            rec["arms"]["a2_full"] = _score(
+                await _gen_line(model, a2_full_prompt, args.max_new), row
+            )
             torch.manual_seed(args.seed)
             model.reset_adapter()
             floor = _score(await _gen_line(model, floor_p, args.max_new), row)
             rec["arms"]["floor"] = floor
             torch.manual_seed(args.seed)
             model.reset_adapter()
-            rec["arms"]["a2_clamp"] = _score(await _gen_line(model, a2c_p, args.max_new), row)
+            rec["arms"]["a2_clamp"] = _score(
+                await _gen_line(model, a2c_p, args.max_new), row
+            )
             for label, gold_first, scaling, max_len in _VARIANTS:
-                cond = render_xfile_adapter(row, "structured", gold_first=gold_first)[:_COND_CHAR_CAP]
+                cond = render_xfile_adapter(row, "structured", gold_first=gold_first)[
+                    :_COND_CHAR_CAP
+                ]
                 ar = model.generate_adapter(cond, max_length=max_len)
                 torch.manual_seed(args.seed)
                 model.hotswap_adapter(scale_lora_b(ar.state_dict, scaling))
@@ -139,8 +157,11 @@ async def _run(
         except Exception as e:  # noqa: BLE001 - probe: capture, continue
             rec["error"] = f"{type(e).__name__}: {e}"
         g = rec["arms"].get("gf@1.0", {})
-        print(f"{row.task_id} [{row.level}] gold={row.gold_identifier!r} "
-              f"gf@1.0_recov={g.get('recovered')} {rec.get('error','')}", flush=True)
+        print(
+            f"{row.task_id} [{row.level}] gold={row.gold_identifier!r} "
+            f"gf@1.0_recov={g.get('recovered')} {rec.get('error', '')}",
+            flush=True,
+        )
         traces.append(rec)
     return traces
 
@@ -172,7 +193,9 @@ def _summary(traces: list[dict[str, Any]]) -> str:
         lines.append(f"{label:<16} {r:>3}/{d:<5} {es:>6.3f} {beyond:>14}")
     lines.append("")
     lines.append("recovery = gold cross-file identifier appeared in the completion.")
-    lines.append("beyond_prompt = adapter recovered it where floor AND clamped-prompt did NOT.")
+    lines.append(
+        "beyond_prompt = adapter recovered it where floor AND clamped-prompt did NOT."
+    )
     return "\n".join(lines)
 
 
@@ -202,10 +225,16 @@ def main() -> None:
 
     levels = [x.strip() for x in args.levels.split(",") if x.strip()]
     rows = _load_stratified(levels, args.per_level)
-    print(f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level}, W={args.window})", flush=True)
+    print(
+        f"RepoBench rows: {len(rows)} (levels={levels} x {args.per_level}, W={args.window})",
+        flush=True,
+    )
     cfg = load_rune_config(None).override(
-        checkpoint_path=C3_CKPT, thinking_budget=0, seed=args.seed,
-        max_tokens=args.max_new, temperature=0.0,
+        checkpoint_path=C3_CKPT,
+        thinking_budget=0,
+        seed=args.seed,
+        max_tokens=args.max_new,
+        temperature=0.0,
     )
     model = ModelWrapper.from_config(cfg)
     traces = asyncio.run(_run(model, rows, args))

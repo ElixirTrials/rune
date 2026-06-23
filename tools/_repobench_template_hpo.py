@@ -55,9 +55,16 @@ def _prefix(row: Any) -> str:
 
 async def _gen_line(model: Any, user: str, max_new: int) -> str:
     gen = await model.generate(
-        prompt=user, system_prompt=_SYSTEM, output_schema=None, max_tokens=max_new,
-        temperature=0.0, repetition_penalty=1.1, top_p=0.9, no_repeat_ngram_size=0,
-        presence_penalty=0.0, thinking_budget=0,
+        prompt=user,
+        system_prompt=_SYSTEM,
+        output_schema=None,
+        max_tokens=max_new,
+        temperature=0.0,
+        repetition_penalty=1.1,
+        top_p=0.9,
+        no_repeat_ngram_size=0,
+        presence_penalty=0.0,
+        thinking_budget=0,
     )
     return _first_code_line(gen.text)
 
@@ -69,7 +76,11 @@ def _soft(pred: str, row: Any) -> tuple[float, bool, float]:
     )
 
     es = edit_similarity(pred, row.next_line)
-    rec = bool(gold_id_recovery(pred, row.gold_identifier)) if row.gold_identifier else False
+    rec = (
+        bool(gold_id_recovery(pred, row.gold_identifier))
+        if row.gold_identifier
+        else False
+    )
     return (1.0 if rec else es), rec, round(es, 3)
 
 
@@ -77,7 +88,9 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-8k", type=int, default=15)
     ap.add_argument("--n-32k", type=int, default=15)
-    ap.add_argument("--offset-8k", type=int, default=40, help="skip the headline/smoke 8k rows")
+    ap.add_argument(
+        "--offset-8k", type=int, default=40, help="skip the headline/smoke 8k rows"
+    )
     ap.add_argument("--offset-32k", type=int, default=10)
     ap.add_argument("--trials", type=int, default=24)
     ap.add_argument("--window", type=int, default=768)
@@ -89,6 +102,7 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
     args = ap.parse_args()
 
     import os  # noqa: PLC0415
+
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     import asyncio  # noqa: PLC0415
@@ -111,18 +125,31 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
     from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
 
     rows8 = load_repobench_rows(level="8k")[args.offset_8k : args.offset_8k + args.n_8k]
-    rows32 = load_repobench_rows(level="32k")[args.offset_32k : args.offset_32k + args.n_32k]
+    rows32 = load_repobench_rows(level="32k")[
+        args.offset_32k : args.offset_32k + args.n_32k
+    ]
     pool = rows8 + rows32
     tune, hold = split_tasks(pool, seed=args.seed, tuning_fraction=args.tuning_fraction)
-    print(f"pool={len(pool)} (8k={len(rows8)} 32k={len(rows32)}) -> tune={len(tune)} holdout={len(hold)}", flush=True)
+    print(
+        f"pool={len(pool)} (8k={len(rows8)} 32k={len(rows32)}) -> tune={len(tune)} holdout={len(hold)}",
+        flush=True,
+    )
 
     cfg = load_rune_config(None).override(
-        checkpoint_path=C3_CKPT, thinking_budget=0, seed=args.seed,
-        max_tokens=args.max_new, temperature=0.0,
+        checkpoint_path=C3_CKPT,
+        thinking_budget=0,
+        seed=args.seed,
+        max_tokens=args.max_new,
+        temperature=0.0,
     )
     model = ModelWrapper.from_config(cfg)
 
-    floor_p = {r.task_id: model.clamp_to_window(f"# Current file:\n{_prefix(r)}\n# Next line:", args.window) for r in pool}
+    floor_p = {
+        r.task_id: model.clamp_to_window(
+            f"# Current file:\n{_prefix(r)}\n# Next line:", args.window
+        )
+        for r in pool
+    }
     build_cache: dict[tuple[str, str, int], Any] = {}
 
     def adapter_sd(row: Any, variant: str, anchor: int) -> Any:
@@ -132,16 +159,28 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
             build_cache[key] = model.generate_adapter(cond).state_dict
         return build_cache[key]
 
-    async def eval_adapter(rows: list[Any], variant: str, anchor: int, scaling: float) -> tuple[float, list[dict[str, Any]]]:
+    async def eval_adapter(
+        rows: list[Any], variant: str, anchor: int, scaling: float
+    ) -> tuple[float, list[dict[str, Any]]]:
         total, recs = 0.0, []
         for row in rows:
-            model.hotswap_adapter(scale_lora_b(adapter_sd(row, variant, anchor), scaling))
+            model.hotswap_adapter(
+                scale_lora_b(adapter_sd(row, variant, anchor), scaling)
+            )
             torch.manual_seed(args.seed)
             pred = await _gen_line(model, floor_p[row.task_id], args.max_new)
             soft, rec, es = _soft(pred, row)
             total += soft
-            recs.append({"task_id": row.task_id, "level": row.level, "gold": row.gold_identifier,
-                         "pred": pred, "recovered": rec, "es": es})
+            recs.append(
+                {
+                    "task_id": row.task_id,
+                    "level": row.level,
+                    "gold": row.gold_identifier,
+                    "pred": pred,
+                    "recovered": rec,
+                    "es": es,
+                }
+            )
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         return total / len(rows), recs
@@ -153,14 +192,23 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
         score, _ = asyncio.run(eval_adapter(tune, variant, anchor, scaling))
         return score
 
-    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=args.seed))
+    study = optuna.create_study(
+        direction="maximize", sampler=optuna.samplers.TPESampler(seed=args.seed)
+    )
     study.optimize(objective, n_trials=args.trials, show_progress_bar=False)
     best = study.best_params
-    print(f"\nBEST PARAMS: {best}  (tuning soft-recovery={study.best_value:.3f})", flush=True)
+    print(
+        f"\nBEST PARAMS: {best}  (tuning soft-recovery={study.best_value:.3f})",
+        flush=True,
+    )
 
     # ---- Held-out evaluation: best episodic config vs baselines ----
     async def eval_baselines(rows: list[Any]) -> dict[str, Any]:
-        out: dict[str, list[dict[str, Any]]] = {"floor": [], "a2_full": [], "dump_gf": []}
+        out: dict[str, list[dict[str, Any]]] = {
+            "floor": [],
+            "a2_full": [],
+            "dump_gf": [],
+        }
         for row in rows:
             ctx = render_context_prompt(row)
             a2p = f"# Cross-file context:\n{ctx}\n\n# Current file:\n{_prefix(row)}\n# Next line:"
@@ -174,13 +222,21 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
                 torch.manual_seed(args.seed)
                 ap_pred = await _gen_line(model, a2p, args.max_new)
                 _, arec, aes = _soft(ap_pred, row)
-                out["a2_full"].append({"task_id": row.task_id, "recovered": arec, "es": aes})
-            dump = render_xfile_adapter(row, "structured", gold_first=True)[:_COND_CHAR_CAP]
-            model.hotswap_adapter(scale_lora_b(model.generate_adapter(dump).state_dict, 1.0))
+                out["a2_full"].append(
+                    {"task_id": row.task_id, "recovered": arec, "es": aes}
+                )
+            dump = render_xfile_adapter(row, "structured", gold_first=True)[
+                :_COND_CHAR_CAP
+            ]
+            model.hotswap_adapter(
+                scale_lora_b(model.generate_adapter(dump).state_dict, 1.0)
+            )
             torch.manual_seed(args.seed)
             dp = await _gen_line(model, floor_p[row.task_id], args.max_new)
             _, drec, des = _soft(dp, row)
-            out["dump_gf"].append({"task_id": row.task_id, "recovered": drec, "es": des})
+            out["dump_gf"].append(
+                {"task_id": row.task_id, "recovered": drec, "es": des}
+            )
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         return out
@@ -197,7 +253,9 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
         return r, len(recs), es
 
     print(f"\n=== HELD-OUT (N={len(hold)}, never tuned) ===", flush=True)
-    rows_report = [("best_episodic", best_recs)] + [(k, v) for k, v in baselines.items()]
+    rows_report = [("best_episodic", best_recs)] + [
+        (k, v) for k, v in baselines.items()
+    ]
     for name, recs in rows_report:
         r, d, es = rate(recs)
         print(f"  {name:<14} recovery {r}/{d}   mean_es={es:.3f}", flush=True)
@@ -205,18 +263,31 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
     # ---- Durable MLflow ----
     ckpt_sha = hashlib.sha256(Path(C3_CKPT).read_bytes()).hexdigest()
     engine_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False,
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
         cwd=str(Path(__file__).resolve().parent.parent),
     ).stdout.strip()
     configure_mlflow(args.experiment)
     params = {
-        **cfg.to_dict(), "benchmark": "repobench_v1.1_python", "split": "cross_file_first",
-        "window": args.window, "n_pool": len(pool), "n_tune": len(tune), "n_holdout": len(hold),
-        "trials": args.trials, "checkpoint_sha256": ckpt_sha, "engine_commit": engine_commit,
-        "best_variant": best["variant"], "best_anchor_chars": best["anchor_chars"],
+        **cfg.to_dict(),
+        "benchmark": "repobench_v1.1_python",
+        "split": "cross_file_first",
+        "window": args.window,
+        "n_pool": len(pool),
+        "n_tune": len(tune),
+        "n_holdout": len(hold),
+        "trials": args.trials,
+        "checkpoint_sha256": ckpt_sha,
+        "engine_commit": engine_commit,
+        "best_variant": best["variant"],
+        "best_anchor_chars": best["anchor_chars"],
         "best_scaling": round(best["scaling"], 4),
     }
-    with tracked_run(f"template-hpo-W{args.window}-n{len(pool)}-t{args.trials}", params=params):
+    with tracked_run(
+        f"template-hpo-W{args.window}-n{len(pool)}-t{args.trials}", params=params
+    ):
         mlflow.log_metric("tuning_best_soft_recovery", study.best_value)
         for name, recs in rows_report:
             r, d, es = rate(recs)
@@ -224,7 +295,8 @@ def main() -> None:  # noqa: C901, PLR0915 - linear experiment script
             mlflow.log_metric(f"holdout_recovery_{safe}", r / (d or 1))
             mlflow.log_metric(f"holdout_es_{safe}", es)
         payload = {
-            "best_params": best, "tuning_best": study.best_value,
+            "best_params": best,
+            "tuning_best": study.best_value,
             "trials": [{"params": t.params, "value": t.value} for t in study.trials],
             "holdout": {name: recs for name, recs in rows_report},
         }
