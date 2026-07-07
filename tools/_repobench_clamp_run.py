@@ -16,9 +16,24 @@ Arms (per row, gold-identifier recovery is primary):
                  (variant=use, anchor=0, scaling=0.91); CLI-overridable.
 - dump_gf      : context in adapter via the OLD multi-file dump (regression reference).
 
+Pre-registered C1 arms (publication_task_plan.md C1.1-C1.3; extend-only — the five
+arms above keep their exact behavior/labels for prior-run comparability):
+- a2_tail        : the IDENTICAL episodic conditioning string placed at the prompt
+                   TAIL, adjacent to the cursor, prefix clamped so total <= W
+                   (the honest in-prompt channel; remediation plan 1a).
+- a2_tail_filler : same construction, conditioning replaced by NEUTRAL filler
+                   token-matched to the conditioning length — isolates the
+                   pointer's marginal contribution from token displacement.
+- swap           : adapter generated from the episodic conditioning with the gold
+                   identifier renamed to a different row's gold (HANDOFF Stats C7 /
+                   design-spec s8 "wrong task's symbol"; donors sharing the gold's
+                   surface form are inadmissible); scored for recovery of the
+                   ORIGINAL gold on the floor prompt (frequency-confound control).
+
 Durable: MLflow params (config + engine_commit + checkpoint_sha + dataset id +
-window + levels), metrics (per-arm recovery rate + beyond-prompt count + floor-vs
--adapter discordants), per-task JSONL artifact.
+window + levels), metrics (per-arm recovery rate + Wilson 95% CIs + beyond-prompt
+count + floor-vs-adapter discordants + pre-registered paired McNemars +
+attributable fraction (e-s)/(e-f)), per-task JSONL artifact.
 
 Run: uv run --extra gpu python tools/_repobench_clamp_run.py \
        --levels 8k,32k --per-level 30 --window 768 --experiment issue52-repobench-clamp \
@@ -32,6 +47,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -46,6 +62,164 @@ _EPISODIC_VARIANT = "use"
 _EPISODIC_ANCHOR = 0
 _EPISODIC_SCALING = 0.91
 _ADAPTER_LABELS = ("episodic_use", "dump_gf")  # primary + regression reference
+
+# Original five arms (behavior/labels/metric names frozen for prior-run
+# comparability) + the pre-registered C1 arms (extend-only).
+_PRIMARY_ARMS = ("floor", "a2_clamp", "a2_full", "episodic_use", "dump_gf")
+_C1_ARMS = ("a2_tail", "a2_tail_filler", "swap")
+
+# Pre-registered paired comparisons (remediation plan 1a/1b gates). The
+# original floor-vs-episodic McNemar keeps its legacy metric names.
+_MCNEMAR_PAIRS = (
+    ("episodic_use", "a2_tail"),
+    ("a2_tail", "a2_tail_filler"),
+    ("swap", "floor"),
+    ("swap", "episodic_use"),
+)
+
+# Neutral prose for the a2_tail_filler control: no task identifiers, no
+# code-like tokens. Words colliding with the row's identifiers are filtered
+# per-row before use.
+_FILLER_WORDS = (
+    "meanwhile", "quiet", "afternoon", "light", "settled", "gently", "across",
+    "distant", "hills", "slow", "clouds", "drifted", "toward", "the", "horizon",
+    "soft", "grass", "swayed", "beneath", "a", "mild", "breeze", "over", "meadow",
+)
+
+_TAIL_HEADER = "# Current file:\n"
+_CURSOR_MARKER = "\n# Next line:"
+
+
+def _assemble_tail_prompt(
+    model: Any, prefix: str, cond: str, window: int
+) -> tuple[str, str]:
+    """Prompt ending with ``cond`` immediately before the cursor marker, <= window.
+
+    The current-file prefix is tail-clamped so the TOTAL prompt fits the window
+    budget — the conditioning displaces near-cursor code rather than extending
+    the budget (remediation plan 1a: within-budget trade). Returns
+    ``(prompt, clamped_prefix)`` so the caller can record the realized prefix
+    token count (matched cursor-code-length comparison vs floor).
+    """
+    tail = f"\n{cond}{_CURSOR_MARKER}"
+    budget = max(window - model.count_tokens(_TAIL_HEADER + tail), 0)
+    clamped = model.clamp_to_window(prefix, budget)
+    prompt = f"{_TAIL_HEADER}{clamped}{tail}"
+    # Tokenization is not additive across the joins; shrink until the total fits.
+    while budget > 0 and (over := model.count_tokens(prompt) - window) > 0:
+        budget = max(budget - over, 0)
+        clamped = model.clamp_to_window(prefix, budget)
+        prompt = f"{_TAIL_HEADER}{clamped}{tail}"
+    return prompt, clamped
+
+
+def _neutral_filler(model: Any, target_tokens: int, forbidden: set[str]) -> str:
+    """Neutral filler matched to ``target_tokens`` via ``model.count_tokens``.
+
+    Carries no task information: words colliding (case-insensitively) with
+    ``forbidden`` (the row's identifiers) are dropped; the rest is plain prose.
+    Grows word-by-word to the target, trims overshoot, then closes any
+    sub-word-size gap greedily so the token count matches exactly whenever a
+    single-token word exists.
+    """
+    bad = {w.lower() for w in forbidden}
+    words = [w for w in _FILLER_WORDS if w.lower() not in bad]
+    if not words or target_tokens <= 0:
+        return ""
+    parts: list[str] = []
+    i = 0
+    while model.count_tokens(" ".join(parts)) < target_tokens and i < 8 * target_tokens:
+        parts.append(words[i % len(words)])
+        i += 1
+    while parts and model.count_tokens(" ".join(parts)) > target_tokens:
+        parts.pop()
+    for _ in range(target_tokens):
+        if model.count_tokens(" ".join(parts)) >= target_tokens:
+            break
+        nxt = next(
+            (w for w in words if model.count_tokens(" ".join([*parts, w])) <= target_tokens),
+            None,
+        )
+        if nxt is None:
+            break
+        parts.append(nxt)
+    return " ".join(parts)
+
+
+def _swap_conditioning(cond: str, gold: str, replacement: str) -> tuple[str, int]:
+    """Replace ALL whole-token occurrences of ``gold`` in ``cond``.
+
+    Returns ``(swapped_text, n_replaced)``; ``n_replaced == 0`` means the gold
+    identifier does not occur in the conditioning and the row is
+    swap-inapplicable (guard — never silently run an unswapped conditioning).
+    """
+    if not gold:
+        return cond, 0
+    pat = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(gold)}(?![A-Za-z0-9_])")
+    return pat.subn(replacement, cond)
+
+
+def _pick_swap_identifier(idx: int, golds: list[str]) -> str | None:
+    """Donor identifier for row ``idx``: the next admissible gold (cyclic).
+
+    HANDOFF Stats C7: condition on the *wrong* task's symbol — a plausible
+    identifier drawn from the same benchmark, deterministic given row order.
+    Donors sharing the gold's surface form are inadmissible (adjacent rows are
+    same-repo, so golds share naming families): a donor containing the gold
+    (gold 'Config' -> donor 'ConfigLoader') keeps the gold's characters in the
+    swapped conditioning, and a donor contained in the gold (gold
+    'ConfigLoader' -> donor 'Config') can be autoregressively extended back
+    into it — either leak primes recovery of the original gold and biases the
+    swap gate toward a spurious 'keystone compromised' outcome.
+    """
+    gold = golds[idx]
+    if not gold:
+        return None
+    gold_l = gold.lower()
+    for off in range(1, len(golds)):
+        cand = golds[(idx + off) % len(golds)]
+        if not cand or cand == gold:
+            continue
+        cand_l = cand.lower()
+        if gold_l in cand_l or cand_l in gold_l:
+            continue
+        return cand
+    return None
+
+
+def _wilson_ci(k: int, n: int) -> tuple[float, float]:
+    """Wilson 95% score interval for k successes in n trials — no scipy dependency."""
+    if n == 0:
+        return (0.0, 1.0)
+    z = 1.959963984540054
+    p = k / n
+    denom = 1.0 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1.0 - p) / n + z * z / (4.0 * n * n)) / denom
+    # boundary cases are exact analytically; avoid float round-off drift
+    lo = max(0.0, center - half) if k > 0 else 0.0
+    hi = min(1.0, center + half) if k < n else 1.0
+    return (lo, hi)
+
+
+def _paired_discordants(
+    traces: list[dict[str, Any]], arm_a: str, arm_b: str
+) -> tuple[int, int, int]:
+    """McNemar counts over rows where BOTH arms have non-null 'recovered'.
+
+    Returns ``(a_only, b_only, n_pairs)``; skipped arms and null-gold rows are
+    excluded from the pair, matching the pre-registration.
+    """
+    a_only = b_only = n = 0
+    for t in traces:
+        ra = t["arms"].get(arm_a, {}).get("recovered")
+        rb = t["arms"].get(arm_b, {}).get("recovered")
+        if ra is None or rb is None:
+            continue
+        n += 1
+        a_only += int(bool(ra) and not rb)
+        b_only += int(bool(rb) and not ra)
+    return a_only, b_only, n
 
 _SYSTEM = (
     "You are a code completion engine. Output ONLY the single next line of "
@@ -97,6 +271,10 @@ def _score(pred: str, row: Any) -> dict[str, Any]:
 async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[dict[str, Any]]:
     import torch  # noqa: PLC0415
 
+    from rune.bench.identifier_match import (  # noqa: PLC0415
+        extract_identifiers,
+        gold_id_recovery,
+    )
     from rune.bench.repobench import (  # noqa: PLC0415,E501
         render_context_prompt,
         render_episodic,
@@ -105,6 +283,7 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
     from rune.model.adapter import scale_lora_b  # noqa: PLC0415
 
     w = args.window
+    golds = [r.gold_identifier for r in rows]  # swap-donor pool (wrong-task symbols)
     # (label, conditioning text, scaling): the validated episodic arm + the dump
     # regression reference. Episodic conditioning names the ONE cross-file API.
     def adapter_arms(row: Any) -> list[tuple[str, str, float]]:
@@ -156,6 +335,62 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
                     rec["arms"]["floor"]["recovered"] or rec["arms"]["a2_clamp"]["recovered"]
                 )
                 rec["arms"][label] = s
+
+            # --- pre-registered C1 arms (extend-only; the five arms above are
+            # untouched for prior-run comparability) ---
+            rec["floor_prompt_tokens"] = model.count_tokens(floor_p)
+            # a2_tail: the IDENTICAL conditioning string episodic_use receives,
+            # at the prompt tail, within the same window budget (channel test).
+            cond_e = render_episodic(row, args.variant, anchor_chars=args.anchor)[:_COND_CHAR_CAP]
+            tail_p, tail_prefix = _assemble_tail_prompt(model, prefix, cond_e, w)
+            torch.manual_seed(args.seed)
+            model.reset_adapter()
+            s = _score(await _gen_line(model, tail_p, args.max_new), row)
+            s["cond_tokens"] = model.count_tokens(cond_e)
+            s["prefix_tokens"] = model.count_tokens(tail_prefix)
+            s["prompt_tokens"] = model.count_tokens(tail_p)
+            rec["arms"]["a2_tail"] = s
+
+            # a2_tail_filler: identical construction, neutral filler token-matched
+            # to the conditioning — isolates the pointer from token displacement.
+            forbidden = {row.gold_identifier, *extract_identifiers(cond_e)}
+            filler = _neutral_filler(model, model.count_tokens(cond_e), forbidden)
+            fill_p, fill_prefix = _assemble_tail_prompt(model, prefix, filler, w)
+            torch.manual_seed(args.seed)
+            model.reset_adapter()
+            s = _score(await _gen_line(model, fill_p, args.max_new), row)
+            s["filler_tokens"] = model.count_tokens(filler)
+            s["prefix_tokens"] = model.count_tokens(fill_prefix)
+            s["prompt_tokens"] = model.count_tokens(fill_p)
+            rec["arms"]["a2_tail_filler"] = s
+
+            # swap: adapter from the conditioning with the gold identifier renamed
+            # to a different row's gold; scored for recovery of the ORIGINAL gold
+            # on the same floor prompt (frequency/output-bias control, C7).
+            gold = row.gold_identifier
+            donor = _pick_swap_identifier(idx, golds)
+            if not gold or donor is None:
+                rec["arms"]["swap"] = {
+                    "skipped": "swap-inapplicable: no gold identifier or no donor"
+                }
+            else:
+                swapped_cond, n_swaps = _swap_conditioning(cond_e, gold, donor)
+                if n_swaps == 0:
+                    rec["arms"]["swap"] = {
+                        "skipped": "swap-inapplicable: gold absent from conditioning"
+                    }
+                else:
+                    ar = model.generate_adapter(swapped_cond)
+                    torch.manual_seed(args.seed)
+                    model.hotswap_adapter(scale_lora_b(ar.state_dict, args.scaling))
+                    pred = await _gen_line(model, floor_p, args.max_new)
+                    s = _score(pred, row)  # primary: recovery of the ORIGINAL gold
+                    s["cond_tokens"] = model.count_tokens(swapped_cond)
+                    s["swap_identifier"] = donor
+                    s["swap_occurrences"] = n_swaps
+                    # PR #57 s8 content-vs-pointer signal: did it track the rename?
+                    s["swapped_recovered"] = bool(gold_id_recovery(pred, donor))
+                    rec["arms"]["swap"] = s
             model.reset_adapter()
         except Exception as e:  # noqa: BLE001 - capture per-row, keep the campaign alive
             rec["error"] = f"{type(e).__name__}: {e}"
@@ -193,11 +428,14 @@ def _metrics(traces: list[dict[str, Any]]) -> dict[str, float]:
         vals = [v for v in vals if v is not None]
         return sum(bool(v) for v in vals), len(vals)
 
-    for label in ("floor", "a2_clamp", "a2_full", "episodic_use", "dump_gf"):
+    for label in (*_PRIMARY_ARMS, *_C1_ARMS):
         r, d = rate(label)
         out[f"recovery_{label}"] = r / d if d else 0.0
         out[f"recovery_{label}_n"] = r
         out[f"denom_{label}"] = d
+        lo, hi = _wilson_ci(r, d)
+        out[f"recovery_{label}_wilson_lo"] = lo
+        out[f"recovery_{label}_wilson_hi"] = hi
     out["beyond_prompt_episodic"] = sum(
         1 for t in ok if t["arms"].get("episodic_use", {}).get("recovers_beyond_prompt")
     )
@@ -216,20 +454,65 @@ def _metrics(traces: list[dict[str, Any]]) -> dict[str, float]:
     out["mcnemar_adapter_only"] = b
     out["mcnemar_floor_only"] = c
     out["mcnemar_p"] = _two_sided_binom_p(b, c)
+    # Pre-registered paired McNemars (C1 gates), over rows where both arms scored.
+    for a, b_arm in _MCNEMAR_PAIRS:
+        a_only, b_only, n_pairs = _paired_discordants(ok, a, b_arm)
+        key = f"mcnemar_{a}_vs_{b_arm}"
+        out[f"{key}_n"] = n_pairs
+        out[f"{key}_first_only"] = a_only
+        out[f"{key}_second_only"] = b_only
+        out[f"{key}_p"] = _two_sided_binom_p(a_only, b_only)
+    # Attributable fraction (e-s)/(e-f) on the common support of the three arms
+    # (remediation plan 1b: the share of the episodic effect genuinely due to
+    # conditioning content rather than the frequency confound).
+    tri = [
+        t for t in ok
+        if all(
+            t["arms"].get(lbl, {}).get("recovered") is not None
+            for lbl in ("floor", "episodic_use", "swap")
+        )
+    ]
+    out["attrib_n"] = len(tri)
+    if tri:
+        def tri_rate(lbl: str) -> float:
+            return sum(bool(t["arms"][lbl]["recovered"]) for t in tri) / len(tri)
+
+        e, s, f = tri_rate("episodic_use"), tri_rate("swap"), tri_rate("floor")
+        out["attrib_rate_episodic"] = e
+        out["attrib_rate_swap"] = s
+        out["attrib_rate_floor"] = f
+        if e != f:  # guard: fraction undefined when episodic == floor
+            out["attributable_fraction"] = (e - s) / (e - f)
+    out["swap_inapplicable"] = sum(
+        1 for t in ok if "skipped" in t["arms"].get("swap", {})
+    )
     return out
 
 
 def _fmt_metrics(m: dict[str, float]) -> str:
     lines = ["", f"=== CLAMP RUN METRICS (N={int(m['n_ok'])}/{int(m['n_total'])}) ==="]
-    lines.append(f"{'arm':<12}{'recovery':>12}")
-    for label in ("floor", "a2_clamp", "a2_full", "episodic_use", "dump_gf"):
+    lines.append(f"{'arm':<16}{'recovery':>14}  {'wilson95':>16}")
+    for label in (*_PRIMARY_ARMS, *_C1_ARMS):
         r, d = int(m[f"recovery_{label}_n"]), int(m[f"denom_{label}"])
-        lines.append(f"{label:<14}{r:>4}/{d:<4} = {m[f'recovery_{label}']:.3f}")
+        lo, hi = m[f"recovery_{label}_wilson_lo"], m[f"recovery_{label}_wilson_hi"]
+        lines.append(f"{label:<16}{r:>4}/{d:<4} = {m[f'recovery_{label}']:.3f}"
+                     f"  [{lo:.3f}, {hi:.3f}]")
     lines.append("")
     lines.append(f"beyond-prompt (adapter recovers where floor AND clamped-prompt fail): "
                  f"episodic={int(m['beyond_prompt_episodic'])} dump={int(m['beyond_prompt_dump'])}")
     lines.append(f"McNemar floor vs episodic_use: adapter_only={int(m['mcnemar_adapter_only'])} "
                  f"floor_only={int(m['mcnemar_floor_only'])} p={m['mcnemar_p']:.4f}")
+    for a, b_arm in _MCNEMAR_PAIRS:
+        key = f"mcnemar_{a}_vs_{b_arm}"
+        lines.append(f"McNemar {a} vs {b_arm}: n={int(m[f'{key}_n'])} "
+                     f"{a}_only={int(m[f'{key}_first_only'])} "
+                     f"{b_arm}_only={int(m[f'{key}_second_only'])} p={m[f'{key}_p']:.4f}")
+    if "attributable_fraction" in m:
+        lines.append(f"attributable fraction (e-s)/(e-f) on n={int(m['attrib_n'])}: "
+                     f"{m['attributable_fraction']:.3f} "
+                     f"(e={m['attrib_rate_episodic']:.3f} s={m['attrib_rate_swap']:.3f} "
+                     f"f={m['attrib_rate_floor']:.3f})")
+    lines.append(f"swap-inapplicable rows: {int(m['swap_inapplicable'])}")
     return "\n".join(lines)
 
 
