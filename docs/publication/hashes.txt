@@ -1,0 +1,33 @@
+# SHA-256 manifest — issue #52 TMLR submission (plan C0.2 / remediation M5.1).
+# Generated 2026-07-07. Format: <sha256>  <logical name>  <source>
+# S3 = s3://elixirtrials-949678234935-us-east-1-artifacts
+#
+# Provenance note: the MLflow tracking DB was restored from a snapshot that predates
+# experiments 78-86 (incl. issue52-repobench-clamp, S3 artifact prefix 83); those runs'
+# param/metric rows are lost, but their artifacts persist in S3 and are hashed below.
+
+# -- checkpoint (restored 2026-07-07 to /tmp/phase1/ckpt/c3_t07_lp2_lg1.pt) --
+53e24af243a38dfbfad82f7293635bfc592922dd2058fefbbfa10714b5457a3f  c3_t07_lp2_lg1.pt (frozen Phase-1 checkpoint c3, step 48)  mlflow exp 45 issue52-phase1, run fe72f9ddd69c4f7b8bd86b6b12372d47, artifact checkpoints/checkpoint_step48.pt (S3/mlflow/artifacts/45/fe72f9ddd69c4f7b8bd86b6b12372d47/artifacts/checkpoints/checkpoint_step48.pt); matches the checkpoint-of-record prefix 53e24af243a3 in docs/issue52-experimentation-log.md
+
+# -- MBPP recall corpus splits (phase-1 train / held-out; goal-2 scaling arms) --
+e60f0dd85fad51142513b7487b680b7486f821b5245212164b1be812b9f860cd  mbpp_recall_train.jsonl (n=40, c3 train corpus; run param corpus_path)  local benchmarks/mbpp_recall_train.jsonl
+cae274bf1aed31c80d42da82b366d9af727129bbf6aa124afed9643abe762a8f  mbpp_recall_heldout.jsonl (n=24, held-out eval)  local benchmarks/mbpp_recall_heldout.jsonl
+4dbf049b59979ddf556b0d2985e27719521cc69361a51cde89401f31fcecc217  mbpp_recall_train_80.jsonl (n=80, goal-2 scaling, mlflow run 39a6f211ddfa)  local benchmarks/mbpp_recall_train_80.jsonl
+5711834e1ae90ffac77ea60da18ef67824f217a1e2f1858b09be99f164f3c085  mbpp_recall_train_160.jsonl (n=160, goal-2 scaling, mlflow run 9812c7f2eb13)  local benchmarks/mbpp_recall_train_160.jsonl
+e920d261895571dde06d9042596186624fd8551a7d459fcf76136912cc1d6c5c  mbpp_heldout_tasks.json (pass@1 bench task set)  local benchmarks/mbpp_heldout_tasks.json
+
+# -- external_codereview retention corpus (registered: corpus-registry run ea4f3c43af3a4258b327a03ad3799a35) --
+bc262ee7d2b68447635bb30de536646c955a9d287cb9853f7bbf59566ca5bff4  external_codereview.train.jsonl  S3/training-data/github-pairs/splits/external_codereview.train.jsonl (mlflow dataset digest a54c637f)
+7e3692df4ddbbf9352d10a8a18c117b78c5c6008bd50f5d2a79c62020fdf514c  external_codereview.val.clean.jsonl (n=323, retention baseline)  S3/training-data/github-pairs/splits/external_codereview.val.clean.jsonl (mlflow dataset digest e925cd84)
+744715a64fd0105c6f12aa0ab09c4a2090129b168f76c9b0e0790a7c5b3eb680  external_codereview.test.clean.jsonl  S3/training-data/github-pairs/splits/external_codereview.test.clean.jsonl (mlflow dataset digest b35058c4)
+551dd8d4c89257ef8fc15fca85a9fcfc4f6207529fe82149dd22bb795b38e571  external_codereview.val.jsonl  S3/training-data/github-pairs/splits/external_codereview.val.jsonl
+71d0f04285eecaa41a4c57128446f92131ae17abebfa59ad0318583bbd1c7633  external_codereview.test.jsonl  S3/training-data/github-pairs/splits/external_codereview.test.jsonl
+4931fe03273500355cb6fad050cdcac27fcb128d23863836fd34ec459b65934d  external_codereview.unrolled.jsonl (source, n=7670)  S3/training-data/github-pairs/external_codereview.unrolled.jsonl (mlflow dataset digest d230549c)
+
+# -- durable per-task artifacts of the RepoBench clamp campaign (DB rows lost; artifacts persist) --
+d8b27f50f668ec689949054e32aa130ffe58df6d3e15ab4d4645629e56a6ee8c  rb_clamp_episodic_n60.json (keystone N=60 run, clamp-use-W768-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (S3 prefix 83), run 4d15a80754224ecea88125761180a2f1, artifact rb_clamp_episodic_n60.json
+c9ecff3c8b3682e8f861297eaea9b69f6bb6eaefb10598e16cee5b9781b4d36d  rb_clamp_run.json (dump-template N=60 negative, clamp-W768-8k_32k-n60-seed0)  mlflow exp issue52-repobench-clamp (S3 prefix 83), run 9ea65a3bd89d4e8d98bc2f970047158b, artifact rb_clamp_run.json
+
+# RepoBench eval rows carry no local split file: drawn deterministically from HF dataset
+# tianyang/repobench_python_v1.1, split cross_file_first, levels 8k/32k, per_level=30,
+# offset (0 dump-negative / 100 keystone), seed 0 (tools/_repobench_clamp_run.py).

@@ -402,3 +402,4 @@ tools/_specificity_probe.py
 tools/_temp_sample_avoid_probe.py
 tools/_wf_e1e2_author.mjs
 tools/_wf_scout_predeclare.mjs
+!docs/publication/hashes.txt
