@@ -342,27 +342,37 @@ async def _run(model: Any, rows: list[Any], args: argparse.Namespace) -> list[di
             # a2_tail: the IDENTICAL conditioning string episodic_use receives,
             # at the prompt tail, within the same window budget (channel test).
             cond_e = render_episodic(row, args.variant, anchor_chars=args.anchor)[:_COND_CHAR_CAP]
-            tail_p, tail_prefix = _assemble_tail_prompt(model, prefix, cond_e, w)
-            torch.manual_seed(args.seed)
-            model.reset_adapter()
-            s = _score(await _gen_line(model, tail_p, args.max_new), row)
-            s["cond_tokens"] = model.count_tokens(cond_e)
-            s["prefix_tokens"] = model.count_tokens(tail_prefix)
-            s["prompt_tokens"] = model.count_tokens(tail_p)
-            rec["arms"]["a2_tail"] = s
+            tail_overhead = model.count_tokens(f"{_TAIL_HEADER}\n{cond_e}{_CURSOR_MARKER}")
+            if tail_overhead > w:
+                # The within-budget trade (remediation plan 1a) is undefined when
+                # the conditioning alone exceeds W: skip rather than overflow.
+                skip = {"skipped": f"tail_overhead_tokens>{w}",
+                        "cond_tokens": model.count_tokens(cond_e)}
+                rec["arms"]["a2_tail"] = dict(skip)
+                rec["arms"]["a2_tail_filler"] = dict(skip)
+            else:
+                tail_p, tail_prefix = _assemble_tail_prompt(model, prefix, cond_e, w)
+                torch.manual_seed(args.seed)
+                model.reset_adapter()
+                s = _score(await _gen_line(model, tail_p, args.max_new), row)
+                s["cond_tokens"] = model.count_tokens(cond_e)
+                s["prefix_tokens"] = model.count_tokens(tail_prefix)
+                s["prompt_tokens"] = model.count_tokens(tail_p)
+                rec["arms"]["a2_tail"] = s
 
-            # a2_tail_filler: identical construction, neutral filler token-matched
-            # to the conditioning — isolates the pointer from token displacement.
-            forbidden = {row.gold_identifier, *extract_identifiers(cond_e)}
-            filler = _neutral_filler(model, model.count_tokens(cond_e), forbidden)
-            fill_p, fill_prefix = _assemble_tail_prompt(model, prefix, filler, w)
-            torch.manual_seed(args.seed)
-            model.reset_adapter()
-            s = _score(await _gen_line(model, fill_p, args.max_new), row)
-            s["filler_tokens"] = model.count_tokens(filler)
-            s["prefix_tokens"] = model.count_tokens(fill_prefix)
-            s["prompt_tokens"] = model.count_tokens(fill_p)
-            rec["arms"]["a2_tail_filler"] = s
+                # a2_tail_filler: identical construction, neutral filler token-
+                # matched to the conditioning — isolates the pointer from token
+                # displacement.
+                forbidden = {row.gold_identifier, *extract_identifiers(cond_e)}
+                filler = _neutral_filler(model, model.count_tokens(cond_e), forbidden)
+                fill_p, fill_prefix = _assemble_tail_prompt(model, prefix, filler, w)
+                torch.manual_seed(args.seed)
+                model.reset_adapter()
+                s = _score(await _gen_line(model, fill_p, args.max_new), row)
+                s["filler_tokens"] = model.count_tokens(filler)
+                s["prefix_tokens"] = model.count_tokens(fill_prefix)
+                s["prompt_tokens"] = model.count_tokens(fill_p)
+                rec["arms"]["a2_tail_filler"] = s
 
             # swap: adapter from the conditioning with the gold identifier renamed
             # to a different row's gold; scored for recovery of the ORIGINAL gold
@@ -486,6 +496,9 @@ def _metrics(traces: list[dict[str, Any]]) -> dict[str, float]:
     out["swap_inapplicable"] = sum(
         1 for t in ok if "skipped" in t["arms"].get("swap", {})
     )
+    out["a2_tail_inapplicable"] = sum(
+        1 for t in ok if "skipped" in t["arms"].get("a2_tail", {})
+    )
     return out
 
 
@@ -513,6 +526,7 @@ def _fmt_metrics(m: dict[str, float]) -> str:
                      f"(e={m['attrib_rate_episodic']:.3f} s={m['attrib_rate_swap']:.3f} "
                      f"f={m['attrib_rate_floor']:.3f})")
     lines.append(f"swap-inapplicable rows: {int(m['swap_inapplicable'])}")
+    lines.append(f"a2_tail-inapplicable rows: {int(m['a2_tail_inapplicable'])}")
     return "\n".join(lines)
 
 

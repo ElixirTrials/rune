@@ -27,6 +27,7 @@ bc262ee7d2b68447635bb30de536646c955a9d287cb9853f7bbf59566ca5bff4  external_coder
 # -- durable per-task artifacts of the RepoBench clamp campaign (DB rows lost; artifacts persist) --
 d8b27f50f668ec689949054e32aa130ffe58df6d3e15ab4d4645629e56a6ee8c  rb_clamp_episodic_n60.json (keystone N=60 run, clamp-use-W768-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (S3 prefix 83), run 4d15a80754224ecea88125761180a2f1, artifact rb_clamp_episodic_n60.json
 c9ecff3c8b3682e8f861297eaea9b69f6bb6eaefb10598e16cee5b9781b4d36d  rb_clamp_run.json (dump-template N=60 negative, clamp-W768-8k_32k-n60-seed0)  mlflow exp issue52-repobench-clamp (S3 prefix 83), run 9ea65a3bd89d4e8d98bc2f970047158b, artifact rb_clamp_run.json
+d0d6d6837cdaeafc8121ecfc6af0ee134e38608fca2fb10fec0662670a870a3a  rb_clamp_c1_full.json (C1 keystone campaign, N=60 x 8 arms, clamp-use-W768-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (new exp id 79), run f37374906c5f4f5c972b8e7b8127089a, artifact rb_clamp_c1_full.json; byte-identical local copy at session scratchpad rb_clamp_c1_full.json
 
 # RepoBench eval rows carry no local split file: drawn deterministically from HF dataset
 # tianyang/repobench_python_v1.1, split cross_file_first, levels 8k/32k, per_level=30,

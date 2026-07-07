@@ -332,3 +332,22 @@ def test_fmt_metrics_renders_new_sections() -> None:
 def test_metric_names_mlflow_safe() -> None:
     m = clamp._metrics([_full_row(False, True, True)])
     assert all("@" not in k for k in m)
+
+
+def test_metrics_a2_tail_skipped_rows_counted_and_excluded() -> None:
+    over = {"skipped": "tail_overhead_tokens>768", "cond_tokens": 2020}
+    traces = [
+        _full_row(True, True, True),
+        _trace(
+            floor=False, a2_clamp=False, a2_full=False, episodic_use=True,
+            dump_gf=False, a2_tail=dict(over), a2_tail_filler=dict(over), swap=False,
+        ),
+    ]
+    m = clamp._metrics(traces)
+    assert m["a2_tail_inapplicable"] == 1
+    assert m["denom_a2_tail"] == 1
+    assert m["denom_a2_tail_filler"] == 1
+    # skipped row drops out of the paired McNemar for the tail pairs
+    assert m["mcnemar_episodic_use_vs_a2_tail_n"] == 1
+    assert m["mcnemar_a2_tail_vs_a2_tail_filler_n"] == 1
+    assert "a2_tail-inapplicable rows: 1" in clamp._fmt_metrics(m)
