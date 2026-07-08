@@ -49,6 +49,7 @@ nav:
       - "Results Section Guide": issue52-results-section-guide.md
       - "Long-Context Results (adapter vs context)": issue52-results-longcontext-2026-06-22.md
       - "LCB Durable Findings": issue52-lcb-durable-findings-2026-06-19.md
+      - "LCB Failure Modes (C4/I0 run)": issue52-lcb-failure-modes-2026-07-08.md
       - "RepoBench Clamp Findings": issue52-repobench-clamp-findings-2026-06-22.md
       - "RepoBench Template HPO": issue52-repobench-template-hpo-findings-2026-06-22.md
       - "HumanEval+ Regression RCA": issue52-humaneval-regression-rca-fix-2026-06-22.md
