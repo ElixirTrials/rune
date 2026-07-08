@@ -210,7 +210,9 @@ def assemble_native_sd(h: dict[str, Any], text: str) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ the legs
 
-async def run_capacity(h: dict[str, Any], rows: list[Any], args: Any) -> list[dict]:
+async def run_capacity(
+    h: dict[str, Any], rows: list[Any], args: Any, out: Path
+) -> list[dict]:
     import torch  # noqa: PLC0415
 
     from rune.bench.repobench import render_episodic  # noqa: PLC0415
@@ -245,57 +247,66 @@ async def run_capacity(h: dict[str, Any], rows: list[Any], args: Any) -> list[di
         ) for r in rows
     ]
     for i in range(len(rows)):
-        model.reset_adapter()
-        traces[i]["arms"]["floor"] = await gen_scored(i, floor_prompts[i])
+        try:
+            model.reset_adapter()
+            traces[i]["arms"]["floor"] = await gen_scored(i, floor_prompts[i])
+        except Exception as exc:
+            traces[i]["error"] = repr(exc)
+    out.write_text(json.dumps(traces, indent=1))
 
     for k in ks:
         for bundle in lib.make_bundles(len(rows), k):
-            joined = lib.multi_cond_text([conds[i] for i in bundle])
-            overhead = model.count_tokens(
-                f"{clamp._TAIL_HEADER}\n{joined}{clamp._CURSOR_MARKER}"
-            )
-            arm_t = f"tail_k{k}"
-            for i in bundle:
-                if overhead > w:
-                    traces[i]["arms"][arm_t] = {
-                        "pred": "", "recovered": False, "infeasible": True,
-                        "cond_tokens": overhead,
-                    }
-                    continue
-                model.reset_adapter()
-                prompt, _ = clamp._assemble_tail_prompt(
-                    model, clamp._prefix(rows[i]), joined, w
+            try:
+                joined = lib.multi_cond_text([conds[i] for i in bundle])
+                overhead = model.count_tokens(
+                    f"{clamp._TAIL_HEADER}\n{joined}{clamp._CURSOR_MARKER}"
                 )
-                s = await gen_scored(i, prompt)
-                s["cond_tokens"] = overhead
-                traces[i]["arms"][arm_t] = s
-
-            modes: list[tuple[str, dict[str, Any]]] = []
-            if k == 1:
-                modes.append(("adapter_k1", fact_sd(bundle[0])))
-            else:
-                if args.mode in ("both", "a"):
-                    model.reset_adapter()
-                    sd_a = assemble_native_sd(h, joined)
-                    modes.append((f"adapter_a_k{k}", sd_a))
-                if args.mode in ("both", "b"):
-                    comp = lib.compose_rank_stacked(
-                        [fact_sd(i) for i in bundle], ctx_rank=h["ctx_rank"]
-                    )
-                    modes.append((f"adapter_b_k{k}", comp))
-            for label, sd in modes:
-                model.reset_adapter()
-                model.hotswap_adapter(
-                    scale_lora_b(lib.pad_adapter_rank(sd, h["r_camp"]), args.scaling)
-                )
+                arm_t = f"tail_k{k}"
                 for i in bundle:
-                    s = await gen_scored(i, floor_prompts[i])
-                    s["k"] = k
-                    traces[i]["arms"][label] = s
+                    if overhead > w:
+                        traces[i]["arms"][arm_t] = {
+                            "pred": "", "recovered": False, "infeasible": True,
+                            "cond_tokens": overhead,
+                        }
+                        continue
+                    model.reset_adapter()
+                    prompt, _ = clamp._assemble_tail_prompt(
+                        model, clamp._prefix(rows[i]), joined, w
+                    )
+                    s = await gen_scored(i, prompt)
+                    s["cond_tokens"] = overhead
+                    traces[i]["arms"][arm_t] = s
+
+                modes: list[tuple[str, dict[str, Any]]] = []
+                if k == 1:
+                    modes.append(("adapter_k1", fact_sd(bundle[0])))
+                else:
+                    if args.mode in ("both", "a"):
+                        model.reset_adapter()
+                        sd_a = assemble_native_sd(h, joined)
+                        modes.append((f"adapter_a_k{k}", sd_a))
+                    if args.mode in ("both", "b"):
+                        comp = lib.compose_rank_stacked(
+                            [fact_sd(i) for i in bundle], ctx_rank=h["ctx_rank"]
+                        )
+                        modes.append((f"adapter_b_k{k}", comp))
+                for label, sd in modes:
+                    model.reset_adapter()
+                    model.hotswap_adapter(
+                        scale_lora_b(lib.pad_adapter_rank(sd, h["r_camp"]), args.scaling)
+                    )
+                    for i in bundle:
+                        s = await gen_scored(i, floor_prompts[i])
+                        s["k"] = k
+                        traces[i]["arms"][label] = s
+            except Exception as exc:
+                for i in bundle:
+                    traces[i].setdefault("errors", []).append(f"k{k}: {exc!r}")
+        out.write_text(json.dumps(traces, indent=1))
     return traces
 
 
-async def run_sanity(rows: list[Any], args: Any, cfg: Any) -> list[dict]:
+async def run_sanity(rows: list[Any], args: Any, cfg: Any, out: Path) -> list[dict]:
     """Native-rank leg through the ENGINE path; must reproduce C1 bit-exactly."""
     import torch  # noqa: PLC0415
 
@@ -306,25 +317,29 @@ async def run_sanity(rows: list[Any], args: Any, cfg: Any) -> list[dict]:
     model = ModelWrapper.from_config(cfg)
     traces: list[dict[str, Any]] = []
     for r in rows:
-        floor_p = model.clamp_to_window(
-            f"# Current file:\n{clamp._prefix(r)}\n# Next line:", args.window
-        )
         rec: dict[str, Any] = {"task_id": r.task_id, "arms": {}}
-        torch.manual_seed(args.seed)
-        model.reset_adapter()
-        rec["arms"]["floor"] = clamp._score(
-            await clamp._gen_line(model, floor_p, args.max_new), r
-        )
-        cond = render_episodic(r, args.variant, anchor_chars=args.anchor)
-        cond = cond[:clamp._COND_CHAR_CAP]
-        model.reset_adapter()
-        ar = model.generate_adapter(cond)
-        torch.manual_seed(args.seed)
-        model.hotswap_adapter(scale_lora_b(ar.state_dict, args.scaling))
-        rec["arms"]["adapter_k1"] = clamp._score(
-            await clamp._gen_line(model, floor_p, args.max_new), r
-        )
+        try:
+            floor_p = model.clamp_to_window(
+                f"# Current file:\n{clamp._prefix(r)}\n# Next line:", args.window
+            )
+            torch.manual_seed(args.seed)
+            model.reset_adapter()
+            rec["arms"]["floor"] = clamp._score(
+                await clamp._gen_line(model, floor_p, args.max_new), r
+            )
+            cond = render_episodic(r, args.variant, anchor_chars=args.anchor)
+            cond = cond[:clamp._COND_CHAR_CAP]
+            model.reset_adapter()
+            ar = model.generate_adapter(cond)
+            torch.manual_seed(args.seed)
+            model.hotswap_adapter(scale_lora_b(ar.state_dict, args.scaling))
+            rec["arms"]["adapter_k1"] = clamp._score(
+                await clamp._gen_line(model, floor_p, args.max_new), r
+            )
+        except Exception as exc:
+            rec["error"] = repr(exc)
         traces.append(rec)
+        out.write_text(json.dumps(traces, indent=1))
     return traces
 
 
@@ -343,7 +358,7 @@ def compare_to_c1(traces: list[dict], c1_path: Path) -> dict[str, Any]:
             tot += 1
             same += int(arm["pred"] == ref["pred"])
         out[f"match_{ours}"] = f"{same}/{tot}"
-        out[f"match_{ours}_exact"] = same == tot
+        out[f"match_{ours}_exact"] = tot > 0 and same == tot
     return out
 
 
@@ -409,15 +424,16 @@ def main() -> None:
         cwd=str(Path(__file__).resolve().parent.parent),
     ).stdout.strip()
 
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     if args.leg == "sanity":
-        traces = asyncio.run(run_sanity(rows, args, cfg))
+        traces = asyncio.run(run_sanity(rows, args, cfg, out))
     else:
         k_max = max(int(x) for x in args.ks.split(","))
         h = load_capacity_handles(cfg, k_max)
-        traces = asyncio.run(run_capacity(h, rows, args))
+        traces = asyncio.run(run_capacity(h, rows, args, out))
 
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(traces, indent=1))
+    out.write_text(json.dumps(traces, indent=1))
     m = capacity_metrics(traces)
     gate = stage1_gate(traces, args.margin) if args.leg == "capacity" else {}
     anchor = (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 _TOOL = Path(__file__).resolve().parents[2] / "tools" / "_c4_capacity_run.py"
@@ -66,3 +67,18 @@ def test_bundle_sign_test_counts_bundle_means() -> None:
             traces.append(_trace(i, {"floor": False, "adapter_b_k2": adapter}))
     pos, neg, n_eff = cap.bundle_sign_counts(traces, "adapter_b_k2", "floor", k=2)
     assert (pos, neg, n_eff) == (3, 0, 3)
+
+
+def test_compare_to_c1_disjoint_task_ids_is_not_exact(tmp_path: Path) -> None:
+    # No task_id overlap -> 0/0 comparisons must NOT report bit-exact match.
+    ours = [_trace(0, {"floor": True, "adapter_k1": True})]
+    c1 = [{"task_id": "other/99", "arms": {
+        "floor": {"pred": "x"}, "episodic_use": {"pred": "x"},
+    }}]
+    c1_path = tmp_path / "c1_traces.json"
+    c1_path.write_text(json.dumps(c1))
+    out = cap.compare_to_c1(ours, c1_path)
+    assert out["match_floor"] == "0/0"
+    assert out["match_floor_exact"] is False
+    assert out["match_adapter_k1"] == "0/0"
+    assert out["match_adapter_k1_exact"] is False
