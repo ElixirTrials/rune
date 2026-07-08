@@ -1,5 +1,7 @@
 # Layered Continuation for Truncated Generation
 
+> **Status (2026-07-08):** `tools/continuation_scaling_hpo.py`, referenced below as "already written", was removed in the publication cleanup; it is available in git history.
+
 ## Problem
 
 When structured JSON output exceeds `max_tokens`, the model's generation is incomplete. The current `_try_completion` in `inference.py` handles this with a single sequence-based retry, but it has no loop, no grammar advancement, and the engine crashes on truncated JSON when `CodeResult.model_validate_json()` throws.

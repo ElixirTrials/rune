@@ -57,10 +57,11 @@ tokens after warmup, or damage preservation beyond the configured floor.
 
 ## Memory Mode
 
-Training a 9B base plus a 428M-parameter hypernetwork with optimizer state and
-student-forward autograd does not fit the same budget as inference. The active
-training path supports a 4-bit NF4 base with bfloat16 compute and 8-bit Adam for
-hypernetwork parameters. Functional LoRA is applied through the base layer's
+Training the ~4B Instruct base plus a 428M-parameter hypernetwork with optimizer
+state and student-forward autograd does not fit the same budget as inference. The
+default matches the engine: bf16 base (`load_in_4bit=False`) with 8-bit Adam
+(`use_8bit_optim=True`, AdamW fallback) for hypernetwork parameters; a 4-bit NF4
+base with bfloat16 compute is opt-in for a larger base or tighter memory. Functional LoRA is applied through the base layer's
 original forward path plus an explicit LoRA delta, so the same training logic can
 run over quantized base layers.
 

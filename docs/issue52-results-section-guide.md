@@ -4,6 +4,8 @@
 **Companion:** [`issue52-experimentation-log.md`](issue52-experimentation-log.md) (full catalog).  
 **Audience:** Authors drafting §Results; reviewers asking “what is actually established?”
 
+> **Status (2026-07-08):** this guide's §4.x / §5 / §6 framing is superseded for the current draft by [`publication/handoff_realized_gates.md`](publication/handoff_realized_gates.md) (A-KEY, A-ORACLE, A-OBJ, A-FORMAT). The keystone is now the **32k-infeasible / constant-prompt** headline: `a2_tail` (the same oracle-distilled pointer, in-prompt at the tail) **beats** episodic at W≤768 with separated CIs, closing to n.s. at W=1536 ([`publication/c1_keystone_findings.md`](publication/c1_keystone_findings.md), [`publication/c32_wsweep_findings.md`](publication/c32_wsweep_findings.md)), and the objective number is **+0.147, n=120, sign test p=5.5e-14** ([`publication/c21_prep.md`](publication/c21_prep.md)), not +0.105 / p=0.064. Sections 4–6 below are retained unchanged as the June record.
+
 > **2026-06-09 update.** Two things this guide (authored 06-05) did not yet contain, now reconciled against the runner + MLflow:
 > 1. **LCB functional-49 (official harness): rune 9/49 = base 9/49 — a TIE**, not a win. The morning "10/49 > 9/49" was retracted (within noise + overfit-dependent answer-injection in `repair_brief.py`, removed). See §4.6 and [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md) §2.
 > 2. **None of the paper's pre-registered Gates 1–3 has been run** as specified (Gate-1's PEFT-iii comparator, TTT-E2E-iv, and RAG-ii baselines do not exist; `paper-gate2` MLflow runs are empty). Do not present any current number as a gate verdict.
@@ -17,7 +19,7 @@
 
 ## 1. The scientific question (one paragraph for the paper)
 
-Modern coding agents face a structural tension: **in-context learning (ICL)** is flexible and often strong per query, but its cost scales with prompt length (KV cache, latency) [1][4]. **Parameter-efficient adaptation (PEFT)**, including LoRA, amortizes task information into a small adapter and can reduce per-query context cost once trained [4][5]. **Hypernetworks** meta-learn the mapping from a *context* (document, trajectory) to an adapter in a single forward pass—Doc-to-LoRA [1], SHINE [2]—promising “read once, query many times” with **constant prompt length**.
+Modern coding agents face a structural tension: **in-context learning (ICL)** is flexible and often strong per query, but its cost scales with prompt length (KV cache, latency) \[1\]\[4\]. **Parameter-efficient adaptation (PEFT)**, including LoRA, amortizes task information into a small adapter and can reduce per-query context cost once trained \[4\]\[5\]. **Hypernetworks** meta-learn the mapping from a *context* (document, trajectory) to an adapter in a single forward pass—Doc-to-LoRA [1], SHINE [2]—promising “read once, query many times” with **constant prompt length**.
 
 **Rune’s bet (issue #52):** a perceiver hypernetwork can make the generated LoRA adapter an **episodic memory substrate** for coding trajectories, so the runner can keep prompts minimal while carrying prior state in adapter conditioning across steps.
 
@@ -29,9 +31,9 @@ This guide states **what to report**, **how to frame it**, and **what our experi
 
 | Dimension | In-context (prompt carries state) | Adapter / hypernetwork (weights carry state) | Key references |
 |-----------|-----------------------------------|---------------------------------------------|----------------|
-| **Per-query compute** | Process all context tokens every forward pass; cost ~linear in context length [4] | One hypernet pass to materialize adapter; subsequent queries avoid re-reading full context [1][2] | Liu et al. 2022 [4]; Doc-to-LoRA [1] |
-| **Per-query memory (KV)** | Grows with context; dominant at long context [1] | Fixed adapter weights; KV for *query* only [1][5] | Doc-to-LoRA [1]; LoRA-as-memory [5] |
-| **Information density / accuracy (short context)** | Often **stronger** when full spec fits in prompt; ICL competitive on many tasks [4] | Can underperform ICL if adapter is weak, mis-scaled, or off-distribution [2][5] | SHINE-R trails ICL on LongBench when under-trained [2] |
+| **Per-query compute** | Process all context tokens every forward pass; cost ~linear in context length [4] | One hypernet pass to materialize adapter; subsequent queries avoid re-reading full context \[1\]\[2\] | Liu et al. 2022 [4]; Doc-to-LoRA [1] |
+| **Per-query memory (KV)** | Grows with context; dominant at long context [1] | Fixed adapter weights; KV for *query* only \[1\]\[5\] | Doc-to-LoRA [1]; LoRA-as-memory [5] |
+| **Information density / accuracy (short context)** | Often **stronger** when full spec fits in prompt; ICL competitive on many tasks [4] | Can underperform ICL if adapter is weak, mis-scaled, or off-distribution \[2\]\[5\] | SHINE-R trails ICL on LongBench when under-trained [2] |
 | **Beyond native context window** | Truncation, retrieval, or eviction required | Chunked hypernet → composed LoRA; NIAH >4× train length [1]; recurrent SHINE-R [2] | Doc-to-LoRA [1]; SHINE [2] |
 | **Update latency** | Instant (edit prompt) | Hypernet: sub-second adapter gen [1]; per-doc CD: slow | Doc-to-LoRA [1] |
 | **Controllability** | Prompt is explicit, inspectable | Adapter is opaque; scaling/strength is a tuning knob (our hard-task over-perturb) | Our E-hard-memory; gen vs probe scaling |
@@ -39,8 +41,8 @@ This guide states **what to report**, **how to frame it**, and **what our experi
 
 **Consensus from prior work (not yet proven for Rune coding trajectories):**
 
-- **Per-token / per-query efficiency:** Context wins when you *can* fit everything in the window and query once; adapters win when the **same information is queried repeatedly** or when context would exceed the window [1][4][5].
-- **Long-running / multi-step:** The *architectural* argument for hypernets is strongest when history would grow unbounded in the prompt but can be **re-encoded into a fixed-size adapter each step** [1][2]. Empirical proof requires a **step-indexed** eval under prompt budget pressure—not just single-turn recall.
+- **Per-token / per-query efficiency:** Context wins when you *can* fit everything in the window and query once; adapters win when the **same information is queried repeatedly** or when context would exceed the window \[1\]\[4\]\[5\].
+- **Long-running / multi-step:** The *architectural* argument for hypernets is strongest when history would grow unbounded in the prompt but can be **re-encoded into a fixed-size adapter each step** \[1\]\[2\]. Empirical proof requires a **step-indexed** eval under prompt budget pressure—not just single-turn recall.
 
 ---
 
@@ -154,7 +156,7 @@ This is the section that speaks to **scientific interest** (adapter vs context).
 
 **Interpretation (supported today):**
 
-1. **Per-query information:** For easy MBPP, putting the spec in the prompt beats carrying it in the adapter (0.792 vs 0.583). This is consistent with ICL/PEFT tradeoffs: ICL is strong when context fits [4]; adapters trade peak accuracy for repeated-query efficiency [1][5].
+1. **Per-query information:** For easy MBPP, putting the spec in the prompt beats carrying it in the adapter (0.792 vs 0.583). This is consistent with ICL/PEFT tradeoffs: ICL is strong when context fits [4]; adapters trade peak accuracy for repeated-query efficiency \[1\]\[5\].
 2. **Non-zero adapter value:** c3 beats the true floor by +6/24 — the hypernet **does** encode task information the base cannot get from the name cue alone. This is the runner-native analogue of Phase-1 absent pass@1.
 3. **Training surface matters:** HPO `training_exact` worst (0.294) vs reference_a/b1/c tied (0.588) — on-distribution **format** beats naive faithfulness to distill template.
 4. **Gen scaling ≠ probe scaling:** HPO best gen_scaling 0.627 vs probe 45.25 — mixing them overstates “adapter hurts generation.”
@@ -203,7 +205,7 @@ Template:
 
 **Paper-safe synthesis (updated 2026-06-22):**
 
-- **Now a Results conclusion (not just a hypothesis):** under a fixed prompt budget the adapter delivers out-of-prompt context **at parity with full in-prompt context, at ~16.7× shorter prompt**, and remains effective where the in-prompt channel is infeasible (32k prohibitive) — RepoBench clamp, McNemar p=3e-6 (§4.x). State this as an **established budget-stressed context-delivery result on coding trajectories**, directionally consistent with Doc-to-LoRA / SHINE long-context results [1][2]. Scope it precisely: the metric is **identifier-recovery**, the conditioning format is **tuned/held-out-validated**, and it is a **(v)-vs-context-channel** comparison, not a Gate verdict.
+- **Now a Results conclusion (not just a hypothesis):** under a fixed prompt budget the adapter delivers out-of-prompt context **at parity with full in-prompt context, at ~16.7× shorter prompt**, and remains effective where the in-prompt channel is infeasible (32k prohibitive) — RepoBench clamp, McNemar p=3e-6 (§4.x). State this as an **established budget-stressed context-delivery result on coding trajectories**, directionally consistent with Doc-to-LoRA / SHINE long-context results \[1\]\[2\]. Scope it precisely: the metric is **identifier-recovery**, the conditioning format is **tuned/held-out-validated**, and it is a **(v)-vs-context-channel** comparison, not a Gate verdict.
 - **Still future work:** “adapters win **long-running multi-step coding** (end-to-end pass@1)” — the budget result is single-turn recovery, not a step-indexed pass@1 curve; the B1 repair-substrate batch remains un-run.
 - The per-token / per-query **efficiency** tradeoff is now anchored by a direct prompt-length measurement (768 vs 12,836 mean tokens at parity), not only by ceiling-vs-floor [1,4,5].
 
@@ -242,17 +244,17 @@ Supplementary: Goal-2 scaling, full HPO 16 trials, withdrawn k>1 / prompt_mode v
 
 ## 9. References (literature cited in this guide)
 
-[1] [Doc-to-LoRA: Learning to Instantly Internalize Contexts](https://consensus.app/papers/details/9cc22e858f1f5e30a9b8063b08c95c86/) (Charakorn et al., 2026) — hypernetwork meta-learns context distillation; KV/latency; long-context NIAH.
+\[1\] [Doc-to-LoRA: Learning to Instantly Internalize Contexts](https://consensus.app/papers/details/9cc22e858f1f5e30a9b8063b08c95c86/) (Charakorn et al., 2026) — hypernetwork meta-learns context distillation; KV/latency; long-context NIAH.
 
-[2] [SHINE: A Scalable In-Context Hypernetwork for Mapping Context to LoRA in a Single Pass](https://consensus.app/papers/details/1188d865aead53d3a900b5ef6b48dc2c/) (Liu et al., 2026) — single-pass LoRA; SHINE-R recurrent long context.
+\[2\] [SHINE: A Scalable In-Context Hypernetwork for Mapping Context to LoRA in a Single Pass](https://consensus.app/papers/details/1188d865aead53d3a900b5ef6b48dc2c/) (Liu et al., 2026) — single-pass LoRA; SHINE-R recurrent long context.
 
-[3] [A survey on LoRA of large language models](https://consensus.app/papers/details/cf5ed27e5cb552d091d4b5db59da01e3/) (Mao et al., 2024) — PEFT / LoRA landscape.
+\[3\] [A survey on LoRA of large language models](https://consensus.app/papers/details/cf5ed27e5cb552d091d4b5db59da01e3/) (Mao et al., 2024) — PEFT / LoRA landscape.
 
-[4] [Few-Shot Parameter-Efficient Fine-Tuning is Better and Cheaper than In-Context Learning](https://consensus.app/papers/details/3b4b9e3082a85b5b9ca5d9ffd0559c34/) (Liu et al., 2022) — ICL vs PEFT cost and accuracy.
+\[4\] [Few-Shot Parameter-Efficient Fine-Tuning is Better and Cheaper than In-Context Learning](https://consensus.app/papers/details/3b4b9e3082a85b5b9ca5d9ffd0559c34/) (Liu et al., 2022) — ICL vs PEFT cost and accuracy.
 
-[5] [Understanding LoRA as Knowledge Memory: An Empirical Analysis](https://arxiv.org/html/2603.01097v2) (2026) — LoRA as memory; inference time vs ICL on repeated queries.
+\[5\] [Understanding LoRA as Knowledge Memory: An Empirical Analysis](https://arxiv.org/html/2603.01097v2) (2026) — LoRA as memory; inference time vs ICL on repeated queries.
 
-[6] [Exploring Parameter-Efficient Fine-Tuning Techniques for Code Generation with Large Language Models](https://consensus.app/papers/details/3006ca88cf1d54338e17a36ca5905ff7/) (Weyssow et al., 2023) — PEFT vs ICL on code generation.
+\[6\] [Exploring Parameter-Efficient Fine-Tuning Techniques for Code Generation with Large Language Models](https://consensus.app/papers/details/3006ca88cf1d54338e17a36ca5905ff7/) (Weyssow et al., 2023) — PEFT vs ICL on code generation.
 
 **Rune primary data:** [`issue52-experimentation-log.md`](issue52-experimentation-log.md), [`issue52-results-longcontext-2026-06-22.md`](issue52-results-longcontext-2026-06-22.md), [`issue52-lcb-durable-findings-2026-06-19.md`](issue52-lcb-durable-findings-2026-06-19.md), [`issue52-goal3-conclusions-2026-06-05.md`](issue52-goal3-conclusions-2026-06-05.md).
 

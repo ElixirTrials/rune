@@ -11,6 +11,8 @@
 > [issue52-repobench-template-hpo-findings-2026-06-22.md](../../issue52-repobench-template-hpo-findings-2026-06-22.md),
 > [issue52-repobench-clamp-findings-2026-06-22.md](../../issue52-repobench-clamp-findings-2026-06-22.md).
 
+> **Status (2026-07-08):** the 06-22 result above replicated bit-exact (270/270 scored arm-rows) but is superseded in framing by the C1 keystone campaign and W-sweep — `a2_tail`/`a2_tail_filler`/`swap` arms, reframe branch: the identical oracle pointer in-prompt at the tail scores 50/60 = 0.833 and beats episodic with separated CIs (p=2.10e-05); see [c1_keystone_findings.md](../../publication/c1_keystone_findings.md) and [c32_wsweep_findings.md](../../publication/c32_wsweep_findings.md) (W ∈ {256, 512, 768, 1536}). MLflow provenance is now experiment id 79 after the tracking-DB restore.
+
 > **Conjecture under test.** Rune's real advantage is on tasks that are *impossible for a small
 > model without sufficient context length*: the hypernetwork compresses long cross-file context
 > into a constant-length LoRA adapter, so rune solves cross-file completions that the base model

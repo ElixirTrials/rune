@@ -1,5 +1,7 @@
 # Engine v2: Adaptive Loop with Full-Project Diagnosis
 
+> **Status (2026-07-08):** `tools/cont_probe.py`, cited below as the Phase-0 validation, was removed in the publication cleanup; the probe and its results are preserved in git history.
+
 ## Problem
 
 The current engine runs a fixed decompose(3-6) -> plan -> code -> retry -> integrate pipeline regardless of task complexity. A trivial MBPP function (2 lines) takes 25 minutes and 13 LangGraph spans because:

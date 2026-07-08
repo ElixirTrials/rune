@@ -1,5 +1,7 @@
 # Rune LCB-v6 durable benchmark — findings (2026-06-19)
 
+> **Status (2026-07-08):** the §2–§3 uplift is underpowered, not a win — per this doc's own §5 (McNemar two-sided p=0.125), and the follow-up pre-registered significance endpoint (`b=0`, `c≥5` one-sided) was **not reached** ([`superpowers/specs/2026-06-22-powered-strict-superset-eval-design.md`](superpowers/specs/2026-06-22-powered-strict-superset-eval-design.md), RESULT banner). The TMLR draft does not cite LCB functional-49 as a win; the load-bearing current results are the C1 / C3.2 / C2.1 campaigns in [`publication/handoff_realized_gates.md`](publication/handoff_realized_gates.md).
+
 Engine commit: `db48504` (HEAD). Checkpoint: c3 (`c3_t07_lp2_lg1.pt`, sha256 `53e24af2…`).
 All runs durable in MLflow experiment **`issue52-lcb-durable`** (each: official metric +
 config + engine_commit + checkpoint_sha256 + gens/grade/per-qid artifacts).

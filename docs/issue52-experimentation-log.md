@@ -6,6 +6,8 @@
 
 > **2026-06-09 continuation.** This log was authored 2026-06-05; the LCB-benchmark / oracle / de-overfit arc (06-05→09) is added as **§3.7** and **§5** is updated. The complete MLflow registry (including the **May `paper-table2`/`paper-gate2` track** this June log never covered) is now indexed in [`mlflow-experiment-inventory-2026-06-09.md`](mlflow-experiment-inventory-2026-06-09.md), and every paper claim is mapped to evidence in [`paper-evidence-map-2026-06-09.md`](paper-evidence-map-2026-06-09.md). **Headline correction:** the LCB functional-49 result is **rune 9/49 = base 9/49 (a tie)**, not a win — see §3.7.
 
+> **Status (2026-07-08):** (1) the E-phase1 heldout-24 objective estimate (+0.105, CI [+0.033,+0.182]; §1, §3.2) is superseded for the paper by the pre-registered fresh-pool re-estimate: **+0.147, n=120, sign test p=5.5e-14, CI [+0.109,+0.191]** ([`publication/c21_prep.md`](publication/c21_prep.md); MLflow exp 45 run `1769a1f8dedd43a789041536294c9825`). (2) The MLflow registry in §6.3 predates both the durable 06-19 LCB runs (`issue52-lcb-durable`, which resolved §3.7's "not yet a durable MLflow run" caveat) and the tracking-DB snapshot restore — experiments 78–86 lost their param/metric rows (S3 artifacts survive); `issue52-repobench-clamp` is re-logged as experiment id 79. (3) Current consolidated results: [`publication/handoff_realized_gates.md`](publication/handoff_realized_gates.md).
+
 ---
 
 ## 1. Executive summary
@@ -271,6 +273,8 @@ This phase moved from frozen probes to the **real runner on LiveCodeBench v6 fun
 | `9d16a66` | Judge reason-before-verdict |
 
 ### 6.5 Tools & configs (issue #52)
+
+> **Note (2026-07-08):** most of these files were removed in the publication cleanup and remain available only in git history; of the paths below, only `tools/_specificity_probe.py` and `configs/goal3_flavor_hpo.yaml` are still in the tree.
 
 | Path | Role |
 |------|------|

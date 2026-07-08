@@ -1,5 +1,7 @@
 # RepoBench clamped-window (adapter-as-context) — findings (2026-06-22)
 
+> **Status (2026-07-08):** (1) MLflow provenance — the `9ea65a3b…` run's param/metric rows were lost when the tracking DB was restored from a snapshot predating experiments 78–86 (S3 artifacts survive, hashed in `docs/publication/hashes.txt`); the campaign is re-logged in experiment id 79 (`issue52-repobench-clamp`, run `f37374906c5f4f5c972b8e7b8127089a` for the W=768 C1 leg), and the June arms replicated token-for-token 270/270 after checkpoint restore ([`publication/c1_keystone_findings.md`](publication/c1_keystone_findings.md) §5). (2) The episodic-vs-floor finding in the correction banner below stands, but the keystone framing is superseded: `a2_tail` (the same oracle pointer, in-prompt at the tail) beats episodic 0.833 vs 0.517 with separated CIs — see [`publication/c1_keystone_findings.md`](publication/c1_keystone_findings.md) §3.1 and [`publication/c32_wsweep_findings.md`](publication/c32_wsweep_findings.md) (32k-infeasible / constant-prompt headline).
+
 > **⚠️ CORRECTION (superseded in part).** The negative below used a *multi-file repo
 > DUMP* as the adapter conditioning (`render_xfile_adapter 'structured'`), which is the
 > WRONG template for an episodic per-task adapter. A follow-up HPO over an **episodic**

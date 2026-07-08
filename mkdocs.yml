@@ -53,14 +53,28 @@ nav:
       - "RepoBench Template HPO": issue52-repobench-template-hpo-findings-2026-06-22.md
       - "HumanEval+ Regression RCA": issue52-humaneval-regression-rca-fix-2026-06-22.md
       - "Goal-3 Conclusions": issue52-goal3-conclusions-2026-06-05.md
+      - Publication (TMLR):
+          - "Realized Gates (consolidated handoff)": publication/handoff_realized_gates.md
+          - "C1 Keystone Findings": publication/c1_keystone_findings.md
+          - "C3.2 W-Sweep Findings": publication/c32_wsweep_findings.md
+          - "C2.1 Fresh-Pool Re-estimate Prep": publication/c21_prep.md
+          - "C0.1 Corpus-Trajectory Lookup": publication/c01_corpus_lookup.md
+          - "Code-Side Task Plan": publication/publication_task_plan.md
+          - "Remediation Plan": publication/remediation_plan_FINAL.md
+          - "Adversary Review of Plan": publication/adversary_review.md
+          - "v13 Review Handoff": publication/HANDOFF_v13_review.md
   - Design Notes:
       - "Issue #49 D2L Retrain": superpowers/specs/2026-05-30-issue49-d2l-self-distillation-retrain-design.md
+      - Episodic Conditioning Design: superpowers/specs/2026-06-05-episodic-conditioning-design.md
       - Rune v2 Simplification Design: superpowers/specs/2026-05-21-rune-v2-simplification-design.md
       - Adapter Continuation Design: superpowers/specs/2026-05-26-adapter-continuation-design.md
       - Engine v2 Design: superpowers/specs/2026-05-26-engine-v2-design.md
       - PEFT Scaling Fix Design: superpowers/specs/2026-05-26-peft-scaling-fix-design.md
       - Rune v2 Implementation Plan: superpowers/plans/2026-05-22-rune-v2-implementation.md
       - Engine v2 Plan: superpowers/plans/2026-05-26-engine-v2.md
+      - "Cross-file Context Adapter Benchmark Design": superpowers/specs/2026-06-22-crossfile-context-adapter-benchmark-design.md
+      - "Powered Strict-Superset Eval Design": superpowers/specs/2026-06-22-powered-strict-superset-eval-design.md
+      - "Powered Strict-Superset Eval Plan": superpowers/plans/2026-06-22-powered-strict-superset-eval.md
 
 plugins:
   - search

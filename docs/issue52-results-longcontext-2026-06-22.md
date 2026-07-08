@@ -1,5 +1,7 @@
 # Results: adapter-carried context under a prompt-length budget (2026-06-22)
 
+> **Status (2026-07-08):** the numbers below replicated token-for-token in the C1 campaign (270/270 scored arm-rows), but the Results framing is superseded — the keystone is now written per [`publication/handoff_realized_gates.md`](publication/handoff_realized_gates.md) A-KEY/A-ORACLE: `a2_tail` (the identical oracle pointer, in-prompt at the tail) **beats** the adapter at W≤768 with separated CIs (0.833 vs 0.517, McNemar p=2.10e-05), the advantage is budget-dependent (n.s. at W=1536 — not adapter parity), the conditioning is an **oracle-distilled pointer** (`gold_snippet_index`) identical across channels, and the headline is the **32k-infeasible / constant-prompt** regime (raw context infeasible 30/30 at 32k). See [`publication/c1_keystone_findings.md`](publication/c1_keystone_findings.md) §3.1–3.3 and [`publication/c32_wsweep_findings.md`](publication/c32_wsweep_findings.md) §3–4. Historical provenance — the measured numbers below are unchanged.
+
 **Status:** publication-ready Results prose for `paper_v9.tex` §4. Fills the gap the
 results-section guide flagged as un-measured (§4.6: "constant-prompt advantage… requires a
 step-indexed eval with a fixed prompt budget and a deliberate context-window stressor on the

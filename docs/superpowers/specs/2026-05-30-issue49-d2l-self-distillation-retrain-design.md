@@ -1,5 +1,7 @@
 # Issue #49 — D2L self-distillation retrain (mining → validated hypernetwork checkpoint)
 
+> **Status (2026-07-08):** the `diag_*` probes and `tools/run_guarded.sh` described below were built during the #49 campaign and later removed in the publication cleanup; see git history.
+
 **Date:** 2026-05-30
 **Issue:** #49 — Hypernetwork adapter collapse (`scaler_B ≈ 0`); every trained checkpoint is inert.
 **Goal:** Recover a non-collapsed HyperLoRA training path and produce a checkpoint that *retrieves trajectory content* — proven by retrieval/contrast gates, not by magnitude or `top1_agreement`.

@@ -1,5 +1,7 @@
 # RepoBench episodic-template HPO — findings (2026-06-22)
 
+> **Status (2026-07-08):** (1) MLflow param/metric rows for `issue52-repobench-template-hpo` (run `ba4bffd7…`) were lost when the tracking DB was restored from a snapshot predating experiments 78–86 — the S3 artifacts and this doc are the record; the follow-on campaign is re-logged in experiment id 79 (`issue52-repobench-clamp`). (2) The N=60 confirmation in §4 replicated bit-exact in the C1 campaign, which added `a2_tail`/`a2_tail_filler`/`swap` arms: the same oracle pointer delivered in-prompt at the tail beats the adapter channel (0.833 vs 0.517, separated CIs), and the swap control shows the effect is content-borne — see [`publication/c1_keystone_findings.md`](publication/c1_keystone_findings.md) and [`publication/c32_wsweep_findings.md`](publication/c32_wsweep_findings.md) for the current keystone framing (channel comparison under oracle conditioning; 32k-infeasible / constant-prompt headline).
+
 **The adapter-as-context conjecture holds with the right template — no training.** The
 earlier N=60 negative (`issue52-repobench-clamp-findings`) was **template-confounded**: it
 fed the adapter a multi-file repo DUMP, shredded by the hypernet's 2048-token cap. With an

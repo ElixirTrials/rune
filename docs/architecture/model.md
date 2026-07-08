@@ -75,7 +75,7 @@ reached a completed state.
 ## Continuation scaling (engine sub-loop)
 
 A second, distinct truncation path lives in the engine, not the model layer:
-[`step_node`](../api/model/wrapper.md) orchestrates it. When a `code`, `repair`, or
+[`step_node`](../api/engine/graph.md) orchestrates it. When a `code`, `repair`, or
 `integrate` action truncates, it enters a continuation sub-loop that, each round,
 regenerates the adapter from a `code_continue` trajectory, rescales it by
 `cont_scaling = adapter_scaling * cont_multiplier` (default `1.53`), hot-swaps it,
