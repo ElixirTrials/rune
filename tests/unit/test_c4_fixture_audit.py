@@ -33,17 +33,41 @@ def test_introduced_symbols_tolerates_syntax_error() -> None:
 
 
 def test_reuse_detected_when_round2_calls_round1_symbol() -> None:
-    r1 = "def helper(a):\n    return a + 1\n"
-    r2 = "def solve(xs):\n    return [helper(x) for x in xs]\n"
-    reused, eligible = audit.reuse_counts([r1, r2])
+    r1 = ("def helper(a):\n    return a + 1\n", "code", "s1")
+    r2 = ("def solve(xs):\n    return [helper(x) for x in xs]\n", "code", "s2")
+    reused, eligible, pairs = audit.reuse_counts([r1, r2])
     assert (reused, eligible) == (1, 1)
+    assert pairs == [{
+        "prev_action": "code", "curr_action": "code",
+        "prev_target": "s1", "curr_target": "s2",
+        "same_target": False, "reused": True,
+    }]
 
 
 def test_no_reuse_counts_zero() -> None:
-    reused, eligible = audit.reuse_counts(
-        ["def a():\n    return 1\n", "def b():\n    return 2\n"]
-    )
+    reused, eligible, pairs = audit.reuse_counts([
+        ("def a():\n    return 1\n", "code", "s1"),
+        ("def b():\n    return 2\n", "code", "s2"),
+    ])
     assert (reused, eligible) == (0, 1)
+    assert pairs[0]["reused"] is False
+
+
+def test_store_rebinding_is_not_reuse() -> None:
+    # `result = 2` REBINDS the name without reading it: not construct-valid reuse.
+    reused, eligible, _ = audit.reuse_counts([
+        ("result = 1\n", "code", "s1"),
+        ("result = 2\n", "code", "s2"),
+    ])
+    assert (reused, eligible) == (0, 1)
+
+
+def test_load_context_read_counts_as_reuse() -> None:
+    reused, eligible, _ = audit.reuse_counts([
+        ("result = 1\n", "code", "s1"),
+        ("print(result)\n", "code", "s2"),
+    ])
+    assert (reused, eligible) == (1, 1)
 
 
 def test_decompose_only_session_has_no_eligible_rounds(tmp_path: Path) -> None:
@@ -67,6 +91,11 @@ def test_multi_round_session_end_to_end(tmp_path: Path) -> None:
     rep = audit.audit_session(p)
     assert rep["n_code_rounds"] == 2
     assert (rep["reused_rounds"], rep["eligible_rounds"]) == (1, 1)
+    assert rep["pairs"] == [{
+        "prev_action": "code", "curr_action": "repair",
+        "prev_target": "", "curr_target": "",
+        "same_target": True, "reused": True,
+    }]
 
 
 def test_committed_fixtures_are_step0_only() -> None:

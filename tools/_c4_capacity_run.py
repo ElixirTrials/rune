@@ -39,19 +39,47 @@ import _repobench_clamp_run as clamp  # noqa: E402
 C3_SHA256 = "53e24af243a38dfbfad82f7293635bfc592922dd2058fefbbfa10714b5457a3f"
 _KS_DEFAULT = "1,2,4,8"
 _MARGIN_DEFAULT = 0.15  # proposed; co-author sign-off pre-registered in the plan
+_HYPERNET_MAX_LEN = 2048  # extract_activations_with_model conditioning cap
 
 
 # ---------------------------------------------------------------- stats/gate
 
-def _rate(traces: list[dict[str, Any]], label: str) -> tuple[int, int]:
+def _rate(
+    traces: list[dict[str, Any]], label: str, *, excl_infeasible: bool = False
+) -> tuple[int, int]:
     k = n = 0
     for rec in traces:
         arm = rec["arms"].get(label)
         if arm is None or arm.get("recovered") is None:
             continue
+        if excl_infeasible and arm.get("infeasible"):
+            continue
         n += 1
         k += int(bool(arm["recovered"]))
     return k, n
+
+
+def _kstar(
+    traces: list[dict[str, Any]], mode: str, ks: list[int], excl_infeasible: bool
+) -> int:
+    """Smallest K where the mode's paired recovery >= tail_k{K}'s, else -1."""
+    for k in sorted(ks):
+        alab = "adapter_k1" if k == 1 else f"adapter_{mode}_k{k}"
+        ka = kt = n = 0
+        for rec in traces:
+            a = rec["arms"].get(alab, {}).get("recovered")
+            tail = rec["arms"].get(f"tail_k{k}")
+            t = None if tail is None else tail.get("recovered")
+            if a is None or t is None:
+                continue
+            if excl_infeasible and tail.get("infeasible"):
+                continue
+            n += 1
+            ka += int(bool(a))
+            kt += int(bool(t))
+        if n and ka >= kt:
+            return k
+    return -1
 
 
 def capacity_metrics(traces: list[dict[str, Any]]) -> dict[str, float]:
@@ -64,12 +92,18 @@ def capacity_metrics(traces: list[dict[str, Any]]) -> dict[str, float]:
             continue
         lo, hi = clamp._wilson_ci(k, n)
         m[f"recovery_{lab}"] = k / n
-        m[f"recovery_{lab}_n"] = float(n)
+        # C1 _metrics convention: recovery_*_n = successes, denom_* = denominator
+        m[f"recovery_{lab}_n"] = float(k)
+        m[f"denom_{lab}"] = float(n)
         m[f"recovery_{lab}_wilson_lo"] = lo
         m[f"recovery_{lab}_wilson_hi"] = hi
         m[f"infeasible_{lab}"] = float(sum(
             1 for rec in traces if rec["arms"].get(lab, {}).get("infeasible")
         ))
+        if lab.startswith("tail_"):
+            ke, ne = _rate(traces, lab, excl_infeasible=True)
+            if ne:
+                m[f"recovery_{lab}_excl_infeasible"] = ke / ne
     for lab in labels:
         if lab == "floor" or lab.startswith("tail_"):
             continue
@@ -81,6 +115,17 @@ def capacity_metrics(traces: list[dict[str, Any]]) -> dict[str, float]:
             m[f"mcnemar_{lab}_vs_{other}_second_only"] = float(b_only)
             m[f"mcnemar_{lab}_vs_{other}_n"] = float(n)
             m[f"mcnemar_{lab}_vs_{other}_p"] = clamp._two_sided_binom_p(a_only, b_only)
+    for mode_lab in ("adapter_a_k2", "adapter_b_k2"):
+        if mode_lab in labels and "floor" in labels:
+            pos, neg, n_eff = bundle_sign_counts(traces, mode_lab, "floor", k=2)
+            m[f"bundle_sign_{mode_lab}_pos"] = float(pos)
+            m[f"bundle_sign_{mode_lab}_neg"] = float(neg)
+            m[f"bundle_sign_{mode_lab}_n_eff"] = float(n_eff)
+    ks = sorted({int(lab[len("tail_k"):]) for lab in labels if lab.startswith("tail_k")})
+    for mode in ("a", "b"):
+        if ks and any(lab.startswith(f"adapter_{mode}_k") for lab in labels):
+            m[f"kstar_{mode}"] = float(_kstar(traces, mode, ks, False))
+            m[f"kstar_{mode}_excl_infeasible"] = float(_kstar(traces, mode, ks, True))
     return m
 
 
@@ -108,19 +153,33 @@ def bundle_sign_counts(
 
 def stage1_gate(traces: list[dict[str, Any]], margin: float) -> dict[str, Any]:
     """Pre-registered S1-GO: at K=2 one build mode beats floor by margin, p<.05."""
-    out: dict[str, Any] = {"margin": margin}
+    out: dict[str, Any] = {
+        "margin": margin,
+        "error_rows": sum(1 for t in traces if "error" in t or "errors" in t),
+    }
     go = False
-    kf, nf = _rate(traces, "floor")
     for mode in ("adapter_a_k2", "adapter_b_k2"):
-        km, nm = _rate(traces, mode)
-        if not nm or not nf:
+        # both rates over the PAIRED support: a bundle exception drops the
+        # adapter arm on some rows, and unpaired denominators would skew delta
+        km = kf = n = 0
+        for t in traces:
+            rm = t["arms"].get(mode, {}).get("recovered")
+            rf = t["arms"].get("floor", {}).get("recovered")
+            if rm is None or rf is None:
+                continue
+            n += 1
+            km += int(bool(rm))
+            kf += int(bool(rf))
+        if not n:
             out[mode] = {"passes": False, "reason": "arm missing"}
             continue
         a_only, b_only, _ = clamp._paired_discordants(traces, mode, "floor")
         p = clamp._two_sided_binom_p(a_only, b_only)
-        delta = km / nm - kf / nf
+        delta = (km - kf) / n
         passes = p < 0.05 and delta >= margin
-        out[mode] = {"rate": km / nm, "delta": delta, "p": p, "passes": passes}
+        out[mode] = {
+            "rate": km / n, "delta": delta, "p": p, "n_pairs": n, "passes": passes,
+        }
         go = go or passes
     out["go"] = go
     return out
@@ -155,6 +214,11 @@ def load_capacity_handles(cfg: Any, k_max: int) -> dict[str, Any]:
     hc = hyp.config
     rank = int(hc.lora_config.r)
     use_bias = bool(getattr(hc, "use_bias", False))
+    if not use_bias:
+        raise SystemExit(
+            "use_bias=False checkpoints unsupported: combine_lora emits 2r ranks; "
+            "composition rank math assumes one bias slice"
+        )
     bias_rank = rank if use_bias else 0
     alpha = float(getattr(hc.lora_config, "lora_alpha", rank * 2))
     r_camp = lib.campaign_rank(rank, bias_rank, k_max)
@@ -198,7 +262,7 @@ def assemble_native_sd(h: dict[str, Any], text: str) -> dict[str, Any]:
 
     feats, am = extract_activations_with_model(
         text=text, model=h["base"], tokenizer=h["tok"],
-        layer_indices=h["li"], max_length=2048,
+        layer_indices=h["li"], max_length=_HYPERNET_MAX_LEN,
     )
     dev = next(h["hyp"].parameters()).device
     dt = next(h["hyp"].parameters()).dtype
@@ -209,6 +273,13 @@ def assemble_native_sd(h: dict[str, Any], text: str) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------ the legs
+
+def _floor_prompt(model: Any, row: Any, w: int) -> str:
+    """Floor prompt shared by both legs — S1-ANCHOR-2 requires byte-identity."""
+    return model.clamp_to_window(
+        f"{clamp._TAIL_HEADER}{clamp._prefix(row)}{clamp._CURSOR_MARKER}", w
+    )
+
 
 async def run_capacity(
     h: dict[str, Any], rows: list[Any], args: Any, out: Path
@@ -232,20 +303,20 @@ async def run_capacity(
     per_fact: dict[int, dict[str, Any]] = {}
 
     def fact_sd(i: int) -> dict[str, Any]:
+        # cached on CPU (60 GPU-resident sds would pin ~0.85GB VRAM all leg);
+        # hotswap's set_peft_model_state_dict copies back into the CUDA params
         if i not in per_fact:
             model.reset_adapter()
-            per_fact[i] = assemble_native_sd(h, conds[i])
+            per_fact[i] = {
+                key: v.cpu() for key, v in assemble_native_sd(h, conds[i]).items()
+            }
         return per_fact[i]
 
     async def gen_scored(i: int, prompt: str) -> dict[str, Any]:
         torch.manual_seed(args.seed)
         return clamp._score(await clamp._gen_line(model, prompt, args.max_new), rows[i])
 
-    floor_prompts = [
-        model.clamp_to_window(
-            f"# Current file:\n{clamp._prefix(r)}\n# Next line:", w
-        ) for r in rows
-    ]
+    floor_prompts = [_floor_prompt(model, r, w) for r in rows]
     for i in range(len(rows)):
         try:
             model.reset_adapter()
@@ -277,20 +348,30 @@ async def run_capacity(
                     s["cond_tokens"] = overhead
                     traces[i]["arms"][arm_t] = s
 
-                modes: list[tuple[str, dict[str, Any]]] = []
+                # cond_tokens = what the hypernet actually sees (pre-registered:
+                # extract_activations truncates silently at _HYPERNET_MAX_LEN);
+                # mode (b) feeds facts one at a time, so log the max per fact
+                modes: list[tuple[str, dict[str, Any], int]] = []
                 if k == 1:
-                    modes.append(("adapter_k1", fact_sd(bundle[0])))
+                    modes.append(
+                        ("adapter_k1", fact_sd(bundle[0]), model.count_tokens(joined))
+                    )
                 else:
                     if args.mode in ("both", "a"):
                         model.reset_adapter()
                         sd_a = assemble_native_sd(h, joined)
-                        modes.append((f"adapter_a_k{k}", sd_a))
+                        modes.append(
+                            (f"adapter_a_k{k}", sd_a, model.count_tokens(joined))
+                        )
                     if args.mode in ("both", "b"):
                         comp = lib.compose_rank_stacked(
                             [fact_sd(i) for i in bundle], ctx_rank=h["ctx_rank"]
                         )
-                        modes.append((f"adapter_b_k{k}", comp))
-                for label, sd in modes:
+                        modes.append((
+                            f"adapter_b_k{k}", comp,
+                            max(model.count_tokens(conds[i]) for i in bundle),
+                        ))
+                for label, sd, cond_tokens in modes:
                     model.reset_adapter()
                     model.hotswap_adapter(
                         scale_lora_b(lib.pad_adapter_rank(sd, h["r_camp"]), args.scaling)
@@ -298,6 +379,8 @@ async def run_capacity(
                     for i in bundle:
                         s = await gen_scored(i, floor_prompts[i])
                         s["k"] = k
+                        s["cond_tokens"] = cond_tokens
+                        s["cond_truncated"] = cond_tokens > _HYPERNET_MAX_LEN
                         traces[i]["arms"][label] = s
             except Exception as exc:
                 for i in bundle:
@@ -319,9 +402,7 @@ async def run_sanity(rows: list[Any], args: Any, cfg: Any, out: Path) -> list[di
     for r in rows:
         rec: dict[str, Any] = {"task_id": r.task_id, "arms": {}}
         try:
-            floor_p = model.clamp_to_window(
-                f"# Current file:\n{clamp._prefix(r)}\n# Next line:", args.window
-            )
+            floor_p = _floor_prompt(model, r, args.window)
             torch.manual_seed(args.seed)
             model.reset_adapter()
             rec["arms"]["floor"] = clamp._score(
@@ -347,7 +428,7 @@ def compare_to_c1(traces: list[dict], c1_path: Path) -> dict[str, Any]:
     """Token-for-token prediction agreement vs the C1 trace artifact."""
     c1 = {t["task_id"]: t for t in json.loads(c1_path.read_text())}
     pairs = (("floor", "floor"), ("adapter_k1", "episodic_use"))
-    out: dict[str, Any] = {}
+    out: dict[str, Any] = {"expected_rows": len(traces)}
     for ours, theirs in pairs:
         same = tot = 0
         for rec in traces:
@@ -357,8 +438,11 @@ def compare_to_c1(traces: list[dict], c1_path: Path) -> dict[str, Any]:
                 continue
             tot += 1
             same += int(arm["pred"] == ref["pred"])
-        out[f"match_{ours}"] = f"{same}/{tot}"
-        out[f"match_{ours}_exact"] = tot > 0 and same == tot
+        # S1-ANCHOR-1 demands 60/60: an errored/missing row breaks exactness
+        # rather than silently shrinking the denominator
+        out[f"match_{ours}"] = f"{same}/{len(traces)}"
+        out[f"match_{ours}_compared"] = tot
+        out[f"match_{ours}_exact"] = tot == len(traces) and same == tot and tot > 0
     return out
 
 
@@ -405,7 +489,8 @@ def main() -> None:
     from rune.config import load_rune_config  # noqa: PLC0415
     from rune.tracking import configure_mlflow, tracked_run  # noqa: PLC0415
 
-    got = hashlib.sha256(Path(clamp.C3_CKPT).read_bytes()).hexdigest()
+    with open(clamp.C3_CKPT, "rb") as fh:  # stream: ~15GB RAM box, 803MB ckpt
+        got = hashlib.file_digest(fh, "sha256").hexdigest()
     if got != C3_SHA256:
         raise SystemExit(f"c3 ckpt sha {got} != pinned {C3_SHA256}")
 

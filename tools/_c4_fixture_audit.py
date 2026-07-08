@@ -39,58 +39,76 @@ def introduced_symbols(code: str) -> set[str]:
 
 
 def used_symbols(code: str) -> set[str]:
-    """All Name ids and attribute names referenced in *code*."""
+    """Name ids READ (Load context) and attribute names referenced in *code*."""
     try:
         tree = ast.parse(code)
     except SyntaxError:
         return set()
     out: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
+        # Store-context Names are rebindings, not reads: `x = 2` after a prior
+        # `x = 1` must not count as reuse
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             out.add(node.id)
         elif isinstance(node, ast.Attribute):
             out.add(node.attr)
     return out
 
 
-def code_rounds(records: list[dict[str, Any]]) -> list[str]:
-    """Code payload per code-bearing record, in step order."""
+def code_rounds(records: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
+    """(code, action, target) per code-bearing record, in step order."""
     from rune.engine.continuation import extract_partial_code  # noqa: PLC0415
 
     recs = sorted(
         (r for r in records if r.get("action") in _CODE_ACTIONS),
         key=lambda r: r.get("step", 0),
     )
-    out: list[str] = []
+    out: list[tuple[str, str, str]] = []
     for r in recs:
         code = extract_partial_code(r.get("output") or "")
         if code.strip():
-            out.append(code)
+            out.append((code, str(r.get("action") or ""), str(r.get("target") or "")))
     return out
 
 
-def reuse_counts(rounds: list[str]) -> tuple[int, int]:
-    """(rounds reusing a prev-round-introduced symbol, eligible rounds t>=2)."""
+def reuse_counts(
+    rounds: list[tuple[str, str, str]],
+) -> tuple[int, int, list[dict[str, Any]]]:
+    """(reused rounds, eligible rounds t>=2, per-adjacent-pair detail).
+
+    The headline fraction (reused/eligible) keeps its pre-registered pooled
+    definition; the pair detail lets the findings doc stratify code->repair
+    adjacencies (trivially self-reusing) from cross-subtask code->code pairs.
+    """
     reused = eligible = 0
-    for prev, curr in zip(rounds, rounds[1:], strict=False):
+    pairs: list[dict[str, Any]] = []
+    for (p_code, p_act, p_tgt), (c_code, c_act, c_tgt) in zip(
+        rounds, rounds[1:], strict=False
+    ):
         eligible += 1
-        if introduced_symbols(prev) & used_symbols(curr):
-            reused += 1
-    return reused, eligible
+        hit = bool(introduced_symbols(p_code) & used_symbols(c_code))
+        reused += int(hit)
+        pairs.append({
+            "prev_action": p_act, "curr_action": c_act,
+            "prev_target": p_tgt, "curr_target": c_tgt,
+            "same_target": p_tgt == c_tgt, "reused": hit,
+        })
+    return reused, eligible, pairs
 
 
 def audit_session(path: Path) -> dict[str, Any]:
     """Per-session reuse report for one session.jsonl."""
     records = [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
     rounds = code_rounds(records)
-    reused, eligible = reuse_counts(rounds)
+    reused, eligible, pairs = reuse_counts(rounds)
     return {
         "session": path.parent.name,
         "n_records": len(records),
         "n_code_rounds": len(rounds),
         "eligible_rounds": eligible,
         "reused_rounds": reused,
-        "introduced_per_round": [sorted(introduced_symbols(c)) for c in rounds],
+        "pairs": pairs,
+        "introduced_per_round": [sorted(introduced_symbols(c)) for c, _, _ in rounds],
     }
 
 
