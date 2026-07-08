@@ -32,6 +32,58 @@ def test_introduced_symbols_tolerates_syntax_error() -> None:
     assert audit.introduced_symbols("def broken(:") == set()
 
 
+def test_introduced_symbols_recovers_broken_tail() -> None:
+    # Truncated generations leave a valid prefix + mis-indented tail; the
+    # prefix must still be measured (pre-fix behavior returned set()).
+    code = (
+        "def area(r):\n"
+        "    pi = 3.14\n"
+        "    return pi * r * r\n"
+        "  return pi  # unindent does not match any outer indentation level\n"
+    )
+    assert "area" in audit.introduced_symbols(code)
+    assert "pi" in audit.introduced_symbols(code)
+
+
+def test_parse_recovering_flags_partial_and_full() -> None:
+    tree, full = audit._parse_recovering("x = 1\n")
+    assert tree is not None and full is True
+    tree, full = audit._parse_recovering("x = 1\n  y = (\n")
+    assert tree is not None and full is False
+    tree, full = audit._parse_recovering("def broken(:")
+    assert tree is None and full is False
+
+
+def test_reuse_detected_across_broken_tail_round() -> None:
+    r1 = ("def helper(a):\n    return a + 1\n", "code", "s1")
+    r2 = (
+        "def solve(xs):\n    return [helper(x) for x in xs]\n  bad_tail = 1\n",
+        "code",
+        "s2",
+    )
+    reused, eligible, pairs = audit.reuse_counts([r1, r2])
+    assert (reused, eligible) == (1, 1)
+    assert pairs[0]["reused"] is True
+    assert pairs[0]["prev_parsed_fully"] is True
+    assert pairs[0]["curr_parsed_fully"] is False
+
+
+def test_strict_fraction_reproduces_pre_fix_instrument(tmp_path: Path) -> None:
+    # Recovered reuse counts in the headline but NOT in the strict count,
+    # which reproduces the pre-fix tool's number over the same denominator.
+    p = tmp_path / "s3" / "session.jsonl"
+    p.parent.mkdir()
+    lines = [
+        _rec(0, "code", "```python\ndef area(r):\n    return 3.14 * r * r\n```"),
+        _rec(1, "repair", "```python\ndef main():\n    print(area(2))\n  bad_tail = 1\n```"),
+    ]
+    p.write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+    rep = audit.audit_session(p)
+    assert (rep["reused_rounds"], rep["eligible_rounds"]) == (1, 1)
+    assert rep["reused_rounds_strict"] == 0
+    assert rep["parsed_fully_per_round"] == [True, False]
+
+
 def test_reuse_detected_when_round2_calls_round1_symbol() -> None:
     r1 = ("def helper(a):\n    return a + 1\n", "code", "s1")
     r2 = ("def solve(xs):\n    return [helper(x) for x in xs]\n", "code", "s2")
@@ -41,6 +93,7 @@ def test_reuse_detected_when_round2_calls_round1_symbol() -> None:
         "prev_action": "code", "curr_action": "code",
         "prev_target": "s1", "curr_target": "s2",
         "same_target": False, "reused": True,
+        "prev_parsed_fully": True, "curr_parsed_fully": True,
     }]
 
 
@@ -95,7 +148,10 @@ def test_multi_round_session_end_to_end(tmp_path: Path) -> None:
         "prev_action": "code", "curr_action": "repair",
         "prev_target": "", "curr_target": "",
         "same_target": True, "reused": True,
+        "prev_parsed_fully": True, "curr_parsed_fully": True,
     }]
+    assert rep["reused_rounds_strict"] == 1
+    assert rep["parsed_fully_per_round"] == [True, True]
 
 
 def test_committed_fixtures_are_step0_only() -> None:
