@@ -29,6 +29,7 @@ from rune.engine.complexity import (
 )
 from rune.engine.continuation import (
     CONT_SYSTEM_PROMPT,
+    continuation_should_abort,
     degeneration_score,
     extract_partial_code,
     strip_self_tests,
@@ -43,6 +44,7 @@ from rune.engine.oracle import (
 from rune.engine.parse import (
     ComplexityJudgeResult,
     JudgeResult,
+    approach_signature,
     candidate_quality,
     parse_output,
     render_template,
@@ -160,21 +162,7 @@ _ATTEMPT_CODE_CAP = 400
 _ATTEMPT_ERR_CAP = 300
 
 
-def _approach_signature(code: str) -> str:
-    """Distinguishing line of an attempt (its return expression) for repair recall.
-
-    The raw stderr is often identical across rounds (same single public assert),
-    so listing it alone hides that the model is re-submitting equivalent code
-    (issue #52, q3753 steps 6/8/10). Surfacing the return expression lets the
-    model see which approaches it already tried.
-    """
-    returns = [
-        ln.strip() for ln in code.splitlines() if ln.strip().startswith("return ")
-    ]
-    if returns:
-        return returns[-1][:80]
-    body = [ln.strip() for ln in code.splitlines() if ln.strip()]
-    return body[-1][:80] if body else ""
+_approach_signature = approach_signature
 
 
 def _format_tried_and_failed(trajectory: list[dict[str, Any]]) -> str:
@@ -1051,6 +1039,19 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     logger.warning(
                         "Degeneration detected (%.2f), stopping continuation",
                         degen,
+                    )
+                    break
+
+                if run_config.get(
+                    "continuation_structural_guard", False
+                ) and continuation_should_abort(
+                    new_chunk,
+                    accumulated_code,
+                    str(state.get("entry_point", "") or ""),
+                ):
+                    logger.info(
+                        "continuation structural guard: non-code chunk over a "
+                        "salvageable entry function, stopping continuation"
                     )
                     break
 

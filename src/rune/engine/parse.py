@@ -300,6 +300,24 @@ def extract_code_block(value: str) -> str:
     return value
 
 
+def approach_signature(code: str) -> str:
+    """Distinguishing line of an attempt (its last return expression).
+
+    The raw stderr is often identical across rounds (same single public assert),
+    so listing it alone hides that the model is re-submitting equivalent code
+    (issue #52, q3753 steps 6/8/10). Surfacing the return expression lets both
+    the repair prompt and the same-failure dedup guard see which approaches were
+    already tried.
+    """
+    returns = [
+        ln.strip() for ln in code.splitlines() if ln.strip().startswith("return ")
+    ]
+    if returns:
+        return returns[-1][:80]
+    body = [ln.strip() for ln in code.splitlines() if ln.strip()]
+    return body[-1][:80] if body else ""
+
+
 def candidate_quality(
     code: str,
     feedback: Feedback | None,

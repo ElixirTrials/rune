@@ -226,6 +226,29 @@ def main() -> None:
         default=None,
     )
     ap.add_argument("--max-repairs", type=int, default=None)
+    # Budget guards (issue #52 §4 levers 3+4); all default OFF for pre-registration
+    # safety. Passing all three enables the full guard set for a run.
+    ap.add_argument(
+        "--repair-dedup-after",
+        type=int,
+        default=None,
+        help="Stop retrying a subtask after N consecutive identical "
+        "(stderr, approach) failing attempts (default off).",
+    )
+    ap.add_argument(
+        "--complexity-repair-cap",
+        type=int,
+        default=None,
+        help="Stop retrying a subtask after K consecutive complexity-only "
+        "rejections (default off).",
+    )
+    ap.add_argument(
+        "--continuation-structural-guard",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Abort continuation on a prose chunk once a salvageable entry "
+        "function exists (default off).",
+    )
     args = ap.parse_args()
 
     import asyncio  # noqa: PLC0415
@@ -268,6 +291,12 @@ def main() -> None:
         overrides["replan_on_complexity"] = args.replan_on_complexity
     if args.max_repairs is not None:
         overrides["max_repairs"] = args.max_repairs
+    if args.repair_dedup_after is not None:
+        overrides["repair_dedup_after"] = args.repair_dedup_after
+    if args.complexity_repair_cap is not None:
+        overrides["complexity_repair_cap"] = args.complexity_repair_cap
+    if args.continuation_structural_guard is not None:
+        overrides["continuation_structural_guard"] = args.continuation_structural_guard
     cfg = load_rune_config(None).override(**overrides)
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()

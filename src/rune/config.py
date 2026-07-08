@@ -88,6 +88,21 @@ class PipelineConfig:
     ship_best_min_quality: int = 1
     # Complexity repair brief: preserve algorithm, optimize in place (vs replan).
     complexity_repair_preserve_logic: bool = True
+    # --- Budget guards (issue #52 §4 levers 3+4). ALL DEFAULT OFF: pre-registration
+    # safety requires default behavior to be bit-identical to pre-guard runs. Enable
+    # explicitly (config.yaml / CLI) as documented, non-comparable-to-baseline arms. ---
+    # Stop retrying a subtask once this many CONSECUTIVE failing attempts share the
+    # same (normalized probe stderr, approach signature) pair — the model is
+    # re-submitting an equivalent candidate that cannot make progress. None = off.
+    repair_dedup_after: int | None = None
+    # Lower repair cap for attempts whose ONLY failure is the constraint-scale /
+    # complexity oracle: after this many consecutive complexity-only rejections for
+    # a subtask, stop retrying (the candidate already ships at quality 3). None = off.
+    complexity_repair_cap: int | None = None
+    # Continuation sub-loop structural stop: abort continuation when a freshly
+    # generated chunk is not plausible code AND the accumulated blob already yields a
+    # salvageable entry function. Does NOT change the 0.5 degeneration threshold.
+    continuation_structural_guard: bool = False
     # --- Adapter (hypernetwork) profile ---
     checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
     warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance

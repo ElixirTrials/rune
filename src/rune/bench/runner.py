@@ -19,6 +19,13 @@ from rune.sandbox.executor import run_in_sandbox
 
 logger = logging.getLogger(__name__)
 
+# Version of the ship-time grading gate. Bumped by the A1/A2 fix wave (ship the
+# normalized entry form + grader-mirror imports). Stamped into every session's
+# metadata.json so resume can tell a fresh label from one written by an older,
+# defective gate. On mismatch/absence, resume re-runs the task rather than
+# re-serving a stale verdict (issue #52 §2.A3 measurement hygiene).
+GRADING_GATE_VERSION = 2
+
 
 def _seed_rng(seed: int) -> None:
     """Seed the global torch RNG so in-engine generation is reproducible.
@@ -238,6 +245,7 @@ def _write_task_session(
             "benchmark": config.get("benchmark", "unknown"),
             "problem_id": task.task_id,
             "pass_at_1": pass_at_1,
+            "grading_gate_version": GRADING_GATE_VERSION,
         },
         sessions_dir / task.task_id,
     )
@@ -401,8 +409,9 @@ async def run_benchmark(
         sessions_dir: If set, write one session dir per task here (corpus producer).
         resume: If True and sessions_dir is set, skip tasks whose
             ``<sessions_dir>/<task_id>/metadata.json`` already records a
-            ``pass_at_1`` result (written by a prior run). Corrupt or missing
-            metadata falls through to re-running the task normally.
+            ``pass_at_1`` result stamped with the current ``GRADING_GATE_VERSION``.
+            Corrupt, missing, or stale-stamped metadata (e.g. a verdict written by
+            a pre-fix grading gate) falls through to re-running the task normally.
 
     Returns:
         BenchResult with pass@1 and per-task details.
@@ -423,7 +432,11 @@ async def run_benchmark(
                     meta = json.loads(meta_path.read_text())
                 except (json.JSONDecodeError, OSError):
                     meta = None
-                if meta is not None and "pass_at_1" in meta:
+                if (
+                    meta is not None
+                    and "pass_at_1" in meta
+                    and meta.get("grading_gate_version") == GRADING_GATE_VERSION
+                ):
                     results.append(
                         TaskResult(
                             task_id=task.task_id,

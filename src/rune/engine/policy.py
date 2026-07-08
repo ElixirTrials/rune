@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import replace
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
@@ -11,13 +12,101 @@ from rune.engine.parse import (
     DecomposeResult,
     DiagnoseResult,
     PlanResult,
+    approach_signature,
 )
+from rune.engine.requirements import is_constraint_scale_only_failure
 from rune.engine.state import Action, Subtask
 
 logger = logging.getLogger(__name__)
 
 MAX_REPAIRS = 4
 MAX_RETRIES = MAX_REPAIRS * 2
+
+# Volatile substrings masked before comparing two attempts' probe stderr: memory
+# addresses, temp-file paths, traceback line numbers, and timing measurements all
+# vary run-to-run without reflecting a different bug. What survives — the
+# exception type, the actual-vs-expected assertion text, the constraint-scale
+# verdict — is the stable failure identity the model must change to progress.
+_HEX_ADDR = re.compile(r"0x[0-9a-fA-F]+")
+_PY_PATH = re.compile(r"(?:/[^\s\"':]+)+\.py")
+_LINE_NO = re.compile(r"line \d+")
+_SECONDS = re.compile(r"\d+\.\d+\s*s\b")
+
+
+def _normalize_stderr(stderr: str) -> str:
+    """Canonicalize a probe stderr for cross-attempt equality (see module note)."""
+    text = (stderr or "").strip()
+    text = _HEX_ADDR.sub("0xADDR", text)
+    text = _PY_PATH.sub("<path>", text)
+    text = _LINE_NO.sub("line N", text)
+    text = _SECONDS.sub("Ns", text)
+    return re.sub(r"\s+", " ", text)
+
+
+def _failed_code_attempts(
+    state: dict[str, Any], name: str
+) -> list[tuple[str, str, str]]:
+    """Failing code/repair attempts for ``name`` in run order (oldest→newest).
+
+    Each tuple is (normalized_stderr, approach_signature, raw_stderr), read from
+    the run trajectory — signals already legitimately in engine state, never
+    anything derived from held-out tests.
+    """
+    out: list[tuple[str, str, str]] = []
+    for rec in state.get("trajectory", []):
+        if getattr(rec, "target_subtask", None) != name:
+            continue
+        if getattr(rec, "action_name", None) not in ("code", "repair"):
+            continue
+        fb = getattr(rec, "feedback", None)
+        if fb is None or fb.exit_code == 0:
+            continue
+        code = getattr(rec, "generated_code", None) or ""
+        out.append((_normalize_stderr(fb.stderr), approach_signature(code), fb.stderr))
+    return out
+
+
+def _dedup_exhausted(state: dict[str, Any], name: str) -> bool:
+    """Same-failure dedup (issue #52 §4 lever 3a). OFF unless repair_dedup_after set.
+
+    Fires when the last ``repair_dedup_after`` failing attempts for the subtask
+    all share the same (normalized stderr, approach signature) pair — the model
+    is re-submitting an equivalent candidate that cannot make progress. Floored
+    at 2: a window of 1 is trivially all-equal and would kill every first
+    repair (e.g. 3799's genuine diagnose→repair progression).
+    """
+    n = state.get("repair_dedup_after")
+    if not isinstance(n, int) or n < 1:
+        return False
+    n = max(n, 2)
+    attempts = _failed_code_attempts(state, name)
+    if len(attempts) < n:
+        return False
+    window = attempts[-n:]
+    first = (window[0][0], window[0][1])
+    return all((a[0], a[1]) == first for a in window)
+
+
+def _complexity_cap_exhausted(state: dict[str, Any], name: str) -> bool:
+    """Complexity-repair cap (issue #52 §4 lever 3b). OFF unless the cap is set.
+
+    Fires when the last ``complexity_repair_cap`` failing attempts for the
+    subtask are ALL constraint-scale-only rejections. Such candidates already
+    ship at quality 3, and the model reliably re-submits the same brute force.
+    """
+    k = state.get("complexity_repair_cap")
+    if not isinstance(k, int) or k < 1:
+        return False
+    attempts = _failed_code_attempts(state, name)
+    if len(attempts) < k:
+        return False
+    window = attempts[-k:]
+    return all(is_constraint_scale_only_failure(raw) for _, _, raw in window)
+
+
+def _budget_guard_exhausted(state: dict[str, Any], name: str) -> bool:
+    """True when a flag-gated budget guard says to stop retrying ``name``."""
+    return _dedup_exhausted(state, name) or _complexity_cap_exhausted(state, name)
 
 
 def _max_repairs(state: dict[str, Any]) -> int:
@@ -162,6 +251,17 @@ def select_action(state: dict[str, Any]) -> list[Action]:
         for s in ready:
             repairs = state["retries"].get(s.name, 0)
             if repairs >= max_retries:
+                exhausted.append(s.name)
+                continue
+            # Flag-gated budget guards: stop retrying a subtask the model can only
+            # re-submit unchanged (same-failure dedup / complexity-only cap) and
+            # let the existing exhaustion / ship-best path take over. Both default
+            # OFF, so default action selection is bit-identical (issue #52 §4).
+            if _budget_guard_exhausted(state, s.name):
+                logger.info(
+                    "Subtask %s halted by budget guard; treating as exhausted",
+                    s.name,
+                )
                 exhausted.append(s.name)
                 continue
             has_code = s.name in state["code_results"]

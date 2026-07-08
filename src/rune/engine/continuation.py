@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+import textwrap
 
 from rune.engine.parse import extract_code_block
 
@@ -47,6 +48,82 @@ def validate_syntax(code: str, *, language: str = "python") -> bool:
         return True
     except SyntaxError:
         return False
+
+
+def _chunk_has_code(chunk: str) -> bool:
+    """True when a continuation chunk contains at least one code statement.
+
+    A prose ramble (issue #52 q3754: "Given the ambiguity ... I will output: 0")
+    parses to nothing but bare string/number literals; a real code tail parses —
+    either as-is or after dedenting an indented body fragment — to a statement
+    that is not a bare literal. Cheap: at most two ``ast.parse`` attempts.
+    """
+    stripped = chunk.strip()
+    if not stripped:
+        return False
+    for candidate in (stripped, textwrap.dedent(chunk).strip()):
+        try:
+            module = ast.parse(candidate)
+        except SyntaxError:
+            continue
+        for node in module.body:
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                continue  # bare literal == prose, not code
+            return True
+    return False
+
+
+def _salvageable_entry(code: str, entry_point: str) -> str | None:
+    """Largest recoverable definition of ``entry_point`` in ``code``, or None.
+
+    Reuses the LCB salvage/extract helpers so the guard's notion of "complete
+    entry function" matches what the ship gate would recover. Deferred import
+    avoids an engine->bench import cycle.
+    """
+    from rune.bench.lcb import (  # noqa: PLC0415
+        _salvage_entry_function,
+        extract_entry_function,
+    )
+
+    text = (code or "").strip()
+    if not text or not entry_point:
+        return None
+    try:
+        ast.parse(text)
+    except SyntaxError:
+        salvaged = _salvage_entry_function(text, entry_point)
+    else:
+        salvaged = extract_entry_function(text, entry_point)
+    if not salvaged or not salvaged.strip():
+        return None
+    try:
+        tree = ast.parse(salvaged)
+    except SyntaxError:
+        return None
+    defines = any(
+        isinstance(node, ast.FunctionDef) and node.name == entry_point
+        for node in ast.walk(tree)
+    )
+    return salvaged if defines else None
+
+
+def continuation_should_abort(
+    new_chunk: str, accumulated_code: str, entry_point: str
+) -> bool:
+    """Structural stop for the continuation sub-loop (issue #52 §4 lever 4).
+
+    Returns True when the freshly generated chunk is NOT a plausible code
+    continuation (no parseable statement — it is prose) AND the code accumulated
+    so far already yields a salvageable definition of ``entry_point``. In that
+    state further continuation only appends prose to an already-recoverable
+    function, so stop. Independent of the 0.5 degeneration threshold; cheap
+    (``ast.parse`` only).
+    """
+    if not entry_point:
+        return False
+    if _chunk_has_code(new_chunk):
+        return False
+    return _salvageable_entry(accumulated_code, entry_point) is not None
 
 
 def _is_test_function(node: ast.stmt) -> bool:

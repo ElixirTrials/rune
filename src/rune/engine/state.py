@@ -154,6 +154,9 @@ class RunState(TypedDict):
     ship_best_on_exhaustion: bool
     ship_best_min_quality: int
     complexity_repair_preserve_logic: bool
+    repair_dedup_after: int | None
+    complexity_repair_cap: int | None
+    continuation_structural_guard: bool
     actions: list[Action]
     trajectory: list[StepRecord]
     step: int
@@ -173,6 +176,8 @@ def engine_kwargs_from_run_config(
     defaults = PipelineConfig()
     rc = run_config or {}
     kinds = rc.get("advisory_requirement_kinds", defaults.advisory_requirement_kinds)
+    dedup_after = rc.get("repair_dedup_after", defaults.repair_dedup_after)
+    complexity_cap = rc.get("complexity_repair_cap", defaults.complexity_repair_cap)
     return {
         "max_repairs": int(rc.get("max_repairs", defaults.max_repairs) or 0),
         "repair_brief_enabled": bool(
@@ -243,6 +248,16 @@ def engine_kwargs_from_run_config(
             rc.get(
                 "complexity_repair_preserve_logic",
                 defaults.complexity_repair_preserve_logic,
+            )
+        ),
+        "repair_dedup_after": None if dedup_after is None else int(dedup_after),
+        "complexity_repair_cap": (
+            None if complexity_cap is None else int(complexity_cap)
+        ),
+        "continuation_structural_guard": bool(
+            rc.get(
+                "continuation_structural_guard",
+                defaults.continuation_structural_guard,
             )
         ),
     }
@@ -332,5 +347,10 @@ def make_initial_state(
         "ship_best_min_quality": int(engine["ship_best_min_quality"]),
         "complexity_repair_preserve_logic": bool(
             engine["complexity_repair_preserve_logic"]
+        ),
+        "repair_dedup_after": engine["repair_dedup_after"],
+        "complexity_repair_cap": engine["complexity_repair_cap"],
+        "continuation_structural_guard": bool(
+            engine["continuation_structural_guard"]
         ),
     }
