@@ -20,3 +20,30 @@ class TestRunInSandbox:
         r = run_in_sandbox(code)
         assert isinstance(r, ExecutionResult)
         assert r.exit_code == 0
+
+    def test_future_import_submission_passes(self) -> None:
+        # The mem-guard must not displace header-only constructs: a submission
+        # starting with `from __future__ import ...` graded as SyntaxError was
+        # an incorrect pass@1 failure.
+        r = run_in_sandbox("from __future__ import annotations\nprint('ok')")
+        assert r.exit_code == 0
+        assert "ok" in r.stdout
+
+    def test_module_docstring_preserved(self) -> None:
+        code = '"""doc"""\nprint(__doc__)'
+        r = run_in_sandbox(code)
+        assert r.exit_code == 0
+        assert "doc" in r.stdout
+
+    def test_mem_guard_still_binds(self) -> None:
+        # A >4GB allocation must raise MemoryError inside the sandbox instead
+        # of OOM-killing the host.
+        code = "x = bytearray(6 * 1024**3)\nprint('allocated')"
+        r = run_in_sandbox(code)
+        assert r.exit_code != 0
+        assert "MemoryError" in r.stderr
+
+    def test_dunder_main_semantics(self) -> None:
+        r = run_in_sandbox("print(__name__)")
+        assert r.exit_code == 0
+        assert "__main__" in r.stdout

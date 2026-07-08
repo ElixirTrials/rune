@@ -61,7 +61,6 @@ _A2_FULL_MAX_TOKENS = 12000  # skip the full-context forward above this (OOM gua
 _EPISODIC_VARIANT = "use"
 _EPISODIC_ANCHOR = 0
 _EPISODIC_SCALING = 0.91
-_ADAPTER_LABELS = ("episodic_use", "dump_gf")  # primary + regression reference
 
 # Original five arms (behavior/labels/metric names frozen for prior-run
 # comparability) + the pre-registered C1 arms (extend-only).

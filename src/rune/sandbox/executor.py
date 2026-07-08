@@ -11,16 +11,21 @@ from pathlib import Path
 # Per-process address-space cap for untrusted code: a runaway/large-input
 # solution raises MemoryError instead of OOM-killing the host (the ~15GB box
 # crashed twice on unbounded grading). 4GB is far above any benchmark solution.
-# Prepended to the code (thread-safe) rather than a preexec_fn, which forks in
-# the engine's asyncio worker threads.
+# Applied via a -c bootstrap that then runs the untouched file (thread-safe) —
+# not a preexec_fn (forks in the engine's asyncio worker threads) and not a
+# prologue prepended to the code (a submission starting with
+# `from __future__ import ...` would become a SyntaxError and fail grading).
 _MEM_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
-_MEM_GUARD_PROLOGUE = (
-    "import resource as _rune_res\n"
+_SANDBOX_BOOTSTRAP = (
+    "import resource, runpy, sys\n"
     "try:\n"
-    f"    _rune_res.setrlimit(_rune_res.RLIMIT_AS, "
+    f"    resource.setrlimit(resource.RLIMIT_AS, "
     f"({_MEM_LIMIT_BYTES}, {_MEM_LIMIT_BYTES}))\n"
     "except Exception:\n"
     "    pass\n"
+    "path = sys.argv.pop(1)\n"
+    "sys.argv[0] = path\n"
+    "runpy.run_path(path, run_name='__main__')\n"
 )
 
 
@@ -51,12 +56,12 @@ def run_in_sandbox(code: str, *, timeout: int = 30) -> ExecutionResult:
         exit_code is -1 on timeout.
     """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(_MEM_GUARD_PROLOGUE + code)
+        f.write(code)
         f.flush()
         path = Path(f.name)
     try:
         proc = subprocess.run(
-            [sys.executable, str(path)],
+            [sys.executable, "-c", _SANDBOX_BOOTSTRAP, str(path)],
             capture_output=True,
             text=True,
             # Untrusted generated code may emit non-UTF8 bytes; replace rather
