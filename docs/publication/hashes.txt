@@ -32,3 +32,9 @@ d0d6d6837cdaeafc8121ecfc6af0ee134e38608fca2fb10fec0662670a870a3a  rb_clamp_c1_fu
 # RepoBench eval rows carry no local split file: drawn deterministically from HF dataset
 # tianyang/repobench_python_v1.1, split cross_file_first, levels 8k/32k, per_level=30,
 # offset (0 dump-negative / 100 keystone), seed 0 (tools/_repobench_clamp_run.py).
+
+# -- C3.2 recovery-vs-budget W-sweep traces (engine c4562db, tail-overhead guard included; the
+#    W=768 curve point is rb_clamp_c1_full.json above, run f37374906c5f4f5c972b8e7b8127089a) --
+ea22f847021d3326aaa3696cbd1a167d07c536e180732c2b22804c224158a50c  rb_clamp_w256.json (C3.2 W-sweep leg W=256, clamp-use-W256-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (exp id 79), run ab4d331287774435abb0653967469551, artifact rb_clamp_w256.json; byte-identical local copy at session scratchpad rb_clamp_w256.json
+796c021291c2d685495d7db29f342a7bf3540458ada2aa0a15cc1dfeb3723755  rb_clamp_w512.json (C3.2 W-sweep leg W=512, clamp-use-W512-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (exp id 79), run 3ba5333785ee4acfa19cc526cf00ca91, artifact rb_clamp_w512.json; byte-identical local copy at session scratchpad rb_clamp_w512.json
+287d0c96ae197121a7496022acc2dfae0fc4d060d407e67cc0c042442c4718c3  rb_clamp_w1536.json (C3.2 W-sweep leg W=1536, clamp-use-W1536-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (exp id 79), run d3aae62a5c514acb94b1b2a6381d85a9, artifact rb_clamp_w1536.json; byte-identical local copy at session scratchpad rb_clamp_w1536.json
