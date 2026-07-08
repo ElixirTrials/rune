@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rune.bench.lcb import build_public_assert_checks
-from rune.bench.runner import BenchTask, resolve_shipped_code
+from rune.bench.lcb import build_public_assert_checks, normalize_lcb_submission
+from rune.bench.runner import BenchTask, build_graded_program, resolve_shipped_code
 from rune.engine.graph import build_code_probe, render_episode_adapter
 from rune.engine.parse import parse_output
 from rune.engine.policy import select_action
@@ -128,9 +128,11 @@ def test_q3753_ships_passing_best_over_regressing_integrate() -> None:
         }
     )
     shipped = resolve_shipped_code(state, task)
-    assert shipped.strip() == best.strip()
-    full = shipped + "\n\n" + task.test_code
-    assert run_in_sandbox(full, timeout=10).exit_code == 0
+    # The passing best is shipped (not the regressing integrate), normalized to
+    # the gradeable entry form the official grader receives (issue #52 §2.A1).
+    assert shipped.strip() == normalize_lcb_submission(best, fn).strip()
+    assert "return 0" not in shipped
+    assert run_in_sandbox(build_graded_program(task, shipped), timeout=10).exit_code == 0
 
 
 def test_q3754_replay_subtask_name_is_maxdistance() -> None:
@@ -243,6 +245,124 @@ def test_integrate_oracle_fires_with_public_checks() -> None:
     probe, fired, resolved = build_code_probe("", grid_integrate, state)
     assert fired and resolved
     assert run_in_sandbox(probe, timeout=10).exit_code != 0
+
+
+# --- Ship-time grading harness (defects A1 + A2, issue #52 §2.A) -------------
+
+# A `class Solution` solution whose maxDifference logic is CORRECT and passes the
+# public checks once normalized to the bare top-level def the LCB grader calls.
+# Imports live inside the method body so extraction retains them — this isolates
+# A1 (ship-form mismatch) from A2 (grader-mirror imports).
+_Q3753_CORRECT_CLASS = (
+    "class Solution:\n"
+    "    def maxDifference(self, s: str) -> int:\n"
+    "        from collections import Counter\n"
+    "        c = Counter(s)\n"
+    "        odd = max(v for v in c.values() if v % 2 == 1)\n"
+    "        even = min(v for v in c.values() if v % 2 == 0)\n"
+    "        return odd - even\n"
+)
+
+
+def test_a1_class_form_ships_gradeable_bare_entry() -> None:
+    """A1: a ``class Solution`` candidate that passes publics when normalized must
+    be shipped in the bare top-level form the grader calls, not the raw class blob
+    (old behavior: graded program NameErrors on the bare-call asserts)."""
+    _, fn, task = _lcb_task("3753")
+    state = make_initial_state(
+        task.description, 12, fn, task.signature, task.public_checks
+    )
+    state.update(
+        {
+            "subtasks": [
+                Subtask(
+                    name=fn,
+                    description="",
+                    depends_on=[],
+                    acceptance_check=task.public_checks,
+                    builds=fn,
+                )
+            ],
+            "best_code": {fn: _Q3753_CORRECT_CLASS},
+            "best_quality": {fn: 3},
+            "integrated_code": "",
+        }
+    )
+    shipped = resolve_shipped_code(state, task)
+    # Defines the entry point at top level (not wrapped in ``class Solution``).
+    assert f"def {fn}(" in shipped
+    assert "class Solution" not in shipped
+    # Internally-graded code is IDENTICAL to what ships to the official grader.
+    assert shipped.strip() == normalize_lcb_submission(_Q3753_CORRECT_CLASS, fn).strip()
+    assert run_in_sandbox(build_graded_program(task, shipped), timeout=10).exit_code == 0
+
+
+def test_a1_integrated_class_form_ships_gradeable_bare_entry() -> None:
+    """A1 (integrate path): a class-form integrated result must also ship bare."""
+    _, fn, task = _lcb_task("3753")
+    state = make_initial_state(
+        task.description, 12, fn, task.signature, task.public_checks
+    )
+    state.update({"integrated_code": _Q3753_CORRECT_CLASS})
+    shipped = resolve_shipped_code(state, task)
+    assert "class Solution" not in shipped
+    assert run_in_sandbox(build_graded_program(task, shipped), timeout=10).exit_code == 0
+
+
+def test_a2_build_graded_program_supplies_grader_imports() -> None:
+    """A2: a normalized solution using ``List``/``Counter`` without its own imports
+    must not NameError — the graded program mirrors the official star-import
+    environment (old behavior: ``NameError: name 'List' is not defined``)."""
+    _, fn, task = _lcb_task("3753")
+    # ``List`` in the signature is evaluated at def time; ``Counter`` in the body.
+    # Neither is imported by the code itself — the mirror preamble must supply both.
+    code = (
+        "def maxDifference(s: List[int]) -> int:\n"
+        "    c = Counter(s)\n"
+        "    odd = max(v for v in c.values() if v % 2 == 1)\n"
+        "    even = min(v for v in c.values() if v % 2 == 0)\n"
+        "    return odd - even\n"
+    )
+    prog = build_graded_program(task, code)
+    assert run_in_sandbox(prog, timeout=10).exit_code == 0
+
+
+def test_a2_dropped_module_imports_covered_by_mirror() -> None:
+    """Decision: normalization drops the model's own module-level imports; the
+    graded program relies on the mirror preamble (matching the official grader's
+    star-imports) rather than retaining them. A class-form solution whose
+    module-level ``from collections import Counter`` is dropped on extraction must
+    still grade PASS via the mirror."""
+    _, fn, task = _lcb_task("3753")
+    class_with_module_import = (
+        "from collections import Counter\n"
+        "class Solution:\n"
+        "    def maxDifference(self, s: str) -> int:\n"
+        "        c = Counter(s)\n"
+        "        odd = max(v for v in c.values() if v % 2 == 1)\n"
+        "        even = min(v for v in c.values() if v % 2 == 0)\n"
+        "        return odd - even\n"
+    )
+    shipped = normalize_lcb_submission(class_with_module_import, fn)
+    assert "import Counter" not in shipped  # module-level import is dropped
+    assert run_in_sandbox(build_graded_program(task, shipped), timeout=10).exit_code == 0
+
+
+def test_a2_grading_preamble_still_honored() -> None:
+    """A HumanEval-style task with a non-empty grading_preamble keeps working
+    alongside the mirror imports (no regression)."""
+    task = BenchTask(
+        task_id="he_offset",
+        description="",
+        test_code="assert add_one(1) == 2\nassert add_one(41) == 42\n",
+        entry_point="add_one",
+        public_checks="assert add_one(1) == 2\n",
+        grading_preamble="OFFSET = 1",
+    )
+    code = "def add_one(x: int) -> int:\n    return x + OFFSET\n"
+    prog = build_graded_program(task, code)
+    assert "OFFSET = 1" in prog
+    assert run_in_sandbox(prog, timeout=10).exit_code == 0
 
 
 @pytest.mark.parametrize("qid", ["3748", "3799", "3801"])

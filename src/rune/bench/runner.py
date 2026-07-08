@@ -11,7 +11,7 @@ from typing import Any
 
 from rune.bench.lcb import extract_entry_function
 from rune.engine.continuation import strip_self_tests
-from rune.engine.oracle import merge_public_checks
+from rune.engine.oracle import merge_public_checks, with_probe_imports
 from rune.engine.state import advisory_kinds_from_state, make_initial_state
 from rune.engine.validity import validate_solution
 from rune.mining.session_log import write_session
@@ -112,9 +112,19 @@ def build_graded_program(task: BenchTask, solution_code: str) -> str:
     tests are stripped so a wrong model-authored assert can't fail a correct
     implementation. Duplicate imports (when the body already repeats them) are
     harmless. The single source of truth for grading assembly across arms.
+
+    The grader-mirror preamble (``with_probe_imports``) is prepended so a
+    normalized solution carrying a bare ``List[int]`` annotation or a
+    ``Counter`` call whose module-level import was dropped on extraction does
+    not NameError — the official LCB grader supplies these via star-imports, so
+    mirroring them here matches its semantics (issue #52 §2.A2). This is the
+    same preamble the in-loop probe uses, keeping the ship gate consistent with
+    the in-loop oracle.
     """
     preamble = f"{task.grading_preamble}\n" if task.grading_preamble.strip() else ""
-    return preamble + strip_self_tests(solution_code) + "\n\n" + task.test_code
+    return with_probe_imports(
+        preamble + strip_self_tests(solution_code) + "\n\n" + task.test_code
+    )
 
 
 def dump_tasks(tasks: list[BenchTask], path: Path) -> Path:
@@ -233,6 +243,22 @@ def _write_task_session(
     )
 
 
+def _ship_form(task: BenchTask, code: str) -> str:
+    """Normalize a shippable candidate to the graded entry form.
+
+    ``_benchmark_shippable`` validates the *extracted* entry form
+    (``_passes_public_checks`` normalizes via ``extract_entry_function``), but a
+    raw ``class Solution`` candidate returned unchanged would NameError against
+    the bare-call asserts in ``build_graded_program``. Ship the same normalized
+    form the public-check gate validated — identical to what
+    ``normalize_lcb_submission`` ships to the official grader (issue #52 §2.A1).
+    """
+    if not task.entry_point:
+        return code
+    normalized = extract_entry_function(code, task.entry_point)
+    return normalized if normalized.strip() else code
+
+
 def resolve_shipped_code(
     final_state: dict[str, Any], task: BenchTask, *, spec: str = ""
 ) -> str:
@@ -269,18 +295,18 @@ def resolve_shipped_code(
             and best_valid
             and (not defines_entry_point(integrated, entry) or not int_valid or bq >= 3)
         ):
-            return best_entry
+            return _ship_form(task, best_entry)
 
     if integrated.strip() and _benchmark_shippable(
         task, integrated, task_spec, skip_kinds=skip_kinds
     ):
-        return integrated
+        return _ship_form(task, integrated)
 
     shipped = best or final_state.get("code_results", {})
     if entry and entry in shipped:
         candidate = str(shipped[entry])
         if _benchmark_shippable(task, candidate, task_spec, skip_kinds=skip_kinds):
-            return candidate
+            return _ship_form(task, candidate)
 
     blob = "\n\n".join(str(v) for v in shipped.values() if v)
     if entry and blob.strip():
