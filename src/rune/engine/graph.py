@@ -189,6 +189,35 @@ def _format_tried_and_failed(trajectory: list[dict[str, Any]]) -> str:
     return header + "\n" + "\n".join(lines[-3:])
 
 
+def _trunc_err(err: str, cap: int, *, tail: bool) -> str:
+    """Cap a stderr blob. Head-cut (legacy) keeps traceback frames but drops the
+    final assert payload (got/want) — the only informative part (issue #52
+    root-cause 2026-07-09). Tail-cut keeps the payload, cutting at a line
+    boundary so the block starts on a whole frame/line."""
+    if len(err) <= cap:
+        return err
+    if not tail:
+        return err[:cap]
+    cut = err[-(cap - 1) :]
+    nl = cut.find("\n")
+    if 0 <= nl < len(cut) - 1:
+        cut = cut[nl + 1 :]
+    return "…" + cut
+
+
+def _project_label(task: str, repair_context: bool) -> str:
+    """Condensed project header for thin prompts. With the repair-context fix,
+    cut at a line boundary and mark the truncation instead of stopping mid-word
+    (3754's label ended '…that can be achieve', silently dropping constraints)."""
+    if not repair_context or len(task) <= _PROJECT_LABEL_CAP:
+        return task[:_PROJECT_LABEL_CAP]
+    label = task[:_PROJECT_LABEL_CAP]
+    nl = label.rfind("\n")
+    if nl > _PROJECT_LABEL_CAP // 2:
+        label = label[:nl]
+    return label + "\n[spec truncated]"
+
+
 def _format_attempts(attempts: list[dict[str, Any]] | None) -> str:
     """Render prior (failed) code attempts + their errors for the adapter (R2)."""
     if not attempts:
@@ -554,11 +583,13 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
     code_results = state.get("code_results", {})
     feedback_map = state.get("feedback", {})
     task = state["task"]
+    repair_context = bool(state.get("repair_context_fix", False))
 
     ctx: dict[str, Any] = {
         "project": task[:_PROJECT_CAP],
         "task_description": task[:_PROJECT_CAP],
-        "project_label": task[:_PROJECT_LABEL_CAP],
+        "project_label": _project_label(task, repair_context),
+        "repair_context": repair_context,
         "subtask_count": len(subtasks),
         # Required function name (benchmark tasks); "" for free-form `rune run`.
         # Named in the code/repair prompts so the model doesn't invent a name.
@@ -593,6 +624,15 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         ctx["error_summary"] = subtask_fb.stderr[:2000] if subtask_fb else ""
         ctx["fix_guidance"] = state.get("diagnosis", {}).get(target_name, "")
         ctx["repair_brief"] = state.get("repair_briefs", {}).get(target_name, "")
+        # Last non-empty stderr line (the assert payload: got/want) for the thin
+        # repair prompt — only rendered when repair_context_fix is on.
+        last_failure = ""
+        if repair_context and subtask_fb and subtask_fb.exit_code != 0:
+            for line in reversed(subtask_fb.stderr.splitlines()):
+                if line.strip():
+                    last_failure = line.strip()[:300]
+                    break
+        ctx["last_failure"] = last_failure
         ctx["plan_rejection"] = state.get("plan_rejections", {}).get(target_name, "")
         entry_pt = str(state.get("entry_point", "") or target_name)
         ctx["bare_signature"] = _bare_signature_stub(
@@ -612,7 +652,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
             if rec.target_subtask != target_name:
                 continue
             if rec.feedback and rec.feedback.exit_code != 0:
-                repair_history.append(rec.feedback.stderr[:200])
+                repair_history.append(
+                    _trunc_err(rec.feedback.stderr, 200, tail=repair_context)
+                )
             if rec.generated_code:
                 code_trajectory.append(
                     {
@@ -620,7 +662,9 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
                         "action": rec.action_name,
                         "code": rec.generated_code[:_CODE_HISTORY_CAP],
                         "error": (
-                            rec.feedback.stderr[:300]
+                            _trunc_err(
+                                rec.feedback.stderr, 300, tail=repair_context
+                            )
                             if rec.feedback and rec.feedback.exit_code != 0
                             else ""
                         ),

@@ -249,6 +249,13 @@ def main() -> None:
         help="Abort continuation on a prose chunk once a salvageable entry "
         "function exists (default off).",
     )
+    ap.add_argument(
+        "--repair-context-fix",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Render repair brief + last failure in the thin repair prompt and "
+        "tail-cut history errors so the assert payload survives (default off).",
+    )
     args = ap.parse_args()
 
     import asyncio  # noqa: PLC0415
@@ -297,6 +304,8 @@ def main() -> None:
         overrides["complexity_repair_cap"] = args.complexity_repair_cap
     if args.continuation_structural_guard is not None:
         overrides["continuation_structural_guard"] = args.continuation_structural_guard
+    if args.repair_context_fix is not None:
+        overrides["repair_context_fix"] = args.repair_context_fix
     cfg = load_rune_config(None).override(**overrides)
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()

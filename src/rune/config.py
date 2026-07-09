@@ -103,6 +103,14 @@ class PipelineConfig:
     # generated chunk is not plausible code AND the accumulated blob already yields a
     # salvageable entry function. Does NOT change the 0.5 degeneration threshold.
     continuation_structural_guard: bool = False
+    # Repair-context fix (issue #52 root-cause 2026-07-09): the thin full-mode
+    # repair prompt rendered an empty Diagnosis (repair_brief suppresses the
+    # diagnose step but only episodic templates rendered the brief) and history
+    # truncation head-cut stderr, dropping the got/want payload from every
+    # attempt block. When on: render the brief + last-failure line in the thin
+    # repair prompt, tail-cut history errors so the assert payload survives, and
+    # cut the project label at a line boundary with an explicit marker.
+    repair_context_fix: bool = False
     # --- Adapter (hypernetwork) profile ---
     checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
     warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance

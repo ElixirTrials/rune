@@ -28,6 +28,8 @@ def _ctx() -> dict[str, object]:
         "existing_code": "print(1)",
         "error_summary": "boom",
         "repair_brief": "",
+        "repair_context": False,
+        "last_failure": "",
         "fix_guidance": "fix it",
         "repair_history": ["err"],
         "code_trajectory": [

@@ -157,6 +157,7 @@ class RunState(TypedDict):
     repair_dedup_after: int | None
     complexity_repair_cap: int | None
     continuation_structural_guard: bool
+    repair_context_fix: bool
     actions: list[Action]
     trajectory: list[StepRecord]
     step: int
@@ -260,6 +261,9 @@ def engine_kwargs_from_run_config(
                 defaults.continuation_structural_guard,
             )
         ),
+        "repair_context_fix": bool(
+            rc.get("repair_context_fix", defaults.repair_context_fix)
+        ),
     }
 
 
@@ -353,4 +357,5 @@ def make_initial_state(
         "continuation_structural_guard": bool(
             engine["continuation_structural_guard"]
         ),
+        "repair_context_fix": bool(engine["repair_context_fix"]),
     }

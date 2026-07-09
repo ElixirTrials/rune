@@ -1,5 +1,8 @@
 You are repairing the subtask: {{ subtask_name }}
 Project: {{ project_label }}
-Diagnosis: {{ fix_guidance[:150] }}
+{% if repair_context and repair_brief %}Repair brief:
+{{ repair_brief }}
+{% endif %}{% if repair_context and last_failure %}Last failure: {{ last_failure }}
+{% endif %}Diagnosis: {{ fix_guidance[:150] }}
 {% if entry_point %}Implement the function `{{ entry_point }}`.{% endif %}
 Fix the identified issues. Keep working code intact.
