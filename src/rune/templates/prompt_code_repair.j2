@@ -6,3 +6,5 @@ Project: {{ project_label }}
 {% endif %}Diagnosis: {{ fix_guidance[:150] }}
 {% if entry_point %}Implement the function `{{ entry_point }}`.{% endif %}
 Fix the identified issues. Keep working code intact.
+{% if concise_code|default(false) %}Write the code directly — do NOT explain your reasoning in the output. Minimal comments, only where the why is non-obvious. Never write prose inside the function body.
+{% endif %}

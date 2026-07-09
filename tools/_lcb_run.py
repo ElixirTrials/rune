@@ -256,6 +256,27 @@ def main() -> None:
         help="Render repair brief + last failure in the thin repair prompt and "
         "tail-cut history errors so the assert payload survives (default off).",
     )
+    ap.add_argument(
+        "--concise-code-instruction",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Instruct code/repair prompts to output code directly with minimal "
+        "comments — keeps chain-of-thought out of the completion (default off).",
+    )
+    ap.add_argument(
+        "--adapter-cond-budget-fix",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Pack adapter conditioning into the hypernet's 2048-token encoder "
+        "window so Review Feedback is never silently truncated (default off).",
+    )
+    ap.add_argument(
+        "--model-judge",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable the correctness judge on oracle-passing units (oracle has "
+        "precedence: judge only flips pass->fail with a grounded failing input).",
+    )
     args = ap.parse_args()
 
     import asyncio  # noqa: PLC0415
@@ -306,6 +327,12 @@ def main() -> None:
         overrides["continuation_structural_guard"] = args.continuation_structural_guard
     if args.repair_context_fix is not None:
         overrides["repair_context_fix"] = args.repair_context_fix
+    if args.concise_code_instruction is not None:
+        overrides["concise_code_instruction"] = args.concise_code_instruction
+    if args.adapter_cond_budget_fix is not None:
+        overrides["adapter_cond_budget_fix"] = args.adapter_cond_budget_fix
+    if args.model_judge is not None:
+        overrides["model_judge"] = args.model_judge
     cfg = load_rune_config(None).override(**overrides)
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()

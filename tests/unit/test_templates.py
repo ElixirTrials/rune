@@ -29,6 +29,7 @@ def _ctx() -> dict[str, object]:
         "error_summary": "boom",
         "repair_brief": "",
         "repair_context": False,
+        "concise_code": False,
         "last_failure": "",
         "fix_guidance": "fix it",
         "repair_history": ["err"],

@@ -111,6 +111,20 @@ class PipelineConfig:
     # repair prompt, tail-cut history errors so the assert payload survives, and
     # cut the project label at a line boundary with an explicit marker.
     repair_context_fix: bool = False
+    # Concise-code instruction (issue #52 trace review 2026-07-09): with
+    # thinking_budget=0 the 4B externalizes chain-of-thought into the completion
+    # (3754: 60-80% of generated lines were comments/prose, causing
+    # truncation->salvage->headless-None). When on, code/repair prompts instruct
+    # the model to output code directly with minimal comments. The zero-shot
+    # floor prompt is NEVER touched (base-arm comparability).
+    concise_code_instruction: bool = False
+    # Budget-aware adapter conditioning (issue #52 trace review 2026-07-09): the
+    # hypernet encoder right-truncates at 2048 tokens, and oversized ## Current
+    # Code evicted ## Review Feedback entirely (i1 3754 s6-s10: adapter saw
+    # Task+Code only — total failure-signal blackout). When on, the conditioning
+    # is packed to a ~6800-char budget with priority Task > Feedback > Code >
+    # Attempts, shrinking code to the extracted entry function first.
+    adapter_cond_budget_fix: bool = False
     # --- Adapter (hypernetwork) profile ---
     checkpoint_path: str = ""  # trained hypernet checkpoint driving the adapter
     warmstart_checkpoint: str = ""  # warm-start (e.g. Sakana doc-to-lora) provenance

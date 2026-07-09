@@ -230,11 +230,68 @@ def _format_attempts(attempts: list[dict[str, Any]] | None) -> str:
     return "\n\n".join(blocks)
 
 
+_COND_CHAR_BUDGET = 6800
+# ~2048 encoder tokens at the ~3.4-3.8 chars/token measured on real i1/i2
+# trajectories. The hypernet tokenizes conditioning with truncation=True,
+# max_length=2048 (hypernetwork.py) — anything past that is silently invisible.
+
+
+def _shrink_code_for_budget(code: str, alloc: int, entry_point: str) -> str:
+    """Shrink ## Current Code to fit the conditioning budget.
+
+    Prefer the extracted entry function (drops the prose/comment overflow that
+    caused the i1 blackout); fall back to a head line-cut (the def line and
+    early body are the informative part)."""
+    if len(code) <= alloc:
+        return code
+    if entry_point:
+        from rune.bench.lcb import extract_entry_function  # noqa: PLC0415
+
+        extracted = extract_entry_function(code, entry_point)
+        if extracted.strip():
+            code = extracted
+        if len(code) <= alloc:
+            return code
+    cut = code[: max(alloc - 2, 0)]
+    nl = cut.rfind("\n")
+    if nl > alloc // 2:
+        cut = cut[:nl]
+    return cut + "\n…"
+
+
+def _pack_conditioning(
+    task: str,
+    current_code: str,
+    feedback: str,
+    attempts: list[dict[str, Any]] | None,
+    char_budget: int,
+    entry_point: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Fit the conditioning into the encoder window, priority Task > Feedback >
+    Code > Attempts. Section ORDER is untouched (it is the distillation
+    surface); only section contents shrink. Task (≤4096 by _PROJECT_CAP) and
+    feedback (≤2000 by error_summary cap) always fit together under the budget,
+    so shrinking code and dropping oldest attempts suffices."""
+    headers = 64  # "## Task/## Current Code/## Review Feedback/## Previous Attempts"
+    remaining = char_budget - headers - len(task) - len(feedback)
+    code = _shrink_code_for_budget(
+        current_code, max(remaining * 2 // 3, 400), entry_point
+    )
+    remaining -= len(code)
+    kept = list(attempts or [])
+    while kept and len(_format_attempts(kept)) > remaining:
+        kept.pop(0)  # oldest attempt first; the newest failures matter most
+    return code, kept
+
+
 def render_training_format_trajectory(
     task: str,
     current_code: str = "",
     feedback: str = "",
     attempts: list[dict[str, Any]] | None = None,
+    *,
+    char_budget: int | None = None,
+    entry_point: str = "",
 ) -> str:
     """Render the episode the hypernetwork conditions on.
 
@@ -246,7 +303,15 @@ def render_training_format_trajectory(
     prior failing attempts and their errors. It is appended ONLY when there is
     history, so attempt-1 stays byte-identical to the distillation surface; the
     section is the new training surface for the RL stage.
+
+    With ``char_budget`` set (adapter_cond_budget_fix), section contents are
+    packed to fit the hypernet's 2048-token encoder window so ## Review
+    Feedback is never silently truncated away (issue #52, 2026-07-09).
     """
+    if char_budget is not None:
+        current_code, attempts = _pack_conditioning(
+            task, current_code, feedback, attempts, char_budget, entry_point
+        )
     out = (
         f"## Task\n{task}\n\n"
         f"## Current Code\n{current_code}\n\n"
@@ -590,6 +655,7 @@ def state_to_ctx(state: RunState, action: Action | None = None) -> dict[str, Any
         "task_description": task[:_PROJECT_CAP],
         "project_label": _project_label(task, repair_context),
         "repair_context": repair_context,
+        "concise_code": bool(state.get("concise_code_instruction", False)),
         "subtask_count": len(subtasks),
         # Required function name (benchmark tasks); "" for free-form `rune run`.
         # Named in the code/repair prompts so the model doesn't invent a name.
@@ -960,6 +1026,12 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 current_code=ctx.get("existing_code", ""),
                 feedback=feedback_text,
                 attempts=prior_attempts,
+                char_budget=(
+                    _COND_CHAR_BUDGET
+                    if state.get("adapter_cond_budget_fix")
+                    else None
+                ),
+                entry_point=str(ctx.get("entry_point", "") or ""),
             )
             prompt_text = render_template(action.prompt_template, **ctx)
 

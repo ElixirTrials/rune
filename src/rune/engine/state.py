@@ -158,6 +158,8 @@ class RunState(TypedDict):
     complexity_repair_cap: int | None
     continuation_structural_guard: bool
     repair_context_fix: bool
+    concise_code_instruction: bool
+    adapter_cond_budget_fix: bool
     actions: list[Action]
     trajectory: list[StepRecord]
     step: int
@@ -264,6 +266,12 @@ def engine_kwargs_from_run_config(
         "repair_context_fix": bool(
             rc.get("repair_context_fix", defaults.repair_context_fix)
         ),
+        "concise_code_instruction": bool(
+            rc.get("concise_code_instruction", defaults.concise_code_instruction)
+        ),
+        "adapter_cond_budget_fix": bool(
+            rc.get("adapter_cond_budget_fix", defaults.adapter_cond_budget_fix)
+        ),
     }
 
 
@@ -358,4 +366,6 @@ def make_initial_state(
             engine["continuation_structural_guard"]
         ),
         "repair_context_fix": bool(engine["repair_context_fix"]),
+        "concise_code_instruction": bool(engine["concise_code_instruction"]),
+        "adapter_cond_budget_fix": bool(engine["adapter_cond_budget_fix"]),
     }
