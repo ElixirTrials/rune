@@ -86,14 +86,50 @@ public_checks`); official grading is the ground truth and now runs in-loop on ev
   No legitimate engine change on the table converts these; anything that would is the
   retracted-answer-injection anti-pattern.
 
+## 5a. Amendment — run i4 (`--no-complexity-repair-preserve-logic`, judge on)
+
+User trace-review question ("identical resubmission under a complexity verdict seems
+fishy") exposed that `complexity_repair_preserve_logic=True` (default since `db48504`,
+2026-06-10) makes the complexity brief say **"Do NOT replace the algorithm with a
+structurally different approach"** and hardcodes `replan_recommended=False` — so
+`replan_on_complexity` was dead code, and identical brute-force resubmission was
+*instructed compliance with an unsatisfiable directive*, not (only) capability. The
+directive provably reached i2 3801's prompts 3/3. June's perfect-oracle 0/11 was
+plausibly measured under the same directive, so the historical "complexity = pure
+capability wall" attribution is contaminated. CLI passthrough added (`91c25a6`); run i4
+(114 min, official 0/6, MLflow `issue52-c4` latest) exercised the never-tested
+replace-and-replan branch:
+
+- **3801**: mechanism works end-to-end — complexity reject → replan fired (plans at
+  s3/s5) → REPLACE brief rendered → the model produced its first-ever digit-family
+  attempt (still O(n), correctly rejected). `complexity_repair_cap=2` then halted
+  exploration after two shots — the cap was tuned for the preserve-directive era and
+  should be relaxed (or made replan-aware) under the replace treatment.
+- **3777**: revealed a **judge defect** — running before the complexity oracle, the
+  judge hallucinated counterexamples on correct-but-slow brute forces ("wrong on input
+  [1,1,1,1,1,1]… uses itertools"), its synthetic assertion failures suppressed the
+  deterministic complexity verdict, and the brief classified as "assertion" so the
+  REPLACE directive never rendered there. Fixed (`0452266`): judge now runs LAST, only
+  on units passing every deterministic oracle, and `prompt_judge` is scoped to
+  functional correctness only (slow-but-correct = correct). Default path bit-identical
+  (judge is opt-in).
+- Conversions: still 0/6 official — with the directive finally delivered (3801) the 4B
+  reached the right algorithm *family* but not the algorithm. Capability remains the
+  wall for 3777/3801, but now *honestly tested* for 3801 and untested-cleanly for 3777
+  (its i4 signal was judge-corrupted; re-test post-`0452266`).
+
 ## 5. Recommended next arms
 
-1. Pre-registered **escalate** arm on this slice with the full fix stack (only historical
+1. Re-run 3777 (and the slice) post-`0452266` with `--no-complexity-repair-preserve-logic`
+   and a relaxed/replan-aware `complexity_repair_cap` — the only arm where the complexity
+   treatment is now clean end-to-end.
+2. Pre-registered **escalate** arm on this slice with the full fix stack (only historical
    3753 solve came from escalate; rich episodic prompts already render brief/history).
-2. **Multi-seed** (≥3) before attributing any per-task delta to a treatment.
-3. **Thinking-budget arm** (`thinking_budget>0`) targeting failure mode 4.
-4. Keep `--model-judge` on (near-miss defense; unexercised in i3, would have caught i2).
-5. Generic complexity→technique hint table in the repair brief (task-agnostic, reviewable).
+3. **Multi-seed** (≥3) before attributing any per-task delta to a treatment.
+4. **Thinking-budget arm** (`thinking_budget>0`) targeting failure mode 4.
+5. Keep `--model-judge` on post-fix (near-miss defense — would have caught i2's 3799;
+   its i4 hallucination mode is closed by precedence + scope).
+6. Generic complexity→technique hint table in the repair brief (task-agnostic, reviewable).
 
 ## Appendix: environment re-provision (VM restarts wipe /tmp)
 
