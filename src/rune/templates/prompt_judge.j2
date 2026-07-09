@@ -15,3 +15,8 @@ Set `correct=false` ONLY if `reason` identifies a SPECIFIC concrete input (put i
 in `failing_input`) that the spec covers and on which this code is actually wrong.
 If you cannot name such an input, set `correct=true` and leave `failing_input` empty.
 {"reason": "<brief analysis>", "failing_input": "<concrete input or empty>", "correct": true|false}
+
+Judge FUNCTIONAL CORRECTNESS only. Performance, efficiency, and complexity are OUT
+OF SCOPE — a slow but correct brute force must be judged `correct=true` (a separate
+oracle handles complexity). Never name an input as failing because the code would be
+slow on it; only because the returned VALUE would be wrong.

@@ -1307,43 +1307,13 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     f"oracle_n_checks/{_label}", _n_checks, step=state["step"]
                 )
 
-    # Model-judge (in-loop, always on): the public example is necessary but not
-    # sufficient — code can pass its one public case yet be wrong on a held-out
-    # input (e.g. integer-division edge cases). For each unit that passed the
-    # sandbox, ask the model for a SPECIFIC failing input; a grounded verdict
-    # flips feedback to failure so the existing diagnose->repair routing engages,
-    # and the named input becomes the repair signal carried in the adapter.
-    # Pre-judge sandbox verdict per name: a model-judge flip (below) drives repair
-    # ROUTING but must NOT lower the candidate's retained QUALITY (its synthetic
-    # stderr has no AssertionError, so candidate_quality would rank a verified
-    # public-passing solution at "runs" and let a later bare-running repair clobber
-    # it in best_code — issue #52 P0-3). Quality is ranked from this snapshot.
+    # Pre-judge sandbox verdict per name: a model-judge flip (below, AFTER the
+    # deterministic oracles) drives repair ROUTING but must NOT lower the
+    # candidate's retained QUALITY (its synthetic stderr has no AssertionError,
+    # so candidate_quality would rank a verified public-passing solution at
+    # "runs" and let a later bare-running repair clobber it in best_code —
+    # issue #52 P0-3). Quality is ranked from this snapshot.
     prejudge_feedback = dict(feedback_map)
-    if run_config.get("model_judge", False):
-        for name in code_action_names:
-            if feedback_map[name].exit_code != 0:
-                continue  # already failing — nothing for the judge to add
-            verdict = await _run_model_judge(
-                model, spec, entry_point, code_map[name], run_config
-            )
-            if verdict is not None and not verdict.correct and verdict.failing_input:
-                feedback_map[name] = Feedback(
-                    stdout="",
-                    stderr=(
-                        f"Correctness judge: wrong on input {verdict.failing_input}. "
-                        f"{verdict.reason}"
-                    ),
-                    exit_code=1,
-                )
-                logger.info(
-                    "judge flipped %s to failing: %s",
-                    name or "integrate",
-                    verdict.reason,
-                )
-                if mlflow.active_run() is not None:
-                    mlflow.log_metric(
-                        f"judge_flagged/{name or 'integrate'}", 1, step=state["step"]
-                    )
 
     # Constraint-scale oracle: empirical big_o when it finishes within budget;
     # otherwise hotswap the complexity-assessment adapter for a static verdict.
@@ -1395,6 +1365,42 @@ async def step_node(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                         f"requirements_failed/{name or 'integrate'}",
                         1,
                         step=state["step"],
+                    )
+
+    # Model-judge — LAST, and only on units that passed EVERY deterministic
+    # oracle (sandbox publics, constraint-scale complexity, requirements). The
+    # public example is necessary but not sufficient — code can pass publics yet
+    # be wrong on a held-out input. Deterministic verdicts have precedence: in
+    # run i4 (issue #52, 2026-07-09) the judge, running first, hallucinated
+    # counterexamples on correct-but-slow brute forces and its synthetic
+    # assertion failures masked the complexity verdict entirely (the repair
+    # brief classified as "assertion", so the replace-algorithm directive never
+    # rendered). Judging correctness only, after all deterministic gates, makes
+    # that impossible.
+    if run_config.get("model_judge", False):
+        for name in code_action_names:
+            if feedback_map[name].exit_code != 0:
+                continue  # already failing — nothing for the judge to add
+            verdict = await _run_model_judge(
+                model, spec, entry_point, code_map[name], run_config
+            )
+            if verdict is not None and not verdict.correct and verdict.failing_input:
+                feedback_map[name] = Feedback(
+                    stdout="",
+                    stderr=(
+                        f"Correctness judge: wrong on input {verdict.failing_input}. "
+                        f"{verdict.reason}"
+                    ),
+                    exit_code=1,
+                )
+                logger.info(
+                    "judge flipped %s to failing: %s",
+                    name or "integrate",
+                    verdict.reason,
+                )
+                if mlflow.active_run() is not None:
+                    mlflow.log_metric(
+                        f"judge_flagged/{name or 'integrate'}", 1, step=state["step"]
                     )
 
     brief_updates: dict[str, Any] = {}
