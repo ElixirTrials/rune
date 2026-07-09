@@ -277,6 +277,15 @@ def main() -> None:
         help="Enable the correctness judge on oracle-passing units (oracle has "
         "precedence: judge only flips pass->fail with a grounded failing input).",
     )
+    ap.add_argument(
+        "--complexity-repair-preserve-logic",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Complexity-failure brief directive: True = 'optimize in place, do "
+        "NOT replace the algorithm' (default; also suppresses replan). False = "
+        "'replace with an efficient algorithm' + replan_recommended, letting "
+        "--replan-on-complexity actually fire.",
+    )
     args = ap.parse_args()
 
     import asyncio  # noqa: PLC0415
@@ -333,6 +342,10 @@ def main() -> None:
         overrides["adapter_cond_budget_fix"] = args.adapter_cond_budget_fix
     if args.model_judge is not None:
         overrides["model_judge"] = args.model_judge
+    if args.complexity_repair_preserve_logic is not None:
+        overrides["complexity_repair_preserve_logic"] = (
+            args.complexity_repair_preserve_logic
+        )
     cfg = load_rune_config(None).override(**overrides)
     model = ModelWrapper.from_config(cfg)
     engine = create_engine()
