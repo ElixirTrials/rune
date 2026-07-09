@@ -139,3 +139,46 @@ built and no run occurred. The Option B prose comparison stands.
 Rune-side KV-injection or prefix-tuning numbers, as none exist.
 
 **Provenance:** `docs/publication/publication_task_plan.md` row C3.1 (trigger condition).
+
+## A-C4 — capacity go/no-go (C4 Stage 1)
+
+**Realized (I0 audit + I5 capacity, 60 C1 keystone rows, W=768, c3, seed 0).** I0
+symbol-reuse audit: aggregate reuse **105/119 = 0.882 pooled** (97/119 = 0.815 strict),
+primary set i1 **20/27 = 0.741** pooled / 18/27 = 0.667 strict — **above the 0.60
+threshold on every set, both definitions**; natural trajectories suffice for Stage 2's
+consistency metric on the numeric gate. Honest caveat carried: **0/119 eligible pairs are
+cross-subtask** (all same-target within-subtask iteration), so a co-author may still mandate
+the synthetic accumulate-K task on coverage grounds. I5 capacity gate at K=2 vs floor
+(9/60=0.150): mode (a) regenerate-from-scratch **18/60 = 0.300, delta = +0.1500 == M,
+McNemar p = 0.011719 → passes**; mode (b) incremental-delta 12/60 = 0.200, delta +0.050,
+p = 0.508 → fails; **`go = TRUE`**. **Gate branch: conditional S1-GO — at the razor edge.**
+The delta≥M leg has **zero slack** (a single of 60 rows flips `go`); mode (a)'s Wilson CI
+[0.199, 0.425] overlaps floor's [0.081, 0.261], so the go rests on the paired McNemar, not
+separated marginal CIs; and the read is conditional on accepting the enlarged-rank
+instrument, which **soft-failed S1-ANCHOR-2 (46/60 < 55/60)** — GEMM drift netting −2
+recovery (an *under*-count, so it does not inflate the delta). Build mode (b) is a
+dead end (worse than floor at K=8, p=0.0078); only mode (a) is a Stage-2 candidate. Both
+build modes fall far below the in-prompt tail at every K>1 (steep, monotone capacity
+ceiling); K=1 reproduces the C1 loss (adapter 0.483–0.517 vs tail 0.833). Margin M is the
+plan default +0.15 with **co-author sign-off still pending**.
+
+**Measurement-only caveat (no official number moves).** The LCB failure-mode remediation
+campaign (`docs/issue52-lcb-remediation-2026-07-09.md`) that produced the audited i1–i4
+sessions changed **measurement only** — flag-gated harness/grading fixes, no task-specific
+logic; the official grading path is untouched and verified, and **no published official
+number in A-KEY…A-REASONCACHE moves** as a result.
+
+**Instruction:** report C4 Stage 1 as a **conditional go/no-go, not a headline result** —
+state the I0 audit clears 0.60 (with the 0/119 cross-subtask coverage caveat) and that the
+I5 capacity gate is a razor-edge S1-GO satisfied by mode (a) alone (delta == margin, one row
+from NO-GO, overlapping marginal CI, instrument ANCHOR-2 soft-fail), requiring a co-author
+margin sign-off before any Stage 2 build; do not present the adapter as beating the in-prompt
+channel — it does not at any K>1. Stage 2 is not built by this plan under either reading.
+
+**Provenance:** `docs/publication/c4_stage1_findings.md` §2–5; `docs/publication/c4_implementation_plan.md`
+(Pre-registration + Task 6); MLflow exp `issue52-c4` (id 81) runs
+`b37b106052b14033987456a6efbbb174` (I0 audit), `f6af67858efb43` (I5 sanity),
+`87420fb4383444c8aaf148c8b7017a4d` (I5 capacity); traces `capacity_traces.json`
+(`55248426…3afec371b`), `sanity_traces.json` (`b071ad3e…60fb97eb0`), `i1_audit.json`
+(`56e68602…4dab07f3`) with all C4 sha256s in `docs/publication/hashes.txt`; c3 sha
+`53e24af2…5457a3f`, engine commit `534dae6`.

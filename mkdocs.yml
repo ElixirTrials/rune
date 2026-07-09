@@ -59,6 +59,7 @@ nav:
           - "Realized Gates (consolidated handoff)": publication/handoff_realized_gates.md
           - "C1 Keystone Findings": publication/c1_keystone_findings.md
           - "C3.2 W-Sweep Findings": publication/c32_wsweep_findings.md
+          - "C4 Stage-1 Findings (I0 audit + I5 capacity)": publication/c4_stage1_findings.md
           - "C2.1 Fresh-Pool Re-estimate Prep": publication/c21_prep.md
           - "C0.1 Corpus-Trajectory Lookup": publication/c01_corpus_lookup.md
           - "Code-Side Task Plan": publication/publication_task_plan.md

@@ -38,3 +38,22 @@ d0d6d6837cdaeafc8121ecfc6af0ee134e38608fca2fb10fec0662670a870a3a  rb_clamp_c1_fu
 ea22f847021d3326aaa3696cbd1a167d07c536e180732c2b22804c224158a50c  rb_clamp_w256.json (C3.2 W-sweep leg W=256, clamp-use-W256-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (exp id 79), run ab4d331287774435abb0653967469551, artifact rb_clamp_w256.json; byte-identical local copy at session scratchpad rb_clamp_w256.json
 796c021291c2d685495d7db29f342a7bf3540458ada2aa0a15cc1dfeb3723755  rb_clamp_w512.json (C3.2 W-sweep leg W=512, clamp-use-W512-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (exp id 79), run 3ba5333785ee4acfa19cc526cf00ca91, artifact rb_clamp_w512.json; byte-identical local copy at session scratchpad rb_clamp_w512.json
 287d0c96ae197121a7496022acc2dfae0fc4d060d407e67cc0c042442c4718c3  rb_clamp_w1536.json (C3.2 W-sweep leg W=1536, clamp-use-W1536-8k_32k-n60-off100-seed0)  mlflow exp issue52-repobench-clamp (exp id 79), run d3aae62a5c514acb94b1b2a6381d85a9, artifact rb_clamp_w1536.json; byte-identical local copy at session scratchpad rb_clamp_w1536.json
+
+# -- C4 Task 2 (I0 symbol-reuse audit, 2026-07-09) — sessions regenerated after VM reboot wiped i0;
+#    same engine + c3 (sha 53e24af2…), qids 3748,3753,3754,3777,3799,3801, seed 0, full mode.
+#    Audit tool tools/_c4_fixture_audit.py; MLflow exp issue52-c4 (id 81) run c4-i0-audit
+#    b37b106052b14033987456a6efbbb174, artifact_path audit/. Independent recompute matched
+#    tool per-session+aggregate (i1 20/27=0.741 pooled, 18/27=0.667 strict; both > 0.60 threshold). --
+56e68602ebf2f7a2c8ba14d1be8312c8153f2fa0c4e849414bbce7144dab07f3  i1_audit.json (primary: waves1-2 ship-gate+budget-guards; reuse 20/27=0.741, strict 18/27=0.667)  mlflow exp issue52-c4 (id 81), run b37b106052b14033987456a6efbbb174, artifact audit/i1_audit.json
+a39bacab58689aa21782a4f7b109b12ad6c9be2597298e35f70249e824060695  i2_audit.json (+wave3 repair_context_fix; reuse 19/26=0.731, strict 17/26=0.654)  mlflow exp issue52-c4 (id 81), run b37b106052b14033987456a6efbbb174, artifact audit/i2_audit.json
+e7dc62b7a93dcc6277659bb1dfac300c991061c0e67af8b5d3f6886cac269469  i3_audit.json (+wave4 cond-budget+concise, judge on; reuse 31/31=1.000, strict 29/31=0.935)  mlflow exp issue52-c4 (id 81), run b37b106052b14033987456a6efbbb174, artifact audit/i3_audit.json
+687ecaaeff97bc34dec23c5f145301123fbc2a5b37c6c66324e16a26e03de7e2  i4_audit.json (+no-preserve-logic replan, judge on; reuse 35/35=1.000, strict 33/35=0.943)  mlflow exp issue52-c4 (id 81), run b37b106052b14033987456a6efbbb174, artifact audit/i4_audit.json
+039ec2fea3a615d57cce7124242089cd79bcee4520359d25ed1b5af2b4ebb27a  _independent_recompute.py (i0 audit cross-check, hand-rolled de-fence+AST, no tool import)  mlflow exp issue52-c4 (id 81), run b37b106052b14033987456a6efbbb174, artifact audit/_independent_recompute.py
+# -- C4 Stage-1 I5 capacity campaign (Task 5), 2026-07-09; c3 ckpt sha 53e24af2…5457a3f verified pre-forward.
+#    MLflow exp issue52-c4 (id 81): sanity run c4-sanity-W768 f6af67858efb43; capacity run
+#    c4-capacity-W768-K1,2,4,8-off100-seed0 87420fb4383444c8aaf148c8b7017a4d (artifacts capacity_traces.json, stage1_gate.json).
+#    S1-ANCHOR-1 PASS: sanity floor 60/60 + adapter_k1 60/60 token-exact vs C1 f37374906c5f (recovery floor 0.150, adapter_k1 0.517).
+#    S1-ANCHOR-2 SOFT-FAIL: enlarged-rank adapter_k1 pred agreement 46/60 (<55 threshold); GEMM-drift, recovery 29 vs 31 (net -2, 2 recovered→not flips). Gate reading flagged for Task 6.
+#    Gate (M=0.15): adapter_a_k2 delta=+0.150 (==margin) p=0.0117 passes; adapter_b_k2 delta=+0.050 p=0.508 fails; go=true (razor-edge). Independent stdlib recompute matched runner+MLflow on every count/CI/McNemar/bundle-sign/kstar/gate.
+b071ad3e92b667ac27afc0de234b125da9059799ccf683f1bd64b9960fb97eb0  sanity_traces.json (C4 I5 sanity leg; S1-ANCHOR-1 floor+adapter_k1 60/60 token-exact vs C1)  mlflow exp issue52-c4 (id 81), run f6af67858efb43, artifact sanity_traces.json
+55248426ad9962cf0bce2c67b9b5a1fc3ced7fc3b45391f167955afbf3ec371b  capacity_traces.json (C4 I5 capacity leg K1,2,4,8 modes a+b vs tail vs floor; go=true M=0.15 razor-edge)  mlflow exp issue52-c4 (id 81), run 87420fb4383444c8aaf148c8b7017a4d, artifact capacity_traces.json
