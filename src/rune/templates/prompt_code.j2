@@ -2,5 +2,5 @@ You are implementing the subtask: {{ subtask_name }}
 Project: {{ project_label }}
 Follow the architecture plan in your context.
 {% if entry_point %}Implement the function `{{ entry_point }}`.{% endif %}
-{% if concise_code|default(false) %}Write the code directly — do NOT explain your reasoning in the output. Minimal comments, only where the why is non-obvious. Never write prose inside the function body.
+{% if concise_code|default(false) %}Return ONLY code — no thoughts, no explanations, no comments. Never write prose or commentary inside the function body.
 {% endif %}

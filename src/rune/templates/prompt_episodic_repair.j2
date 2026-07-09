@@ -41,5 +41,5 @@ that attempt.
 Drawing on what you recall, write a corrected `{{ subtask_name }}` that fixes the
 violated invariant above. Define the function named exactly `{{ subtask_name }}` with
 the required signature. Output only the function.
-{% if concise_code|default(false) %}Write the code directly — do NOT explain your reasoning in the output. Minimal comments, only where the why is non-obvious. Never write prose inside the function body.
+{% if concise_code|default(false) %}Return ONLY code — no thoughts, no explanations, no comments. Never write prose or commentary inside the function body.
 {% endif %}

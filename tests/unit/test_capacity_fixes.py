@@ -38,7 +38,7 @@ class TestConciseCodeInstruction:
             "prompt_episodic_repair",
         ):
             out = render_template(name, **ctx)
-            assert "do NOT explain your reasoning" in out, name
+            assert "no thoughts, no explanations, no comments" in out, name
 
     def test_zeroshot_never_carries_instruction(self) -> None:
         # The zero-shot floor must stay byte-identical to the base arm.
